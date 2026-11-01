@@ -126,3 +126,5 @@ The injectionpolicy call is replaced by a local dnsName check (labels 1 to 63 of
 Deferred to U-302b by the split: TestDenyAuditRecordsReadsProxyOutput and TestDenyAuditRecordsSeesRotatedHead, which need New and deny from proxy.go. Redteam wrote no escape test (nothing can FAIL on control until U-303 wires the proxy to a guest); its variants are one line in PARKED.md. Review: no findings; one less-code note parked. Local gate 6 s, guard green.
 Budget: product 501 of 15000, test 2374 of 2751, so 377 test lines remain; U-302b brings about 500 legacy test lines (proxy_test.go) and gains about 1.5 lines of room per product line of proxy.go, so read the gate budget line first and drop or trim before writing. U-007 to U-010b stay blocked until more product lands.
 Next: U-302b (deps U-001, U-302a; env:any; model opus) is the next takeable unit for the cloud.
+
+## 2026-11-01T19:41Z U-302b START mode=cloud
