@@ -39,3 +39,5 @@ Exit codes: 1 unless every selected test passed (not-implemented and probe error
 Review found one R2 finding (a probe that never ran could count as an I4 pass); fixed in the one fix round. Hosted gate on PR #7 was green on the harness commit before the fix.
 Learned: this session has no docker daemon and no /dev/kvm, but user namespaces work, so the control adapter runs here as uid 0 and through a user namespace. T2 evidence: the seed test I4 host-loopback-tcp4 fails on control.
 Next: U-005 must absorb that I4 seed test rather than add a second loopback test, and point the canary at the host address as seen from a real guest, where 127.0.0.1 is the guest's own loopback. Linux-only probes go in _linux.go files with a stub for other systems, because the suite compiles on darwin.
+
+## 2026-11-01T15:45Z U-005 START mode=cloud
