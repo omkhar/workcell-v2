@@ -74,3 +74,5 @@ Next: U-009, U-010 and U-010b have the same problem and will be recorded the sam
 Not attempted: the local gate on main reports test code 1879 of 2048 lines (product code 32, limit 1.5 x product + 2000), so 169 lines remain under escape/. U-009 needs about eight I8 and I13 tests (hostile hooks, filters, attributes, .git/config, submodule URLs, symlinks, ../ paths, case-collision names, a widening repo-local policy) at 60 to 95 lines each, plus a return-path hook in the harness, so it cannot fit.
 No redteam was spent, as the U-007 entry advised. Nothing under escape/ can go without losing a T2-proven test, so SPEC section 7 blocks the unit as it blocked U-007 and U-008. BLOCKED.md says what unblocks it.
 Next: U-010 and U-010b have the same problem and will be recorded the same way unless the maintainer edits the budget or reorders Phase 0 first. After them the loop reaches U-100 (spike, env:kvm, spikes/ is outside the budget). The claim was PR #14, closed by this run.
+
+## 2026-11-01T17:27Z U-010 START mode=cloud
