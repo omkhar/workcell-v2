@@ -57,3 +57,5 @@ All six FAIL on control as root and as uid 65534, 0 errors; the whole control su
 Review: two R2 findings, both fixed in the one round: tunnelled judged a partial leak (3 of 4 chunks) as a pass, now any chunk of the token counts; the UDP, TCP and HTTPS captures did not join their goroutines before the judge read, now stop() closes then waits like udpCanary. Four lines parked.
 Learned: no _linux/_other split was needed, the DNS codec and TLS helpers are portable; the DoH client uses an explicit Transport with Proxy nil so no environment proxy or system resolver can redirect a probe; the session has no nft privileges, so the dropped-chunk case is a unit test, not a control run.
 Next: U-007 (I1, I7, I10) needs a deliberately weak control variant for each flood and residue test; the control adapter keeps the host network namespace, so nothing here proves the resolver path (see PARKED), which is U-304's job with a test-controlled upstream.
+
+## 2026-11-01T16:45Z U-007 START mode=cloud
