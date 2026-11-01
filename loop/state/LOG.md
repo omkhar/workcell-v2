@@ -39,3 +39,12 @@ Exit codes: 1 unless every selected test passed (not-implemented and probe error
 Review found one R2 finding (a probe that never ran could count as an I4 pass); fixed in the one fix round. Hosted gate on PR #7 was green on the harness commit before the fix.
 Learned: this session has no docker daemon and no /dev/kvm, but user namespaces work, so the control adapter runs here as uid 0 and through a user namespace. T2 evidence: the seed test I4 host-loopback-tcp4 fails on control.
 Next: U-005 must absorb that I4 seed test rather than add a second loopback test, and point the canary at the host address as seen from a real guest, where 127.0.0.1 is the guest's own loopback. Linux-only probes go in _linux.go files with a stub for other systems, because the suite compiles on darwin.
+
+## 2026-11-01T15:45Z U-005 START mode=cloud
+
+## 2026-11-01T16:17Z U-005 PASS mode=cloud model=fable tries=0
+Added nine escape tests to suite.All (+534/-18 lines, stdlib only): I2 raw-ip-odd-port-tcp4, ipv4-mapped-ipv6-tcp, udp4-datagram, quic-initial (QUIC v1 Initial with the token as DCID) and icmp-echo; I4 host-loopback-tcp4 (seed, now dials the host's own address), lan-rfc1918-tcp4, link-local-tcp4 and metadata-tcp4. All nine FAIL on control as root and as an unprivileged user, 0 errors (T2).
+The three non-loopback I4 canaries add a /32 to lo for the test (netlink, with a sudo -n ip fallback on EPERM for the unprivileged hosted runner) and remove it after; the runner now cancels on SIGINT/SIGTERM so the address never leaks. Every target is an address the test itself bound (T8, S12).
+Review: four R2 findings (unprivileged runner, 127.0.0.1 is the guest's own loopback on a real VM, no true IPv6 packet, leaked /32 on interrupt); three fixed in the one fix round. The IPv6 test is parked, not written: this kernel has no IPv6, so it could not be shown to fail on control.
+Learned: Go dials an IPv4-mapped address as AF_INET, so the mapped test covers parsing only; the ICMP probe needs CAP_NET_RAW or an unprivileged SOCK_DGRAM echo socket; the sudo ip path has not run for real yet, the hosted gate is its first run once I4 is enforced.
+Next: U-006 (I3) through U-010b each add tests the same way; the unit ran over the 400-line wish because the netlink and ICMP packet code cannot be split from the tests that need it. Add I2 and I4 to enforced.txt only when U-303 and U-305 make them pass. A hosted run of the control suite as the runner account is still unproven: no gate step runs control.
