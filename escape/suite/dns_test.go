@@ -1,0 +1,81 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Omkhar Arasaratnam
+
+package suite
+
+import (
+	"bytes"
+	"strings"
+	"testing"
+)
+
+func TestParseDNSQuery(t *testing.T) {
+	q := dnsQuestion{ID: 0xBEEF, Name: "0123456789abcdef.invalid.", Type: dnsTypeA}
+	good := dnsQuery(q)
+	response := dnsQuery(q)
+	response[2] |= 0x80
+	noQuestion := dnsQuery(q)
+	noQuestion[5] = 0
+	chaos := dnsQuery(q)
+	chaos[len(chaos)-1] = 3
+	pointer := append(good[:12:12], 0xC0, 12, 0, 1, 0, 1)
+	dot := dnsQuery(dnsQuestion{Name: "a.b", Type: 1})
+	dot[13] = '.'
+	space := dnsQuery(dnsQuestion{Name: "a b", Type: 1})
+	long := dnsQuestion{Name: strings.Repeat(strings.Repeat("x", maxLabel)+".", 4), Type: dnsTypeTXT}
+	cases := []struct {
+		name string
+		in   []byte
+		want dnsQuestion
+		ok   bool
+	}{
+		{"A query", good, q, true},
+		{"TXT query, many labels", dnsQuery(dnsQuestion{Name: "a.bb.ccc.dddd.", Type: dnsTypeTXT}), dnsQuestion{Name: "a.bb.ccc.dddd.", Type: dnsTypeTXT}, true},
+		{"longest label", dnsQuery(dnsQuestion{Name: strings.Repeat("y", maxLabel) + ".", Type: 1}), dnsQuestion{Name: strings.Repeat("y", maxLabel) + ".", Type: 1}, true},
+		{"name too long", dnsQuery(long), dnsQuestion{}, false},
+		{"label too long", dnsQuery(dnsQuestion{Name: strings.Repeat("y", maxLabel+1) + ".", Type: 1}), dnsQuestion{}, false},
+		{"trailing bytes", append(good, 1, 2, 3), q, true},
+		{"truncated", good[:len(good)-1], dnsQuestion{}, false},
+		{"truncated in name", good[:20], dnsQuestion{}, false},
+		{"response", response, dnsQuestion{}, false},
+		{"no question", noQuestion, dnsQuestion{}, false},
+		{"class CH", chaos, dnsQuestion{}, false},
+		{"compression pointer", pointer, dnsQuestion{}, false},
+		{"root name", dnsQuery(dnsQuestion{Name: ".", Type: 1}), dnsQuestion{}, false},
+		{"dot in label", dot, dnsQuestion{}, false},
+		{"space in label", space, dnsQuestion{}, false},
+		{"header only", good[:12], dnsQuestion{}, false},
+		{"nothing", nil, dnsQuestion{}, false},
+		{"hello", []byte("hello\n"), dnsQuestion{}, false},
+	}
+	for _, c := range cases {
+		got, ok := parseDNSQuery(c.in)
+		if ok != c.ok || got != c.want {
+			t.Errorf("%s: parseDNSQuery = %+v, %v; want %+v, %v", c.name, got, ok, c.want, c.ok)
+		}
+	}
+	if f := dnsFrame(good); len(f) != len(good)+2 || f[0] != 0 || int(f[1]) != len(good) || !bytes.Equal(f[2:], good) {
+		t.Errorf("dnsFrame = % x", f[:4])
+	}
+}
+
+func FuzzParseDNSQuery(f *testing.F) {
+	f.Add(dnsQuery(dnsQuestion{ID: 1, Name: "0123456789abcdef.invalid.", Type: dnsTypeA}))
+	f.Add(dnsQuery(dnsQuestion{Name: "0.deadbeef.0123456789abcdef.invalid.", Type: dnsTypeTXT}))
+	f.Add([]byte{0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0xC0, 12, 0, 1, 0, 1})
+	f.Fuzz(func(t *testing.T, b []byte) {
+		q, ok := parseDNSQuery(b)
+		if !ok {
+			return
+		}
+		again, ok := parseDNSQuery(dnsQuery(q))
+		if !ok || again != q || len(q.Name) > maxName || !strings.HasSuffix(q.Name, ".") {
+			t.Fatalf("parseDNSQuery(%x) = %+v: not a question, or not what dnsQuery encodes (%+v, %v)", b, q, again, ok)
+		}
+		for label := range strings.SplitSeq(strings.TrimSuffix(q.Name, "."), ".") {
+			if len(label) == 0 || len(label) > maxLabel {
+				t.Fatalf("parseDNSQuery(%x) = %q: bad label %q", b, q.Name, label)
+			}
+		}
+	})
+}

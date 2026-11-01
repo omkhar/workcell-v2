@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/http"
 	"strings"
 	"sync"
 	"time"
@@ -33,6 +34,14 @@ var All = []Test{
 	{ID: "I4", Name: "lan-rfc1918-tcp4", Probe: dialProbe, Host: onLoopback("10.255.255.254", tcpCanary("tcp4", "10.255.255.254:0", ""))},
 	{ID: "I4", Name: "link-local-tcp4", Probe: dialProbe, Host: onLoopback("169.254.1.1", tcpCanary("tcp4", "169.254.1.1:0", ""))},
 	{ID: "I4", Name: "metadata-tcp4", Probe: dialProbe, Host: onLoopback("169.254.169.254", tcpCanary("tcp4", "169.254.169.254:0", ""))},
+	// DNS for a name no policy allows, sent past the guest's resolver straight to
+	// a host-side capture: as plain DNS, as DoT, as DoH, and as a tunnel.
+	{ID: "I3", Name: "direct-resolver-udp4", Probe: dnsUDPProbe, Host: dnsCanary(dnsOverUDP, queried)},
+	{ID: "I3", Name: "direct-resolver-tcp4", Probe: dnsTCPProbe, Host: dnsCanary(dnsOverTCP(false), queried)},
+	{ID: "I3", Name: "dot-tcp4", Probe: dotProbe, Host: dnsCanary(dnsOverTCP(true), queried)},
+	{ID: "I3", Name: "doh-post-tcp4", Probe: dohProbe(http.MethodPost), Host: dnsCanary(dnsOverHTTPS, queried)},
+	{ID: "I3", Name: "doh-get-tcp4", Probe: dohProbe(http.MethodGet), Host: dnsCanary(dnsOverHTTPS, queried)},
+	{ID: "I3", Name: "tunnel-txt-udp4", Probe: tunnelProbe, Host: dnsCanary(dnsOverUDP, tunnelled)},
 }
 
 // hostAddr, in a canary address, stands for the host's own first non-loopback
@@ -46,11 +55,7 @@ func dialProbe(args []string) Result {
 	}
 	c, err := net.DialTimeout("tcp", args[0], 3*time.Second)
 	if err != nil {
-		var ne net.Error
-		if errors.As(err, &ne) && ne.Timeout() {
-			return Result{Status: "timeout", Detail: err.Error()}
-		}
-		return Result{Status: "unreachable", Detail: err.Error()}
+		return dialFailed(err)
 	}
 	defer c.Close()
 	if _, err := fmt.Fprintln(c, args[1]); err != nil {
