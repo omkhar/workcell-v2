@@ -23,3 +23,5 @@ that halt, fix the cause, append a RESUME line here, and land it with `land.sh`.
 Hosted gate on PR #5 (commit 7169c67): gate 34 s, gate.sh 19 s, /dev/kvm world-writable; recorded in docs/benchmarks.md (new file, 18 lines).
 Learned: the shipped ci.yml works on ubuntu-24.04 with KVM; the gate.sh VM suite is still deferred because nothing is enforced yet.
 Next: U-003 adds the v1 baseline to the same file; guard and merge checks take about 4 s each.
+
+## 2026-11-01T15:24Z U-003 START mode=cloud
