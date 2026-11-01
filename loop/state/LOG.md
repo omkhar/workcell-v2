@@ -79,3 +79,5 @@ Next: U-010 and U-010b have the same problem and will be recorded the same way u
 Not attempted: the local gate on main reports test code 1879 of 2048 lines (product code 32, limit 1.5 x product + 2000), so 169 lines remain under escape/. U-010 needs three harness hooks (a host-side record reader for I9, a way to kill the proxy, resolver or broker for I11, and guest access to the host-guest channel for I12) plus about eight tests at 60 to 95 lines each, so it cannot fit.
 No redteam was spent, as the U-007 entry advised. Nothing under escape/ can go without losing a T2-proven test (the largest non-test files are the runner at 158 lines and suite.go at 144), so SPEC section 7 blocks the unit as it blocked U-007 to U-009. BLOCKED.md says what unblocks it.
 Next: U-010b has the same problem and will be recorded the same way. That makes five BLOCKED results after U-006 PASS, so the six-failures rule does not fire yet, but one FAIL on U-100 (spike, env:kvm, spikes/ is outside the budget) after that would halt the loop. The claim was PR #16, closed by this run; gate, gate-macos and guard were green on main plus the claim.
+
+## 2026-11-01T17:33Z U-010b START mode=cloud
