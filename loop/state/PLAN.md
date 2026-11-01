@@ -70,7 +70,7 @@ with ADR-003 and ADR-004, they build on the proposal, and you can accept it at a
       accept: hostile hooks, filters, attributes, `.git/config`, submodule URLs, symlinks, `../` paths, case-collision names; a repo-local policy that tries to widen
 - [!] U-010 | flow:escape | model:fable | env:any | deps:U-004 | tries:0 | Escape tests for I9, I11 and I12
       accept: log forge, suppress and truncate attempts; `kill -9` of each host helper; malformed, oversized and slow-drip channel frames
-- [ ] U-010b | flow:escape | model:fable | env:any | deps:U-004 | tries:0 | Escape tests for I14, with a local fake channel server and fake upstream
+- [!] U-010b | flow:escape | model:fable | env:any | deps:U-004 | tries:0 | Escape tests for I14, with a local fake channel server and fake upstream
       accept: bad signature, expired manifest, lower serial, digest mismatch, truncated download and redirected URL are each refused
 - [H] H-011 | env:macos | deps:U-005,U-006,U-007,U-008,U-009,U-010 | In the second account: optional, and private. Run the suite against Workcell v1.0.2, installed there, before hosted CI runs it against code ported from v1. It needs an adapter for v1, which stays off GitHub like those of H-806. `REFERENCE.md` section 6 says how
       accept: the result stays outside the repository (S14). Only limits that v1's own documents already state may go into `docs/benchmarks.md`. Anything new follows `SECURITY.md`
