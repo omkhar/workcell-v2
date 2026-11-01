@@ -186,3 +186,5 @@ Spike numbers, hosted CI commit c66c44c (PR #33): sign p50 157 us linux / 54 us 
 Facts for B-821 and B-826: pins/ needs a prior-version column, a withdrawn list and a released timestamp per row; Verify(env, keys, now, lastSerial) with Key{ID, PublicKey, NotAfter} is the shape the dry run and the client share; the key ID is the SHA-256 of the public half, derived on both sides (W6); self-rollback and --rollback must never read the stored manifest (its expiry would block them). The ADR and the two design calls beyond the spike stand until the maintainer moves the file to docs/adr/accepted/.
 Budget: Markdown 288 of 2500, product 1632 of 15000, test 3931 of 4448, direct dependencies 2 of 15. No reviewer in the spike flow; nothing parked.
 Next: B-821 (internal/pins data model and stateless selector, boundary, env:any, model opus, deps U-001) is the next takeable unit for the cloud; it builds on ADR-004 as proposed. The claim was PR #33, which this run gave its final title.
+
+## 2026-11-01T21:56Z B-821 START mode=cloud
