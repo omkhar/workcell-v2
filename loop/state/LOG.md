@@ -135,3 +135,5 @@ proxy.go is legacy proxy.go minus what U-302a already holds (denyKey, maxLogHost
 Tests: go test -race clean, FuzzPeekSNI 20 s clean (about 170 execs per second, each input does a net.Pipe TLS handshake), GOOS=darwin vet clean. Local gate 6 s; hosted gate, gate-macos and guard green on the unit commit. Redteam wrote no escape test (nothing can FAIL on control before U-303; its variants are one line in PARKED.md). Review: no findings; one less-code note parked.
 Budget: product 805 of 15000, test 2914 of 3207, so 293 test lines remain. U-302 brings terminate.go (385 product lines, which raises the limit by about 577) and terminate_test.go (429 test lines), so it fits with about 440 lines to spare; read the gate budget line first all the same. U-007 to U-010b stay blocked until more product lands.
 Next: U-302 (deps U-001, U-302a, U-302b; env:any; model opus) is the next takeable unit for the cloud. The claim was PR #26, which this run gave its final title.
+
+## 2026-11-01T20:03Z U-302 START mode=cloud
