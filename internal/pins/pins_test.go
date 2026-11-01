@@ -5,6 +5,7 @@ package pins
 
 import (
 	"fmt"
+	"math"
 	"slices"
 	"strings"
 	"testing"
@@ -62,6 +63,7 @@ func TestSelect(t *testing.T) {
 		{"cool-off edge: future timestamp", guest, []Candidate{cand("1.1.0", -1)}, nil, 0, "", skips("timestamp in the future", "1.1.0"), false, false},
 		{"cool-off edge: user extra lengthens", guest, []Candidate{cand("1.1.0", 48*hour)}, nil, hour, "", skips("cooling off", "1.1.0"), false, false},
 		{"cool-off edge: negative extra never shortens", guest, []Candidate{cand("1.1.0", 47*hour)}, nil, -47 * hour, "", skips("cooling off", "1.1.0"), false, false},
+		{"cool-off edge: the largest extra never overflows", guest, []Candidate{cand("1.1.0", hour)}, nil, time.Duration(math.MaxInt64), "", skips("cooling off", "1.1.0"), false, false},
 		{"latest-of-timestamps: republished resets cool-off", guest, []Candidate{with(cand("1.1.0", 30*day), func(c *Candidate) {
 			c.Timestamps = append(c.Timestamps, now.Add(-hour))
 		})}, nil, 0, "", skips("cooling off", "1.1.0"), false, false},

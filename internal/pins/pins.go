@@ -141,7 +141,7 @@ func Select(cur Pin, cands []Candidate, adv *Advisory, extra time.Duration, now 
 			why = "no timestamp"
 		case latest.After(now):
 			why = "timestamp in the future"
-		case now.Sub(latest) < wait+extra:
+		case now.Sub(latest)-wait < extra: // not age < wait+extra, which overflows
 			why = "cooling off"
 		}
 		if why != "" {
