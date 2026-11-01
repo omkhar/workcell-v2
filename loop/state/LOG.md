@@ -48,3 +48,5 @@ The three non-loopback I4 canaries add a /32 to lo for the test (netlink, with a
 Review: four R2 findings (unprivileged runner, 127.0.0.1 is the guest's own loopback on a real VM, no true IPv6 packet, leaked /32 on interrupt); three fixed in the one fix round. The IPv6 test is parked, not written: this kernel has no IPv6, so it could not be shown to fail on control.
 Learned: Go dials an IPv4-mapped address as AF_INET, so the mapped test covers parsing only; the ICMP probe needs CAP_NET_RAW or an unprivileged SOCK_DGRAM echo socket; the sudo ip path has not run for real yet, the hosted gate is its first run once I4 is enforced.
 Next: U-006 (I3) through U-010b each add tests the same way; the unit ran over the 400-line wish because the netlink and ICMP packet code cannot be split from the tests that need it. Add I2 and I4 to enforced.txt only when U-303 and U-305 make them pass. A hosted run of the control suite as the runner account is still unproven: no gate step runs control.
+
+## 2026-11-01T16:19Z U-006 START mode=cloud
