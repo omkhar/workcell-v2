@@ -150,3 +150,5 @@ Facts for the parts: legacy knows only the keychain: source (cli.go, exec of a f
 proxy.Broker is Lookup(ctx, host, header) (string, error) in internal/proxy/terminate.go, so the last part returns one string copy at that boundary and zeroes the []byte behind it; changing the interface is U-401's business, not this unit's.
 Budget: product 1204 of 15000, test 3364 of 3806 (442 lines free); U-400a adds about 123 product and 160 test lines and gains about 185, so it fits; read the gate budget line before each part.
 Next: U-400a is the next takeable unit for the cloud (env:any, deps U-302). The claim was PR #28, closed by this run.
+
+## 2026-11-01T20:27Z U-400a START mode=cloud
