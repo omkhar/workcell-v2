@@ -60,7 +60,7 @@ with ADR-003 and ADR-004, they build on the proposal, and you can accept it at a
       accept: `go run ./escape/cmd/escape -sandbox control -list` lists tests; without `-only` it runs every test; adapters `control` (plain container, open network) and `workcell` (stub that reports "not implemented")
 - [x] U-005 | flow:escape | model:fable | env:any | deps:U-004 | tries:0 | Escape tests for I2 and I4, with local canary listeners
       accept: every test FAILS on `control`; raw IP, odd port, IPv6, UDP, QUIC, ICMP, loopback, RFC 1918, link-local and metadata are each covered
-- [ ] U-006 | flow:escape | model:fable | env:any | deps:U-004 | tries:0 | Escape tests for I3: tunnelling, direct resolver, DoH and DoT
+- [x] U-006 | flow:escape | model:fable | env:any | deps:U-004 | tries:0 | Escape tests for I3: tunnelling, direct resolver, DoH and DoT
       accept: every test FAILS on `control`; leakage is detected by a host-side capture, not by a third-party server
 - [ ] U-007 | flow:escape | model:fable | env:any | deps:U-004 | tries:0 | Escape tests for I1, I7 and I10
       accept: traversal, symlink, device-node and mount attempts; cross-session residue; fork, memory, disk, descriptor and log floods; each FAILS on a deliberately weak `control` variant
