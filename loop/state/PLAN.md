@@ -79,7 +79,7 @@ with ADR-003 and ADR-004, they build on the proposal, and you can accept it at a
 
 - [x] U-100 | flow:spike | model:opus | env:kvm | deps:U-001 | tries:0 | Spike: libkrun on Linux. Boot kernel and initramfs, vsock echo, shared directory
       accept: `go test ./spikes/libkrun/` runs it in hosted CI; 20-sample boot time, binary size, cgo and licence notes recorded
-- [ ] U-101 | flow:spike | model:sonnet | env:kvm | deps:U-001 | tries:0 | Spike: Firecracker and Cloud Hypervisor on Linux, same measurements
+- [x] U-101 | flow:spike | model:sonnet | env:kvm | deps:U-001 | tries:0 | Spike: Firecracker and Cloud Hypervisor on Linux, same measurements
       accept: `go test ./spikes/fcch/` runs it in hosted CI; same table
 - [ ] U-102 | flow:spike | model:opus | env:macos | deps:U-001 | tries:0 | Spike: macOS. Virtualization.framework through Go bindings, Apple `container`, and libkrun
       accept: `spikes/macos/` runs; same table, plus entitlement and signing needs
