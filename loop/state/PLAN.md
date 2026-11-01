@@ -46,7 +46,7 @@ with ADR-003 and ADR-004, they build on the proposal, and you can accept it at a
 
 ## Phase 0: bootstrap and evidence first
 
-- [H] H-000 | env:any | deps:- | Follow `START-HERE.md`: create the repository, open and merge the kit pull request, run `setup-2-after-merge.sh`, create the cloud task
+- [x] H-000 | env:any | deps:- | Follow `START-HERE.md`: create the repository, open and merge the kit pull request, run `setup-2-after-merge.sh`, create the cloud task
       accept: `setup-2-after-merge.sh` reports that an unsigned change to a locked path was refused, and ticks this line itself
 - [x] U-001 | flow:mech | model:sonnet | env:any | deps:H-000 | tries:0 | Create the module skeleton (shipped with the kit)
       accept: `go.mod` is `github.com/omkhar/workcell/v2`; `workcell --version` prints a version; gate green
