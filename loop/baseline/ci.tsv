@@ -1,0 +1,13 @@
+workflow	runs	failed	cancelled	reruns	median_min	p90_min
+Bench	1	0	0	0	1	1
+CI	20	0	4	0	18	24
+CI insights	1	0	0	0	0	0
+CodeQL	21	0	2	0	2	2
+Docs	19	0	3	0	3	6
+Fuzz	1	1	0	0	28	28
+Hosted controls	21	0	0	0	0	0
+Mutation	1	0	0	0	6	6
+Pin Hygiene	1	1	0	0	1	1
+Scorecard	22	0	0	0	0	0
+Security	20	0	0	0	0	3
+Upstream refresh	11	0	0	0	3	6
