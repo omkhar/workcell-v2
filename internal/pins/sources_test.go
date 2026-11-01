@@ -217,7 +217,20 @@ func TestCandidates(t *testing.T) {
 		}},
 		{name: "github bundle asset missing", pin: signedPin, routes: withRoute(ghOK, "/repos/vendor/tool/releases", route{
 			body: `[{"tag_name": "v1.2.0", "created_at": "2026-10-20T09:00:00Z", "assets": [
-				{"name": "tool-linux-amd64.tar.gz", "browser_download_url": "https://g.example/a", "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}]}]`})},
+				{"name": "tool-linux-amd64.tar.gz", "browser_download_url": "https://g.example/a", "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}]}]`}), want: func(string) []Candidate {
+			return []Candidate{{Release: Release{Version: "v1.2.0", Artifacts: map[string]Artifact{"amd64": {URL: "https://g.example/a",
+				SHA256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}}}, Timestamps: ts("2026-10-20T09:00:00Z")}}
+		}},
+		{name: "github bundle adopted by the newest release", pin: signedPin, routes: withRoute(ghOK, "/repos/vendor/tool/releases", route{
+			body: `[{"tag_name": "v1.3.0", "created_at": "2026-10-28T09:00:00Z", "assets": [
+				{"name": "tool-linux-amd64.tar.gz", "browser_download_url": "https://g.example/b"},
+				{"name": "tool-linux-amd64.sigstore", "browser_download_url": "https://g.example/b.sigstore"}]},
+			{"tag_name": "v1.2.0", "created_at": "2026-10-20T09:00:00Z", "assets": [
+				{"name": "tool-linux-amd64.tar.gz", "browser_download_url": "https://g.example/a"}]}]`}), want: func(string) []Candidate {
+			return []Candidate{
+				{Release: Release{Version: "v1.3.0", Artifacts: map[string]Artifact{"amd64": {URL: "https://g.example/b", Bundle: "https://g.example/b.sigstore"}}}, Timestamps: ts("2026-10-28T09:00:00Z")},
+				{Release: Release{Version: "v1.2.0", Artifacts: map[string]Artifact{"amd64": {URL: "https://g.example/a"}}}, Timestamps: ts("2026-10-20T09:00:00Z")}}
+		}},
 		{name: "github bundle asset is http", pin: signedPin, routes: withRoute(ghOK, "/repos/vendor/tool/releases", route{
 			body: `[{"tag_name": "v1.2.0", "created_at": "2026-10-20T09:00:00Z", "assets": [
 				{"name": "tool-linux-amd64.tar.gz", "browser_download_url": "https://g.example/a", "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},

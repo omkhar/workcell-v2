@@ -392,14 +392,16 @@ func (c count) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
-// bare strips the URL that the http client wraps around an error, so that an
-// error names the failure and nothing upstream sent.
+// bare maps a transport error to a fixed phrase, so that an error names the
+// failure and nothing upstream sent: no URL, status line or certificate name.
 func bare(err error) error {
-	var ue *url.Error
-	if errors.As(err, &ue) {
-		err = ue.Err
+	switch {
+	case errors.Is(err, context.DeadlineExceeded):
+		return errors.New("download: timed out")
+	case errors.Is(err, context.Canceled):
+		return errors.New("download: cancelled")
 	}
-	return fmt.Errorf("download: %w", err)
+	return errors.New("download: transport failure")
 }
 
 func httpsURL(s string) error {

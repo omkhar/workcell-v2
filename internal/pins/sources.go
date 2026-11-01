@@ -258,8 +258,8 @@ type ghAsset struct {
 // github reads the newest 100 releases. A stable release that lacks the asset
 // of any architecture in p.Assets is dropped. Only when no stable release
 // carries them all, so the pin names a wrong asset, is it an error. A release
-// that carries an artifact but not the bundle p.Signing.Bundles names for it
-// is an error at once: a signature that upstream promised is never skipped (B5).
+// that lacks the bundle p.Signing.Bundles names gets an empty Bundle: the
+// verifier refuses it if selected (B5), and the releases that carry one bump (P7).
 func (g getter) github(p Pin) ([]Candidate, error) {
 	if len(p.Assets) == 0 {
 		return nil, errors.New("no assets named")
@@ -308,14 +308,12 @@ next:
 			}
 			art := Artifact{URL: a.URL, SHA256: sum}
 			if bundle, ok := p.Signing.Bundles[arch]; ok {
-				j := slices.IndexFunc(r.Assets, func(a ghAsset) bool { return a.Name == bundle })
-				if j < 0 {
-					return nil, fmt.Errorf("release %s: no bundle asset %q", r.Tag, bundle)
+				if j := slices.IndexFunc(r.Assets, func(a ghAsset) bool { return a.Name == bundle }); j >= 0 {
+					if err := httpsURL(r.Assets[j].URL); err != nil {
+						return nil, fmt.Errorf("release %s: %w", r.Tag, err)
+					}
+					art.Bundle = r.Assets[j].URL
 				}
-				if err := httpsURL(r.Assets[j].URL); err != nil {
-					return nil, fmt.Errorf("release %s: %w", r.Tag, err)
-				}
-				art.Bundle = r.Assets[j].URL
 			}
 			c.Artifacts[arch] = art
 		}
