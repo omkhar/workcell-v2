@@ -251,7 +251,7 @@ This repository never holds a GitHub App, an environment or a secret, because co
 them. So `bump.yml` only plans and does dry runs here. H-829 creates the App and the keys in `omkhar/workcell`, after
 the loop has ended.
 
-- [ ] B-820 | flow:spike | model:opus | env:any | deps:U-001 | tries:0 | ADR-004: channel manifest format and signing (keyless signing, or an embedded public key with serial and expiry)
+- [x] B-820 | flow:spike | model:opus | env:any | deps:U-001 | tries:0 | ADR-004: channel manifest format and signing (keyless signing, or an embedded public key with serial and expiry)
       accept: `docs/adr/004-channel.md`, at most 80 lines, `status: proposed`; covers rollback, freeze, key rotation, where the manifest is published, and what each option adds to the dependency budget
 - [ ] B-821 | flow:boundary | model:opus | env:any | deps:U-001 | tries:0 | `internal/pins`: data model and the stateless selector (B1 to B4)
       accept: table tests for cool-off edge, latest-of-timestamps, pre-release, yanked, deprecated, never backwards, security lane, and an upstream that ships every four hours; the clock is injected
