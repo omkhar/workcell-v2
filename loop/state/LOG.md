@@ -50,3 +50,10 @@ Learned: Go dials an IPv4-mapped address as AF_INET, so the mapped test covers p
 Next: U-006 (I3) through U-010b each add tests the same way; the unit ran over the 400-line wish because the netlink and ICMP packet code cannot be split from the tests that need it. Add I2 and I4 to enforced.txt only when U-303 and U-305 make them pass. A hosted run of the control suite as the runner account is still unproven: no gate step runs control.
 
 ## 2026-11-01T16:19Z U-006 START mode=cloud
+
+## 2026-11-01T16:41Z U-006 PASS mode=cloud model=fable tries=0
+Added six I3 escape tests to suite.All (+563/-5 lines, stdlib only): direct-resolver-udp4, direct-resolver-tcp4, dot-tcp4, doh-post-tcp4, doh-get-tcp4 and tunnel-txt-udp4, each with a literal hostAddr:port that the judge's own listener chose; a host-side capture (UDP, framed TCP, in-memory self-signed TLS shared by DoT and DoH) parses the bytes with a bounded parseDNSQuery that has a table test and FuzzParseDNSQuery (T5, 20 s clean).
+All six FAIL on control as root and as uid 65534, 0 errors; the whole control suite is 15 fail, 0 errors (T2). Hosted gate, gate-macos and guard were green on the pre-fix commit; local gate 4 s.
+Review: two R2 findings, both fixed in the one round: tunnelled judged a partial leak (3 of 4 chunks) as a pass, now any chunk of the token counts; the UDP, TCP and HTTPS captures did not join their goroutines before the judge read, now stop() closes then waits like udpCanary. Four lines parked.
+Learned: no _linux/_other split was needed, the DNS codec and TLS helpers are portable; the DoH client uses an explicit Transport with Proxy nil so no environment proxy or system resolver can redirect a probe; the session has no nft privileges, so the dropped-chunk case is a unit test, not a control run.
+Next: U-007 (I1, I7, I10) needs a deliberately weak control variant for each flood and residue test; the control adapter keeps the host network namespace, so nothing here proves the resolver path (see PARKED), which is U-304's job with a test-controlled upstream.

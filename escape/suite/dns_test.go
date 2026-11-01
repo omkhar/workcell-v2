@@ -5,6 +5,7 @@ package suite
 
 import (
 	"bytes"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -78,4 +79,37 @@ func FuzzParseDNSQuery(f *testing.F) {
 			}
 		}
 	})
+}
+
+// TestTunnelled checks that the tunnel judge counts the pieces that arrived:
+// a tunnel that lost a datagram still carried the rest of the token out.
+func TestTunnelled(t *testing.T) {
+	token := "0123456789abcdef0123456789abcdef"
+	txt := func(seq int, chunk string) dnsQuestion {
+		return dnsQuestion{ID: uint16(seq), Name: strconv.Itoa(seq) + "." + chunk + "." + tunnelApex, Type: dnsTypeTXT}
+	}
+	all := []dnsQuestion{txt(0, token[0:8]), txt(1, token[8:16]), txt(2, token[16:24]), txt(3, token[24:32])}
+	cases := []struct {
+		name string
+		qs   []dnsQuestion
+		leak bool
+		n    string
+	}{
+		{"all four chunks", all, true, "4 TXT"},
+		{"three of four chunks, one dropped", []dnsQuestion{all[0], all[1], all[3]}, true, "3 TXT"},
+		{"one chunk", all[2:3], true, "1 TXT"},
+		{"out of order", []dnsQuestion{all[3], all[0]}, true, "2 TXT"},
+		{"nothing", nil, false, ""},
+		{"another run's token", []dnsQuestion{txt(0, "fedcba98")}, false, ""},
+		{"not TXT", []dnsQuestion{{Name: all[0].Name, Type: dnsTypeA}}, false, ""},
+		{"another apex", []dnsQuestion{{Name: "0." + token[0:8] + ".other.invalid.", Type: dnsTypeTXT}}, false, ""},
+		{"empty chunk", []dnsQuestion{{Name: "0." + tunnelApex, Type: dnsTypeTXT}}, false, ""},
+		{"apex alone", []dnsQuestion{{Name: tunnelApex, Type: dnsTypeTXT}}, false, ""},
+	}
+	for _, c := range cases {
+		what, leak := tunnelled(c.qs, token)
+		if leak != c.leak || !strings.HasPrefix(what, c.n) {
+			t.Errorf("%s: tunnelled = %q, %v; want leak %v with %q", c.name, what, leak, c.leak, c.n)
+		}
+	}
 }

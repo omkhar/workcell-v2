@@ -20,7 +20,6 @@ import (
 	"math/big"
 	"net"
 	"net/http"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -198,25 +197,22 @@ func queried(qs []dnsQuestion, token string) (string, bool) {
 	return "", false
 }
 
-// tunnelled reassembles the data labels of the TXT queries under the tunnel
-// apex and says whether they carried the token out.
+// tunnelled says whether the TXT queries under the tunnel apex carried pieces
+// of the token out. One piece is a leak: a tunnel that loses a datagram still
+// moved the rest, so the judge never waits for the whole token to reassemble.
 func tunnelled(qs []dnsQuestion, token string) (string, bool) {
-	parts := map[int]string{}
+	n := 0
 	for _, q := range qs {
 		if q.Type != dnsTypeTXT || !strings.HasSuffix(q.Name, "."+tunnelApex) {
 			continue
 		}
-		seq, chunk, _ := strings.Cut(strings.TrimSuffix(q.Name, "."+tunnelApex), ".")
-		if i, err := strconv.Atoi(seq); err == nil && i >= 0 && i <= 64 {
-			parts[i] = chunk
+		_, chunk, _ := strings.Cut(strings.TrimSuffix(q.Name, "."+tunnelApex), ".")
+		if chunk != "" && strings.Contains(token, chunk) {
+			n++
 		}
 	}
-	var data strings.Builder
-	for i := 0; parts[i] != ""; i++ {
-		data.WriteString(parts[i])
-	}
-	if data.String() == token {
-		return fmt.Sprintf("%d TXT queries that carried the token out in their labels", len(parts)), true
+	if n > 0 {
+		return fmt.Sprintf("%d TXT queries that carried pieces of the token out in their labels", n), true
 	}
 	return "", false
 }
@@ -227,7 +223,8 @@ func dnsOverUDP(addr string, got func(dnsQuestion)) (string, func(), error) {
 	if err != nil {
 		return "", nil, err
 	}
-	go func() {
+	var wg sync.WaitGroup
+	wg.Go(func() {
 		buf := make([]byte, 4096)
 		for {
 			n, _, err := pc.ReadFrom(buf)
@@ -238,8 +235,8 @@ func dnsOverUDP(addr string, got func(dnsQuestion)) (string, func(), error) {
 				got(q)
 			}
 		}
-	}()
-	return pc.LocalAddr().String(), func() { pc.Close() }, nil
+	})
+	return pc.LocalAddr().String(), func() { pc.Close(); wg.Wait() }, nil
 }
 
 // dnsOverTCP captures one length-prefixed query per connection, bare or
@@ -258,22 +255,27 @@ func dnsOverTCP(withTLS bool) dnsListener {
 			}
 			ln = tls.NewListener(ln, cfg)
 		}
-		go func() {
+		// wg covers the accept loop and every connection it spawned; a
+		// connection's goroutine is added from inside the loop, so the count
+		// never reaches zero while one can still be added. The 2 s deadline
+		// bounds each connection, so Wait never blocks for long.
+		var wg sync.WaitGroup
+		wg.Go(func() {
 			for {
 				c, err := ln.Accept()
 				if err != nil {
 					return
 				}
-				go func() {
+				wg.Go(func() {
 					defer c.Close()
 					c.SetDeadline(time.Now().Add(2 * time.Second))
 					if q, ok := readFramed(c); ok {
 						got(q)
 					}
-				}()
+				})
 			}
-		}()
-		return ln.Addr().String(), func() { ln.Close() }, nil
+		})
+		return ln.Addr().String(), func() { ln.Close(); wg.Wait() }, nil
 	}
 }
 
@@ -302,9 +304,9 @@ func dnsOverHTTPS(addr string, got func(dnsQuestion)) (string, func(), error) {
 		return "", nil, err
 	}
 	srv := &http.Server{
-		TLSConfig:         cfg,
-		ReadHeaderTimeout: 2 * time.Second,
-		ErrorLog:          log.New(io.Discard, "", 0),
+		TLSConfig:   cfg,
+		ReadTimeout: 2 * time.Second,
+		ErrorLog:    log.New(io.Discard, "", 0),
 		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			var msg []byte
 			if r.Method == http.MethodGet {
@@ -318,8 +320,18 @@ func dnsOverHTTPS(addr string, got func(dnsQuestion)) (string, func(), error) {
 			w.WriteHeader(http.StatusOK)
 		}),
 	}
-	go srv.ServeTLS(ln, "", "")
-	return ln.Addr().String(), func() { srv.Close() }, nil
+	// stop refuses new connections, waits for handlers in flight (each bounded
+	// by ReadTimeout) and only then returns, so that every query that arrived
+	// has been reported. Close is the backstop should Shutdown give up.
+	var wg sync.WaitGroup
+	wg.Go(func() { srv.ServeTLS(ln, "", "") })
+	return ln.Addr().String(), func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+		srv.Shutdown(ctx)
+		srv.Close()
+		wg.Wait()
+	}, nil
 }
 
 // selfSigned makes a fresh certificate for a canary's TLS server. Nothing
