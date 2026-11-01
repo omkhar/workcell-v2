@@ -1,0 +1,5 @@
+on: [push, pull_request]
+jobs:
+  gate: { runs-on: ubuntu-24.04, steps: [{ run: "true" }] }
+  gate-macos: { runs-on: ubuntu-24.04, steps: [{ run: "true" }] }
+  guard: { runs-on: ubuntu-24.04, steps: [{ run: "true" }] }
