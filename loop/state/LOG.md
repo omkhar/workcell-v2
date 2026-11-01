@@ -143,3 +143,5 @@ Added internal/proxy/terminate.go (386 lines) and terminate_test.go (450 lines),
 Tests: go test -race clean, GOOS=darwin vet clean, local gate 6 s; hosted gate (166 s), gate-macos and guard green on the unit commit (PR #27). Redteam wrote no escape test (nothing can FAIL on control before a terminated connection reaches a guest, U-303 and U-307); its I5 and I6 variants are one line in PARKED.md. Review: no findings; one less-code note parked.
 Budget: product 1204 of 15000, test 3364 of 3806, so 442 test lines remain; direct dependencies 2 of 15. U-007 to U-010b are [!] and need the maintainer to reset them whatever the budget says.
 Next: U-400 (port _legacy/credbroker to internal/secret, deps U-302, env:any, model opus) is the next takeable unit for the cloud; measure it with the scout first, because credbroker may be as large as egressproxy and need a split. B-820 and B-821 (deps U-001, env:any) follow it in order.
+
+## 2026-11-01T20:19Z U-400 START mode=cloud
