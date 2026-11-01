@@ -4,6 +4,7 @@
 package pins
 
 import (
+	"cmp"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -13,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"testing"
 	"time"
 )
@@ -24,6 +26,13 @@ type route struct {
 	body    string
 	header  map[string]string
 	chunked bool // no Content-Length, so the cap is met while reading
+
+	// A registry's anonymous pull: token, when set, is the bearer the route wants.
+	// Without it the route answers 401 and the challenge, which by default names
+	// this server's /token route. A query, when set, is the one the route accepts.
+	token     string
+	challenge string
+	query     string
 }
 
 func serve(t *testing.T, routes map[string]route) *httptest.Server {
@@ -32,6 +41,16 @@ func serve(t *testing.T, routes map[string]route) *httptest.Server {
 		rt, ok := routes[r.URL.EscapedPath()]
 		if !ok {
 			http.NotFound(w, r)
+			return
+		}
+		if rt.query != "" && r.URL.RawQuery != rt.query {
+			http.Error(w, "bad query", http.StatusBadRequest)
+			return
+		}
+		if rt.token != "" && r.Header.Get("Authorization") != "Bearer "+rt.token {
+			challenge := cmp.Or(rt.challenge, `Bearer realm="https://`+r.Host+`/token",service="registry.example",scope="repository:vendor/tool:pull"`)
+			w.Header().Set("WWW-Authenticate", challenge)
+			w.WriteHeader(http.StatusUnauthorized)
 			return
 		}
 		body := []byte(rt.body)
@@ -43,6 +62,9 @@ func serve(t *testing.T, routes map[string]route) *httptest.Server {
 		}
 		for k, v := range rt.header {
 			w.Header().Set(k, v)
+		}
+		if !rt.chunked {
+			w.Header().Set("Content-Length", strconv.Itoa(len(body)))
 		}
 		w.WriteHeader(max(rt.status, 200))
 		w.Write(body)
@@ -90,8 +112,12 @@ func TestCandidates(t *testing.T) {
 	npmOK := map[string]route{"/@vendor%2ftool": {file: "npm-tool.json"}}
 	ghOK := map[string]route{"/repos/vendor/tool/releases": {file: "github-releases.json"}}
 	vendorOK := map[string]route{"/root/latest": {file: "vendor-latest.txt"}, "/root/1.2.0/manifest.json": {file: "vendor-manifest.json"}}
-	ociOK := map[string]route{"/v2/vendor/tool/tags/list": {file: "oci-tags.json"},
-		"/v2/vendor/tool/manifests/1.2.0": {file: "oci-manifest-1.2.0.json"}, "/v2/vendor/tool/manifests/1.1.0": {file: "oci-manifest-1.1.0.json"}}
+	ociOK := map[string]route{
+		"/token":                          {body: `{"token": "tok"}`, query: "scope=repository%3Avendor%2Ftool%3Apull&service=registry.example"},
+		"/v2/vendor/tool/tags/list":       {file: "oci-tags.json", token: "tok"},
+		"/v2/vendor/tool/manifests/1.2.0": {file: "oci-manifest-1.2.0.json", token: "tok"},
+		"/v2/vendor/tool/manifests/1.1.0": {file: "oci-manifest-1.1.0.json", token: "tok"},
+	}
 
 	ociWant := func(base string) []Candidate {
 		d2, d1 := fileDigest(t, "oci-manifest-1.2.0.json"), fileDigest(t, "oci-manifest-1.1.0.json")
@@ -104,7 +130,6 @@ func TestCandidates(t *testing.T) {
 		name   string
 		pin    Pin
 		routes map[string]route
-		max    int64
 		want   func(base string) []Candidate // nil means an error is expected
 	}
 	// withRoute is routes with one route replaced.
@@ -114,29 +139,30 @@ func TestCandidates(t *testing.T) {
 		return m
 	}
 	// failures adds the rows every source shares: the upstream answers one of its
-	// requests with an error status, a truncated body, a redirect off https, or a
-	// body over the cap.
+	// requests with an error status, a truncated body, or a redirect off https or
+	// in a loop.
 	failures := func(pin Pin, routes map[string]route, paths ...string) []row {
-		rows := []row{{name: string(pin.Source) + " over the cap", pin: pin, routes: routes, max: 10}}
+		var rows []row
 		for _, p := range paths {
 			for name, rt := range map[string]route{
 				"HTTP 500":         {status: 500, body: "oops"},
 				"truncated JSON":   {body: `{"versions": {"1.2.0": {"dist"`},
 				"redirect to http": {status: 302, header: map[string]string{"Location": "http://example.invalid/x"}},
-				"chunked over cap": {body: "1.2.0\n" + string(make([]byte, 64)), chunked: true},
 				"redirect loop":    {status: 302, header: map[string]string{"Location": p}},
 			} {
-				limit := int64(0)
-				if rt.chunked {
-					limit = 32
-				}
-				rows = append(rows, row{name: string(pin.Source) + " " + p + " " + name, pin: pin, routes: withRoute(routes, p, rt), max: limit})
+				rows = append(rows, row{name: string(pin.Source) + " " + p + " " + name, pin: pin, routes: withRoute(routes, p, rt)})
 			}
 		}
 		return rows
 	}
 
+	// getter.get is shared by every source, so one body of cap+1 bytes per
+	// transport form covers them all.
+	over := string(make([]byte, maxBytes+1))
+
 	tests := []row{
+		{name: "over the cap with Content-Length", pin: npmPin, routes: withRoute(npmOK, "/@vendor%2ftool", route{body: over})},
+		{name: "over the cap chunked", pin: npmPin, routes: withRoute(npmOK, "/@vendor%2ftool", route{body: over, chunked: true})},
 		{name: "npm", pin: npmPin, routes: npmOK, want: func(string) []Candidate {
 			return []Candidate{
 				{Release: Release{Version: "0.0.45-gabc1234", Artifacts: both(Artifact{URL: reg + "0.0.45-gabc1234.tgz"})}, PreRelease: true, Timestamps: ts("2026-09-01T08:00:00Z")},
@@ -176,6 +202,8 @@ func TestCandidates(t *testing.T) {
 				{"name": "tool-linux-arm64.tar.gz", "browser_download_url": "https://g.example/b"}]}]`})},
 		{name: "github no timestamp", pin: ghPin, routes: withRoute(ghOK, "/repos/vendor/tool/releases", route{
 			body: `[{"tag_name": "v1.4.0", "draft": true, "assets": []}]`})},
+		{name: "github asset no release carries", pin: Pin{Name: "tool", Source: GitHubReleases, Locator: ghPin.Locator,
+			Assets: map[string]string{"amd64": "nope.tar.gz"}}, routes: ghOK},
 		{name: "github no asset row", pin: Pin{Name: "tool", Source: GitHubReleases, Locator: ghPin.Locator}, routes: ghOK},
 
 		{name: "vendor", pin: vendorPin, routes: vendorOK, want: func(base string) []Candidate {
@@ -196,6 +224,14 @@ func TestCandidates(t *testing.T) {
 			body: `{"version": "1.2.0", "platforms": {}}`})},
 
 		{name: "oci", pin: ociPin, routes: ociOK, want: ociWant},
+		{name: "oci token as access_token", pin: ociPin, routes: withRoute(ociOK, "/token", route{body: `{"access_token": "tok"}`}), want: ociWant},
+		{name: "oci token endpoint gives no token", pin: ociPin, routes: withRoute(ociOK, "/token", route{body: `{}`})},
+		{name: "oci token endpoint fails", pin: ociPin, routes: withRoute(ociOK, "/token", route{status: 500, body: "oops"})},
+		{name: "oci token is refused", pin: ociPin, routes: withRoute(ociOK, "/token", route{body: `{"token": "other"}`})},
+		{name: "oci challenge realm is http", pin: ociPin, routes: withRoute(ociOK, "/v2/vendor/tool/tags/list", route{file: "oci-tags.json", token: "tok",
+			challenge: `Bearer realm="http://auth.example/token",service="registry.example",scope="repository:vendor/tool:pull"`})},
+		{name: "oci challenge is not Bearer", pin: ociPin, routes: withRoute(ociOK, "/v2/vendor/tool/tags/list", route{file: "oci-tags.json", token: "tok",
+			challenge: `Basic realm="registry"`})},
 		{name: "oci header matches", pin: ociPin, routes: withRoute(ociOK, "/v2/vendor/tool/manifests/1.2.0", route{file: "oci-manifest-1.2.0.json",
 			header: map[string]string{"Docker-Content-Digest": "sha256:" + fileDigest(t, "oci-manifest-1.2.0.json")}}), want: ociWant},
 		{name: "oci header differs", pin: ociPin, routes: withRoute(ociOK, "/v2/vendor/tool/manifests/1.2.0", route{file: "oci-manifest-1.2.0.json",
@@ -217,7 +253,7 @@ func TestCandidates(t *testing.T) {
 			srv := serve(t, tt.routes)
 			pin := tt.pin
 			pin.Locator = srv.URL + pin.Locator
-			got, err := Fetcher{Client: srv.Client(), MaxBytes: tt.max}.Candidates(context.Background(), pin)
+			got, err := Candidates(context.Background(), srv.Client(), pin)
 			if tt.want == nil {
 				if err == nil || got != nil {
 					t.Fatalf("got %v, %v; want an error and no candidate", got, err)
@@ -245,7 +281,7 @@ func TestCandidatesRefusals(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := Fetcher{Client: &http.Client{}}.Candidates(context.Background(), tt.pin)
+			got, err := Candidates(context.Background(), &http.Client{}, tt.pin)
 			if err == nil || got != nil {
 				t.Fatalf("got %v, %v; want an error and no candidate", got, err)
 			}

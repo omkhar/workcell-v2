@@ -4,6 +4,7 @@
 package pins
 
 import (
+	"cmp"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -19,43 +20,34 @@ import (
 )
 
 const (
-	npmMaxBytes   = 64 << 20 // a packument can be tens of MiB
-	otherMaxBytes = 4 << 20
-	maxRedirects  = 3
-	maxOCITags    = 30 // the newest version tags whose manifests are read
-	fetchTimeout  = 2 * time.Minute
-	ociAccept     = "application/vnd.oci.image.index.v1+json, application/vnd.oci.image.manifest.v1+json, " +
+	maxBytes     = 64 << 20 // the most any one body may hold; an npm packument can be tens of MiB
+	maxRedirects = 3
+	maxOCITags   = 30 // the newest version tags whose manifests are read
+	fetchTimeout = 2 * time.Minute
+	ociAccept    = "application/vnd.oci.image.index.v1+json, application/vnd.oci.image.manifest.v1+json, " +
 		"application/vnd.docker.distribution.manifest.list.v2+json, application/vnd.docker.distribution.manifest.v2+json"
 )
-
-// Fetcher lists the releases an upstream publishes. It sends no credential.
-type Fetcher struct {
-	Client   *http.Client
-	MaxBytes int64 // the most any one response body may hold; zero means the source's default
-}
 
 // Candidates lists the releases of p.Source at p.Locator. Any failure, whether
 // the network, a status, a parse, the size cap, a missing field or a bad
 // timestamp, returns an error and no candidates; it never looks like an
 // upstream with nothing new. A well-formed listing of no release returns an
-// empty slice and no error.
-func (f Fetcher) Candidates(ctx context.Context, p Pin) ([]Candidate, error) {
+// empty slice and no error. It sends no credential except the anonymous pull
+// token a registry hands out when it answers 401 with a Bearer challenge.
+func Candidates(ctx context.Context, client *http.Client, p Pin) ([]Candidate, error) {
 	ctx, cancel := context.WithTimeout(ctx, fetchTimeout)
 	defer cancel()
-	client := *f.Client
-	client.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+	c := *client
+	c.CheckRedirect = func(req *http.Request, via []*http.Request) error {
 		if len(via) > maxRedirects {
 			return errors.New("too many redirects")
 		}
+		if req.URL.Host != via[0].URL.Host {
+			req.Header.Del("Authorization")
+		}
 		return httpsURL(req.URL.String())
 	}
-	g := getter{ctx, &client, f.MaxBytes}
-	if g.limit <= 0 {
-		g.limit = otherMaxBytes
-		if p.Source == NPM {
-			g.limit = npmMaxBytes
-		}
-	}
+	g := getter{ctx, &c}
 	var cands []Candidate
 	var err error
 	switch p.Source {
@@ -79,11 +71,68 @@ func (f Fetcher) Candidates(ctx context.Context, p Pin) ([]Candidate, error) {
 type getter struct {
 	ctx    context.Context
 	client *http.Client
-	limit  int64
 }
 
+// statusError is a response that was not a 200.
+type statusError struct {
+	url    string
+	status string
+	code   int
+	header http.Header
+}
+
+func (e *statusError) Error() string { return fmt.Sprintf("GET %s: %s", e.url, e.status) }
+
 // get returns the body of a 200 response to an https GET, read up to the cap.
+// On a 401 with a Bearer challenge it fetches a token from the challenge's
+// https realm and retries once, with the token sent to the challenged URL only.
 func (g getter) get(rawURL, accept string) ([]byte, http.Header, error) {
+	body, h, err := g.fetch(rawURL, accept, "")
+	var se *statusError
+	if !errors.As(err, &se) || se.code != http.StatusUnauthorized {
+		return body, h, err
+	}
+	params := bearerParams(se.header.Get("WWW-Authenticate"))
+	realm, err := url.Parse(params["realm"])
+	if err != nil || httpsURL(realm.String()) != nil {
+		return nil, nil, fmt.Errorf("%w; the challenge realm %q is not an https URL", se, params["realm"])
+	}
+	q := realm.Query()
+	q.Set("service", params["service"])
+	q.Set("scope", params["scope"])
+	realm.RawQuery = q.Encode()
+	var tok struct {
+		Token       string `json:"token"`
+		AccessToken string `json:"access_token"`
+	}
+	tokBody, _, err := g.fetch(realm.String(), "", "")
+	if err == nil {
+		err = json.Unmarshal(tokBody, &tok)
+	}
+	if err != nil || cmp.Or(tok.Token, tok.AccessToken) == "" {
+		return nil, nil, fmt.Errorf("%w; no token from %s", se, realm.Host)
+	}
+	return g.fetch(rawURL, accept, cmp.Or(tok.Token, tok.AccessToken))
+}
+
+// bearerParams reads the quoted key="value" pairs of a Bearer challenge. A
+// header of another scheme yields none.
+func bearerParams(h string) map[string]string {
+	m := map[string]string{}
+	rest, ok := strings.CutPrefix(h, "Bearer ")
+	for ok {
+		var k, v string
+		if k, rest, ok = strings.Cut(strings.TrimLeft(rest, ", "), `="`); !ok {
+			break
+		}
+		if v, rest, ok = strings.Cut(rest, `"`); ok {
+			m[k] = v
+		}
+	}
+	return m
+}
+
+func (g getter) fetch(rawURL, accept, bearer string) ([]byte, http.Header, error) {
 	if err := httpsURL(rawURL); err != nil {
 		return nil, nil, err
 	}
@@ -94,23 +143,26 @@ func (g getter) get(rawURL, accept string) ([]byte, http.Header, error) {
 	if accept != "" {
 		req.Header.Set("Accept", accept)
 	}
+	if bearer != "" {
+		req.Header.Set("Authorization", "Bearer "+bearer)
+	}
 	resp, err := g.client.Do(req)
 	if err != nil {
 		return nil, nil, err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return nil, nil, fmt.Errorf("GET %s: %s", rawURL, resp.Status)
+		return nil, nil, &statusError{rawURL, resp.Status, resp.StatusCode, resp.Header}
 	}
-	if resp.ContentLength > g.limit {
-		return nil, nil, fmt.Errorf("GET %s: body exceeds %d bytes", rawURL, g.limit)
+	if resp.ContentLength > maxBytes {
+		return nil, nil, fmt.Errorf("GET %s: body exceeds %d bytes", rawURL, maxBytes)
 	}
-	body, err := io.ReadAll(io.LimitReader(resp.Body, g.limit+1))
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxBytes+1))
 	if err != nil {
 		return nil, nil, fmt.Errorf("GET %s: %w", rawURL, err)
 	}
-	if int64(len(body)) > g.limit {
-		return nil, nil, fmt.Errorf("GET %s: body exceeds %d bytes", rawURL, g.limit)
+	if int64(len(body)) > maxBytes {
+		return nil, nil, fmt.Errorf("GET %s: body exceeds %d bytes", rawURL, maxBytes)
 	}
 	return body, resp.Header, nil
 }
@@ -202,8 +254,9 @@ type ghAsset struct {
 	Digest string `json:"digest"`
 }
 
-// github reads the newest 100 releases. A release that is not a pre-release
-// must carry the asset of every architecture in p.Assets.
+// github reads the newest 100 releases. A stable release that lacks the asset
+// of any architecture in p.Assets is dropped. Only when no stable release
+// carries them all, so the pin names a wrong asset, is it an error.
 func (g getter) github(p Pin) ([]Candidate, error) {
 	if len(p.Assets) == 0 {
 		return nil, errors.New("no assets named")
@@ -220,6 +273,8 @@ func (g getter) github(p Pin) ([]Candidate, error) {
 		return nil, err
 	}
 	cands := []Candidate{}
+	stable, complete := 0, 0 // the stable releases seen, and those with every asset
+next:
 	for _, r := range rels {
 		if r.Tag == "" {
 			return nil, errors.New("a release has no tag_name")
@@ -229,13 +284,16 @@ func (g getter) github(p Pin) ([]Candidate, error) {
 			return nil, fmt.Errorf("release %s: %w", r.Tag, err)
 		}
 		c := Candidate{Release: Release{Version: r.Tag, Artifacts: map[string]Artifact{}}, PreRelease: r.Prerelease || r.Draft, Timestamps: ts}
+		if !c.PreRelease {
+			stable++
+		}
 		for arch, name := range p.Assets {
 			i := slices.IndexFunc(r.Assets, func(a ghAsset) bool { return a.Name == name })
 			if i < 0 {
 				if c.PreRelease {
 					continue
 				}
-				return nil, fmt.Errorf("release %s: no asset %q", r.Tag, name)
+				continue next // an old release with a renamed asset does not block the rest
 			}
 			a := r.Assets[i]
 			if err := httpsURL(a.URL); err != nil {
@@ -247,7 +305,13 @@ func (g getter) github(p Pin) ([]Candidate, error) {
 			}
 			c.Artifacts[arch] = Artifact{URL: a.URL, SHA256: sum}
 		}
+		if !c.PreRelease {
+			complete++
+		}
 		cands = append(cands, c)
+	}
+	if stable > 0 && complete == 0 {
+		return nil, errors.New("no stable release carries every asset named")
 	}
 	return cands, nil
 }
