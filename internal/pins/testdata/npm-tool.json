@@ -1,0 +1,31 @@
+{
+  "_id": "@vendor/tool",
+  "name": "@vendor/tool",
+  "dist-tags": {"latest": "1.2.0", "next": "1.3.0-rc.1"},
+  "versions": {
+    "0.0.45-gabc1234": {
+      "name": "@vendor/tool", "version": "0.0.45-gabc1234",
+      "dist": {"shasum": "0a1b2c3d4e5f60718293a4b5c6d7e8f901234567", "integrity": "sha512-AAAA", "tarball": "https://registry.example/@vendor/tool/-/tool-0.0.45-gabc1234.tgz"}
+    },
+    "1.1.0": {
+      "name": "@vendor/tool", "version": "1.1.0", "deprecated": "use 1.2.0, this release loses data",
+      "dist": {"shasum": "1a1b2c3d4e5f60718293a4b5c6d7e8f901234567", "integrity": "sha512-BBBB", "tarball": "https://registry.example/@vendor/tool/-/tool-1.1.0.tgz"}
+    },
+    "1.2.0": {
+      "name": "@vendor/tool", "version": "1.2.0",
+      "dist": {"shasum": "2a1b2c3d4e5f60718293a4b5c6d7e8f901234567", "integrity": "sha512-CCCC", "tarball": "https://registry.example/@vendor/tool/-/tool-1.2.0.tgz"}
+    },
+    "1.3.0-rc.1": {
+      "name": "@vendor/tool", "version": "1.3.0-rc.1",
+      "dist": {"shasum": "3a1b2c3d4e5f60718293a4b5c6d7e8f901234567", "integrity": "sha512-DDDD", "tarball": "https://registry.example/@vendor/tool/-/tool-1.3.0-rc.1.tgz"}
+    }
+  },
+  "time": {
+    "created": "2026-01-02T03:04:05.000Z",
+    "modified": "2026-10-25T09:30:00.000Z",
+    "0.0.45-gabc1234": "2026-09-01T08:00:00.000Z",
+    "1.1.0": "2026-09-10T10:00:00.123Z",
+    "1.2.0": "2026-10-20T09:30:00.000Z",
+    "1.3.0-rc.1": "2026-10-25T09:30:00.000Z"
+  }
+}

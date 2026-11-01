@@ -53,6 +53,13 @@ type Pin struct {
 	Name   string // the upstream, such as "claude"
 	Class  Class
 	Source Source
+	// Locator is the https URL of the upstream's listing: the npm package document,
+	// the GitHub releases API URL, the vendor release root, or the OCI repository
+	// API root, https://registry/v2/name (see sources.go).
+	Locator string
+	// Assets maps an architecture to the GitHub asset name or the vendor manifest
+	// platform key of that architecture. The npm and OCI sources need none.
+	Assets map[string]string
 	Release
 	Timestamps []time.Time // every timestamp upstream publishes for the pinned release
 	Released   time.Time   // when this version was selected; B10's cool-off and the manifest count from it
