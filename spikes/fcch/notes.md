@@ -1,11 +1,11 @@
 # U-101 spike: Firecracker and Cloud Hypervisor on Linux
 
-Input for ADR-001 (U-103a, "choose the VM layer"). Cells marked `(CI)` are filled in from the
-`fcch ...` lines that `go test -count=1 -v ./spikes/fcch/` prints on the hosted `ubuntu-24.04`
-runner (4 vCPU, `/dev/kvm` 0666); the authoring session had no `/dev/kvm`, so it could not boot
-anything. Facts marked "local" were measured there on linux/amd64 with go 1.27.0 (downloads hashed,
-ELF headers read, nothing downloaded was executed). Same measurements as U-100 (libkrun, notes in
-`spikes/libkrun/notes.md`).
+Input for ADR-001 (U-103a, "choose the VM layer"). Numbers marked CI come from the `fcch ...` lines
+that `go test -count=1 -v ./spikes/...` printed on the hosted `ubuntu-24.04` runner (4 vCPU, `/dev/kvm`
+0666), run 2026-11-01 about 18:50Z on commit 26554d0 (PR #21): TestFCCH PASS in 89.09 s, whole gate PASS
+in 128 s of 900 s. The authoring session had no `/dev/kvm`, so it could not boot anything. Facts marked
+"local" were measured there on linux/amd64 with go 1.27.0 (downloads hashed, ELF headers read, nothing
+downloaded was executed). Same measurements as U-100 (libkrun, notes in `spikes/libkrun/notes.md`).
 
 ## What the test does
 
@@ -50,7 +50,7 @@ the instant before `PUT /actions InstanceStart` (Firecracker) or before `cmd.Sta
 | Cloud Hypervisor | v54.0 | `https://github.com/cloud-hypervisor/cloud-hypervisor/releases/download/v54.0/cloud-hypervisor-static` | 7365360 | `4f4f98a3d661a40f3e5272627cc895a1b2e525f2f6bedf5f895f9cd21ba5c65b` |
 | Kernel A (both VMMs) | 6.1.155 | `https://s3.amazonaws.com/spec.ccfc.min/firecracker-ci/v1.14/x86_64/vmlinux-6.1.155` | 44278288 | `e41c7048bd2475e7e788153823fcb9166a7e0b78c4c443bd6446d015fa735f53` |
 | Kernel B (virtio-fs, cross rows) | 7.2.8, tag `ch-release-v7.2.8-20261009` | `https://github.com/cloud-hypervisor/linux/releases/download/ch-release-v7.2.8-20261009/vmlinux-x86_64` | 48205848 | `edfeb8a8a6c04ff2979e9f1c700feaa29b8f564f952261834ef0b7d2e673a853` |
-| virtiofsd | distribution package (noble universe 1.10.0-1 expected) | `apt-get install virtiofsd` | (CI) | (CI) |
+| virtiofsd | 1.10.0, distribution package (noble universe) | `apt-get install virtiofsd` | 3152384 | `e256a63975f3ba343d651ce001fdc1f1128a5967612f0f102ab1387727ead140` (CI; not pinned, the package moves) |
 | golang.org/x/sys | v0.49.0 | Go module, guest only | | go.sum |
 
 - Fallbacks if an input disappears (one constant each): Firecracker v1.16.2 with the same URL pattern, then
@@ -58,7 +58,9 @@ the instant before `PUT /actions InstanceStart` (Firecracker) or before `cmd.Sta
   Cloud Hypervisor v48.0 (sha256 `e967dd736d434052f15883c5ef044b0d0ff36360d3df7082797fa7553be75092`, 4674208 B);
   kernel B `ch-release-v6.12.8-20250613` (50030992 B, sha256 `782a61a99df82b74100a687adcac23e6299aa6532f536a15d6c6aff04c5a9f74`).
 - Kernel A is Firecracker's own CI guest kernel. Its config has VIRTIO_MMIO, VIRTIO_PCI, ACPI, PVH,
-  VSOCK, VIRTIO_BLK, the 8250 console, INITRD and DEVTMPFS_MOUNT, but no FUSE or VIRTIO_FS. The bucket's
+  VSOCK, VIRTIO_BLK, the 8250 console, INITRD and DEVTMPFS_MOUNT, but no FUSE or VIRTIO_FS. Firecracker
+  appends its own `pci=off` and two `virtio_mmio.device=4K@0x...` parameters to the command line, and kernel A
+  finds the MMIO devices from them (CI: `fc` row's `cmdline`). The bucket's
   `v1.17` folder is empty and new folders there are date-stamped CI artifacts, not releases: a pin
   on that bucket is a pin on a file, with no upstream promise it stays.
 - Kernel B is Cloud Hypervisor's own kernel fork build (ch_defconfig: VIRTIO_MMIO, VIRTIO_PCI, VIRTIO_FS,
@@ -102,54 +104,67 @@ the instant before `PUT /actions InstanceStart` (Firecracker) or before `cmd.Sta
   `wcexit=poweroff` is `reboot(POWER_OFF)` for Cloud Hypervisor (a guest reset makes it reboot in place by default; its
   ACPI power-off ends the process). The guest never returns from main: on any error it prints and still shuts down.
 - `guest_exit=7` reaches the host over vsock only; `vmm_exit` (expected 0 for both) is the VMM's own status.
-  exit_path (CI): fc `reboot`, ch `poweroff`.
+  exit_path (CI): fc `reboot`, ch-blk and ch-fs `poweroff`; `vmm_exit=0` and `guest_exit=7` on all three rows.
 
 ## Network
 
-Neither VMM was given a network device, so the guest sees `lo` only. Facts per row (CI): `loopback`
-(guest dial to a host 127.0.0.1 listener; expected `err`), `ifaces`, `env_leak`. No TSI-like
+Neither VMM was given a network device, so the guest sees `lo` only. Facts per row (CI): `loopback=err`
+(guest dial to a host 127.0.0.1 listener failed), `ifaces=lo`, `env_leak=no` on all three rows. No TSI-like
 mechanism exists in either VMM: vsock is a port map to a host unix socket and nothing else (I2, I3, I4).
 
 ## Numbers (hosted CI, 2 vCPU, 1024 MiB)
 
 | Row | boot_ms p50 / min / max | total_ms p50 / min / max | teardown_ms p50 / min / max |
 |-----|-------------------------|--------------------------|-----------------------------|
-| fc (Firecracker v1.17.0, kernel A, blk-raw) | (CI) | (CI) | (CI) |
-| ch-blk (Cloud Hypervisor v54.0, kernel A, blk-raw) | (CI) | (CI) | (CI) |
-| ch-fs (Cloud Hypervisor v54.0, kernel B, virtio-fs) | (CI) | (CI) | (CI) |
-| libkrun (U-100, for reference) | 699 / 676 / 711 | 701 / 679 / 714 | 20 / 18 / 24 |
+| fc (Firecracker v1.17.0, kernel A, blk-raw) | 194 / 186 / 214 | 197 / 188 / 216 | 501 / 492 / 534 |
+| ch-blk (Cloud Hypervisor v54.0, kernel A, blk-raw) | 121 / 109 / 179 | 121 / 109 / 179 | 8 / 5 / 20 |
+| ch-fs (Cloud Hypervisor v54.0, kernel B, virtio-fs) | 278 / 256 / 315 | 280 / 257 / 318 | 36 / 31 / 54 |
+| libkrun, same gate run | 543 / 533 / 570 | 545 / 536 / 573 | not logged here |
+| libkrun, U-100 reference run (commit 6d73de7) | 699 / 676 / 711 | 701 / 679 / 714 | 20 / 18 / 24 |
 
 | Fact | Value |
 |------|-------|
-| cross rows `fc-kB`, `ch-blk-kB` (boot_ms / total_ms, one boot) | (CI) |
-| `api_ms` (Firecracker), `virtiofsd_ready_ms` (ch-fs) | (CI) |
-| `vmm_exit`, `guest_exit`, `exit_path` (fc / ch-blk / ch-fs) | (CI) |
-| `leftover` files in the boot directory after exit (I7) | (CI) |
-| `kill_ms`, `orphans`, `virtiofsd_exit_after_kill_ms` after SIGKILL (A9) | (CI) |
-| `loopback`, `ifaces`, `env_leak` (I4, I5) | (CI) |
-| `--version` of fc, ch, virtiofsd | (CI) |
-| download_s / gobuild_s / waited_for_libkrun_s / test_s | (CI) |
+| cross rows, one boot, boot_ms / total_ms | `fc-kB` 288 / 291; `ch-blk-kB` 115 / 115 (both ok) |
+| `api_ms` (Firecracker, first 204 minus t0), `virtiofsd_ready_ms` (ch-fs) | 1, 1 |
+| `vmm_exit`, `guest_exit`, `exit_path` | 0, 7, `reboot` (fc); 0, 7, `poweroff` (ch-blk, ch-fs) |
+| `leftover` in the boot directory after exit (I7) | fc: `console.txt, fc.api, share.img, v.sock, v.sock_5000`; ch-blk: `ch.vsock_5000, console.txt, share.img`; ch-fs: `ch.vsock_5000, console.txt, fs.sock.pid, work` |
+| after SIGKILL on the VMM: `kill_ms`, `orphans`, `virtiofsd_exit_after_kill_ms` (A9) | fc 19, 0, n/a; ch-blk 11, 0, n/a; ch-fs 16, 0, 18 |
+| `virtiofsd_exit_ms` on a normal exit | -32: virtiofsd exited 32 ms before Cloud Hypervisor did (negative means before) |
+| `loopback`, `ifaces`, `env_leak` (I4, I5) | `err`, `lo`, `no` on every row |
+| `--version` | Firecracker v1.17.0, cloud-hypervisor v54.0, virtiofsd 1.10.0 |
+| download_s / gobuild_s / waited_for_libkrun_s / test_s | 1.3 / 8.2 / 51.2 / 89.1 |
+| subtest seconds | fc 15.12, ch-blk 3.64, ch-fs 7.14, fc-kB 0.33, ch-blk-kB 0.15 |
 
 Notes for reading the numbers:
 
 - libkrun's numbers in later gates are perturbed: `go test ./spikes/...` runs `libkrun.test` and `fcch.test`
   at once on 4 vCPUs, and fcch downloads about 107 MB and builds Go at that time. U-100's clean
   reference is commit 6d73de7. This test avoids the reverse problem by waiting for `libkrun.test` to end
-  before its first timed sample.
+  before its first timed sample (CI: it waited 51.2 s). In this gate run libkrun printed p50 543 / 545
+  (boot / total) against 699 / 701 in its U-100 run, so the runner was faster that day: the spikes' numbers
+  compare fairly only within one gate run.
+- Firecracker's teardown_ms is about 500 ms (the guest reboot path), against 8 ms for Cloud Hypervisor's
+  power-off and 20 ms for libkrun. It adds to every session's end, not to its start.
+- `virtiofsd_exit_ms` is virtiofsd's exit minus the VMM's exit: negative means virtiofsd was already gone.
+- Both VMMs leave their unix sockets and the share image in the boot directory (`leftover`) but no process
+  (`orphans=0` after SIGKILL); the test's cleanup removes the directory.
+- Kernel B costs Firecracker about 90 ms more boot (`fc-kB` 288 against `fc` 194) while Cloud Hypervisor is
+  unchanged (`ch-blk-kB` 115 against `ch-blk` 121). So the `ch-fs` p50 of 278 comes mostly from virtio-fs
+  and virtiofsd, not from the kernel.
 - The two kernels differ, so a VMM comparison is only like for like on kernel A (`fc` against `ch-blk`). The
   cross rows show what changing the kernel does on each VMM.
-- P1's hosted target (p50 under 2.5 s): (CI).
+- P1's hosted target (p50 under 2.5 s) is met by every row with a wide margin: total_ms p50 197 (fc), 121 (ch-blk), 280 (ch-fs).
 
 ## Sizes and ELF (the A6 answer)
 
 | Binary | Bytes (local) | Bytes (CI) | PT_INTERP | NEEDED |
 |--------|---------------|------------|-----------|--------|
-| firecracker v1.17.0 | 3676680 | (CI) | none (local) | none (local) |
-| cloud-hypervisor v54.0 | 7365360 | (CI) | none (local) | none (local) |
-| virtiofsd (package) | n/a | (CI) | (CI) | (CI) |
-| guest | 3548272 | (CI) | none | none |
-| initramfs (guest as `/init`) | 3548512 | (CI) | | |
-| kernel A / kernel B | 44278288 / 48205848 | (CI) | | |
+| firecracker v1.17.0 | 3676680 | 3676680 | none | none |
+| cloud-hypervisor v54.0 | 7365360 | 7365360 | none | none |
+| virtiofsd 1.10.0 (package) | n/a | 3152384 | `/lib64/ld-linux-x86-64.so.2` | `libseccomp.so.2, libcap-ng.so.0, libgcc_s.so.1, libm.so.6, libc.so.6` |
+| guest | 3548272 | 3548272 | none | none |
+| initramfs (guest as `/init`) | 3548512 | 3548512 | | |
+| kernel A / kernel B | 44278288 / 48205848 | 44278288 / 48205848 | | |
 
 Both VMMs are static-pie ELF files (`file`: "static-pie linked"), so with them A6's "one static Go binary" holds
 for the Go side and the VMM can be fetched by pinned digest and exec'd: no loader, no library search path, nothing like
