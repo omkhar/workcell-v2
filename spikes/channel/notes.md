@@ -4,7 +4,9 @@ Input for ADR-004 (channel manifest format and signing). Facts and numbers only,
 "Local" numbers come from the authoring session (linux/amd64, 4 vCPU, go 1.27.0), run 2026-11-01.
 Every number is printed as a `channel <key>=<value>` line by `go test -count=1 -v ./spikes/channel/`.
 
-CI numbers: ORCHESTRATOR FILLS IN: commit `<sha>`, run `<id>`, runner `<image>`, linux and macOS lines.
+CI numbers come from commit c66c44c30183fbc4726605afcbbca34a3cb47a12 (PR #33), Actions run 41353169400, started
+2026-11-01T21:39:58Z, both jobs green: `gate` (ubuntu-24.04, job 124987535466) 152 s, package ok in 1.437 s;
+`gate-macos` (job 124987535218) 81 s, package ok in 0.927 s.
 
 ## What the tests do (pure Go, no network beyond servers the test starts, about 1 s)
 
@@ -50,23 +52,24 @@ CI numbers: ORCHESTRATOR FILLS IN: commit `<sha>`, run `<id>`, runner `<image>`,
   chained (intermediate to root, code-signing EKU), not used to verify a real leaf.
 - `tuf-repo-cdn.sigstore.dev` was refused by the proxy (CONNECT 403); the GitHub copy of `targets/` was used.
 
-## Numbers (local)
+## Numbers
 
-| Key | Value |
-|-----|-------|
-| `manifest_bytes` / `envelope_bytes` (8 x 2 with previous) | 7212 / 9815 |
-| `max_manifest_bytes` | 65536 |
-| `sign_us` / `verify_us` p50 of 1000 (verify includes JSON decode of 9.8 kB) | 72 / 138 |
-| `start_hung_ms` / `start_ok_ms` / `start_garbage_ms` / `start_oversize_ms` | 0.23 / 0.09 / 0.08 / 0.06 |
-| `check_ok_ms` (fetch + verify + 2 file writes) | 2.25 |
-| `check_hung_ms` (= the 300 ms timeout the test sets) | 301.6 |
-| `check_requests_second_call_same_day` | 0 |
-| `expired_keeps_installed` (installs nothing, rolls back nothing, no error) | true |
-| `keyless_verify_us` p50 of 200 (synthetic bundle, 1009 B) | 331 |
-| `keyless_lines` | 132 |
-| `trusted_root_bytes` | 6787 |
-| `fuzz_crashers` (`-fuzz=FuzzVerify -fuzztime=30s`) | 0 (7,499 execs with default minimisation, which stalls the counter; 843,301 execs with `-fuzzminimizetime=0`, 0 crashers) |
-| whole package `go test` | about 1.0 s |
+| Key | Local | CI Linux | CI macOS |
+|-----|-------|----------|----------|
+| `manifest_bytes` / `envelope_bytes` (8 x 2 with previous) | 7212 / 9815 | 7212 / 9815 | 7212 / 9815 |
+| `max_manifest_bytes` | 65536 | 65536 | 65536 |
+| `sign_us` / `verify_us` p50 of 1000 (verify includes JSON decode of 9.8 kB) | 72 / 138 | 157 / 310 | 54 / 124 |
+| `start_hung_ms` / `start_ok_ms` / `start_garbage_ms` / `start_oversize_ms` | 0.23 / 0.09 / 0.08 / 0.06 | 0.071 / 0.082 / 0.048 / 0.058 | 0.656 / 0.235 / 0.127 / 0.159 |
+| `check_ok_ms` (fetch + verify + 2 file writes) | 2.25 | 2.126 | 1.467 |
+| `check_garbage_ms` / `check_oversize_ms` | 0.99 / 0.94 | 0.500 / 0.751 | 0.563 / 0.863 |
+| `check_hung_ms` (= the 300 ms timeout the test sets) | 301.6 | 300.329 | 303.267 |
+| `check_requests_second_call_same_day` | 0 | 0 | 0 |
+| `expired_keeps_installed` (installs nothing, rolls back nothing, no error) | true | true | true |
+| `keyless_verify_us` p50 of 200 (synthetic bundle, 1009 B) | 331 | 562 | 269 |
+| `keyless_lines` | 132 | | |
+| `trusted_root_bytes` (same sha256 everywhere) | 6787 | 6787 | 6787 |
+| `fuzz_crashers` (`-fuzz=FuzzVerify -fuzztime=30s`, local only) | 0 (7,499 execs with default minimisation, which stalls the counter; 843,301 execs with `-fuzzminimizetime=0`, 0 crashers) | seeds only | seeds only |
+| whole package `go test` | about 1.0 s | 1.437 s | 0.927 s |
 
 Trusted root contents (`channel fulcio|tsa|log` lines): Fulcio 2 CAs (`2021-03-07..2022-12-31`, 1 cert;
 `2022-04-13..open`, 2 certs), Rekor 2 keys (`rekor.sigstore.dev` ECDSA P-256 `2021-01-12..open`;
