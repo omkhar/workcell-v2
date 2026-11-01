@@ -159,3 +159,5 @@ Changes the unit required: the fixed grants map is a known(credential, host, hea
 Tests: the 17 malformed lines plus grant and denial cases are one table; the two halves that need newServer and record (ReadsWhatTheBrokerWrites, the longest-line check against a written record) return in U-400, with a comment naming it. FuzzLedgerAuditRecords runs the fold with a cap of 4; 20 s and 10 s runs clean, -race clean, GOOS=darwin vet clean. Local gate 17 s, guard green. Redteam wrote no escape test (nothing can FAIL on control before a broker writes a ledger); its I9 and I5 variants are one line in PARKED.md. Review: no findings; two notes parked.
 Budget: product 1351 of 15000, test 3533 of 4026, so 493 test lines remain; direct dependencies 2 of 15. U-400b brings new code in the legacy shape of resolveSource (cli.go), about 150 product and 200 test lines, which fits; read the gate budget line first.
 Next: U-400b (deps U-302, U-400a; env:any; model opus) is the next takeable unit for the cloud, then U-400, then B-820 and B-821. The claim was PR #30, which this run gave its final title.
+
+## 2026-11-01T20:42Z U-400b START mode=cloud
