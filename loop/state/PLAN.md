@@ -140,7 +140,7 @@ with ADR-003 and ADR-004, they build on the proposal, and you can accept it at a
 
 ## Phase 4: secrets and providers
 
-- [ ] U-400a | flow:boundary | model:opus | env:any | deps:U-302 | tries:0 | Port `_legacy/credbroker` part 1 to `internal/secret` (S14): `ledger.go` with its tests, plus a fuzz target for the ledger line parser (T5). No socket, no `aptbroker`, `rootio` or `cliexit` import
+- [x] U-400a | flow:boundary | model:opus | env:any | deps:U-302 | tries:0 | Port `_legacy/credbroker` part 1 to `internal/secret` (S14): `ledger.go` with its tests, plus a fuzz target for the ledger line parser (T5). No socket, no `aptbroker`, `rootio` or `cliexit` import
       accept: ported ledger tests and `FuzzLedgerAuditRecords` pass; no import outside the standard library, `x/sys` and `x/net`; every ported file says `// Ported from v1: <path>`
 - [ ] U-400b | flow:boundary | model:opus | env:any | deps:U-302,U-400a | tries:0 | Port `_legacy/credbroker` part 2 to `internal/secret` (S14): source resolution. Generalise `resolveSource` from `cli.go` to `file:`, `cmd:` and `secret-service:` (`keychain:` is U-702). Keep its shape: a fixed program path, no shell (A8), a scrubbed environment, a timeout, and refusal of an empty or multi-line value. Drop the `securityPath` test hook (A11). A value is `[]byte`, never a string, with a `Zero` that wipes it. The source names the host's own files and programs, so plain standard-library file handling (R6)
       accept: table tests show each source resolve and fail closed; a test that resolves a value, zeroes it and finds only zero bytes; no shell, no test hook, no import outside the standard library, `x/sys` and `x/net`
