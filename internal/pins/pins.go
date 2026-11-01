@@ -1,0 +1,217 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Omkhar Arasaratnam
+
+// Package pins holds the data model of an upstream pin (B1, B2) and the
+// stateless selector that decides which release a pin moves to (B3, B4).
+package pins
+
+import (
+	"cmp"
+	"fmt"
+	"slices"
+	"strconv"
+	"strings"
+	"time"
+)
+
+// Class decides a pin's cool-off (B2).
+type Class string
+
+const (
+	// Guest is anything that runs only inside the guest, such as a provider CLI.
+	Guest Class = "guest"
+	// Trusted is Go modules, actions, the VMM, the guest kernel, the base image and build tools.
+	Trusted Class = "trusted"
+)
+
+// Source is the kind of place an upstream publishes in. Adding an upstream of a
+// known source is one row and no code (B15).
+type Source string
+
+const (
+	NPM            Source = "npm"             // an npm registry package document
+	GitHubReleases Source = "github-releases" // the releases of a GitHub repository
+	VendorManifest Source = "vendor-manifest" // a release manifest the vendor serves
+	OCI            Source = "oci"             // an image in an OCI registry, pinned by digest
+)
+
+// Artifact is the file of a release for one architecture.
+type Artifact struct {
+	URL    string // the https URL the client fetches on the host (B8)
+	SHA256 string // 64 lowercase hex digits, computed from the downloaded file (B5)
+}
+
+// Release is a version as upstream writes it, and its artifacts keyed by
+// architecture ("amd64", "arm64").
+type Release struct {
+	Version   string
+	Artifacts map[string]Artifact
+}
+
+// Pin is one row of pins/ (B1).
+type Pin struct {
+	Name   string // the upstream, such as "claude"
+	Class  Class
+	Source Source
+	Release
+	Timestamps []time.Time // every timestamp upstream publishes for the pinned release
+	Released   time.Time   // when this version was selected; B10's cool-off and the manifest count from it
+	Previous   *Release    // the version pinned before this one, one deep: the manifest's previous
+	Withdrawn  []string    // SHA-256 digests the maintainer withdrew; none is selected again
+}
+
+// Candidate is one release as upstream lists it. The source sets the flags;
+// the selector only honours them.
+type Candidate struct {
+	Release
+	PreRelease bool        // upstream marks it a pre-release or a draft
+	Yanked     bool        // upstream withdrew it
+	Deprecated bool        // upstream marks it deprecated
+	Timestamps []time.Time // every timestamp upstream publishes for it, in any order
+}
+
+// Advisory is a published advisory: it affects every version from Introduced
+// up to, not including, Fixed.
+type Advisory struct {
+	ID         string // the advisory's identifier, such as a GHSA ID
+	Introduced string // the first affected version; empty means every version below Fixed
+	Fixed      string // the first version that is not affected
+}
+
+// Skip is a release newer than the pin that the selector did not take.
+type Skip struct {
+	Version string
+	Reason  string
+}
+
+// Result is what the selector decided.
+type Result struct {
+	Chosen    *Candidate // the release to pin; nil when the pin stays
+	Why       string     // why the pin stays; empty when it changes
+	Skipped   []Skip     // releases newer than the pin that are not eligible, in input order
+	Security  bool       // the advisory affects the pin and Chosen fixes it (B4)
+	AutoMerge bool       // the bump may merge once the gate is green; false when it waits for the maintainer
+}
+
+// cooloff holds the normal and the security-lane cool-off of each class.
+var cooloff = map[Class][2]time.Duration{
+	Guest:   {48 * time.Hour, 12 * time.Hour},
+	Trusted: {7 * 24 * time.Hour, 0},
+}
+
+// Select picks the newest stable release that is not a pre-release, yanked,
+// deprecated or withdrawn, and whose latest timestamp is at least the cool-off
+// before now. extra lengthens the cool-off and never shortens it (B10). A pin
+// never moves backwards. It reads nothing but its arguments (B3).
+func Select(cur Pin, cands []Candidate, adv *Advisory, extra time.Duration, now time.Time) (Result, error) {
+	cool, ok := cooloff[cur.Class]
+	if !ok {
+		return Result{}, fmt.Errorf("pin %q: unknown class %q", cur.Name, cur.Class)
+	}
+	curV, hasCur := parseVersion(cur.Version)
+	if !hasCur && cur.Version != "" {
+		return Result{}, fmt.Errorf("pin %q: version %q is not a stable X.Y.Z", cur.Name, cur.Version)
+	}
+	fix, affected := adv.affects(curV, hasCur)
+	extra = max(extra, 0)
+	var r Result
+	var best version
+	for i := range cands {
+		c := &cands[i]
+		v, stable := parseVersion(c.Version)
+		if stable && hasCur && compare(v, curV) <= 0 {
+			continue // never backwards
+		}
+		wait := cool[0]
+		if affected && compare(v, fix) >= 0 {
+			wait = cool[1]
+		}
+		latest := latestOf(c.Timestamps)
+		why := ""
+		switch {
+		case !stable || c.PreRelease:
+			why = "pre-release"
+		case c.Yanked:
+			why = "yanked"
+		case c.Deprecated:
+			why = "deprecated"
+		case slices.ContainsFunc(cur.Withdrawn, c.hasDigest):
+			why = "withdrawn"
+		case latest.IsZero():
+			why = "no timestamp"
+		case latest.After(now):
+			why = "timestamp in the future"
+		case now.Sub(latest) < wait+extra:
+			why = "cooling off"
+		}
+		if why != "" {
+			r.Skipped = append(r.Skipped, Skip{c.Version, why})
+		} else if r.Chosen == nil || compare(v, best) > 0 {
+			r.Chosen, best = c, v
+		}
+	}
+	if r.Chosen == nil {
+		r.Why = "no eligible release newer than " + cmp.Or(cur.Version, "the empty pin")
+		return r, nil
+	}
+	r.Security = affected && compare(best, fix) >= 0
+	r.AutoMerge = !(r.Security && cur.Class == Trusted)
+	return r, nil
+}
+
+// affects reports whether a affects the pinned version cur, and returns the fix.
+// A nil advisory, or one whose versions do not parse, affects nothing.
+func (a *Advisory) affects(cur version, hasCur bool) (version, bool) {
+	if a == nil || !hasCur {
+		return version{}, false
+	}
+	fix, ok := parseVersion(a.Fixed)
+	from, okFrom := parseVersion(a.Introduced)
+	if !ok || (!okFrom && a.Introduced != "") {
+		return version{}, false
+	}
+	return fix, compare(from, cur) <= 0 && compare(cur, fix) < 0
+}
+
+func (c *Candidate) hasDigest(d string) bool {
+	for _, a := range c.Artifacts {
+		if d != "" && a.SHA256 == d {
+			return true
+		}
+	}
+	return false
+}
+
+// latestOf returns the latest non-zero timestamp, or the zero time if there is none.
+func latestOf(ts []time.Time) time.Time {
+	var l time.Time
+	for _, t := range ts {
+		if t.After(l) {
+			l = t
+		}
+	}
+	return l
+}
+
+// version is a stable semantic version: major, minor, patch.
+type version [3]uint64
+
+func compare(a, b version) int { return slices.Compare(a[:], b[:]) }
+
+// parseVersion reads a plain stable version, X.Y.Z with an optional leading
+// "v". Any other form, a pre-release or build suffix included, does not parse.
+func parseVersion(s string) (version, bool) {
+	var v version
+	parts := strings.Split(strings.TrimPrefix(s, "v"), ".")
+	if len(parts) != len(v) {
+		return version{}, false
+	}
+	for i, p := range parts {
+		n, err := strconv.ParseUint(p, 10, 64)
+		if err != nil || (len(p) > 1 && p[0] == '0') {
+			return version{}, false
+		}
+		v[i] = n
+	}
+	return v, true
+}
