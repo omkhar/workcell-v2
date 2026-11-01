@@ -1,0 +1,16 @@
+# The ONLY paths the loop may change without the maintainer's signature.
+# Everything else in the repository is locked, including anything not yet thought of.
+# One anchored, case-sensitive extended regular expression per line.
+# A path that matches is still locked if it lies under docs/adr/accepted/, or if its name breaks the rules in CLAUDE.md.
+^cmd/
+^internal/
+^escape/
+^pins/
+^docs/
+^spikes/
+^proposed/
+^_legacy/
+^loop/state/(PLAN|LOG|BLOCKED|PARKED|FINDINGS)\.md$
+^loop/baseline/ci\.tsv$
+^go\.(mod|sum)$
+^README\.md$

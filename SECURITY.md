@@ -1,127 +1,36 @@
-# Security Policy
+# Security
 
-## Supported Versions
-
-Workcell uses a single-maintainer release process. The maintainer applies
-security fixes to `main`. The repository has no long-lived release branches.
-Only the latest release gets security fixes. Workcell does not backport fixes
-to old tags. The maintainer ships a fix in the next release. Install the latest
-verified release to get the fix.
-
-| Version | Security fixes |
-| --- | --- |
-| Latest release | Yes |
-| Any earlier release or pre-release | No. Install the latest release. |
-
-Always verify a release before installation. `scripts/install-release.sh`
-verifies the signed checksum file and the asset digest. It fails closed before
-any bundle code starts. See
-[`docs/install-lifecycle.md`](docs/install-lifecycle.md).
-
-## Signing key
-
-Release tags and commits are GPG-signed by the maintainer. Confirm any key you
-import against this fingerprint before trusting a signature:
-
-```text
-Omkhar Arasaratnam <omkhar@gmail.com>
-ed25519  9055 4248 C4F7 CC08 6BB7  45D0 DA5A 8E9F 536C 42FD
-```
-
-When you obtain the installer from a checkout of a release tag (the verified
-install path in [`docs/getting-started.md`](docs/getting-started.md)), verify
-that tag's signature against this key **before** running any code from it:
-
-```bash
-# import the maintainer key (e.g. from a keyserver) and confirm the fingerprint above, then:
-git tag -v vX.Y.Z
-```
-
-This authenticates the installer source; the release *artifacts* are
-independently verified with keyless cosign signatures (no long-lived signing
-key), documented in [`docs/provenance.md`](docs/provenance.md).
+This repository is Workcell v2 **under construction**. It never publishes a release, a tag or a download, and nothing
+here is meant to be installed or relied on yet. If you see a release here, do not use it, and please report it. The
+released product, and its security policy, live at <https://github.com/omkhar/workcell>.
 
 ## Reporting
 
-Do not disclose new sandbox escapes, credential leaks, signing bypasses, or
-boundary-preservation bugs in a public issue.
+Do not disclose a sandbox escape, a credential leak or a signing bypass in a public issue.
+Report it privately through GitHub's private vulnerability reporting on
+[omkhar/workcell](https://github.com/omkhar/workcell/security/advisories/new), whether it concerns v1 or the code here.
+If that channel is unavailable, contact the repository owner privately through GitHub first.
 
-Use [GitHub Private Vulnerability Reporting][pvr] to open a security advisory
-for this repository. If that channel is unavailable, contact the repository
-owner privately through GitHub first.
+## How changes are signed here
 
-[pvr]: https://github.com/omkhar/workcell/security/advisories/new
+A coding-agent loop writes most commits in this repository. They reach `main` as squash merges, which GitHub signs.
+They are not signed by the maintainer.
 
-## Response
+The maintainer's own GPG key signs three things: every change to a locked file (anything outside
+`loop/free-paths.txt`), every human gate in the plan, and the checkpoints named `loop-checkpoint-N`.
 
-We aim to acknowledge reports within **5 business days** and to provide an
-initial assessment within **10 business days**. Critical issues (sandbox
-escapes, secret exposure) will be prioritised. You will be credited in the
-advisory unless you request otherwise.
+- `main` holds GitHub's squash of each pull request. So the maintainer's signature is not on `main` itself. It is on the last
+  commit of the pull request, `refs/pull/N/head`, which has the same files.
+- A checkpoint is a signed tag object. It means that the maintainer has looked through the changes since the checkpoint
+  before it. GitHub holds no tags for this repository, so the checkpoints are kept under another name. Import
+  `.github/maintainer.asc` and compare its fingerprint with the one below. Then fetch and check the checkpoints:
+  `git fetch --no-tags origin 'refs/checkpoints/loop-checkpoint-*:refs/tags/loop-checkpoint-*'`,
+  then `git verify-tag loop-checkpoint-0`.
 
-## In scope
+The key's fingerprint is:
 
-High-priority reports include:
+```
+9055 4248 C4F7 CC08 6BB7  45D0 DA5A 8E9F 536C 42FD
+```
 
-- reads of host secrets outside the documented boundary
-- writes outside the intended workspace without explicit `breakglass`
-- unmanaged host socket or credential passthrough
-- silent trust widening through repo content or workflow changes
-- release signing, SBOM, or provenance regressions
-
-## Out of scope
-
-The following are not in scope for this policy:
-
-- social engineering attacks
-- physical access attacks
-- bugs in third-party providers (Codex, Claude, Gemini) that do not
-  involve a Workcell boundary violation
-- issues reproducible only in unsupported configurations (non-macOS host,
-  `breakglass` mode used as intended)
-
-## Container git-config blocklist
-
-The set of `git-config` keys that the in-container git wrapper and the
-in-container LD_PRELOAD exec guard refuse to honor (e.g. `core.askpass`,
-`core.hookspath`, `credential.*.helper`, `includeif.*.path`,
-`pager.*`) is the canonical control-plane denylist for git-mediated
-bypasses.  The single source of truth is
-[`policy/git-config-blocklist.toml`](policy/git-config-blocklist.toml);
-`scripts/verify-invariants.sh` enforces parity between the TOML and
-the three enforcement points (`scripts/workcell`,
-`runtime/container/bin/git`, `runtime/container/rust/src/lib.rs`).
-Adding a key requires editing the TOML and updating each enforcer in
-the same PR.
-
-## Operator incident response
-
-If you are an operator responding to a suspected runtime boundary breach — an
-agent escaping the session, host credential exposure, or workspace tampering —
-follow the [operator boundary-incident response runbook](docs/incident-response.md)
-to contain, preserve evidence, collect a redacted support bundle, and escalate
-through the reporting channel above.
-
-## CI/CD threat model
-
-The [CI/CD threat model](docs/ci-threat-model.md) covers the build and release
-pipeline: runner trust tiers, secrets handling and rotation, attestation
-verification assumptions, and the signing-compromise incident response runbook.
-
-## Disclosure
-
-We follow a coordinated disclosure model. Please allow a reasonable fix window
-before public disclosure. We will notify you when a fix is ready and work with
-you on timing.
-
-## Past security reviews
-
-Closed-finding evidence and assurance artifacts from past reviews live under
-[docs/security/](docs/security/):
-
-- [2026-08-12 security review](docs/security/security-review-2026-08-12.md)
-- [2026-10 security hardening audit](docs/security/audit-2026-10.md)
-- [2026-04-24 validation summary](docs/security/security-findings-2026-04-24-validation.md)
-- [2026-04-24 PoC matrix](docs/security/security-findings-2026-04-24-poc-matrix.md)
-- [2026-04-24 mutation results](docs/security/security-findings-2026-04-24-mutation-results.md)
-- [2026-04-24 verification CSV](docs/security/security-findings-2026-04-24-verification.csv)
+`loop/REFERENCE.md` section 9 says what this arrangement protects against, and what it does not.

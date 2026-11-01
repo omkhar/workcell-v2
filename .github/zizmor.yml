@@ -1,0 +1,8 @@
+rules:
+  dangerous-triggers:
+    ignore:
+      # Deliberate. Both files must load from the default branch so that a pull request cannot
+      # rewrite its own checks. guard.yml executes nothing from the pull request. ci.yml does, in
+      # jobs that name no environment and whose token can only read a public repository.
+      - guard.yml
+      - ci.yml
