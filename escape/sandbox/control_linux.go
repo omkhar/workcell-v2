@@ -60,7 +60,7 @@ func (c *control) Exec(ctx context.Context, args ...string) (Output, error) {
 	stderr := &bounded{limit: MaxStderr}
 	cmd.Stdout, cmd.Stderr = stdout, stderr
 	err := cmd.Run()
-	out := Output{Stdout: stdout.buf, Stderr: stderr.buf, Truncated: stdout.dropped+stderr.dropped > 0}
+	out := Output{Stdout: stdout.buf, Stderr: stderr.buf}
 	var exit *exec.ExitError
 	switch {
 	case err == nil:

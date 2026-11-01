@@ -20,7 +20,7 @@ import (
 var ErrNotImplemented = errors.New("not implemented")
 
 // Limits on what the runner keeps of the payload's output. Everything beyond is
-// counted and dropped: the bytes come from the guest and are hostile (SPEC I12).
+// dropped: the bytes come from the guest and are hostile (SPEC I12).
 const (
 	MaxStdout = 4096
 	MaxStderr = 1024
@@ -28,10 +28,9 @@ const (
 
 // Output is what one payload run produced, as far as the runner keeps it.
 type Output struct {
-	Stdout    []byte
-	Stderr    []byte
-	Exit      int
-	Truncated bool // some stdout or stderr bytes were dropped
+	Stdout []byte
+	Stderr []byte
+	Exit   int
 }
 
 // Sandbox is one sandbox holding the payload. A test gets a fresh one.
@@ -72,16 +71,13 @@ func BuildPayload(ctx context.Context, dir string) (string, error) {
 	return out, nil
 }
 
-// bounded keeps the first limit bytes written and counts the rest.
+// bounded keeps the first limit bytes written and drops the rest.
 type bounded struct {
-	limit   int
-	buf     []byte
-	dropped int
+	limit int
+	buf   []byte
 }
 
 func (b *bounded) Write(p []byte) (int, error) {
-	keep := min(len(p), b.limit-len(b.buf))
-	b.buf = append(b.buf, p[:keep]...)
-	b.dropped += len(p) - keep
+	b.buf = append(b.buf, p[:min(len(p), b.limit-len(b.buf))]...)
 	return len(p), nil
 }

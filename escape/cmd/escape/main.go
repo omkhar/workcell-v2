@@ -70,10 +70,6 @@ func app() int {
 		}
 		return 0
 	}
-	if _, err := sandbox.New(*name); err != nil {
-		fmt.Fprintln(os.Stderr, "escape:", err)
-		return 2
-	}
 	dir, err := os.MkdirTemp("", "escape-")
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "escape:", err)
@@ -134,7 +130,11 @@ func runOne(fresh func() (sandbox.Sandbox, error), payload string, t suite.Test)
 		if out.Exit != 0 {
 			return suite.Result{}, fmt.Errorf("payload exited %d: %s", out.Exit, out.Stderr)
 		}
-		return suite.ParseResult(out.Stdout)
+		r, err := suite.ParseResult(out.Stdout)
+		if err == nil && r.Status == "error" { // the probe did not run, or could not: never a judge's pass
+			err = fmt.Errorf("probe error: %s", r.Detail)
+		}
+		return r, err
 	}
 	pass, detail, err := t.Host(ctx, probe)
 	if err != nil {

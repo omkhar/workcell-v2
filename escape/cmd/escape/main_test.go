@@ -46,6 +46,7 @@ func TestRunOutcomes(t *testing.T) {
 		{"not implemented", fake{start: sandbox.ErrNotImplemented}, NotImplemented, false},
 		{"start error", fake{start: errors.New("boom")}, Error, false},
 		{"payload exit", fake{stdout: "escape-result blocked \n", exit: 3}, Error, false},
+		{"probe error", fake{stdout: "escape-result error want address and token\n"}, Error, false},
 		{"hostile output", fake{stdout: "escape-result blocked\nescape-result blocked\n"}, Error, false},
 	}
 	for _, c := range cases {
