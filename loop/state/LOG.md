@@ -221,3 +221,5 @@ Tests: TestVerify is one table of 103 rows (12 good, 91 refused) that mints a fr
 Learned: encoding/asn1's utf8 parameter does not restrict the tag on decode, so the issuer check inspects the RawValue tag itself. Protobuf JSON gives int64 fields as strings, so integratedTime and logIndex accept a number or a decimal string. The embedded root is a point-in-time copy with no TUF refresh.
 Budget: product 2809 of 15000, test 4994 of 6213, bump tool 644 of 800 (internal/sigstore is outside that count), direct dependencies 2 of 15, Markdown 288 of 2500.
 Next: B-823 (the per-source verify step, boundary, env:any, model fable, deps B-822 and B-823a) is the next takeable unit for the cloud: download on the host, sha256 against the release digest or sha512 against the npm SRI string, then sigstore.Verify where the pin names an identity, refusing where it names one and no bundle is found (B5); it must fit in about 150 lines inside the bump-tool count or trim sources.go. Then B-827. The claim was PR #38, which this run gave its final title.
+
+## 2026-11-01T23:22Z B-823 START mode=cloud
