@@ -1,0 +1,9 @@
+/bin/
+/dist/
+.DS_Store
+*.swp
+*.swo
+*~
+CLAUDE-SECURITY-*/
+.claude/settings.local.json
+loop/private/

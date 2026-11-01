@@ -1,0 +1,40 @@
+name: Guard
+
+# pull_request_target loads this file, and everything it runs, from the default branch, which is
+# also the branch the pull request wants to enter. So a pull request cannot weaken its own guard.
+# No pull-request code is executed: its objects are fetched and compared, nothing more.
+on:
+  pull_request_target:
+    branches: [main]
+    # `edited` covers a pull request whose base is switched to main after it was opened.
+    types: [opened, synchronize, reopened, edited]
+
+permissions: {}
+
+# No concurrency group on purpose. A check result belongs to a commit, not to a pull request, so a
+# run cancelled through one pull request could fail another. The verdict depends only on the two
+# commits, so repeated runs agree. There is one exception: the maintainer's signature counts for two
+# hours, so a later run refuses a commit that an earlier run accepted.
+
+jobs:
+  guard:
+    name: guard
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/heads/main # the live tip, not the snapshot stored in the event
+          fetch-depth: 0
+          filter: blob:none
+          persist-credentials: false
+
+      - name: Locked paths need the maintainer's signature
+        env:
+          HEAD: ${{ github.event.pull_request.head.sha }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          git fetch --quiet --no-tags origin "${HEAD}" || git fetch --quiet --no-tags origin "refs/pull/${PR}/head"
+          loop/guard.sh "$(git rev-parse HEAD)" "${HEAD}"
