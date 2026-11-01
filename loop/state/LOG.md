@@ -196,3 +196,5 @@ Tests: TestSelect 35 table rows named after the accept items, TestFourHourly (60
 Review: one finding fixed, int64 overflow in age < wait+extra let extra near MaxInt64 shorten the cool-off to nothing, now age-wait < extra with a test row; three notes parked, with two builder notes for B-822 (npm build-stamped versions count as pre-releases; AutoMerge semantics).
 Budget: product 1849 of 15000, test 4138 of 4773, bump tool 217 of 800, direct dependencies 2 of 15, Markdown 288 of 2500.
 Next: B-822 (source types, build, env:any, model sonnet, deps B-821) and B-827 (security fast lane, build, env:any, deps B-821) are now takeable for the cloud, B-822 first by order. Everything else waits on H-103, U-102 or kvm chains behind them. The claim was PR #34, which this run gave its final title.
+
+## 2026-11-01T22:17Z B-822 START mode=cloud
