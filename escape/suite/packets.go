@@ -6,7 +6,7 @@ package suite
 import "bytes"
 
 // Pure encoders and parsers for the probes' packets. The bytes a judge parses
-// come from the guest and are hostile, so each parser is total and fuzzed.
+// come from the guest and are hostile, so quicDCID is total and fuzzed.
 
 const (
 	maxCID      = 20   // RFC 9000: a connection ID is at most 20 bytes

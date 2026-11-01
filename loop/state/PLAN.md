@@ -58,7 +58,7 @@ with ADR-003 and ADR-004, they build on the proposal, and you can accept it at a
       accept: table of v1 median duration, failure rate and cancel rate per workflow; if the file is missing, mark the unit `[!]` and name the script in `BLOCKED.md`
 - [x] U-004 | flow:escape | model:fable | env:any | deps:U-001 | tries:0 | `escape/` harness: `Sandbox` adapter interface, static payload binary, runner, JSON report
       accept: `go run ./escape/cmd/escape -sandbox control -list` lists tests; without `-only` it runs every test; adapters `control` (plain container, open network) and `workcell` (stub that reports "not implemented")
-- [ ] U-005 | flow:escape | model:fable | env:any | deps:U-004 | tries:0 | Escape tests for I2 and I4, with local canary listeners
+- [x] U-005 | flow:escape | model:fable | env:any | deps:U-004 | tries:0 | Escape tests for I2 and I4, with local canary listeners
       accept: every test FAILS on `control`; raw IP, odd port, IPv6, UDP, QUIC, ICMP, loopback, RFC 1918, link-local and metadata are each covered
 - [ ] U-006 | flow:escape | model:fable | env:any | deps:U-004 | tries:0 | Escape tests for I3: tunnelling, direct resolver, DoH and DoT
       accept: every test FAILS on `control`; leakage is detected by a host-side capture, not by a third-party server

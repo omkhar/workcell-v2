@@ -16,6 +16,8 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/omkhar/workcell/v2/escape/sandbox"
@@ -70,18 +72,20 @@ func app() int {
 		}
 		return 0
 	}
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM) // an interrupt still lets a judge clean up
+	defer stop()
 	dir, err := os.MkdirTemp("", "escape-")
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "escape:", err)
 		return 2
 	}
 	defer os.RemoveAll(dir)
-	payload, err := sandbox.BuildPayload(context.Background(), dir)
+	payload, err := sandbox.BuildPayload(ctx, dir)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "escape:", err)
 		return 2
 	}
-	rep := run(*name, func() (sandbox.Sandbox, error) { return sandbox.New(*name) }, payload, tests)
+	rep := run(ctx, *name, func() (sandbox.Sandbox, error) { return sandbox.New(*name) }, payload, tests)
 	enc := json.NewEncoder(os.Stdout)
 	enc.SetIndent("", "  ")
 	enc.Encode(rep)
@@ -92,10 +96,10 @@ func app() int {
 }
 
 // run gives every test a fresh sandbox and judges it.
-func run(name string, fresh func() (sandbox.Sandbox, error), payload string, tests []suite.Test) Report {
+func run(ctx context.Context, name string, fresh func() (sandbox.Sandbox, error), payload string, tests []suite.Test) Report {
 	rep := Report{Sandbox: name, Results: []Result{}}
 	for _, t := range tests {
-		outcome, detail := runOne(fresh, payload, t)
+		outcome, detail := runOne(ctx, fresh, payload, t)
 		rep.Results = append(rep.Results, Result{Invariant: t.ID, Name: t.Name, Outcome: outcome, Detail: detail})
 		switch outcome {
 		case Pass:
@@ -111,8 +115,8 @@ func run(name string, fresh func() (sandbox.Sandbox, error), payload string, tes
 	return rep
 }
 
-func runOne(fresh func() (sandbox.Sandbox, error), payload string, t suite.Test) (string, string) {
-	ctx, cancel := context.WithTimeout(context.Background(), perTest)
+func runOne(ctx context.Context, fresh func() (sandbox.Sandbox, error), payload string, t suite.Test) (string, string) {
+	ctx, cancel := context.WithTimeout(ctx, perTest)
 	defer cancel()
 	sb, err := fresh()
 	if err != nil {

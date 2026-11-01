@@ -51,7 +51,7 @@ func TestRunOutcomes(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			rep := run("fake", func() (sandbox.Sandbox, error) { return &c.sb, nil }, "", []suite.Test{test})
+			rep := run(context.Background(), "fake", func() (sandbox.Sandbox, error) { return &c.sb, nil }, "", []suite.Test{test})
 			if len(rep.Results) != 1 || rep.Results[0].Outcome != c.outcome {
 				t.Fatalf("got %+v, want outcome %s", rep.Results, c.outcome)
 			}

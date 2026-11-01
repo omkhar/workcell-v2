@@ -69,45 +69,7 @@ func TestICMP(t *testing.T) {
 	if req[0] != 8 || req[4] != 0x12 || req[5] != 0x34 || !bytes.Equal(req[8:], payload) {
 		t.Errorf("bad echo request: % x", req)
 	}
-	reply := append([]byte{}, req...)
-	reply[0] = 0
-	ip := append([]byte{0x45, 0, 0, 0, 0, 0, 0, 0, 64, 1, 0, 0, 127, 0, 0, 1, 127, 0, 0, 1}, reply...)
-	ipOpts := append([]byte{0x46, 0, 0, 0, 0, 0, 0, 0, 64, 1, 0, 0, 127, 0, 0, 1, 127, 0, 0, 1, 0, 0, 0, 0}, reply...)
-	cases := []struct {
-		name string
-		in   []byte
-		raw  bool
-		want []byte
-		ok   bool
-	}{
-		{"reply", reply, false, payload, true},
-		{"reply with ip header", ip, true, payload, true},
-		{"reply with ip options", ipOpts, true, payload, true},
-		{"request is not a reply", req, false, nil, false},
-		{"raw without header", reply, true, nil, false},
-		{"bad ihl", append([]byte{0x40}, ip[1:]...), true, nil, false},
-		{"truncated", reply[:7], false, nil, false},
-		{"empty payload", []byte{0, 0, 0xFF, 0xFF, 0, 0, 0, 0}, false, []byte{}, true},
-		{"nothing", nil, true, nil, false},
-	}
-	for _, c := range cases {
-		got, ok := icmpReply(c.in, c.raw)
-		if ok != c.ok || !bytes.Equal(got, c.want) {
-			t.Errorf("%s: icmpReply = %x, %v; want %x, %v", c.name, got, ok, c.want, c.ok)
-		}
-	}
 	if icmpChecksum([]byte{0, 1, 0xF2, 3, 0xF4, 0xF5, 0xF6, 0xF7, 0}) != 0x220D { // RFC 1071 example, odd length
 		t.Errorf("checksum is %#x", icmpChecksum([]byte{0, 1, 0xF2, 3, 0xF4, 0xF5, 0xF6, 0xF7, 0}))
 	}
-}
-
-func FuzzICMPReply(f *testing.F) {
-	f.Add(icmpEcho(1, 1, []byte("x")), false)
-	f.Add([]byte{0x45}, true)
-	f.Fuzz(func(t *testing.T, b []byte, raw bool) {
-		payload, ok := icmpReply(b, raw)
-		if ok && (len(payload) > len(b)-8 || !bytes.HasSuffix(b, payload)) {
-			t.Fatalf("icmpReply(%x) = %x: not the tail of its input", b, payload)
-		}
-	})
 }

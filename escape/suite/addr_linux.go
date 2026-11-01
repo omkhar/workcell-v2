@@ -4,18 +4,22 @@
 package suite
 
 import (
+	"bytes"
 	"encoding/binary"
 	"errors"
 	"fmt"
 	"net"
+	"os/exec"
 	"syscall"
 )
 
 // loopbackAddr adds ip/32 to the loopback interface, so that a canary can
 // listen on an address the host does not otherwise own, such as the cloud
 // metadata address, and no packet to it can leave the host. It returns the
-// function that removes the address again. It needs CAP_NET_ADMIN and refuses
-// an address the host already has, so that it only ever removes its own.
+// function that removes the address again. It needs CAP_NET_ADMIN, and without
+// it asks sudo to run ip(8), which a hosted runner grants without a password.
+// It refuses an address the host already has, so that it only ever removes
+// its own.
 func loopbackAddr(ip net.IP) (func(), error) {
 	ip4 := ip.To4()
 	if ip4 == nil {
@@ -25,10 +29,25 @@ func loopbackAddr(ip net.IP) (func(), error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := addrRequest(syscall.RTM_NEWADDR, syscall.NLM_F_CREATE|syscall.NLM_F_EXCL, lo.Index, ip4); err != nil {
-		return nil, fmt.Errorf("add %v to lo: %w (needs CAP_NET_ADMIN; 'file exists' means the host already owns it)", ip4, err)
+	err = addrRequest(syscall.RTM_NEWADDR, syscall.NLM_F_CREATE|syscall.NLM_F_EXCL, lo.Index, ip4)
+	if errors.Is(err, syscall.EPERM) {
+		if err = ipAddr("add", ip4); err == nil {
+			return func() { ipAddr("del", ip4) }, nil
+		}
+	}
+	if err != nil {
+		return nil, fmt.Errorf("add %v to lo: %w ('file exists' means the host already owns it)", ip4, err)
 	}
 	return func() { addrRequest(syscall.RTM_DELADDR, 0, lo.Index, ip4) }, nil
+}
+
+// ipAddr runs "ip addr <verb> ip4/32 dev lo" through sudo, without a prompt.
+func ipAddr(verb string, ip4 net.IP) error {
+	out, err := exec.Command("sudo", "-n", "ip", "addr", verb, ip4.String()+"/32", "dev", "lo").CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("sudo ip addr %s: %v: %s", verb, err, bytes.TrimSpace(out))
+	}
+	return nil
 }
 
 // addrRequest sends one RTM_NEWADDR or RTM_DELADDR for ip4/32 on the interface
