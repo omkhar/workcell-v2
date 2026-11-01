@@ -1,5 +1,0 @@
-git status
-git diff HEAD
-git log --oneline -5
-git add -p
-git branch
