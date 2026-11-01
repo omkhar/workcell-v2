@@ -93,3 +93,5 @@ Measured on PR #20, gate 131 s of 900: boot p50 699 ms (min 676, max 711, n=20),
 Learned: A6's one static binary does not hold with libkrun on Linux (purego and cgo both need the ELF interpreter, plus two shared libraries beside it); libkrunfw bundles a GPL-2.0 kernel with a source-offer duty; libkrun's default TSI lets the guest reach host loopback, so a backend must disable the implicit vsock (I4); a NULL envp in krun_set_exec copies the host environment onto the guest cmdline (I5); without /dev/kvm krun_start_enter aborts the process instead of returning.
 The ADR step of the spike flow is U-103a's job by the plan (ADR-001 compares all three spikes), so no ADR was written here. The proxy of this session refuses GitHub tag archives, so the crate was pinned instead; CI reached both inputs in under a second.
 Next: U-101 (Firecracker and Cloud Hypervisor, model sonnet) can copy the test shape, timing definition and t.Logf keys from spikes/libkrun so that U-103a compares like with like; U-102 is env:macos and waits for a Mac run.
+
+## 2026-11-01T18:13Z U-101 START mode=cloud
