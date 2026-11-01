@@ -87,7 +87,7 @@ func TestSelect(t *testing.T) {
 			c.Timestamps = append(c.Timestamps, now.Add(-2*hour))
 		})}, nil, 0, "", skips("cooling off", "1.2.0"), false, false},
 		{"withdrawn digest is not selected", withdrawn, []Candidate{with(cand("1.1.0", 30*day), func(c *Candidate) {
-			c.Artifacts = map[string]Artifact{"amd64": {"https://example.test/a", digest}}
+			c.Artifacts = map[string]Artifact{"amd64": {URL: "https://example.test/a", SHA256: digest}}
 		})}, nil, 0, "", skips("withdrawn", "1.1.0"), false, false},
 		{"never backwards: newest eligible older than pin", pin(Guest, "2.0.0"), []Candidate{cand("1.9.0", 30*day), cand("2.1.0", hour)}, nil, 0, "", skips("cooling off", "2.1.0"), false, false},
 		{"never backwards: pin absent from candidates", pin(Guest, "2.0.0"), []Candidate{cand("1.5.0", 30*day), cand("1.9.0", 30*day)}, nil, 0, "", nil, false, false},
