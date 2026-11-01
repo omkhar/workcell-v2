@@ -128,3 +128,10 @@ Budget: product 501 of 15000, test 2374 of 2751, so 377 test lines remain; U-302
 Next: U-302b (deps U-001, U-302a; env:any; model opus) is the next takeable unit for the cloud.
 
 ## 2026-11-01T19:41Z U-302b START mode=cloud
+
+## 2026-11-01T19:58Z U-302b PASS mode=cloud model=opus tries=0
+Added internal/proxy/proxy.go (304 lines) and proxy_test.go (489 lines), stdlib only, go.mod unchanged; denylog_test.go gains the two tests U-302a deferred (TestDenyAuditRecordsReadsProxyOutput, TestDenyAuditRecordsSeesRotatedHead). Both new files say // Ported from v1: egressproxy/<name>.
+proxy.go is legacy proxy.go minus what U-302a already holds (denyKey, maxLogHost, maxDenyKeys, overflowHost, overflowCause), minus the five terminate-only Proxy fields (terminate, ca, broker, transport, upstreamRoots) and the serveTerminated branch of handle, and minus the crypto/x509 and net/http imports those needed: every allowed TLS connection is spliced, as legacy does with no terminate rule. U-302 must add those fields, that branch and those imports back with terminate.go. blockedAddr, peekSNI (ECH refusal), route, connect, splice and deny are unchanged.
+Tests: go test -race clean, FuzzPeekSNI 20 s clean (about 170 execs per second, each input does a net.Pipe TLS handshake), GOOS=darwin vet clean. Local gate 6 s; hosted gate, gate-macos and guard green on the unit commit. Redteam wrote no escape test (nothing can FAIL on control before U-303; its variants are one line in PARKED.md). Review: no findings; one less-code note parked.
+Budget: product 805 of 15000, test 2914 of 3207, so 293 test lines remain. U-302 brings terminate.go (385 product lines, which raises the limit by about 577) and terminate_test.go (429 test lines), so it fits with about 440 lines to spare; read the gate budget line first all the same. U-007 to U-010b stay blocked until more product lands.
+Next: U-302 (deps U-001, U-302a, U-302b; env:any; model opus) is the next takeable unit for the cloud. The claim was PR #26, which this run gave its final title.
