@@ -96,7 +96,7 @@ with ADR-003 and ADR-004, they build on the proposal, and you can accept it at a
       accept: boots, stops and force-kills a guest; no orphan process after a SIGKILL of the supervisor
 - [ ] U-201 | flow:build | model:sonnet | env:any | deps:H-103 | tries:0 | Guest image build: OCI base to a read-only root image, byte-reproducible, addressed by digest
       accept: two clean builds give the same digest; under 400 MB; build needs no shell
-- [ ] U-202 | flow:boundary | model:opus | env:any | deps:U-001 | tries:0 | `internal/wire`: length-prefixed, versioned, bounded host-guest protocol, with a fuzz target
+- [x] U-202 | flow:boundary | model:opus | env:any | deps:U-001 | tries:0 | `internal/wire`: length-prefixed, versioned, bounded host-guest protocol, with a fuzz target
       accept: I12 unit and fuzz tests pass; every frame has a hard size and time limit
 - [ ] U-203 | flow:boundary | model:fable | env:kvm | deps:U-200,U-201,U-202 | tries:0 | `cmd/workcell-init`: static guest init. Mounts, exec, PTY, signals, exit status
       accept: runs as PID 1; reaps zombies; a host disconnect powers the guest off
