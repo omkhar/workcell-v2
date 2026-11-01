@@ -18,3 +18,8 @@ Write the time as `2026-10-31T10:15Z`. The loop halts when the last six results 
 that halt, fix the cause, append a RESUME line here, and land it with `land.sh`. Then close the `loop-halt` issue.
 
 ## 2026-11-01T15:16Z U-002b START mode=cloud
+
+## 2026-11-01T15:21Z U-002b PASS mode=cloud model=haiku tries=0
+Hosted gate on PR #5 (commit 7169c67): gate 34 s, gate.sh 19 s, /dev/kvm world-writable; recorded in docs/benchmarks.md (new file, 18 lines).
+Learned: the shipped ci.yml works on ubuntu-24.04 with KVM; the gate.sh VM suite is still deferred because nothing is enforced yet.
+Next: U-003 adds the v1 baseline to the same file; guard and merge checks take about 4 s each.
