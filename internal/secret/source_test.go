@@ -73,6 +73,8 @@ func TestResolveCmdRunsProgramWithScrubbedEnv(t *testing.T) {
 	t.Setenv("WORKCELL_LEAK_CANARY", "leak")
 	t.Setenv("PATH", t.TempDir())
 	t.Setenv("HOME", "/home/someone")
+	t.Setenv("DBUS_SESSION_BUS_ADDRESS", "unix:path=/run/user/1000/bus")
+	t.Setenv("XDG_RUNTIME_DIR", "/run/user/1000")
 	dir := t.TempDir()
 	program := writeFile(t, "fake", []byte(`#!/bin/sh
 printf '%s\n' "$@" > "`+dir+`/args"
@@ -87,19 +89,28 @@ printf 'sk-from-cmd\n'
 	if !bytes.Equal(args, []byte("show\nworkcell/anthropic\n")) {
 		t.Fatalf("argv = %q", args)
 	}
+	want := map[string]bool{
+		"PATH=/usr/bin:/bin:/usr/sbin:/sbin": false,
+		"LC_ALL=C":                           false,
+		"HOME=/home/someone":                 false,
+		"DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus": false,
+		"XDG_RUNTIME_DIR=/run/user/1000":                        false,
+	}
 	env, _ := os.ReadFile(filepath.Join(dir, "env"))
 	for _, line := range strings.Split(strings.TrimSpace(string(env)), "\n") {
-		switch line {
-		case "PATH=/usr/bin:/bin:/usr/sbin:/sbin", "LC_ALL=C", "HOME=/home/someone":
-		default:
-			// sh itself may add PWD, SHLVL and _; anything else leaked through.
-			if name, _, _ := strings.Cut(line, "="); name != "PWD" && name != "SHLVL" && name != "_" {
-				t.Errorf("program saw unexpected environment entry %q", line)
-			}
+		if _, ok := want[line]; ok {
+			want[line] = true
+			continue
+		}
+		// sh itself may add PWD, SHLVL and _; anything else leaked through.
+		if name, _, _ := strings.Cut(line, "="); name != "PWD" && name != "SHLVL" && name != "_" {
+			t.Errorf("program saw unexpected environment entry %q", line)
 		}
 	}
-	if !bytes.Contains(env, []byte("PATH=/usr/bin:/bin:/usr/sbin:/sbin\n")) || !bytes.Contains(env, []byte("LC_ALL=C\n")) {
-		t.Fatalf("program environment lacks the fixed entries: %s", env)
+	for entry, seen := range want {
+		if !seen {
+			t.Errorf("program environment lacks %q", entry)
+		}
 	}
 }
 

@@ -94,8 +94,11 @@ func run(ctx context.Context, program string, args []string) ([]byte, error) {
 	defer cancel()
 	cmd := exec.CommandContext(ctx, program, args...)
 	cmd.Env = []string{"PATH=/usr/bin:/bin:/usr/sbin:/sbin", "LC_ALL=C"}
-	if home, ok := os.LookupEnv("HOME"); ok {
-		cmd.Env = append(cmd.Env, "HOME="+home)
+	// secret-tool finds the session bus only through the last two.
+	for _, name := range []string{"HOME", "DBUS_SESSION_BUS_ADDRESS", "XDG_RUNTIME_DIR"} {
+		if v, ok := os.LookupEnv(name); ok {
+			cmd.Env = append(cmd.Env, name+"="+v)
+		}
 	}
 	// A child that keeps stdout open must not outlive the timeout.
 	cmd.WaitDelay = time.Second
