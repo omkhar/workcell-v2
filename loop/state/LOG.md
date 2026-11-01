@@ -25,3 +25,8 @@ Learned: the shipped ci.yml works on ubuntu-24.04 with KVM; the gate.sh VM suite
 Next: U-003 adds the v1 baseline to the same file; guard and merge checks take about 4 s each.
 
 ## 2026-11-01T15:24Z U-003 START mode=cloud
+
+## 2026-11-01T15:26Z U-003 PASS mode=cloud model=haiku tries=0
+Summarised loop/baseline/ci.tsv into a new section of docs/benchmarks.md (+21 lines): per-workflow runs, median, p90, failure rate and cancel rate for 12 v1 workflows.
+Learned: the v1 CI workflow, the row comparable to P5, had a median of 18 min and a 20% cancel rate over 20 runs; five workflows have one sample only.
+Next: the first unit is U-004, the escape harness (flow escape, model fable); the local gate takes about 2 s with nothing enforced.
