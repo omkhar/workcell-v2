@@ -13,11 +13,11 @@ import (
 	"time"
 )
 
-// maxLineBytes bounds one broker request. The ledger writer (U-400) reuses it.
+// maxLineBytes bounds the host and header of one lookup that the broker records.
 const maxLineBytes = 4096
 
 // maxLedgerLineBytes is above the longest line the broker can write: a
-// request is at most maxLineBytes, and JSON escaping grows a byte to at most 6.
+// lookup is at most maxLineBytes, and JSON escaping grows a byte to at most 6.
 const maxLedgerLineBytes = 8 * maxLineBytes
 
 // maxLedgerRecords bounds the summary read. The broker's request budgets allow

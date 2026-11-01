@@ -5,10 +5,11 @@ package secret
 
 import (
 	"bytes"
-	"encoding/json"
+	"context"
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 )
 
 const ts = `"time":"2026-10-16T00:00:00Z"`
@@ -75,22 +76,35 @@ func TestLedgerAuditRecordsOfAnEmptyLedger(t *testing.T) {
 	}
 }
 
+// TestLedgerAuditRecordsReadsWhatTheBrokerWrites folds a ledger that a real
+// broker wrote: one grant and one denial of each kind it can record.
+func TestLedgerAuditRecordsReadsWhatTheBrokerWrites(t *testing.T) {
+	log := &syncBuffer{}
+	b := newTestBroker(t, log)
+	ctx := context.Background()
+	for _, host := range []string{"api.anthropic.com", "evil.example", strings.Repeat("h", maxLineBytes+1)} {
+		_, _ = b.Lookup(ctx, host, "x-api-key")
+	}
+	b.windowStart, b.count = time.Now(), rateLimit
+	_, _ = b.Lookup(ctx, "api.anthropic.com", "x-api-key")
+	if got, want := fold(t, log.String()), "credential_broker_summary status=complete granted=1 denied=3 malformed_lines=0"; got != want {
+		t.Fatalf("got %q, want %q", got, want)
+	}
+}
+
 // TestLedgerAuditRecordsRefusesALineTheBrokerCannotWrite fails the read on a
 // 32 KiB line instead of folding a partial line, and still folds the longest
-// line the broker can write: a request at the size limit whose host is all
-// control characters, which JSON escapes to 6 bytes each. The same check
-// against a line that record wrote returns in U-400.
+// line the broker can write: a lookup at the size limit whose host is all
+// control characters, which JSON escapes to 6 bytes each.
 func TestLedgerAuditRecordsRefusesALineTheBrokerCannotWrite(t *testing.T) {
 	line := `{` + ts + `,"result":"bad_token","host":"` + strings.Repeat("a", 32<<10) + `"}`
 	if records, err := LedgerAuditRecords(strings.NewReader(line+"\n"), known); err == nil {
 		t.Fatalf("LedgerAuditRecords = %q, want an error for a line over the cap", records)
 	}
-	longest, err := json.Marshal(ledgerRecord{Time: "2026-10-16T00:00:00Z", Host: strings.Repeat("\x01", maxLineBytes-64), Result: resultBadToken})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got, want := fold(t, string(longest)+"\n"), "credential_broker_summary status=complete granted=0 denied=1 malformed_lines=0"; got != want {
-		t.Fatalf("a %d-byte line: got %q, want %q", len(longest), got, want)
+	log := &syncBuffer{}
+	_, _ = newTestBroker(t, log).Lookup(context.Background(), strings.Repeat("\x01", maxLineBytes-len("x-api-key")), "x-api-key")
+	if got, want := fold(t, log.String()), "credential_broker_summary status=complete granted=0 denied=1 malformed_lines=0"; got != want {
+		t.Fatalf("a %d-byte line: got %q, want %q", log.Len(), got, want)
 	}
 }
 
