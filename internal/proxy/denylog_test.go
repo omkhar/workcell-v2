@@ -5,6 +5,7 @@
 package proxy
 
 import (
+	"bytes"
 	"fmt"
 	"slices"
 	"strings"
@@ -13,6 +14,25 @@ import (
 
 func summary(status string, keys int, total uint64, malformed int) string {
 	return fmt.Sprintf("egress_summary status=%s deny_keys=%d deny_total=%d malformed_lines=%d", status, keys, total, malformed)
+}
+
+// TestDenyAuditRecordsReadsProxyOutput feeds the proxy's own deny lines back,
+// so the writer and the reader share one line format.
+func TestDenyAuditRecordsReadsProxyOutput(t *testing.T) {
+	var log bytes.Buffer
+	p := New(&Allowlist{}, &log)
+	p.deny("a.example", 443, "sni_not_allowed")
+	p.deny("a.example", 443, "sni_not_allowed")
+	p.deny("", 22, "port_not_allowed")
+	got := DenyAuditRecords(log.Bytes())
+	want := []string{
+		"egress_deny host=a.example port=443 reason=sni_not_allowed count=2",
+		"egress_deny host= port=22 reason=port_not_allowed count=1",
+		summary("complete", 2, 3, 0),
+	}
+	if !slices.Equal(got, want) {
+		t.Fatalf("records = %q, want %q", got, want)
+	}
 }
 
 // TestDenyAuditRecordsRejectsMalformedLines counts each hostile line as
@@ -130,6 +150,37 @@ func TestDenyAuditRecordsPortZeroOnlyForOverflow(t *testing.T) {
 	} {
 		if got := DenyAuditRecords([]byte(line)); !strings.HasSuffix(got[len(got)-1], "malformed_lines=1") {
 			t.Fatalf("%s: summary = %q, want one malformed line", line, got[len(got)-1])
+		}
+	}
+}
+
+// TestDenyAuditRecordsSeesRotatedHead cuts the head off a real proxy log, as
+// the sidecar's json-file rotation does when a deny flood fills it. The first
+// denial is gone, so the summary must not say complete. That holds also when
+// the flood ends with fresh keys, whose running counts start again at 1.
+func TestDenyAuditRecordsSeesRotatedHead(t *testing.T) {
+	var log bytes.Buffer
+	p := New(&Allowlist{}, &log)
+	p.deny("exfil.example", 443, "sni_not_allowed")
+	for range 100 {
+		p.deny("flood.example", 443, "sni_not_allowed")
+	}
+	for i := range 10 {
+		p.deny(fmt.Sprintf("f%d.example", i), 443, "sni_not_allowed")
+	}
+	lines := strings.SplitAfter(log.String(), "\n")
+	for _, tc := range []struct {
+		name   string
+		cut    int
+		status string
+	}{
+		{"whole log", 0, "status=complete "},
+		{"flood key survives", 50, "status=truncated "},
+		{"only fresh keys survive", 105, "status=truncated "},
+	} {
+		got := DenyAuditRecords([]byte(strings.Join(lines[tc.cut:], "")))
+		if !strings.Contains(got[len(got)-1], tc.status) {
+			t.Errorf("%s: summary = %q, want %s", tc.name, got[len(got)-1], tc.status)
 		}
 	}
 }

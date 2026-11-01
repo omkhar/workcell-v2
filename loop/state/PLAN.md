@@ -121,7 +121,7 @@ with ADR-003 and ADR-004, they build on the proposal, and you can accept it at a
       accept: the guest has no working default route to anything else
 - [x] U-302a | flow:boundary | model:opus | env:any | deps:U-001 | tries:0 | Port `_legacy/egressproxy` part 1 to `internal/proxy` (S14): `allowlist.go` and `denylog.go` with their tests. Drop the `injectionpolicy` dependency and replace its endpoint check with a local one; inline the no-follow bounded read that `rootio` gave (R6)
       accept: ported allowlist and deny-log tests pass; no import outside the standard library, `x/sys` and `x/net`; every ported file says `// Ported from v1: <path>`
-- [ ] U-302b | flow:boundary | model:opus | env:any | deps:U-001,U-302a | tries:0 | Port `_legacy/egressproxy` part 2 to `internal/proxy` (S14): `proxy.go` with its tests. Keep SNI peek, ECH refusal and `blockedAddr`
+- [x] U-302b | flow:boundary | model:opus | env:any | deps:U-001,U-302a | tries:0 | Port `_legacy/egressproxy` part 2 to `internal/proxy` (S14): `proxy.go` with its tests. Keep SNI peek, ECH refusal and `blockedAddr`
       accept: ported proxy tests and `FuzzPeekSNI` pass; no import outside the standard library, `x/sys` and `x/net`
 - [ ] U-302 | flow:boundary | model:opus | env:any | deps:U-001,U-302a,U-302b | tries:0 | Port `_legacy/egressproxy` part 3 to `internal/proxy` (S14): `terminate.go` with its tests, the last part. Drop the `injectionpolicy` dependency, keep SNI peek, ECH refusal and `blockedAddr`
       accept: ported tests pass; no import outside the standard library, `x/sys` and `x/net`
