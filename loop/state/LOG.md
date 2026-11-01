@@ -177,3 +177,5 @@ Lookup: a host plus header over maxLineBytes is recorded malformed without them 
 Tests: go test -race clean, go vet and GOOS=darwin vet clean, local gate 6 s; hosted gate (170 s), gate-macos and guard green on the unit commit. Redteam wrote no escape test (nothing can FAIL on control until a guest request reaches the broker through the proxy, U-401); its two variant lines are in PARKED.md. Review: no findings; one less-code note and two U-401 notes parked, above all that proxy.Terminate lowercases headers while NewBroker keeps case, so the config step must lowercase.
 Budget: product 1632 of 15000, test 3931 of 4448, so 517 test lines remain; direct dependencies 2 of 15. U-007 to U-010b stay [!] until the maintainer resets them.
 Next: Phase 4's remaining units need U-307 or U-401 (env:kvm, behind U-303 and H-103), so the next takeable cloud unit is B-820 (ADR-004, spike, env:any, deps U-001), then B-821 (internal/pins selector, boundary, env:any). The claim was PR #32, which this run gave its final title.
+
+## 2026-11-01T21:16Z B-820 START mode=cloud
