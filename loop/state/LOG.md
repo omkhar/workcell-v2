@@ -117,3 +117,5 @@ Split into U-302a (allowlist.go and denylog.go with tests, drop injectionpolicy,
 Facts for the parts: every legacy file is stdlib-only except allowlist.go, which imports injectionpolicy for one endpoint check (ValidateEgressEndpoint, absent from this tree) and rootio for ReadFileNoFollow (_legacy/rootio/nofollow.go). No legacy test reads source as text. go.mod has two direct dependencies (purego, x/sys); x/net is not yet required and the scout saw no need for it.
 Budget after the full port: about 1105 product lines, so the test limit becomes about 3658 and the 1220 ported test lines fit beside the 234 that exist; U-007 to U-010b may fit again once all three parts land, so read the gate budget line then.
 Next: U-302a is the first takeable unit for the cloud (env:any, deps U-001). The claim was PR #23, closed by this run.
+
+## 2026-11-01T19:22Z U-302a START mode=cloud
