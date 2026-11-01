@@ -16,3 +16,5 @@ followed by START, PASS, FAIL, BLOCKED or SPLIT, unless the maintainer signed it
 
 Write the time as `2026-10-31T10:15Z`. The loop halts when the last six results are all FAIL or BLOCKED. To clear
 that halt, fix the cause, append a RESUME line here, and land it with `land.sh`. Then close the `loop-halt` issue.
+
+## 2026-11-01T15:16Z U-002b START mode=cloud
