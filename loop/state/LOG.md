@@ -64,3 +64,5 @@ Harness shape that made it work: Start(ctx, Config{Payload, Workspace, CPUs, Mem
 Blocked by SPEC section 7, not by the tests: the test-code budget is 1.5 x product + 2000 lines, product code is 32 lines, so everything under escape/ may hold 2048 lines; main holds 1860 and this unit brings 2729. Nothing in escape/ can go without losing a T2-proven test, and no cut of 188 lines inside the new files was found.
 The code is committed on this run's work branch and not pushed (7a case 2). Rebuild it from this entry when the budget allows.
 Next: U-008, U-009, U-010 and U-010b each add about 500 lines and cannot fit either; read the gate's budget line before spending a redteam on them. Only product code (U-202 is the first unit with no human gate before it) or a maintainer edit to the budget makes room. Code under spikes/ is outside the budget, so U-100 and U-101 can go on.
+
+## 2026-11-01T17:18Z U-008 START mode=cloud
