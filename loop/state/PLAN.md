@@ -68,7 +68,7 @@ with ADR-003 and ADR-004, they build on the proposal, and you can accept it at a
       accept: guest memory, disk, env and argv scan for a known canary secret; placeholder replay to another host; SNI and Host mismatch; ECH; a redirect that tries to carry the secret
 - [!] U-009 | flow:escape | model:fable | env:any | deps:U-004 | tries:0 | Escape tests for I8 and I13
       accept: hostile hooks, filters, attributes, `.git/config`, submodule URLs, symlinks, `../` paths, case-collision names; a repo-local policy that tries to widen
-- [ ] U-010 | flow:escape | model:fable | env:any | deps:U-004 | tries:0 | Escape tests for I9, I11 and I12
+- [!] U-010 | flow:escape | model:fable | env:any | deps:U-004 | tries:0 | Escape tests for I9, I11 and I12
       accept: log forge, suppress and truncate attempts; `kill -9` of each host helper; malformed, oversized and slow-drip channel frames
 - [ ] U-010b | flow:escape | model:fable | env:any | deps:U-004 | tries:0 | Escape tests for I14, with a local fake channel server and fake upstream
       accept: bad signature, expired manifest, lower serial, digest mismatch, truncated download and redirected URL are each refused
