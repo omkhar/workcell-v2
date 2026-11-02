@@ -7,7 +7,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -30,7 +29,7 @@ func (f *fake) Start(_ context.Context, cfg sandbox.Config) (string, error) {
 	return "/guest" + cfg.Workspace, f.start
 }
 func (f *fake) Exec(_ context.Context, args ...string) (sandbox.Output, error) {
-	return sandbox.Output{Stdout: []byte(f.stdout), Exit: f.exit, Total: int64(len(f.stdout))}, nil
+	return sandbox.Output{Stdout: []byte(f.stdout), Exit: f.exit}, nil
 }
 func (f *fake) Stop() error { f.stops++; return nil }
 
@@ -92,10 +91,8 @@ func TestSessions(t *testing.T) {
 		if err != nil {
 			return false, "", err
 		}
-		if _, err := s.Run(); err != nil || s.Taken() != int64(len(sb.stdout)) || two.Taken() != 0 {
-			return false, "", fmt.Errorf("taken %d and %d after one run, %v", s.Taken(), two.Taken(), err)
-		}
-		return true, "", nil
+		_, err = s.Run()
+		return err == nil, "", err
 	}
 	test := suite.Test{ID: "I7", Name: "t", Host: judge, Want: suite.Want{Workspace: true, CPUs: 1}}
 	rep := run(context.Background(), "fake", func() (sandbox.Sandbox, error) { return sb, nil }, "", []suite.Test{test})
@@ -103,7 +100,7 @@ func TestSessions(t *testing.T) {
 		t.Fatalf("report %+v, %d sessions, %d stops, workspaces %q", rep, len(got), sb.stops, sb.workspaces)
 	}
 	for i, s := range got {
-		if s.Workspace != sb.workspaces[i] || s.Guest != "/guest"+s.Workspace || s.Run == nil || s.Taken() != int64(i^1)*int64(len(sb.stdout)) {
+		if s.Workspace != sb.workspaces[i] || s.Guest != "/guest"+s.Workspace || s.Run == nil {
 			t.Errorf("session %d: %+v, want workspace %q", i, s, sb.workspaces[i])
 		}
 		if _, err := os.Stat(filepath.Dir(s.Workspace)); !os.IsNotExist(err) {

@@ -11,6 +11,8 @@ func mountProbe([]string) Result  { return linuxOnly("mount") }
 func handleProbe([]string) Result { return linuxOnly("handle") }
 func forkProbe([]string) Result   { return linuxOnly("fork") }
 
+func memoryBacked(string) bool { return true }
+
 func linuxOnly(name string) Result {
 	return Result{Status: "error", Detail: "the " + name + " probe is Linux only"}
 }

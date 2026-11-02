@@ -62,3 +62,16 @@ func forkProbe(args []string) Result {
 	}
 	return Result{Status: "tried", Detail: detail}
 }
+
+// memoryBacked says whether the directory lies on a filesystem held in memory.
+func memoryBacked(dir string) bool {
+	var st unix.Statfs_t
+	if err := unix.Statfs(dir, &st); err != nil {
+		return true // unknown is no disk
+	}
+	switch st.Type {
+	case unix.TMPFS_MAGIC, unix.RAMFS_MAGIC, unix.HUGETLBFS_MAGIC:
+		return true
+	}
+	return false
+}

@@ -7,18 +7,19 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"sync/atomic"
 	"syscall"
 	"time"
 )
 
 // control is the plain container of SPEC T2: new mount, pid, uts and ipc
 // namespaces, the host's network namespace kept so that the network is open,
-// and the host's root shared. A user namespace maps the caller to root when
-// the caller is not root already. Every escape test must fail here.
+// and the host's root shared, and with no cap on what it logs. A user
+// namespace maps the caller to root when the caller is not root already.
+// Every escape test must fail here.
 type control struct {
 	dir     string
 	payload string
@@ -57,12 +58,18 @@ func (c *control) Exec(ctx context.Context, args ...string) (Output, error) {
 	}
 	cmd.SysProcAttr = attr
 	cmd.WaitDelay = 2 * time.Second // the payload is pid 1 of its namespace: its death takes the rest
-	var total atomic.Int64
-	stdout := &bounded{limit: MaxStdout, total: &total}
-	stderr := &bounded{limit: MaxStderr, total: &total}
-	cmd.Stdout, cmd.Stderr = stdout, stderr
-	err := cmd.Run()
-	out := Output{Stdout: stdout.buf, Stderr: stderr.buf, Total: total.Load()}
+	// A plain container logs everything the guest says, without a cap: both
+	// streams go whole into a log file in the session directory.
+	log, err := os.OpenFile(filepath.Join(c.dir, "log"), os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0o600)
+	if err != nil {
+		return Output{}, fmt.Errorf("control: open log: %w", err)
+	}
+	defer log.Close()
+	stdout := &bounded{limit: MaxStdout}
+	stderr := &bounded{limit: MaxStderr}
+	cmd.Stdout, cmd.Stderr = io.MultiWriter(stdout, log), io.MultiWriter(stderr, log)
+	err = cmd.Run()
+	out := Output{Stdout: stdout.buf, Stderr: stderr.buf}
 	var exit *exec.ExitError
 	switch {
 	case err == nil:

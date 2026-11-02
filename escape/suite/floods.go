@@ -32,8 +32,8 @@ const (
 	diskSlack   = 32        // MiB of host disk the session may fill over its cap
 	fileCount   = 8192      // descriptors the descriptor probe opens
 	fileSlack   = 2048      // open file handles a whole session may add to the host
-	logWrite    = 4 << 20   // bytes the log probe streams
-	logCap      = 1 << 20   // bytes of guest output the host may take in from one session
+	logWrite    = 96 << 20  // bytes the log probe streams
+	logCap      = 1 << 20   // bytes of one session's output the host may keep
 	cpuSpin     = 3         // seconds the CPU probe spins on every CPU it sees
 	cpuSlack    = 1.0       // CPU seconds of host noise allowed
 	ticksPerSec = 100       // USER_HZ, the unit of /proc/stat
@@ -116,16 +116,15 @@ func fileJudge(ctx context.Context, s Session) (bool, string, error) {
 	return above <= fileSlack, detail, nil
 }
 
-// logJudge fails if the host took in more of the guest's output than any one
-// session may log.
+// logJudge fails if the host's disk filled by more than one session's log
+// may hold, plus slack, while the guest streamed far more than that.
 func logJudge(ctx context.Context, s Session) (bool, string, error) {
-	r, err := s.Run(strconv.Itoa(logWrite))
+	r, below, _, err := sampled(s, hostDiskFree, strconv.Itoa(logWrite))
 	if err != nil {
 		return false, "", err
 	}
-	taken := s.Taken()
-	detail := fmt.Sprintf("the host took in %d bytes of the guest's output, cap %d (guest says %s: %s)", taken, logCap, r.Status, r.Detail)
-	return taken <= logCap, detail, nil
+	detail := fmt.Sprintf("the host lost %d MiB of free disk while the guest streamed %d MiB of output, log cap %d MiB (guest says %s: %s)", below>>20, logWrite>>20, logCap>>20, r.Status, r.Detail)
+	return below <= logCap+diskSlack<<20, detail, nil
 }
 
 // cpuJudge fails if the host spent more CPU time on the probe's run than its
@@ -189,8 +188,10 @@ func memoryProbe(args []string) Result {
 	return r
 }
 
-// diskProbe writes args[0] MiB to an unlinked file in the guest's temp
-// directory, syncs it, and holds it. The space is freed when it exits.
+// diskProbe writes args[0] MiB to an unlinked file in the guest's first temp
+// directory that lies on a disk, syncs it, and holds it. The space is freed
+// when it exits. A directory held in memory would load memory, not disk, and
+// is not what this probe is for.
 func diskProbe(args []string) Result {
 	if len(args) != 1 {
 		return Result{Status: "error", Detail: "want MiB"}
@@ -202,12 +203,16 @@ func diskProbe(args []string) Result {
 	var f *os.File
 	var dir string
 	for _, dir = range []string{os.TempDir(), "/var/tmp", "/root", "/"} {
+		if memoryBacked(dir) {
+			err = errors.New("memory-backed")
+			continue
+		}
 		if f, err = os.CreateTemp(dir, "escape-disk-"); err == nil {
 			break
 		}
 	}
 	if err != nil {
-		return Result{Status: "error", Detail: "no writable directory: " + err.Error()}
+		return Result{Status: "error", Detail: "no writable directory on a disk: " + err.Error()}
 	}
 	os.Remove(f.Name())
 	defer f.Close()
@@ -260,7 +265,8 @@ func fileProbe(args []string) Result {
 	return Result{Status: "tried", Detail: detail}
 }
 
-// logProbe streams args[0] bytes of noise to stderr.
+// logProbe streams args[0] bytes of noise to stderr, then holds for the
+// judge's samples.
 func logProbe(args []string) Result {
 	if len(args) != 1 {
 		return Result{Status: "error", Detail: "want bytes"}
@@ -278,6 +284,7 @@ func logProbe(args []string) Result {
 			return Result{Status: "tried", Detail: fmt.Sprintf("wrote=%d of %d bytes err=%s", wrote, n, short(err))}
 		}
 	}
+	time.Sleep(hold)
 	return Result{Status: "tried", Detail: fmt.Sprintf("wrote=%d bytes to stderr", wrote)}
 }
 

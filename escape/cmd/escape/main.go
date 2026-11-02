@@ -18,7 +18,6 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
-	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -151,8 +150,7 @@ func runOne(ctx context.Context, fresh func() (sandbox.Sandbox, error), payload 
 		if err != nil {
 			return suite.Session{}, err
 		}
-		var taken atomic.Int64
-		return suite.Session{Run: probe(ctx, sb, t.Name, &taken), Workspace: cfg.Workspace, Guest: guest, Taken: taken.Load, Another: open}, nil
+		return suite.Session{Run: probe(ctx, sb, t.Name), Workspace: cfg.Workspace, Guest: guest, Another: open}, nil
 	}
 	first, err := open()
 	if err != nil {
@@ -182,10 +180,9 @@ func (s session) stop() {
 }
 
 // probe runs the test's probe inside the sandbox and parses its one line.
-func probe(ctx context.Context, sb sandbox.Sandbox, name string, taken *atomic.Int64) suite.Run {
+func probe(ctx context.Context, sb sandbox.Sandbox, name string) suite.Run {
 	return func(args ...string) (suite.Result, error) {
 		out, err := sb.Exec(ctx, append([]string{name}, args...)...)
-		taken.Add(out.Total)
 		if err != nil {
 			return suite.Result{}, err
 		}

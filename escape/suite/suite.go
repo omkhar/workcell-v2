@@ -43,9 +43,6 @@ type Session struct {
 	// removes it afterwards, so a judge may plant files beside Workspace.
 	Workspace string
 	Guest     string // where the guest sees Workspace
-	// Taken is how many bytes of the guest's output the host has taken in
-	// so far, kept or dropped.
-	Taken func() int64
 	// Another starts a second session with the same Want and its own export.
 	// The runner stops it with the first.
 	Another func() (Session, error)

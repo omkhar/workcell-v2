@@ -13,7 +13,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
-	"sync/atomic"
 )
 
 // ErrNotImplemented is returned by an adapter that cannot do the operation yet.
@@ -32,9 +31,6 @@ type Output struct {
 	Stdout []byte
 	Stderr []byte
 	Exit   int
-	// Total is every byte the host took in from the guest on both streams,
-	// kept or dropped. A host that keeps taking is one the guest can flood.
-	Total int64
 }
 
 // Config is the sandbox a test wants. The caps are what the product's
@@ -87,16 +83,13 @@ func BuildPayload(ctx context.Context, dir string) (string, error) {
 	return out, nil
 }
 
-// bounded keeps the first limit bytes written, drops the rest, and counts
-// them all in total.
+// bounded keeps the first limit bytes written and drops the rest.
 type bounded struct {
 	limit int
 	buf   []byte
-	total *atomic.Int64 // shared by both streams, which are read concurrently
 }
 
 func (b *bounded) Write(p []byte) (int, error) {
 	b.buf = append(b.buf, p[:min(len(p), b.limit-len(b.buf))]...)
-	b.total.Add(int64(len(p)))
 	return len(p), nil
 }
