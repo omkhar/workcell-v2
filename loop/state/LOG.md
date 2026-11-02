@@ -307,3 +307,5 @@ Learned: this supervised session is a launchd Background session with a locked l
 Review: no R2-valid finding. Three notes parked (the -A flag versus the plain-create property, per-request keychain prompting as a U-400 broker design point, and the global search-list mutation restored in Cleanup). -A is kept because "no prompt storm" is in the accept line.
 Gate: GATE_MACOS=1 loop/gate.sh gave GATE PASS in 71s with the keychain read test running, not skipping. Budgets unchanged but for about +90 test lines.
 Next: no new env:macos unit is takeable until H-103 closes (needs U-103a, ADR-001) and the kvm chain (U-200, U-208) advances for U-700 and U-701, so the next Mac run likely finds nothing to do; U-702 helps unblock U-701 and U-905a.
+
+## 2026-11-02T20:27Z U-103a START mode=cloud
