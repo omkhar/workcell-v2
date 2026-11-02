@@ -135,7 +135,7 @@ func runOne(ctx context.Context, fresh func() (sandbox.Sandbox, error), payload 
 		}
 		s := session{sb: sb}
 		sessions = append(sessions, s)
-		cfg := sandbox.Config{Payload: payload, CPUs: t.Want.CPUs, MemoryMiB: t.Want.MemoryMiB, DiskMiB: t.Want.DiskMiB, Allow: t.Want.Allow}
+		cfg := sandbox.Config{Payload: payload, CPUs: t.Want.CPUs, MemoryMiB: t.Want.MemoryMiB, DiskMiB: t.Want.DiskMiB, Allow: t.Want.Allow, Deny: t.Want.Deny}
 		if t.Want.Secret {
 			sec := suite.NewSecret(t.Want.Allow[0])
 			cfg.Secret = &sec
@@ -149,12 +149,18 @@ func runOne(ctx context.Context, fresh func() (sandbox.Sandbox, error), payload 
 			if err := os.Mkdir(cfg.Workspace, 0o755); err != nil {
 				return suite.Session{}, err
 			}
+			if t.Want.Policy != "" { // the hostile repository's own policy, there before the session starts
+				if err := os.WriteFile(filepath.Join(cfg.Workspace, "workcell.toml"), []byte(t.Want.Policy), 0o644); err != nil {
+					return suite.Session{}, err
+				}
+			}
 		}
 		guest, err := sb.Start(ctx, cfg)
 		if err != nil {
 			return suite.Session{}, err
 		}
-		ses := suite.Session{Run: probe(ctx, sb, t.Name), Workspace: cfg.Workspace, Guest: guest, Allow: cfg.Allow, Another: open}
+		ses := suite.Session{Run: probe(ctx, sb, t.Name), Workspace: cfg.Workspace, Guest: guest, Allow: cfg.Allow, Deny: cfg.Deny, Another: open,
+			Pull: func(dest string) error { return sb.Pull(ctx, dest) }}
 		if cfg.Secret != nil {
 			ses.Secret = *cfg.Secret
 		}

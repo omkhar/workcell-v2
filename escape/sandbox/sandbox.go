@@ -46,6 +46,10 @@ type Config struct {
 	// the session, to the test host's own address, where the judge's canaries
 	// listen (SPEC T8). The control adapter has no policy and ignores it.
 	Allow []string
+	// Deny names hosts the policy does not allow. Each resolves for the
+	// session like an allowed name does, so that a policy the guest widened
+	// would reach a canary under it. The control adapter ignores it.
+	Deny []string
 	// Secret is a credential bound to one allowed name; nil for none.
 	Secret *Secret
 }
@@ -67,6 +71,10 @@ type Sandbox interface {
 	// Exec runs the payload inside the sandbox, as root in the guest, with the
 	// arguments. A non-zero exit status is reported in Output, not as an error.
 	Exec(ctx context.Context, args ...string) (Output, error)
+	// Pull brings the guest's workspace back to the host, into the directory
+	// dest, as the product's pull does. The guest wrote the tree it brings;
+	// a sandbox that executes or obeys any of it breaks SPEC I8.
+	Pull(ctx context.Context, dest string) error
 	// Stop tears the sandbox down.
 	Stop() error
 }

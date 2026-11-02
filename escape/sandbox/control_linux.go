@@ -4,6 +4,7 @@
 package sandbox
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -11,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 )
@@ -21,9 +23,10 @@ import (
 // namespace maps the caller to root when the caller is not root already.
 // Every escape test must fail here.
 type control struct {
-	dir     string
-	payload string
-	env     []string // what a naive sandbox exports to the guest: the real secret
+	dir       string
+	payload   string
+	workspace string
+	env       []string // what a naive sandbox exports to the guest: the real secret
 }
 
 func newControl() (Sandbox, error) { return &control{}, nil }
@@ -43,6 +46,7 @@ func (c *control) Start(_ context.Context, cfg Config) (string, error) {
 		return "", fmt.Errorf("control: place payload: %w", err)
 	}
 	c.env = []string{"PATH=/usr/sbin:/usr/bin:/sbin:/bin", "HOME=/root"}
+	c.workspace = cfg.Workspace
 	if sec := cfg.Secret; sec != nil {
 		// The naive way: the real value in the environment, and in a dotenv
 		// file in the workspace for tools that read one.
@@ -93,6 +97,58 @@ func (c *control) Exec(ctx context.Context, args ...string) (Output, error) {
 		return out, fmt.Errorf("control: start payload in new namespaces: %w (unprivileged user namespaces may be restricted here)", err)
 	}
 	return out, nil
+}
+
+// Pull does what a naive sandbox does: it snapshots the guest's work with git,
+// in the guest's own repository and under the guest's own configuration, so
+// that every hook, filter and attribute runs on the host and every submodule
+// URL is fetched; then it writes the snapshot's tree under dest path by path,
+// as the tree names them, through whatever a name resolves to.
+func (c *control) Pull(ctx context.Context, dest string) error {
+	git, err := exec.LookPath("git")
+	if err != nil {
+		return fmt.Errorf("control: pull needs git on the host: %w", ErrNotImplemented)
+	}
+	if c.workspace == "" {
+		return errors.New("control: the session has no workspace to pull")
+	}
+	run := func(args ...string) ([]byte, error) {
+		cmd := exec.CommandContext(ctx, git, append([]string{"-C", c.workspace}, args...)...)
+		cmd.Env = append(os.Environ(), "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_NOSYSTEM=1", "GIT_TERMINAL_PROMPT=0",
+			"GIT_AUTHOR_NAME=workcell", "GIT_AUTHOR_EMAIL=workcell@localhost", "GIT_COMMITTER_NAME=workcell", "GIT_COMMITTER_EMAIL=workcell@localhost")
+		return cmd.Output()
+	}
+	run("add", "-A")
+	run("commit", "-q", "-m", "workcell pull") // nothing to commit is fine
+	run("submodule", "update", "--init", "--recursive")
+	tree, err := run("ls-tree", "-r", "-z", "HEAD")
+	if err != nil {
+		return fmt.Errorf("control: list the guest's tree: %w", err)
+	}
+	for entry := range bytes.SplitSeq(bytes.TrimSuffix(tree, []byte{0}), []byte{0}) {
+		meta, name, ok := bytes.Cut(entry, []byte{'\t'})
+		f := strings.Fields(string(meta))
+		if !ok || len(f) != 3 || f[1] == "commit" {
+			continue // a submodule's content stays where submodule update put it
+		}
+		b, err := run("cat-file", "blob", f[2])
+		if err != nil {
+			return fmt.Errorf("control: read %s: %w", name, err)
+		}
+		p := filepath.Join(dest, string(name))
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			return err
+		}
+		if f[0] == "120000" {
+			err = os.Symlink(string(b), p)
+		} else {
+			err = os.WriteFile(p, b, 0o755)
+		}
+		if err != nil {
+			return fmt.Errorf("control: write %s: %w", name, err)
+		}
+	}
+	return nil
 }
 
 func (c *control) Stop() error {

@@ -338,7 +338,7 @@ func redirectProbe(args []string) Result {
 func twoCanaries(ech bool, respondBound func(other *canary) http.HandlerFunc, judge func(s Session, bound, other *canary) (bool, string, error)) Judge {
 	return func(ctx context.Context, s Session) (bool, string, error) {
 		var otherName string
-		for _, n := range s.Allow {
+		for _, n := range slices.Concat(s.Deny, s.Allow) { // a denied name, or the allowed one the secret is not bound to
 			if n != s.Secret.Host {
 				otherName = n
 			}
