@@ -92,7 +92,7 @@ with ADR-003 and ADR-004, they build on the proposal, and you can accept it at a
 
 ## Phase 2: core on Linux
 
-- [ ] U-200 | flow:boundary | model:fable | env:kvm | deps:H-103 | tries:0 | `internal/vmm`: the interface and the Linux backend
+- [x] U-200 | flow:boundary | model:fable | env:kvm | deps:H-103 | tries:0 | `internal/vmm`: the interface and the Linux backend
       accept: boots, stops and force-kills a guest; no orphan process after a SIGKILL of the supervisor
 - [ ] U-201 | flow:build | model:sonnet | env:any | deps:H-103 | tries:0 | Guest image build: OCI base to a read-only root image, byte-reproducible, addressed by digest
       accept: two clean builds give the same digest; under 400 MB; build needs no shell
