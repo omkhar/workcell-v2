@@ -1,0 +1,38 @@
+{
+  "Name": "debian",
+  "Class": "trusted",
+  "Source": "oci",
+  "Locator": "https://mirror.gcr.io/v2/library/debian",
+  "Package": {
+    "Ecosystem": "",
+    "Name": ""
+  },
+  "Assets": null,
+  "Signing": {
+    "Identity": "",
+    "Issuer": "",
+    "Bundles": null,
+    "Members": null
+  },
+  "Version": "trixie-20261027-slim",
+  "Artifacts": {
+    "amd64": {
+      "URL": "https://mirror.gcr.io/v2/library/debian/manifests/sha256:f6b08b09a05725f9431502d3b5714f5c4576e82c1a84fa1debe0c24a7e0c3ec4",
+      "SHA256": "f6b08b09a05725f9431502d3b5714f5c4576e82c1a84fa1debe0c24a7e0c3ec4",
+      "Integrity": "",
+      "Bundle": ""
+    },
+    "arm64": {
+      "URL": "https://mirror.gcr.io/v2/library/debian/manifests/sha256:f6b08b09a05725f9431502d3b5714f5c4576e82c1a84fa1debe0c24a7e0c3ec4",
+      "SHA256": "f6b08b09a05725f9431502d3b5714f5c4576e82c1a84fa1debe0c24a7e0c3ec4",
+      "Integrity": "",
+      "Bundle": ""
+    }
+  },
+  "Timestamps": [
+    "2026-10-27T00:00:00Z"
+  ],
+  "Released": "2026-11-02T23:39:00Z",
+  "Previous": null,
+  "Withdrawn": null
+}

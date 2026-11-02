@@ -98,7 +98,7 @@ with ADR-003 and ADR-004, they build on the proposal, and you can accept it at a
       accept: the same tree written twice gives identical bytes, by a unit test; `e2fsck -fn` accepts an image holding every entry kind and a file over 48 KiB, shown by a test that skips without e2fsck on PATH; no exec of mkfs or shell
 - [x] U-201b | flow:build | model:sonnet | env:any | deps:H-103,U-201a | tries:0 | `internal/rootfs`: OCI pull and unpack. Fetch one platform's manifest and layers from a registry by digest over https with an anonymous bearer token, check every blob's digest against the manifest, cap sizes as `internal/artifact` does, and apply the layers in order with whiteouts and opaque directories into the U-201a tree; no shell
       accept: unit tests against an `httptest` registry show the digest checks, the whiteout rules and the refusal of a tar member whose name is absolute, holds `..` or links outside the tree; nothing is written outside the given directory
-- [ ] U-201 | flow:build | model:sonnet | env:any | deps:H-103,U-201a,U-201b | tries:0 | Guest image build: OCI base to a read-only root image, byte-reproducible, addressed by digest
+- [x] U-201 | flow:build | model:sonnet | env:any | deps:H-103,U-201a,U-201b | tries:0 | Guest image build: OCI base to a read-only root image, byte-reproducible, addressed by digest
       accept: two clean builds give the same digest; under 400 MB; build needs no shell
 - [x] U-202 | flow:boundary | model:opus | env:any | deps:U-001 | tries:0 | `internal/wire`: length-prefixed, versioned, bounded host-guest protocol, with a fuzz target
       accept: I12 unit and fuzz tests pass; every frame has a hard size and time limit
