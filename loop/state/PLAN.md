@@ -197,7 +197,7 @@ with ADR-003 and ADR-004, they build on the proposal, and you can accept it at a
       accept: U-204's acceptance passes on macOS with no change outside `internal/vmm`
 - [ ] U-701 | flow:boundary | model:fable | env:macos | deps:U-700,U-305,U-306,U-307 | tries:0 | Network path on macOS
       accept: I2, I3, I4, I6 and I11 added to `enforced-macos.txt` and green on the Mac
-- [ ] U-702 | flow:build | model:sonnet | env:macos | deps:U-400 | tries:0 | `keychain:` secret source
+- [x] U-702 | flow:build | model:sonnet | env:macos | deps:U-400 | tries:0 | `keychain:` secret source
       accept: reads an item created with `security add-generic-password`, with no prompt storm
 - [H] H-703 | env:macos | deps:U-701,U-702,U-501,U-601,B-826 | In the second account: run the full suite on a real Mac. Arrange the Developer ID, virtualization entitlement and notarisation. The suite needs no Developer ID: as `loop`, sign the test binary ad hoc with the virtualization entitlement (`codesign -s - --entitlements`). Your Developer ID signs nothing that the second account built or could touch. It signs release builds only, in `omkhar/workcell`, after H-1019. Keep its certificate and key out of that account. `REFERENCE.md` section 6 has the commands
       accept: suite report committed to `docs/benchmarks.md`; the report lists I1 to I14; P1 measured on the Mac
