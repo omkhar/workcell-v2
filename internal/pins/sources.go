@@ -217,7 +217,8 @@ func (g getter) npm(p Pin) ([]Candidate, error) {
 		Versions map[string]struct {
 			Deprecated string `json:"deprecated"`
 			Dist       struct {
-				Tarball string `json:"tarball"`
+				Tarball   string `json:"tarball"`
+				Integrity string `json:"integrity"`
 			} `json:"dist"`
 		} `json:"versions"`
 		Time map[string]string `json:"time"`
@@ -237,7 +238,7 @@ func (g getter) npm(p Pin) ([]Candidate, error) {
 		if err := httpsURL(e.Dist.Tarball); err != nil {
 			return nil, fmt.Errorf("version %s: tarball: %w", v, err)
 		}
-		a := Artifact{URL: e.Dist.Tarball}
+		a := Artifact{URL: e.Dist.Tarball, Integrity: e.Dist.Integrity}
 		_, stable := parseVersion(v)
 		cands = append(cands, Candidate{
 			Release:    Release{Version: v, Artifacts: map[string]Artifact{"amd64": a, "arm64": a}},
@@ -256,7 +257,9 @@ type ghAsset struct {
 
 // github reads the newest 100 releases. A stable release that lacks the asset
 // of any architecture in p.Assets is dropped. Only when no stable release
-// carries them all, so the pin names a wrong asset, is it an error.
+// carries them all, so the pin names a wrong asset, is it an error. A release
+// that lacks the bundle p.Signing.Bundles names gets an empty Bundle: the
+// verifier refuses it if selected (B5), and the releases that carry one bump (P7).
 func (g getter) github(p Pin) ([]Candidate, error) {
 	if len(p.Assets) == 0 {
 		return nil, errors.New("no assets named")
@@ -303,7 +306,16 @@ next:
 			if a.Digest != "" && (!hasSum || !isSHA256(sum)) {
 				return nil, fmt.Errorf("release %s: asset %q: bad digest %q", r.Tag, name, a.Digest)
 			}
-			c.Artifacts[arch] = Artifact{URL: a.URL, SHA256: sum}
+			art := Artifact{URL: a.URL, SHA256: sum}
+			if bundle, ok := p.Signing.Bundles[arch]; ok {
+				if j := slices.IndexFunc(r.Assets, func(a ghAsset) bool { return a.Name == bundle }); j >= 0 {
+					if err := httpsURL(r.Assets[j].URL); err != nil {
+						return nil, fmt.Errorf("release %s: %w", r.Tag, err)
+					}
+					art.Bundle = r.Assets[j].URL
+				}
+			}
+			c.Artifacts[arch] = art
 		}
 		if !c.PreRelease {
 			complete++

@@ -259,7 +259,7 @@ the loop has ended.
       accept: each is tested against recorded responses; bounded reads; any error means no candidate, never "no update available"
 - [x] B-823a | flow:boundary | model:fable | env:any | deps:B-822 | tries:0 | `internal/sigstore`: verify a Sigstore bundle in its JSON form, both `messageSignature` and `dsseEnvelope`, against an embedded snapshot of the public Sigstore trusted root: leaf chains to a Fulcio CA, is valid at the Rekor integrated time, the Rekor signed entry timestamp verifies, the SAN URI and the issuer extension equal the expected identity, and the signature covers the given digest or the DSSE PAE. Standard library only (B5, I14 shape); nothing from `spikes/channel` is imported
       accept: a synthetic Fulcio-shaped chain signs both bundle kinds in the tests and verifies; a tampered signature, payload, digest, identity, issuer, chain, log key or integrated time is each refused; a fuzz target over the bundle parser runs clean
-- [ ] B-823 | flow:boundary | model:fable | env:any | deps:B-822,B-823a | tries:0 | Verification per source (B5): signature bundles, registry provenance, signed checksums
+- [x] B-823 | flow:boundary | model:fable | env:any | deps:B-822,B-823a | tries:0 | Verification per source (B5): signature bundles, registry provenance, signed checksums
       accept: a tampered fixture is refused for every source type
 - [ ] B-824 | flow:build | model:sonnet | env:kvm | deps:B-821,U-404 | tries:0 | Adapter smoke test for each `guest` pin that differs from the base branch (B6), as a `B6` entry in the suite
       accept: `B6` added to `enforced.txt`; a pin that points at a broken binary turns the gate red

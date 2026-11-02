@@ -37,8 +37,19 @@ const (
 
 // Artifact is the file of a release for one architecture.
 type Artifact struct {
-	URL    string // the https URL the client fetches on the host (B8)
-	SHA256 string // 64 lowercase hex digits, computed from the downloaded file (B5)
+	URL       string // the https URL the client fetches on the host (B8)
+	SHA256    string // 64 lowercase hex digits, computed from the downloaded file (B5)
+	Integrity string // the npm SRI of the tarball, "sha512-<base64>", as the registry publishes it
+	Bundle    string // the https URL of the Sigstore bundle asset that Signing.Bundles names
+}
+
+// Signing says what upstream signs and how (B5). The zero value means upstream
+// signs nothing, so only its published digests are checked.
+type Signing struct {
+	Identity string            // the Fulcio SAN; the literal {version} stands for the release version
+	Issuer   string            // the OIDC issuer the certificate names
+	Bundles  map[string]string // architecture to the GitHub release asset that holds the Sigstore bundle
+	Members  map[string]string // architecture to the member of the gzip tarball the bundle signs; unset: the asset itself
 }
 
 // Release is a version as upstream writes it, and its artifacts keyed by
@@ -59,7 +70,8 @@ type Pin struct {
 	Locator string
 	// Assets maps an architecture to the GitHub asset name or the vendor manifest
 	// platform key of that architecture. The npm and OCI sources need none.
-	Assets map[string]string
+	Assets  map[string]string
+	Signing Signing
 	Release
 	Timestamps []time.Time // every timestamp upstream publishes for the pinned release
 	Released   time.Time   // when this version was selected; B10's cool-off and the manifest count from it
