@@ -24,7 +24,7 @@ func writeFile(t *testing.T, name string, data []byte, mode os.FileMode) string 
 
 func TestResolveRefusesMalformedSources(t *testing.T) {
 	for _, source := range []string{
-		"", "svc", ":x", "env:HOME", "keychain:", "keychain:svc/acct",
+		"", "svc", ":x", "env:HOME", "keychain:", "keychain:svc", "keychain:/acct", "keychain:svc/",
 		"file:", "file:relative/path", "cmd:", "cmd:   ", "cmd:echo hi",
 		"secret-service:", "secret-service:svc", "secret-service:/acct", "secret-service:svc/",
 	} {

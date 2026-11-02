@@ -20,6 +20,9 @@ import (
 // secretToolPath is fixed so a PATH entry cannot stand in for the tool.
 const secretToolPath = "/usr/bin/secret-tool"
 
+// securityPath is fixed for the same reason.
+const securityPath = "/usr/bin/security"
+
 // programTimeout leaves time to answer an unlock prompt.
 const programTimeout = 2 * time.Minute
 
@@ -27,7 +30,8 @@ const programTimeout = 2 * time.Minute
 const maxFileBytes = 64 << 10
 
 // Resolve reads the secret named by a [[secret]] source: file:PATH,
-// cmd:PROGRAM [ARGS...] or secret-service:SERVICE/ACCOUNT. The value is one
+// cmd:PROGRAM [ARGS...], secret-service:SERVICE/ACCOUNT or
+// keychain:SERVICE/ACCOUNT (macOS login keychain). The value is one
 // line without its trailing newline. The caller owns it and wipes it with
 // Zero. An error never carries a byte of the value or a program's stderr.
 func Resolve(ctx context.Context, source string) ([]byte, error) {
@@ -48,7 +52,12 @@ func Resolve(ctx context.Context, source string) ([]byte, error) {
 		}
 		return run(ctx, secretToolPath, []string{"lookup", "service", service, "account", account})
 	case "keychain":
-		return nil, errors.New("secret source scheme keychain: needs the macOS Keychain, not available here")
+		service, account, _ := strings.Cut(rest, "/")
+		if service == "" || account == "" {
+			return nil, errors.New("secret source must be keychain:SERVICE/ACCOUNT")
+		}
+		// -w prints only the password and a newline. One call, no retry.
+		return run(ctx, securityPath, []string{"find-generic-password", "-s", service, "-a", account, "-w"})
 	}
 	return nil, fmt.Errorf("secret source scheme %q is not file, cmd, secret-service or keychain", scheme)
 }
