@@ -59,6 +59,10 @@ type Release struct {
 	Artifacts map[string]Artifact
 }
 
+// Package names a package as the advisory database does: the OSV ecosystem and
+// name, both case-sensitive.
+type Package struct{ Ecosystem, Name string }
+
 // Pin is one row of pins/ (B1).
 type Pin struct {
 	Name   string // the upstream, such as "claude"
@@ -68,6 +72,9 @@ type Pin struct {
 	// the GitHub releases API URL, the vendor release root, or the OCI repository
 	// API root, https://registry/v2/name (see sources.go).
 	Locator string
+	// Package is the pin's name in the advisory database. Empty means the pin has
+	// no advisory feed, so the security lane never opens for it (B4).
+	Package Package
 	// Assets maps an architecture to the GitHub asset name or the vendor manifest
 	// platform key of that architecture. The npm and OCI sources need none.
 	Assets  map[string]string

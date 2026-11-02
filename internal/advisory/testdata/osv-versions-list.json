@@ -1,0 +1,59 @@
+{
+  "vulns": [
+    {
+      "schema_version": "1.2.0",
+      "id": "GHSA-cccc-3333-0003",
+      "modified": "2026-10-01T10:00:00Z",
+      "published": "2026-10-01T09:00:00Z",
+      "aliases": [
+        "CVE-2026-0001"
+      ],
+      "summary": "Fixture advisory",
+      "details": "A fixture modelled on GHSA-r9p9-mrjm-926w.",
+      "severity": [
+        {
+          "type": "CVSS_V3",
+          "score": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:C/C:H/I:N/A:N"
+        }
+      ],
+      "affected": [
+        {
+          "package": {
+            "ecosystem": "npm",
+            "name": "fixture-pkg"
+          },
+          "ranges": [
+            {
+              "type": "SEMVER",
+              "events": [
+                {
+                  "introduced": "2.0.0"
+                },
+                {
+                  "fixed": "2.0.5"
+                }
+              ]
+            }
+          ],
+          "versions": [
+            "1.0.0",
+            "1.0.1"
+          ]
+        }
+      ],
+      "references": [
+        {
+          "type": "ADVISORY",
+          "url": "https://example.test/advisory"
+        }
+      ],
+      "database_specific": {
+        "cwe_ids": [
+          "CWE-327"
+        ],
+        "severity": "MODERATE",
+        "github_reviewed": true
+      }
+    }
+  ]
+}
