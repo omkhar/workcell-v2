@@ -269,7 +269,7 @@ the loop has ended.
       accept: I14 added to `enforced.txt` and green; session start time is unchanged with the channel server unreachable; no job names an environment or reads a secret
 - [ ] B-826b | flow:mech | model:haiku | env:kvm | deps:B-826 | tries:0 | wait:bump.yml | Read the first scheduled run of `bump.yml` that holds the channel job
       accept: the run is green; its log shows the plan, and a manifest signed and checked with a key made in the job; it opened no pull request and published nothing. If not, set B-825 or B-826 back to `[ ]` and say why at the end of its accept line
-- [ ] B-827 | flow:build | model:sonnet | env:any | deps:B-821 | tries:0 | Security fast lane, using a public advisory database (B4)
+- [x] B-827 | flow:build | model:sonnet | env:any | deps:B-821 | tries:0 | Security fast lane, using a public advisory database (B4)
       accept: a fixture advisory shortens the cool-off; a lookup error leaves the normal cool-off in force and is reported
 - [ ] B-828 | flow:build | model:sonnet | env:kvm | deps:B-824,W-802b | tries:0 | sign:you | Nightly early-warning smoke on upstream's newest release, and the freshness report (B11, B12)
       accept: one rolling issue, never a gate; the report shows lag per pin against P7; `nightly.yml` stays within 80 lines
