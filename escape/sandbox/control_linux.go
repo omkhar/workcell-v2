@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -16,8 +17,9 @@ import (
 
 // control is the plain container of SPEC T2: new mount, pid, uts and ipc
 // namespaces, the host's network namespace kept so that the network is open,
-// and the host's root shared. A user namespace maps the caller to root when
-// the caller is not root already. Every escape test must fail here.
+// and the host's root shared, and with no cap on what it logs. A user
+// namespace maps the caller to root when the caller is not root already.
+// Every escape test must fail here.
 type control struct {
 	dir     string
 	payload string
@@ -25,21 +27,21 @@ type control struct {
 
 func newControl() (Sandbox, error) { return &control{}, nil }
 
-func (c *control) Start(_ context.Context, payload string) error {
+func (c *control) Start(_ context.Context, cfg Config) (string, error) {
 	dir, err := os.MkdirTemp("", "escape-control-")
 	if err != nil {
-		return err
+		return "", err
 	}
 	c.dir = dir
 	c.payload = filepath.Join(dir, "payload")
-	b, err := os.ReadFile(payload)
+	b, err := os.ReadFile(cfg.Payload)
 	if err == nil {
 		err = os.WriteFile(c.payload, b, 0o755)
 	}
 	if err != nil {
-		return fmt.Errorf("control: place payload: %w", err)
+		return "", fmt.Errorf("control: place payload: %w", err)
 	}
-	return nil
+	return cfg.Workspace, nil // the host's root is the guest's: the export is where it lies
 }
 
 func (c *control) Exec(ctx context.Context, args ...string) (Output, error) {
@@ -56,10 +58,17 @@ func (c *control) Exec(ctx context.Context, args ...string) (Output, error) {
 	}
 	cmd.SysProcAttr = attr
 	cmd.WaitDelay = 2 * time.Second // the payload is pid 1 of its namespace: its death takes the rest
+	// A plain container logs everything the guest says, without a cap: both
+	// streams go whole into a log file in the session directory.
+	log, err := os.OpenFile(filepath.Join(c.dir, "log"), os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0o600)
+	if err != nil {
+		return Output{}, fmt.Errorf("control: open log: %w", err)
+	}
+	defer log.Close()
 	stdout := &bounded{limit: MaxStdout}
 	stderr := &bounded{limit: MaxStderr}
-	cmd.Stdout, cmd.Stderr = stdout, stderr
-	err := cmd.Run()
+	cmd.Stdout, cmd.Stderr = io.MultiWriter(stdout, log), io.MultiWriter(stderr, log)
+	err = cmd.Run()
 	out := Output{Stdout: stdout.buf, Stderr: stderr.buf}
 	var exit *exec.ExitError
 	switch {

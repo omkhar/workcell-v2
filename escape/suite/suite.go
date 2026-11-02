@@ -35,9 +35,31 @@ type Probe func(args []string) Result
 // Run executes the test's probe inside the sandbox with the arguments.
 type Run func(args ...string) (Result, error)
 
+// Session is one running sandbox, as the host knows it.
+type Session struct {
+	Run Run
+	// Workspace is the host directory exported into the guest, "" when the
+	// test wanted none. The runner made its parent for this test alone and
+	// removes it afterwards, so a judge may plant files beside Workspace.
+	Workspace string
+	Guest     string // where the guest sees Workspace
+	// Another starts a second session with the same Want and its own export.
+	// The runner stops it with the first.
+	Another func() (Session, error)
+}
+
 // Judge runs on the host. It may start canaries (on loopback only, SPEC T8),
-// runs the probe through run, and says whether the invariant held.
-type Judge func(ctx context.Context, run Run) (pass bool, detail string, err error)
+// runs the probe through s.Run, and says whether the invariant held.
+type Judge func(ctx context.Context, s Session) (pass bool, detail string, err error)
+
+// Want is the sandbox a test needs: an export, and the caps the adapter is to
+// state (zero: the adapter's default).
+type Want struct {
+	Workspace bool
+	CPUs      int
+	MemoryMiB int
+	DiskMiB   int
+}
 
 // Test is one escape test.
 type Test struct {
@@ -45,6 +67,7 @@ type Test struct {
 	Name  string // unique, lower case, the payload's argument
 	Probe Probe
 	Host  Judge
+	Want  Want
 }
 
 // Lookup finds a test by name.

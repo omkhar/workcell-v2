@@ -33,10 +33,22 @@ type Output struct {
 	Exit   int
 }
 
+// Config is the sandbox a test wants. The caps are what the product's
+// [resources] table states; zero leaves the adapter's default. The control
+// adapter applies no cap and shows the workspace at its host path.
+type Config struct {
+	Payload   string // host path of the static payload binary
+	Workspace string // host directory exported into the guest as its workspace; "" exports nothing
+	CPUs      int
+	MemoryMiB int
+	DiskMiB   int
+}
+
 // Sandbox is one sandbox holding the payload. A test gets a fresh one.
 type Sandbox interface {
-	// Start creates the sandbox and places the payload binary inside it.
-	Start(ctx context.Context, payload string) error
+	// Start creates the sandbox and places the payload binary inside it. It
+	// returns the path at which the guest sees cfg.Workspace, "" if none.
+	Start(ctx context.Context, cfg Config) (guestWorkspace string, err error)
 	// Exec runs the payload inside the sandbox, as root in the guest, with the
 	// arguments. A non-zero exit status is reported in Output, not as an error.
 	Exec(ctx context.Context, args ...string) (Output, error)

@@ -1,0 +1,120 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Omkhar Arasaratnam
+
+package suite
+
+import (
+	"bufio"
+	"errors"
+	"fmt"
+	"os"
+	"strconv"
+	"strings"
+
+	"golang.org/x/sys/unix"
+)
+
+// The host as the judge sees it, from /proc. A guest's load must not show here.
+
+// hostProcs counts the host's processes.
+func hostProcs() (int64, error) {
+	es, err := os.ReadDir("/proc")
+	if err != nil {
+		return 0, err
+	}
+	var n int64
+	for _, e := range es {
+		if c := e.Name()[0]; c >= '0' && c <= '9' {
+			n++
+		}
+	}
+	return n, nil
+}
+
+// hostMemAvailable is the host's MemAvailable, in bytes.
+func hostMemAvailable() (int64, error) {
+	return procField("/proc/meminfo", "MemAvailable:", 1024)
+}
+
+// hostFiles is the host's count of open file handles (fs.file-nr).
+func hostFiles() (int64, error) {
+	return procField("/proc/sys/fs/file-nr", "", 1)
+}
+
+// hostBusy is the host's CPU time spent on anything but idle and iowait, in
+// clock ticks, summed over every CPU.
+func hostBusy() (int64, error) {
+	f, err := os.Open("/proc/stat")
+	if err != nil {
+		return 0, err
+	}
+	defer f.Close()
+	sc := bufio.NewScanner(f)
+	for sc.Scan() {
+		fields := strings.Fields(sc.Text())
+		if len(fields) < 8 || fields[0] != "cpu" {
+			continue
+		}
+		var busy int64
+		for i, s := range fields[1:] {
+			v, err := strconv.ParseInt(s, 10, 64)
+			if err != nil {
+				return 0, err
+			}
+			if i != 3 && i != 4 { // idle, iowait
+				busy += v
+			}
+		}
+		return busy, nil
+	}
+	return 0, errors.New("/proc/stat has no cpu line")
+}
+
+// hostDiskFree sums the free bytes of every real filesystem the host has
+// mounted, each counted once.
+func hostDiskFree() (int64, error) {
+	f, err := os.Open("/proc/self/mounts")
+	if err != nil {
+		return 0, err
+	}
+	defer f.Close()
+	seen := map[unix.Fsid]bool{}
+	var free int64
+	sc := bufio.NewScanner(f)
+	for sc.Scan() {
+		fields := strings.Fields(sc.Text())
+		if len(fields) < 2 {
+			continue
+		}
+		var st unix.Statfs_t
+		if unix.Statfs(fields[1], &st) != nil || st.Blocks == 0 || seen[st.Fsid] {
+			continue
+		}
+		seen[st.Fsid] = true
+		free += int64(st.Bavail) * int64(st.Bsize)
+	}
+	return free, nil
+}
+
+// procField reads the first number after the label (or the first number of
+// the file, when label is "") and scales it.
+func procField(path, label string, scale int64) (int64, error) {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return 0, err
+	}
+	s := string(b)
+	if label != "" {
+		_, after, ok := strings.Cut(s, label)
+		if !ok {
+			return 0, fmt.Errorf("%s has no %s", path, label)
+		}
+		s = after
+	}
+	fields := strings.Fields(s)
+	if len(fields) == 0 {
+		return 0, fmt.Errorf("%s has no number after %q", path, label)
+	}
+	v, err := strconv.ParseInt(fields[0], 10, 64)
+	return v * scale, err
+}
