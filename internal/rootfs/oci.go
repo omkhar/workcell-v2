@@ -198,9 +198,6 @@ func (g *registry) layer(ctx context.Context, d descriptor, t *Tree, budget int6
 	}
 	used, err := applyLayer(t, tarIn, budget)
 	if err == nil {
-		_, err = io.Copy(io.Discard, &limited{r: tarIn, n: budget})
-	}
-	if err == nil {
 		_, err = io.Copy(io.Discard, src)
 	}
 	if err != nil {

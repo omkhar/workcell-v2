@@ -87,17 +87,11 @@ func applyMember(t *Tree, tr *tar.Reader, h *tar.Header, dataLeft *int64) error 
 		if h.Size > *dataLeft {
 			return errors.New("over the size cap")
 		}
-		data, err := io.ReadAll(io.LimitReader(tr, *dataLeft+1))
-		if err != nil {
+		data := make([]byte, h.Size)
+		if _, err := io.ReadFull(tr, data); err != nil {
 			return tarErr(err)
 		}
-		if int64(len(data)) > *dataLeft {
-			return errors.New("over the size cap")
-		}
-		*dataLeft -= int64(len(data))
-		if cap(data) > len(data)+len(data)/4 {
-			data = slices.Clone(data)
-		}
+		*dataLeft -= h.Size
 		n.Data = data
 	case tar.TypeSymlink:
 		n.Kind, n.Target = Symlink, h.Linkname
