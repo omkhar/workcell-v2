@@ -336,3 +336,5 @@ Format decided by the kernel configs read this run: Firecracker's CI 6.1 configs
 Every spike and the U-200 test boot an initramfs cpio with one Go /init and a raw 4 MiB share image written by Go, so no root image exists yet; _legacy/ holds no Dockerfile or guest package list, so the base image (Debian slim or Ubuntu by digest from Docker Hub, multi-arch) is U-201's choice and its pin row the first under pins/, whose on-disk format no code defines yet.
 Budget unchanged: product 3878 of 15000, test 10396 of 10817; U-201a must add product lines before tests (about 1.5 test lines per product line). No builder ran, nothing parked, no S14 trigger.
 Next: U-201a is the next takeable unit for the cloud. The claim was PR #56, closed by this run; the state change is its own pull request.
+
+## 2026-11-02T22:43Z U-201a START mode=cloud
