@@ -327,3 +327,5 @@ Test (firecracker_test.go 455 lines): TestConfig table without KVM; TestFirecrac
 Redteam wrote no escape test (nothing can FAIL on control before the real adapter, U-204b); its variants for U-204b, U-205, U-206 and U-208 are one line in PARKED.md. Review: no findings; one note and one less-code note parked for the next unit in this package.
 Budget: product 3878 of 15000, test 10396 of 10817, direct dependencies 3 of 15. 421 test lines remain, so the next unit with tests must add product first or trim.
 Next: U-201 (guest image build, build, env:any, model sonnet, deps H-103) is the next takeable unit for the cloud; ADR-001 says kernel C (Kata's tagged 6.18) is its first candidate and the image is a read-only virtio-blk root. U-203 can deliver its init through Config.Initrd and must open the vsock channel non-blocking (see U-202). The claim was PR #55, which this run gives its final title.
+
+## 2026-11-02T22:32Z U-201 START mode=cloud
