@@ -107,6 +107,21 @@ var All = []Test{
 	{ID: "I12", Name: "channel-malformed-frames", Probe: channelProbe, Host: channelJudge("malformed")},
 	{ID: "I12", Name: "channel-oversized-frame", Probe: channelProbe, Host: channelJudge("oversized")},
 	{ID: "I12", Name: "channel-slow-drip", Probe: channelProbe, Host: channelJudge("slow-drip")},
+	// The update client on the host, after one honest install from a channel
+	// the judge signs and serves, meets a manifest signed by another key or
+	// with a corrupted signature, past its expiry, below the last serial,
+	// a day ahead, or too large, and an artifact whose bytes do not match,
+	// stop short, come by a redirect, or come without TLS. None may install.
+	{ID: "I14", Name: "update-wrong-key", Probe: idleProbe, Host: updateJudge("wrong-key")},
+	{ID: "I14", Name: "update-corrupt-signature", Probe: idleProbe, Host: updateJudge("corrupt-signature")},
+	{ID: "I14", Name: "update-expired-manifest", Probe: idleProbe, Host: updateJudge("expired")},
+	{ID: "I14", Name: "update-lower-serial", Probe: idleProbe, Host: updateJudge("lower-serial")},
+	{ID: "I14", Name: "update-serial-ahead", Probe: idleProbe, Host: updateJudge("serial-ahead")},
+	{ID: "I14", Name: "update-oversized-manifest", Probe: idleProbe, Host: updateJudge("oversized")},
+	{ID: "I14", Name: "update-digest-mismatch", Probe: idleProbe, Host: updateJudge("digest-mismatch")},
+	{ID: "I14", Name: "update-truncated-download", Probe: idleProbe, Host: updateJudge("truncated")},
+	{ID: "I14", Name: "update-redirected-url", Probe: idleProbe, Host: updateJudge("redirected")},
+	{ID: "I14", Name: "update-plain-http-url", Probe: idleProbe, Host: updateJudge("plain-http")},
 }
 
 // hostAddr, in a canary address, stands for the host's own first non-loopback

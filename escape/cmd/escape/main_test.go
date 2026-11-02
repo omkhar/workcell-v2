@@ -41,6 +41,9 @@ func (f *fake) Helper(context.Context, string) (int, error) { return 0, sandbox.
 func (f *fake) Channel(context.Context) (sandbox.Channel, error) {
 	return sandbox.Channel{}, sandbox.ErrNotImplemented
 }
+func (f *fake) Update(context.Context, sandbox.UpdateConfig) ([]byte, error) {
+	return nil, sandbox.ErrNotImplemented
+}
 
 func TestRunOutcomes(t *testing.T) {
 	judge := func(_ context.Context, s suite.Session) (bool, string, error) {
