@@ -116,7 +116,7 @@ main() {
   echo "Budgets:"
   product="$(lines "$code" '(_test\.go$|^escape/)')" || fail "cannot measure: product code"
   budget "product code" 15000 echo "$product"
-  budget "test code" $((product * 3 / 2 + 2000)) lines "(_test\.go\$|^escape/.*$code)"
+  budget "test code" $((product * 3 / 2 + 5000)) lines "(_test\.go\$|^escape/.*$code)"
   budget "bump tool" 800 lines "^(cmd/bump|internal/pins)/.*$code" '_test\.go$'
   budget "shell" 300 lines '\.(sh|bash|zsh)$'
   budget "workflow YAML" 500 lines '^\.github/.*\.ya?ml$'

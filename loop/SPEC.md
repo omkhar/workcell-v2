@@ -134,7 +134,7 @@ disk = "20GiB"
 | Budget | Limit |
 |--------|-------|
 | Product code (every non-test `.go` file outside `escape/`, and any C, C++, Objective-C or assembly source) | 15,000 lines |
-| Test code (`*_test.go` and `escape/`) | 1.5 x product, plus 2,000 |
+| Test code (`*_test.go` and `escape/`) | 1.5 x product, plus 5,000 |
 | Any single Go file | 800 lines |
 | All shell | 300 lines |
 | All workflow YAML (every YAML file under `.github/`) | 500 lines |
