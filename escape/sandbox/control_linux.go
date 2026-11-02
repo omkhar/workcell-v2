@@ -6,13 +6,18 @@ package sandbox
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
+	"crypto/x509"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"syscall"
 	"time"
@@ -237,6 +242,57 @@ func (c *control) startHelpers() error {
 		}
 	}
 	return errors.New("control: the supervisor did not open its channel")
+}
+
+// Update does what a naive updater does: it reads the manifest's payload
+// without checking any signature, serial or expiry, fetches the artifact by
+// the URL in it, wherever a redirect sends it, and keeps whatever bytes came,
+// however many, with no digest check.
+func (c *control) Update(ctx context.Context, u UpdateConfig) ([]byte, error) {
+	pool := x509.NewCertPool()
+	pool.AppendCertsFromPEM(u.CA)
+	// No proxy: the only addresses an update may fetch are the test's own (SPEC S12).
+	client := &http.Client{Timeout: 5 * time.Second, Transport: &http.Transport{TLSClientConfig: &tls.Config{RootCAs: pool, MinVersion: tls.VersionTLS12}}}
+	get := func(url string) ([]byte, error) {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+		if err != nil {
+			return nil, err
+		}
+		resp, err := client.Do(req)
+		if err != nil {
+			return nil, err
+		}
+		defer resp.Body.Close()
+		b, _ := io.ReadAll(resp.Body) // a short body is still a body
+		return b, nil
+	}
+	b, err := get(u.Channel)
+	if err != nil {
+		return nil, fmt.Errorf("control: fetch channel: %w", err)
+	}
+	var env struct {
+		Payload []byte `json:"payload"`
+	}
+	var m struct {
+		Pins map[string]map[string]struct {
+			URL string `json:"url"`
+		} `json:"pins"`
+	}
+	if err := json.Unmarshal(b, &env); err == nil {
+		err = json.Unmarshal(env.Payload, &m)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("control: decode manifest: %w", err)
+	}
+	p, ok := m.Pins[u.Name][runtime.GOARCH]
+	if !ok {
+		return nil, fmt.Errorf("control: the manifest pins no %s for %s", u.Name, runtime.GOARCH)
+	}
+	art, err := get(p.URL)
+	if err != nil {
+		return nil, fmt.Errorf("control: fetch artifact: %w", err)
+	}
+	return art, os.WriteFile(filepath.Join(c.dir, "installed-"+u.Name), art, 0o755)
 }
 
 func (c *control) Stop() error {

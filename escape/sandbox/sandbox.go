@@ -7,6 +7,7 @@ package sandbox
 
 import (
 	"context"
+	"crypto/ed25519"
 	"errors"
 	"fmt"
 	"os"
@@ -63,6 +64,26 @@ type Secret struct {
 	Name, Value, Host, Header, Env string
 }
 
+// UpdateConfig is one run of the product's update client as a judge wants
+// it: `workcell update` against a channel and an upstream the judge serves on
+// the test host (SPEC T8). The real adapter passes every field to the product
+// as a parameter, through its CLI or its config, as the product's keys, clock
+// and last serial are parameters (SPEC A11); nothing here is a test hook.
+type UpdateConfig struct {
+	// Channel is the https URL of channel.json: the `[update] channel` the
+	// client consults. It names the test host's loopback address, never a name.
+	Channel string
+	// CA is the PEM certificate that signed the certificates of the channel
+	// and upstream servers. The client is to trust it, and only it, for the run.
+	CA []byte
+	// Key is the one channel key the client is to trust: its key table holds
+	// this entry, with a NotAfter in the future, and no other.
+	Key ed25519.PublicKey
+	// Name is the pin the client is to install, keyed in the manifest by name
+	// and then by runtime.GOARCH. Version is `--to <version>`.
+	Name, Version string
+}
+
 // Sandbox is one sandbox holding the payload. A test gets a fresh one.
 type Sandbox interface {
 	// Start creates the sandbox and places the payload binary inside it. It
@@ -98,6 +119,15 @@ type Observe interface {
 	Helper(ctx context.Context, name string) (pid int, err error)
 	// Channel describes the host-guest channel as the guest reaches it.
 	Channel(ctx context.Context) (Channel, error)
+	// Update runs the product's update client once on the host, as
+	// `workcell update` does, with what u names, and returns the bytes of
+	// the artifact installed for u.Name afterwards, nil when none is. The
+	// state the client keeps between runs, the last serial seen and the
+	// installed artifact, is the session's: empty at Start, kept across
+	// calls. The client's own exit status is not an error: a refusal exits
+	// however it likes and leaves the install as it was. An error means the
+	// client could not be run or its install could not be read.
+	Update(ctx context.Context, u UpdateConfig) (installed []byte, err error)
 }
 
 // Channel is the host end of the host-guest channel, as the guest dials it:

@@ -23,3 +23,6 @@ func (*workcell) Audit(context.Context) (string, []string, error) { return "", n
 func (*workcell) Verify(context.Context) error                    { return ErrNotImplemented }
 func (*workcell) Helper(context.Context, string) (int, error)     { return 0, ErrNotImplemented }
 func (*workcell) Channel(context.Context) (Channel, error)        { return Channel{}, ErrNotImplemented }
+func (*workcell) Update(context.Context, UpdateConfig) ([]byte, error) {
+	return nil, ErrNotImplemented
+}
