@@ -83,7 +83,7 @@ with ADR-003 and ADR-004, they build on the proposal, and you can accept it at a
       accept: `go test ./spikes/fcch/` runs it in hosted CI; same table
 - [x] U-102 | flow:spike | model:opus | env:macos | deps:U-001 | tries:0 | Spike: macOS. Virtualization.framework through Go bindings, Apple `container`, and libkrun
       accept: `spikes/macos/` runs; same table, plus entitlement and signing needs
-- [ ] U-103a | flow:spike | model:opus | env:any | deps:U-100,U-101,U-102 | tries:0 | ADR-001: compare the options against A6, A7, P1, P3 and P6 and recommend one
+- [x] U-103a | flow:spike | model:opus | env:any | deps:U-100,U-101,U-102 | tries:0 | ADR-001: compare the options against A6, A7, P1, P3 and P6 and recommend one
       accept: `docs/adr/001-vmm.md`, at most 80 lines, `status: proposed`, one recommendation, a reversal cost, and the six-method interface
 - [H] H-103 | env:any | deps:U-103a | Choose the backend or backends. To accept ADR-001, change it if you must, then move it to `docs/adr/accepted/`
       accept: `docs/adr/accepted/001-vmm.md` exists
