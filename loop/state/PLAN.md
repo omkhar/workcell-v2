@@ -81,7 +81,7 @@ with ADR-003 and ADR-004, they build on the proposal, and you can accept it at a
       accept: `go test ./spikes/libkrun/` runs it in hosted CI; 20-sample boot time, binary size, cgo and licence notes recorded
 - [x] U-101 | flow:spike | model:sonnet | env:kvm | deps:U-001 | tries:0 | Spike: Firecracker and Cloud Hypervisor on Linux, same measurements
       accept: `go test ./spikes/fcch/` runs it in hosted CI; same table
-- [ ] U-102 | flow:spike | model:opus | env:macos | deps:U-001 | tries:0 | Spike: macOS. Virtualization.framework through Go bindings, Apple `container`, and libkrun
+- [x] U-102 | flow:spike | model:opus | env:macos | deps:U-001 | tries:0 | Spike: macOS. Virtualization.framework through Go bindings, Apple `container`, and libkrun
       accept: `spikes/macos/` runs; same table, plus entitlement and signing needs
 - [ ] U-103a | flow:spike | model:opus | env:any | deps:U-100,U-101,U-102 | tries:0 | ADR-001: compare the options against A6, A7, P1, P3 and P6 and recommend one
       accept: `docs/adr/001-vmm.md`, at most 80 lines, `status: proposed`, one recommendation, a reversal cost, and the six-method interface
