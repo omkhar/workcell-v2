@@ -49,7 +49,11 @@ type Session struct {
 	// Want: the allowed names, and the credential bound to the first when the
 	// test wanted one, with its real value, which the guest must never hold.
 	Allow  []string
+	Deny   []string // names that resolve for the session but no policy allows
 	Secret sandbox.Secret
+	// Pull brings the guest's workspace back to the host directory dest, as
+	// the product's pull does.
+	Pull func(dest string) error
 	// Another starts a second session with the same Want and its own export.
 	// The runner stops it with the first.
 	Another func() (Session, error)
@@ -60,15 +64,19 @@ type Session struct {
 type Judge func(ctx context.Context, s Session) (pass bool, detail string, err error)
 
 // Want is the sandbox a test needs: an export, the caps the adapter is to
-// state (zero: the adapter's default), the names the policy allows, and
-// whether a fresh secret is bound to the first of them.
+// state (zero: the adapter's default), the names the policy allows and the
+// names it does not, whether a fresh secret is bound to the first allowed
+// name, and the repo-local policy (a workcell.toml the runner plants in the
+// export before the session starts) that the hostile repository brings.
 type Want struct {
 	Workspace bool
 	CPUs      int
 	MemoryMiB int
 	DiskMiB   int
 	Allow     []string
+	Deny      []string
 	Secret    bool
+	Policy    string
 }
 
 // Test is one escape test.

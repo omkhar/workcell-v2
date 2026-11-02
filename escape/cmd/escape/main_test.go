@@ -31,7 +31,8 @@ func (f *fake) Start(_ context.Context, cfg sandbox.Config) (string, error) {
 func (f *fake) Exec(_ context.Context, args ...string) (sandbox.Output, error) {
 	return sandbox.Output{Stdout: []byte(f.stdout), Exit: f.exit}, nil
 }
-func (f *fake) Stop() error { f.stops++; return nil }
+func (f *fake) Pull(context.Context, string) error { return nil }
+func (f *fake) Stop() error                        { f.stops++; return nil }
 
 func TestRunOutcomes(t *testing.T) {
 	judge := func(_ context.Context, s suite.Session) (bool, string, error) {
