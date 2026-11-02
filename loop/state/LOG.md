@@ -318,3 +318,5 @@ Learned (web, 2026-11-02, GitHub's API refused by the session proxy, so release 
 Flagged for later units: U-201 must find one kernel per arch that boots on Firecracker and, for arm64, on VZ (Cloud Hypervisor's does not boot on VZ; Firecracker's CI kernel has no release so cannot be a B3 pin; Kata's tagged kernel is the first candidate); U-502's --mount cannot use virtio-fs on Linux with Firecracker and needs a Go file service over the channel or the fallback.
 Budget: product 3517 of 15000, test 9941 of 10275, Markdown 367 of 2500, direct dependencies 3 of 15 (vz from U-102; purego leaves with spikes/). Local gate 48 s. No reviewer in the spike flow; nothing parked. No S14 trigger.
 Next: H-103 is the maintainer's; U-200, U-201 and U-700 wait on it. Nothing is takeable for the cloud until it closes, so the next run will find nothing to do. The claim was PR #51, which this run gives its final title.
+
+## 2026-11-02T21:56Z U-200 START mode=cloud
