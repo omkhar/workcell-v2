@@ -58,8 +58,8 @@ const (
 )
 
 var (
-	// ErrMtime means the modification time does not fit ext4's 32-bit seconds.
-	ErrMtime = errors.New("rootfs: mtime outside 1970 to 2106")
+	// ErrMtime means the modification time does not fit ext4's signed 32-bit seconds.
+	ErrMtime = errors.New("rootfs: mtime outside 1970 to 2038")
 
 	errNoFit = errors.New("rootfs: does not fit in this many groups")
 )
@@ -95,7 +95,7 @@ func (t *Tree) WriteExt4(w io.Writer, mtime time.Time) error {
 	if !mtime.IsZero() {
 		sec = mtime.Unix()
 	}
-	if sec < 0 || sec > math.MaxUint32 {
+	if sec < 0 || sec > math.MaxInt32 {
 		return ErrMtime
 	}
 	list, err := collect(t)

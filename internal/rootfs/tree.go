@@ -221,8 +221,8 @@ func (n *Node) validate() error {
 		return fmt.Errorf("%w: unknown kind %d", ErrBadNode, n.Kind)
 	case n.Mode&^permAndSug != 0:
 		return fmt.Errorf("%w: mode %#o has bits beyond 07777", ErrBadNode, n.Mode)
-	case n.Kind == Symlink && (n.Target == "" || len(n.Target) > maxTarget):
-		return fmt.Errorf("%w: symlink target must be 1 to %d bytes", ErrBadNode, maxTarget)
+	case n.Kind == Symlink && (n.Target == "" || len(n.Target) > maxTarget || strings.IndexByte(n.Target, 0) >= 0):
+		return fmt.Errorf("%w: symlink target must be 1 to %d bytes without NUL", ErrBadNode, maxTarget)
 	case (n.Kind == CharDev || n.Kind == BlockDev) && (n.Major > maxMajor || n.Minor > maxMinor):
 		return fmt.Errorf("%w: device %d:%d out of range", ErrBadNode, n.Major, n.Minor)
 	}
