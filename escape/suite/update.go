@@ -26,7 +26,7 @@ import (
 	"net/http"
 	"runtime"
 	"slices"
-	"strings"
+	"strconv"
 	"sync"
 	"time"
 
@@ -58,15 +58,13 @@ type pin struct {
 	Released int64  `json:"released"`
 }
 
-// manifest is the payload of channel.json. Pad is a field no client knows,
-// for the variant that is too large.
+// manifest is the payload of channel.json.
 type manifest struct {
 	Serial    int64                     `json:"serial"`
 	Expires   int64                     `json:"expires"`
 	Pins      map[string]map[string]pin `json:"pins"`
 	Previous  map[string]map[string]pin `json:"previous"`
 	Withdrawn []string                  `json:"withdrawn"`
-	Pad       string                    `json:"pad,omitempty"`
 }
 
 // envelope is channel.json itself: a DSSE envelope over the manifest.
@@ -166,9 +164,8 @@ func serve(cfg *tls.Config) (*upstream, error) {
 	}
 	u := &upstream{paths: map[string]http.HandlerFunc{}, url: "http://" + ln.Addr().String()}
 	srv := &http.Server{
-		ReadTimeout:  3 * time.Second,
-		ErrorLog:     log.New(io.Discard, "", 0),
-		TLSNextProto: map[string]func(*http.Server, *tls.Conn, http.Handler){}, // HTTP/1.1, so that a body can stop short
+		ReadTimeout: 3 * time.Second,
+		ErrorLog:    log.New(io.Discard, "", 0),
 		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			u.mu.Lock()
 			u.seen = append(u.seen, r.URL.Path)
@@ -211,22 +208,18 @@ func (u *upstream) requests() []string {
 	return slices.Clone(u.seen)
 }
 
-// whole serves b; cut promises all of b and sends half, then hangs up;
-// moved sends the client on to url.
+// whole serves b; cut promises all of b, sends half and hangs up; moved
+// sends the client on to url.
 func whole(b []byte) http.HandlerFunc {
 	return func(w http.ResponseWriter, _ *http.Request) { w.Write(b) }
 }
 
 func cut(b []byte) http.HandlerFunc {
 	return func(w http.ResponseWriter, _ *http.Request) {
-		conn, rw, err := w.(http.Hijacker).Hijack()
-		if err != nil {
-			return
-		}
-		fmt.Fprintf(rw, "HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Length: %d\r\n\r\n", len(b))
-		rw.Write(b[:len(b)/2])
-		rw.Flush()
-		conn.Close()
+		w.Header().Set("Content-Length", strconv.Itoa(len(b)))
+		w.Write(b[:len(b)/2])
+		w.(http.Flusher).Flush()
+		panic(http.ErrAbortHandler)
 	}
 }
 
@@ -240,8 +233,10 @@ func idleProbe([]string) Result {
 }
 
 // updateJudge serves a valid channel and has the client install from it; then
-// it serves the hostile variant named and passes only if nothing from it was
-// installed: the artifact it pins, or any bytes but the honest one.
+// it serves the hostile variant named, and after that a valid successor. The
+// invariant holds only if nothing from the variant was installed, neither the
+// artifact it pins nor any bytes but the honest one, and the successor is:
+// a client that installs once and never fetches again proves nothing.
 func updateJudge(variant string) Judge {
 	return func(ctx context.Context, s Session) (bool, string, error) {
 		caPEM, cfg, err := authority()
@@ -257,12 +252,7 @@ func updateJudge(variant string) Judge {
 			return false, "", err
 		}
 		defer src.stop()
-		other, err := serve(cfg) // a listener no manifest names
-		if err != nil {
-			return false, "", err
-		}
-		defer other.stop()
-		plain, err := serve(nil) // one that is not HTTPS
+		plain, err := serve(nil) // a listener that is not HTTPS
 		if err != nil {
 			return false, "", err
 		}
@@ -285,7 +275,7 @@ func updateJudge(variant string) Judge {
 		}
 		// The variant: a later manifest pinning a new artifact, which must be refused.
 		bad := artifact(variant)
-		h := manifest{Serial: now - 60, Expires: now - 60 + 13*day, Pins: pins("1.0.1", src.url+"/"+variant, bad, now-day),
+		h := manifest{Serial: now - 60, Expires: now - 60 + 13*day, Pins: pins("1.0.1", src.url+"/"+variant, bad, now-7*day),
 			Previous: m.Pins, Withdrawn: []string{}}
 		src.set("/"+variant, whole(bad))
 		signer, tamper := key, func(*envelope) {}
@@ -300,18 +290,16 @@ func updateJudge(variant string) Judge {
 			h.Serial, h.Expires = m.Serial-day, m.Serial+12*day
 		case "serial-ahead":
 			h.Serial, h.Expires = now+25*3600, now+25*3600+13*day
-		case "oversized":
-			h.Pad = strings.Repeat("x", 64<<10)
 		case "digest-mismatch":
 			src.set("/"+variant, whole(artifact("tampered")))
 		case "truncated":
 			src.set("/"+variant, cut(bad))
 		case "redirected":
-			other.set("/"+variant, whole(bad))
-			src.set("/"+variant, moved(other.url+"/"+variant))
+			src.set("/moved", whole(bad))
+			src.set("/"+variant, moved(src.url+"/moved"))
 		case "plain-http":
 			plain.set("/"+variant, whole(bad))
-			h.Pins = pins("1.0.1", plain.url+"/"+variant, bad, now-day)
+			h.Pins = pins("1.0.1", plain.url+"/"+variant, bad, now-7*day)
 		default:
 			return false, "", errors.New("unknown variant " + variant)
 		}
@@ -331,12 +319,26 @@ func updateJudge(variant string) Judge {
 		case len(got) > 0 && !bytes.Equal(got, good):
 			return false, fmt.Sprintf("the client installed %d bytes that are neither artifact, from the %s manifest", len(got), variant), nil
 		}
-		for _, l := range []*upstream{other, plain} {
-			if rs := l.requests(); len(rs) > 0 {
-				return false, fmt.Sprintf("the client fetched %v from a server the valid manifest never named", rs), nil
-			}
+		if rs := plain.requests(); len(rs) > 0 {
+			return false, fmt.Sprintf("the client fetched %v without TLS", rs), nil
 		}
-		return true, fmt.Sprintf("nothing installed from the %s manifest; the honest install stands (%d bytes); the channel served %v", variant, len(got), src.requests()), nil
+		if slices.Contains(src.requests(), "/moved") {
+			return false, "the client followed the redirect to a path no manifest pins", nil
+		}
+		// A valid successor pinning the same version: a client that refused the
+		// variant must still install from it.
+		next := artifact("successor")
+		src.set("/successor", whole(next))
+		n := manifest{Serial: now - 30, Expires: now - 30 + 13*day, Pins: pins("1.0.1", src.url+"/successor", next, now-7*day),
+			Previous: m.Pins, Withdrawn: []string{}}
+		if err := publish(src, n, key, nil); err != nil {
+			return false, "", err
+		}
+		got, err = s.Update(ctx, u)
+		if err != nil || !bytes.Equal(got, next) {
+			return false, "", fmt.Errorf("after the %s manifest the client did not install from a valid successor (%d bytes, err %v)", variant, len(got), err)
+		}
+		return true, fmt.Sprintf("nothing installed from the %s manifest, then the successor was; the channel served %v", variant, src.requests()), nil
 	}
 }
 

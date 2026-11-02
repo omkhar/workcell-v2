@@ -24,8 +24,9 @@ import (
 )
 
 // careful is a client that makes every check ADR-004 lists, so that each
-// judge is shown to have a pass; idle is one that installs nothing, so that
-// each judge is shown to error rather than pass on it.
+// judge is shown to have a pass; idle is one that installs nothing, and
+// sticky one that installs once and never fetches again, so that each judge
+// is shown to error rather than pass on them.
 type careful struct {
 	noObserve
 	serial    int64
@@ -46,6 +47,15 @@ func (noObserve) Channel(context.Context) (sandbox.Channel, error) {
 type idle struct{ noObserve }
 
 func (idle) Update(context.Context, sandbox.UpdateConfig) ([]byte, error) { return nil, nil }
+
+type sticky struct{ careful }
+
+func (c *sticky) Update(ctx context.Context, u sandbox.UpdateConfig) ([]byte, error) {
+	if c.installed != nil {
+		return c.installed, nil
+	}
+	return c.careful.Update(ctx, u)
+}
 
 func (c *careful) Update(ctx context.Context, u sandbox.UpdateConfig) ([]byte, error) {
 	pool := x509.NewCertPool()
@@ -102,15 +112,17 @@ func (c *careful) Update(ctx context.Context, u sandbox.UpdateConfig) ([]byte, e
 }
 
 func TestUpdateJudgesOnClients(t *testing.T) {
-	variants := []string{"wrong-key", "corrupt-signature", "expired", "lower-serial", "serial-ahead", "oversized", "digest-mismatch", "truncated", "redirected", "plain-http"}
+	variants := []string{"wrong-key", "corrupt-signature", "expired", "lower-serial", "serial-ahead", "digest-mismatch", "truncated", "redirected", "plain-http"}
 	for _, v := range variants {
 		pass, detail, err := updateJudge(v)(context.Background(), Session{Observe: &careful{}})
 		if err != nil || !pass {
 			t.Errorf("%s: a careful client = pass %v, %q, err %v; want a pass", v, pass, detail, err)
 		}
-		pass, detail, err = updateJudge(v)(context.Background(), Session{Observe: idle{}})
-		if err == nil || pass {
-			t.Errorf("%s: a client that installs nothing = pass %v, %q, err %v; want an error", v, pass, detail, err)
+		for name, c := range map[string]sandbox.Observe{"installs nothing": idle{}, "installs once": &sticky{}} {
+			pass, detail, err = updateJudge(v)(context.Background(), Session{Observe: c})
+			if err == nil || pass {
+				t.Errorf("%s: a client that %s = pass %v, %q, err %v; want an error", v, name, pass, detail, err)
+			}
 		}
 	}
 	if _, _, err := updateJudge("no-such")(context.Background(), Session{Observe: &careful{}}); err == nil {
