@@ -231,3 +231,5 @@ Review: two findings accepted and fixed in one round. P7: the GitHub source refu
 Learned and to confirm in B-825 against the live endpoints, never from memory: the npm attestations shape (predicateType plus bundle, subject name pkg:npm/%40scope/name@version with %40, lowercase sha512 hex) and that the codex .sigstore asset is a messageSignature over the extracted binary codex-<triple> (so a codex pin sets Members[arch] to that tar entry name and Bundles[arch] to codex-<triple>.sigstore) with a Rekor v1 SET; a GitHub asset digest is required even when a bundle verifies, so releases older than GitHub asset digests are unpinnable.
 Budget: product 3255 of 15000, test 5764 of 6882, bump tool 668 of 800, direct dependencies 2 of 15. Hosted gate, gate-macos and guard were green on the unit commit 48d30d5 before the fix.
 Next: B-827 (security fast lane, build, env:any, model sonnet, deps B-821) is the next takeable unit for the cloud; B-825 depends on W-800, which waits on U-207. The claim was PR #39, which this run gives its final title.
+
+## 2026-11-02T00:01Z B-827 START mode=cloud
