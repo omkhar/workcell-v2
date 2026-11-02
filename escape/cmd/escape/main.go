@@ -17,6 +17,8 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"path/filepath"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -115,19 +117,75 @@ func run(ctx context.Context, name string, fresh func() (sandbox.Sandbox, error)
 	return rep
 }
 
+// runOne starts the test's first session, lets the judge open more, and stops
+// them all, last first, when the judge is done.
 func runOne(ctx context.Context, fresh func() (sandbox.Sandbox, error), payload string, t suite.Test) (string, string) {
 	ctx, cancel := context.WithTimeout(ctx, perTest)
 	defer cancel()
-	sb, err := fresh()
-	if err != nil {
-		return Error, err.Error()
+	var sessions []session
+	defer func() {
+		for i := len(sessions) - 1; i >= 0; i-- {
+			sessions[i].stop()
+		}
+	}()
+	var open func() (suite.Session, error)
+	open = func() (suite.Session, error) {
+		sb, err := fresh()
+		if err != nil {
+			return suite.Session{}, err
+		}
+		s := session{sb: sb}
+		sessions = append(sessions, s)
+		cfg := sandbox.Config{Payload: payload, CPUs: t.Want.CPUs, MemoryMiB: t.Want.MemoryMiB, DiskMiB: t.Want.DiskMiB}
+		if t.Want.Workspace {
+			if s.root, err = os.MkdirTemp("", "escape-ws-"); err != nil {
+				return suite.Session{}, err
+			}
+			sessions[len(sessions)-1] = s
+			cfg.Workspace = filepath.Join(s.root, "workspace")
+			if err := os.Mkdir(cfg.Workspace, 0o755); err != nil {
+				return suite.Session{}, err
+			}
+		}
+		guest, err := sb.Start(ctx, cfg)
+		if err != nil {
+			return suite.Session{}, err
+		}
+		var taken atomic.Int64
+		return suite.Session{Run: probe(ctx, sb, t.Name, &taken), Workspace: cfg.Workspace, Guest: guest, Taken: taken.Load, Another: open}, nil
 	}
-	defer sb.Stop()
-	if err := sb.Start(ctx, payload); err != nil {
+	first, err := open()
+	if err != nil {
 		return classify(err)
 	}
-	probe := func(args ...string) (suite.Result, error) {
-		out, err := sb.Exec(ctx, append([]string{t.Name}, args...)...)
+	pass, detail, err := t.Host(ctx, first)
+	if err != nil {
+		return classify(err)
+	}
+	if pass {
+		return Pass, detail
+	}
+	return Fail, detail
+}
+
+// session is one sandbox and the directory made for its export.
+type session struct {
+	sb   sandbox.Sandbox
+	root string
+}
+
+func (s session) stop() {
+	s.sb.Stop()
+	if s.root != "" {
+		os.RemoveAll(s.root)
+	}
+}
+
+// probe runs the test's probe inside the sandbox and parses its one line.
+func probe(ctx context.Context, sb sandbox.Sandbox, name string, taken *atomic.Int64) suite.Run {
+	return func(args ...string) (suite.Result, error) {
+		out, err := sb.Exec(ctx, append([]string{name}, args...)...)
+		taken.Add(out.Total)
 		if err != nil {
 			return suite.Result{}, err
 		}
@@ -140,14 +198,6 @@ func runOne(ctx context.Context, fresh func() (sandbox.Sandbox, error), payload 
 		}
 		return r, err
 	}
-	pass, detail, err := t.Host(ctx, probe)
-	if err != nil {
-		return classify(err)
-	}
-	if pass {
-		return Pass, detail
-	}
-	return Fail, detail
 }
 
 func classify(err error) (string, string) {

@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sync/atomic"
 	"syscall"
 	"time"
 )
@@ -25,21 +26,21 @@ type control struct {
 
 func newControl() (Sandbox, error) { return &control{}, nil }
 
-func (c *control) Start(_ context.Context, payload string) error {
+func (c *control) Start(_ context.Context, cfg Config) (string, error) {
 	dir, err := os.MkdirTemp("", "escape-control-")
 	if err != nil {
-		return err
+		return "", err
 	}
 	c.dir = dir
 	c.payload = filepath.Join(dir, "payload")
-	b, err := os.ReadFile(payload)
+	b, err := os.ReadFile(cfg.Payload)
 	if err == nil {
 		err = os.WriteFile(c.payload, b, 0o755)
 	}
 	if err != nil {
-		return fmt.Errorf("control: place payload: %w", err)
+		return "", fmt.Errorf("control: place payload: %w", err)
 	}
-	return nil
+	return cfg.Workspace, nil // the host's root is the guest's: the export is where it lies
 }
 
 func (c *control) Exec(ctx context.Context, args ...string) (Output, error) {
@@ -56,11 +57,12 @@ func (c *control) Exec(ctx context.Context, args ...string) (Output, error) {
 	}
 	cmd.SysProcAttr = attr
 	cmd.WaitDelay = 2 * time.Second // the payload is pid 1 of its namespace: its death takes the rest
-	stdout := &bounded{limit: MaxStdout}
-	stderr := &bounded{limit: MaxStderr}
+	var total atomic.Int64
+	stdout := &bounded{limit: MaxStdout, total: &total}
+	stderr := &bounded{limit: MaxStderr, total: &total}
 	cmd.Stdout, cmd.Stderr = stdout, stderr
 	err := cmd.Run()
-	out := Output{Stdout: stdout.buf, Stderr: stderr.buf}
+	out := Output{Stdout: stdout.buf, Stderr: stderr.buf, Total: total.Load()}
 	var exit *exec.ExitError
 	switch {
 	case err == nil:

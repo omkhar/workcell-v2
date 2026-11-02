@@ -42,6 +42,23 @@ var All = []Test{
 	{ID: "I3", Name: "doh-post-tcp4", Probe: dohProbe(http.MethodPost), Host: dnsCanary(dnsOverHTTPS, queried)},
 	{ID: "I3", Name: "doh-get-tcp4", Probe: dohProbe(http.MethodGet), Host: dnsCanary(dnsOverHTTPS, queried)},
 	{ID: "I3", Name: "tunnel-txt-udp4", Probe: tunnelProbe, Host: dnsCanary(dnsOverUDP, tunnelled)},
+	// A secret lies beside the export on the host. The guest goes for it, and
+	// for the directory holding it, by path, by link, by mount and by file
+	// handle, and for the host's disks by device node.
+	{ID: "I1", Name: "dotdot-traversal", Probe: traversalProbe, Host: outside(nil), Want: exported},
+	{ID: "I1", Name: "planted-symlink", Probe: symlinkProbe, Host: outside(plantLinks), Want: exported},
+	{ID: "I1", Name: "bind-mount", Probe: mountProbe, Host: outside(nil), Want: exported},
+	{ID: "I1", Name: "open-by-handle", Probe: handleProbe, Host: outside(nil), Want: exported},
+	{ID: "I1", Name: "device-node", Probe: deviceProbe, Host: deviceJudge, Want: exported},
+	{ID: "I7", Name: "cross-session-residue", Probe: residueProbe, Host: residueJudge, Want: exported},
+	// The guest asks for twice its cap; the host, watched from outside, must
+	// give no more than the cap.
+	{ID: "I10", Name: "fork-flood", Probe: forkProbe, Host: forkJudge, Want: capped},
+	{ID: "I10", Name: "memory-flood", Probe: memoryProbe, Host: memoryJudge, Want: capped},
+	{ID: "I10", Name: "disk-flood", Probe: diskProbe, Host: diskJudge, Want: capped},
+	{ID: "I10", Name: "descriptor-flood", Probe: fileProbe, Host: fileJudge, Want: capped},
+	{ID: "I10", Name: "log-flood", Probe: logProbe, Host: logJudge, Want: capped},
+	{ID: "I10", Name: "cpu-flood", Probe: cpuProbe, Host: cpuJudge, Want: capped},
 }
 
 // hostAddr, in a canary address, stands for the host's own first non-loopback
@@ -132,7 +149,7 @@ func resolve(addr string) (string, error) {
 // the listener's own address. The invariant holds only if nothing arrives and
 // the guest does not claim a connection.
 func tcpCanary(network, addr, dialHost string) Judge {
-	return func(ctx context.Context, run Run) (bool, string, error) {
+	return func(ctx context.Context, s Session) (bool, string, error) {
 		addr, err := resolve(addr)
 		if err == nil {
 			dialHost, err = resolve(dialHost)
@@ -165,7 +182,7 @@ func tcpCanary(network, addr, dialHost string) Judge {
 			_, port, _ := net.SplitHostPort(target)
 			target = net.JoinHostPort(dialHost, port)
 		}
-		r, err := run(target, want)
+		r, err := s.Run(target, want)
 		ln.Close()
 		wg.Wait()
 		if err != nil {
@@ -193,7 +210,7 @@ func quicToken(b []byte, token string) bool {
 // udpCanary listens for datagrams on the host's own address and has the guest
 // send the token there. A datagram is proof of reach; the guest's word is not.
 func udpCanary(carries func(b []byte, token string) bool) Judge {
-	return func(ctx context.Context, run Run) (bool, string, error) {
+	return func(ctx context.Context, s Session) (bool, string, error) {
 		addr, err := resolve(hostAddr + ":0")
 		if err != nil {
 			return false, "", err
@@ -220,7 +237,7 @@ func udpCanary(carries func(b []byte, token string) bool) Judge {
 				}
 			}
 		})
-		r, err := run(pc.LocalAddr().String(), want)
+		r, err := s.Run(pc.LocalAddr().String(), want)
 		time.Sleep(200 * time.Millisecond) // a datagram in flight on loopback
 		pc.Close()
 		wg.Wait()
@@ -236,12 +253,12 @@ func udpCanary(carries func(b []byte, token string) bool) Judge {
 
 // icmpJudge has the guest ping the host's own address with the token as the
 // echo payload. The invariant holds only if no reply carries the token back.
-func icmpJudge(ctx context.Context, run Run) (bool, string, error) {
+func icmpJudge(ctx context.Context, s Session) (bool, string, error) {
 	host, err := resolve(hostAddr)
 	if err != nil {
 		return false, "", err
 	}
-	r, err := run(host, newToken())
+	r, err := s.Run(host, newToken())
 	if err != nil {
 		return false, "", err
 	}
@@ -255,12 +272,12 @@ func icmpJudge(ctx context.Context, run Run) (bool, string, error) {
 // address of the host's loopback interface. A guest that reaches it has reached
 // the host; no packet to it can leave the host.
 func onLoopback(ip string, judge Judge) Judge {
-	return func(ctx context.Context, run Run) (bool, string, error) {
+	return func(ctx context.Context, s Session) (bool, string, error) {
 		remove, err := loopbackAddr(net.ParseIP(ip))
 		if err != nil {
 			return false, "", err
 		}
 		defer remove()
-		return judge(ctx, run)
+		return judge(ctx, s)
 	}
 }

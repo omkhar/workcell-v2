@@ -152,7 +152,7 @@ type dnsListener func(addr string, got func(dnsQuestion)) (target string, stop f
 // queries there. The invariant holds only if no query for the token's name
 // arrived, as leaked judges, and the guest reports no connection.
 func dnsCanary(listen dnsListener, leaked func(qs []dnsQuestion, token string) (string, bool)) Judge {
-	return func(ctx context.Context, run Run) (bool, string, error) {
+	return func(ctx context.Context, s Session) (bool, string, error) {
 		addr, err := resolve(hostAddr + ":0")
 		if err != nil {
 			return false, "", err
@@ -169,7 +169,7 @@ func dnsCanary(listen dnsListener, leaked func(qs []dnsQuestion, token string) (
 		}
 		defer stop()
 		want := newToken()
-		r, err := run(target, want)
+		r, err := s.Run(target, want)
 		time.Sleep(200 * time.Millisecond) // a datagram in flight on loopback
 		stop()
 		if err != nil {
