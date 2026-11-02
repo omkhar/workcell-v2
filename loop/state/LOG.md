@@ -251,3 +251,5 @@ T2 proof: go run ./escape/cmd/escape -sandbox control as root gives 27 failed, 0
 Review: two findings fixed in one round, both I10: disk-flood wrote into the first writable directory, so a tmpfs /tmp in a real guest would never move host disk (now memory-backed filesystems are skipped and the probe errors when none is left); log-flood judged on a byte count the adapter reported about itself (Output.Total, now removed), so it judges host free disk like disk-flood. Six notes parked, with the redteam's unexpressed ideas and what U-204b's adapter must honour: log what the guest streams where the judge sees it as host disk, or cap it at 1 MiB.
 Budget: product 3508 of 15000, test 7139 of 10262, direct dependencies 2 of 15. Local gate 9 s; hosted gate, gate-macos and guard green on the first unit commit d4f9a84 before the fix.
 Next: U-008 (escape tests for I5 and I6, escape, env:any, model fable, deps U-004) is the next takeable unit for the cloud, then U-009, U-010, U-010b; each adds about 500 to 1000 lines under escape/, and 3123 test lines remain. The claim was PR #43, which this run gives its final title.
+
+## 2026-11-02T13:00Z U-008 START mode=cloud
