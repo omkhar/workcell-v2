@@ -160,7 +160,7 @@ func runOne(ctx context.Context, fresh func() (sandbox.Sandbox, error), payload 
 			return suite.Session{}, err
 		}
 		ses := suite.Session{Run: probe(ctx, sb, t.Name), Workspace: cfg.Workspace, Guest: guest, Allow: cfg.Allow, Deny: cfg.Deny, Another: open,
-			Pull: func(dest string) error { return sb.Pull(ctx, dest) }}
+			Pull: func(dest string) error { return sb.Pull(ctx, dest) }, Observe: sb}
 		if cfg.Secret != nil {
 			ses.Secret = *cfg.Secret
 		}

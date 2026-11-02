@@ -77,6 +77,37 @@ type Sandbox interface {
 	Pull(ctx context.Context, dest string) error
 	// Stop tears the sandbox down.
 	Stop() error
+	Observe
+}
+
+// Observe is the host side of a session as a judge sees it: the record the
+// product keeps of the session, the helpers that serve it, and the channel
+// the guest reaches. Everything here is read on the host; what the guest says
+// is never evidence.
+type Observe interface {
+	// Audit returns the host path of the file holding the session's record
+	// and the records in it, oldest first, one per element, as the product's
+	// log verb prints them.
+	Audit(ctx context.Context) (path string, records []string, err error)
+	// Verify runs the product's check of the session's record, as its verify
+	// verb does, and returns nil only when the record is intact.
+	Verify(ctx context.Context) error
+	// Helper returns the host pid of the session's named helper: "proxy",
+	// "resolver", "broker", or "supervisor" for the host end of the channel.
+	// Two names may share one process.
+	Helper(ctx context.Context, name string) (pid int, err error)
+	// Channel describes the host-guest channel as the guest reaches it.
+	Channel(ctx context.Context) (Channel, error)
+}
+
+// Channel is the host end of the host-guest channel, as the guest dials it:
+// Addr is "unix:<path>", "tcp:<host:port>" or "vsock:<cid>:<port>"; Hello is
+// one well-formed frame the host answers on a fresh connection, and Reply is
+// a prefix of its answer. A probe sends Hello before and after its hostile
+// traffic, so that a channel it never reached cannot pass (SPEC I12).
+type Channel struct {
+	Addr         string
+	Hello, Reply []byte
 }
 
 // Names lists the adapters, in the order shown to a user.
