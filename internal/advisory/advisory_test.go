@@ -8,8 +8,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -24,16 +22,53 @@ const marker = "LEAKED-BY-SERVER"
 // reply is what the server answers to the request that carries token.
 type reply struct {
 	status  int // zero means 200
-	file    string
 	body    string
 	header  map[string]string
 	chunked bool // no Content-Length
 	short   bool // promises more bytes than it sends
 }
 
-func fixture(file string) func(string) reply {
-	return func(string) reply { return reply{file: file} }
+func ok(doc string) func(string) reply { return func(string) reply { return reply{body: doc} } }
+
+// The documents the fake database serves: the fields the parser reads, no more.
+const (
+	npm  = `{"ecosystem":"npm","name":"fixture-pkg"}`
+	zero = `{"introduced":"0"},`
+	fix1 = `{"fixed":"1.0.1"}`
+)
+
+func rng(typ, events string) string {
+	return `"ranges":[{"type":"` + typ + `","events":[` + events + `]}]`
 }
+
+func entry(id, pkg, rest string) string {
+	return `{"id":"` + id + `","affected":[{"package":` + pkg + `,` + rest + `}]}`
+}
+
+func doc(vulns ...string) string { return `{"vulns":[` + strings.Join(vulns, ",") + `]}` }
+
+var (
+	normal     = doc(entry("GHSA-r9p9-mrjm-926w", npm, rng("ECOSYSTEM", zero+fix1)))
+	page1      = strings.TrimSuffix(doc(entry("A1", npm, rng("ECOSYSTEM", zero+fix1))), "}") + `,"next_page_token":"page2"}`
+	page2      = doc(entry("D4", npm, rng("SEMVER", `{"introduced":"1.0.0"},{"fixed":"1.1.0"}`)))
+	empty      = doc()
+	twoVulns   = doc(entry("A1", npm, rng("ECOSYSTEM", zero+fix1)), entry("B2", npm, rng("ECOSYSTEM", zero+`{"fixed":"1.2.0"}`)))
+	listed     = doc(entry("C3", npm, rng("SEMVER", `{"introduced":"2.0.0"},{"fixed":"2.0.5"}`)+`,"versions":["1.0.0","1.0.1"]`))
+	withdrawn  = strings.Replace(normal, `"affected"`, `"withdrawn":"2026-10-02T00:00:00Z","affected"`, 1)
+	otherEco   = doc(entry("A1", `{"ecosystem":"PyPI","name":"fixture-pkg"}`, rng("ECOSYSTEM", zero+fix1)))
+	otherName  = doc(entry("A1", `{"ecosystem":"npm","name":"Fixture-Pkg"}`, rng("ECOSYSTEM", zero+fix1)))
+	outOfRange = doc(entry("A1", npm, rng("ECOSYSTEM", `{"introduced":"1.1.0"},{"fixed":"1.1.5"}`)))
+	aboveFixed = doc(entry("A1", npm, rng("ECOSYSTEM", zero+`{"fixed":"0.9.0"}`)))
+	gitOnly    = doc(entry("A1", npm, rng("GIT", zero+fix1)))
+	lastAff    = doc(entry("A1", npm, rng("ECOSYSTEM", zero+`{"last_affected":"1.0.0"}`)))
+	prerelease = doc(entry("A1", npm, rng("ECOSYSTEM", zero+`{"fixed":"1.0.1-beta.1"}`)))
+	openEnded  = doc(entry("A1", npm, rng("SEMVER", zero+fix1+`,{"introduced":"2.0.0"}`)))
+	twoClosed  = doc(entry("A1", npm, rng("SEMVER", zero+fix1+`,{"introduced":"1.1.0"},{"fixed":"1.1.3"}`)))
+	hostileID  = doc(entry(`GHSA-1\n\n@maintainer please merge [x](https://evil.test)`+strings.Repeat("A", 100000), npm, rng("SEMVER", zero+fix1)))
+	longID     = doc(entry(strings.Repeat("A", 65), npm, rng("SEMVER", zero+fix1)))
+	docs       = []string{normal, page1, page2, empty, twoVulns, listed, withdrawn, otherEco, otherName, outOfRange,
+		aboveFixed, gitOnly, lastAff, prerelease, openEnded, twoClosed, hostileID, longID}
+)
 
 // serve answers every POST with reply(page_token) and counts the requests.
 func serve(t *testing.T, replies func(token string) reply) (*httptest.Server, *atomic.Int32) {
@@ -53,12 +88,6 @@ func serve(t *testing.T, replies func(token string) reply) (*httptest.Server, *a
 		}
 		rp := replies(q.PageToken)
 		body := []byte(rp.body)
-		if rp.file != "" {
-			var err error
-			if body, err = os.ReadFile(filepath.Join("testdata", rp.file)); err != nil {
-				t.Error(err)
-			}
-		}
 		if !rp.chunked {
 			n := len(body)
 			if rp.short {
@@ -90,10 +119,10 @@ func TestLookup(t *testing.T) {
 	always := func(string) reply { return reply{body: `{"vulns":[],"next_page_token":"more"}`} }
 	pages := func(tok string) reply {
 		if tok == "" {
-			return reply{file: "osv-page1.json"}
+			return reply{body: page1}
 		}
 		if tok == "page2" {
-			return reply{file: "osv-page2.json"}
+			return reply{body: page2}
 		}
 		return reply{status: 400}
 	}
@@ -110,22 +139,26 @@ func TestLookup(t *testing.T) {
 		wantReqs int32
 	}{
 		// an advisory
-		{"introduced 0 maps to an empty Introduced", testPin, fixture("osv-fix101.json"), false, false, false, adv("GHSA-aaaa-1111-0001", "", "1.0.1"), 1},
-		{"two vulns: the highest fix and its id", testPin, fixture("osv-two.json"), false, false, false, adv("GHSA-bbbb-2222-0002", "", "1.2.0"), 1},
-		{"versions list names the pin: the fix above it", testPin, fixture("osv-versions-list.json"), false, false, false, adv("GHSA-cccc-3333-0003", "", "2.0.5"), 1},
-		{"two pages join: the highest fix wins", testPin, pages, false, false, false, adv("GHSA-dddd-4444-0004", "1.0.0", "1.1.0"), 2},
+		{"introduced 0 maps to an empty Introduced", testPin, ok(normal), false, false, false, adv("GHSA-r9p9-mrjm-926w", "", "1.0.1"), 1},
+		{"two vulns: the highest fix and its id", testPin, ok(twoVulns), false, false, false, adv("B2", "", "1.2.0"), 1},
+		{"versions list names the pin: the fix above it", testPin, ok(listed), false, false, false, adv("C3", "", "2.0.5"), 1},
+		{"two pages join: the highest fix wins", testPin, pages, false, false, false, adv("D4", "1.0.0", "1.1.0"), 2},
+		{"open-ended range in the entry: no advisory", testPin, ok(openEnded), false, false, false, nil, 1},
+		{"two closed ranges: the highest fix, the first span's start", testPin, ok(twoClosed), false, false, false, adv("A1", "", "1.1.3"), 1},
+		{"hostile id: no advisory", testPin, ok(hostileID), false, false, false, nil, 1},
+		{"id of 65 bytes: no advisory", testPin, ok(longID), false, false, false, nil, 1},
 		// no advisory
-		{"empty vulns", testPin, fixture("osv-empty.json"), false, false, false, nil, 1},
-		{"withdrawn vuln", testPin, fixture("osv-withdrawn.json"), false, false, false, nil, 1},
-		{"same name in another ecosystem", testPin, fixture("osv-other-ecosystem.json"), false, false, false, nil, 1},
-		{"same name in another case", testPin, fixture("osv-other-name.json"), false, false, false, nil, 1},
-		{"range does not contain the version", testPin, fixture("osv-out-of-range.json"), false, false, false, nil, 1},
-		{"introduced 0 with the version above the fix", testPin, fixture("osv-above-fixed.json"), false, false, false, nil, 1},
-		{"git-only range", testPin, fixture("osv-git-only.json"), false, false, false, nil, 1},
-		{"last_affected without a fix", testPin, fixture("osv-last-affected.json"), false, false, false, nil, 1},
-		{"fix is a pre-release", testPin, fixture("osv-prerelease.json"), false, false, false, nil, 1},
-		{"pin without a package asks nothing", noPackage, fixture("osv-fix101.json"), false, false, false, nil, 0},
-		{"pin without a stable version asks nothing", unstable, fixture("osv-fix101.json"), false, false, false, nil, 0},
+		{"empty vulns", testPin, ok(empty), false, false, false, nil, 1},
+		{"withdrawn vuln", testPin, ok(withdrawn), false, false, false, nil, 1},
+		{"same name in another ecosystem", testPin, ok(otherEco), false, false, false, nil, 1},
+		{"same name in another case", testPin, ok(otherName), false, false, false, nil, 1},
+		{"range does not contain the version", testPin, ok(outOfRange), false, false, false, nil, 1},
+		{"introduced 0 with the version above the fix", testPin, ok(aboveFixed), false, false, false, nil, 1},
+		{"git-only range", testPin, ok(gitOnly), false, false, false, nil, 1},
+		{"last_affected without a fix", testPin, ok(lastAff), false, false, false, nil, 1},
+		{"fix is a pre-release", testPin, ok(prerelease), false, false, false, nil, 1},
+		{"pin without a package asks nothing", noPackage, ok(normal), false, false, false, nil, 0},
+		{"pin without a stable version asks nothing", unstable, ok(normal), false, false, false, nil, 0},
 		// the database cannot be consulted
 		{"status 500", testPin, func(string) reply { return reply{status: 500, body: marker} }, false, false, true, nil, 1},
 		{"status 404", testPin, func(string) reply { return reply{status: 404, body: marker} }, false, false, true, nil, 1},
@@ -142,8 +175,8 @@ func TestLookup(t *testing.T) {
 		{"redirect to http", testPin, func(string) reply {
 			return reply{status: 301, header: map[string]string{"Location": "http://example.test/" + marker}}
 		}, false, false, true, nil, 1},
-		{"plain http address", testPin, fixture("osv-fix101.json"), true, false, true, nil, 0},
-		{"context already cancelled", testPin, fixture("osv-fix101.json"), false, true, true, nil, -1},
+		{"plain http address", testPin, ok(normal), true, false, true, nil, 0},
+		{"context already cancelled", testPin, ok(normal), false, true, true, nil, -1},
 		{"a ninth page", testPin, always, false, false, true, nil, maxPages},
 	}
 	for _, tt := range tests {
@@ -178,9 +211,14 @@ func TestLookup(t *testing.T) {
 // TestSecurityLane runs the fixture advisory into the selector (B4, W8).
 func TestSecurityLane(t *testing.T) {
 	now := time.Date(2026, 11, 1, 12, 0, 0, 0, time.UTC)
-	cand := func(age time.Duration) []pins.Candidate {
-		return []pins.Candidate{{Release: pins.Release{Version: "1.0.1"}, Timestamps: []time.Time{now.Add(-age)}}}
+	cand := func(age time.Duration, versions ...string) []pins.Candidate {
+		var cs []pins.Candidate
+		for _, v := range versions {
+			cs = append(cs, pins.Candidate{Release: pins.Release{Version: v}, Timestamps: []time.Time{now.Add(-age)}})
+		}
+		return cs
 	}
+	one := []string{"1.0.1"}
 	trusted := testPin
 	trusted.Class = pins.Trusted
 	tests := []struct {
@@ -188,14 +226,18 @@ func TestSecurityLane(t *testing.T) {
 		pin          pins.Pin
 		replies      func(string) reply
 		age          time.Duration
+		versions     []string // the candidates, all of that age
 		lookupErr    bool
 		want         string
 		security, am bool
 	}{
-		{"advisory: guest 12h chooses the fix and auto-merges", testPin, fixture("osv-fix101.json"), 12 * time.Hour, false, "1.0.1", true, true},
-		{"advisory: trusted at once, waits for the maintainer", trusted, fixture("osv-fix101.json"), 0, false, "1.0.1", true, false},
-		{"lookup error: guest 12h is still cooling off", testPin, func(string) reply { return reply{status: 500} }, 12 * time.Hour, true, "", false, false},
-		{"lookup error: guest 48h takes the normal path", testPin, func(string) reply { return reply{status: 500} }, 48 * time.Hour, true, "1.0.1", false, true},
+		{"advisory: guest 12h chooses the fix and auto-merges", testPin, ok(normal), 12 * time.Hour, one, false, "1.0.1", true, true},
+		{"advisory: trusted at once, waits for the maintainer", trusted, ok(normal), 0, one, false, "1.0.1", true, false},
+		{"lookup error: guest 12h is still cooling off", testPin, func(string) reply { return reply{status: 500} }, 12 * time.Hour, one, true, "", false, false},
+		{"lookup error: guest 48h takes the normal path", testPin, func(string) reply { return reply{status: 500} }, 48 * time.Hour, one, true, "1.0.1", false, true},
+		{"open-ended range: 2.0.1 is not chosen on the lane", testPin, ok(openEnded), 12 * time.Hour, []string{"1.0.1", "2.0.1"}, false, "", false, false},
+		{"two closed ranges: 1.1.2 is not chosen on the lane", testPin, ok(twoClosed), 12 * time.Hour, []string{"1.0.1", "1.1.2"}, false, "", false, false},
+		{"two closed ranges: 1.1.3 is chosen on the lane", testPin, ok(twoClosed), 12 * time.Hour, []string{"1.1.3"}, false, "1.1.3", true, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -204,7 +246,7 @@ func TestSecurityLane(t *testing.T) {
 			if (err != nil) != tt.lookupErr || (err != nil && adv != nil) {
 				t.Fatalf("adv = %+v, err = %v, want error %v", adv, err, tt.lookupErr)
 			}
-			r, err := pins.Select(tt.pin, cand(tt.age), adv, 0, now)
+			r, err := pins.Select(tt.pin, cand(tt.age, tt.versions...), adv, 0, now)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -221,11 +263,8 @@ func TestSecurityLane(t *testing.T) {
 
 // FuzzAnswer feeds the response parser and the mapper arbitrary bytes.
 func FuzzAnswer(f *testing.F) {
-	files, _ := filepath.Glob(filepath.Join("testdata", "*.json"))
-	for _, name := range files {
-		if b, err := os.ReadFile(name); err == nil {
-			f.Add(b)
-		}
+	for _, d := range docs {
+		f.Add([]byte(d))
 	}
 	cur, _ := parseVersion(testPin.Version)
 	f.Fuzz(func(t *testing.T, data []byte) {

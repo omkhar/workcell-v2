@@ -138,18 +138,24 @@ func post(ctx context.Context, c *http.Client, db string, body []byte) ([]byte, 
 }
 
 // match reports the advisory v makes about p at cur, and its fix. A withdrawn
-// vuln, a package other than p's and a span without a stable fix match nothing.
+// vuln, one whose id is not a short plain token (the id reaches a public issue
+// and pull request), a package other than p's and a span without a stable fix
+// match nothing. Within an affected entry the fix is the highest stable fix of
+// all its ranges, so a version at or above it lies outside every closed range,
+// and an entry with a range left open matches nothing.
 func (v vuln) match(p pins.Pin, cur version) (adv pins.Advisory, fix version, ok bool) {
-	if v.Withdrawn != "" {
+	if v.Withdrawn != "" || !plainID(v.ID) {
 		return
 	}
-	var listed pins.Advisory // the nearest fix above cur, for a version the entry lists
+	var listed pins.Advisory // the highest fix above cur, for a version the entry lists
 	var listedFix version
 	for _, a := range v.Affected {
 		if a.Package.Ecosystem != p.Package.Ecosystem || a.Package.Name != p.Package.Name {
 			continue
 		}
 		isListed := slices.Contains(a.Versions, p.Version)
+		var top version // the highest stable fix of the entry
+		topText, hitFrom, hit, unclosed := "", "", false, false
 		for _, r := range a.Ranges {
 			if r.Type != "SEMVER" && r.Type != "ECOSYSTEM" {
 				continue
@@ -165,19 +171,18 @@ func (v vuln) match(p pins.Pin, cur version) (adv pins.Advisory, fix version, ok
 				case e.Fixed != "" && open:
 					open = false
 					f, fok := parseVersion(e.Fixed)
+					if !fok {
+						continue
+					}
+					if topText == "" || compare(f, top) > 0 {
+						top, topText = f, e.Fixed
+					}
 					lo, lok := version{}, true
 					if from != "" {
 						lo, lok = parseVersion(from)
 					}
-					if !fok || compare(cur, f) >= 0 {
-						continue
-					}
-					if lok && compare(lo, cur) <= 0 {
-						if !ok || compare(f, fix) > 0 {
-							adv, fix, ok = pins.Advisory{ID: v.ID, Introduced: from, Fixed: e.Fixed}, f, true
-						}
-					} else if isListed && (listed.ID == "" || compare(f, listedFix) < 0) {
-						listed, listedFix = pins.Advisory{ID: v.ID, Fixed: e.Fixed}, f
+					if compare(cur, f) < 0 && lok && compare(lo, cur) <= 0 && (!hit || compare(f, top) >= 0) {
+						hit, hitFrom = true, from
 					}
 				case e.LastAffected != "":
 					open = false
@@ -186,12 +191,36 @@ func (v vuln) match(p pins.Pin, cur version) (adv pins.Advisory, fix version, ok
 					break
 				}
 			}
+			unclosed = unclosed || open
+		}
+		if unclosed || topText == "" || compare(cur, top) >= 0 {
+			continue
+		}
+		switch {
+		case hit && (!ok || compare(top, fix) > 0):
+			adv, fix, ok = pins.Advisory{ID: v.ID, Introduced: hitFrom, Fixed: topText}, top, true
+		case !hit && isListed && (listed.ID == "" || compare(top, listedFix) > 0):
+			listed, listedFix = pins.Advisory{ID: v.ID, Fixed: topText}, top
 		}
 	}
 	if !ok && listed.ID != "" {
 		return listed, listedFix, true
 	}
 	return
+}
+
+// plainID reports whether id is 1 to 64 bytes of letters, digits, "." and "-".
+func plainID(id string) bool {
+	if id == "" || len(id) > 64 {
+		return false
+	}
+	for i := range len(id) {
+		c := id[i]
+		if c != '.' && c != '-' && (c < '0' || c > '9') && (c < 'A' || c > 'Z') && (c < 'a' || c > 'z') {
+			return false
+		}
+	}
+	return true
 }
 
 // version is a stable semantic version, compared as pins compares it.
