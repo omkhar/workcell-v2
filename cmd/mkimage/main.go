@@ -75,10 +75,14 @@ func imageFromPin(p pins.Pin, arch string) (rootfs.Image, error) {
 	if p.Source != pins.OCI {
 		return rootfs.Image{}, errors.New("the pin is not an OCI image")
 	}
+	bad := errors.New("the pin locator is not https://host/v2/repository")
 	u, err := url.Parse(p.Locator)
+	if err != nil {
+		return rootfs.Image{}, bad
+	}
 	repo, ok := strings.CutPrefix(u.Path, "/v2/")
-	if err != nil || u.Scheme != "https" || u.Host == "" || !ok || repo == "" || u.RawQuery != "" || u.User != nil {
-		return rootfs.Image{}, errors.New("the pin locator is not https://host/v2/repository")
+	if u.Scheme != "https" || u.Host == "" || !ok || repo == "" || u.RawQuery != "" || u.User != nil {
+		return rootfs.Image{}, bad
 	}
 	a, ok := p.Artifacts[arch]
 	if !ok || len(a.SHA256) != 64 || strings.Trim(a.SHA256, "0123456789abcdef") != "" {
