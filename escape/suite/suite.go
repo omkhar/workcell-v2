@@ -11,6 +11,8 @@ import (
 	"context"
 	"fmt"
 	"strings"
+
+	"github.com/omkhar/workcell/v2/escape/sandbox"
 )
 
 // Result is what a probe reports. Status is a short token such as "connected";
@@ -43,6 +45,9 @@ type Session struct {
 	// removes it afterwards, so a judge may plant files beside Workspace.
 	Workspace string
 	Guest     string // where the guest sees Workspace
+	// Secret is the credential the runner bound for this session when the
+	// test wanted one: its real value, which the guest must never hold.
+	Secret sandbox.Secret
 	// Another starts a second session with the same Want and its own export.
 	// The runner stops it with the first.
 	Another func() (Session, error)
@@ -52,13 +57,16 @@ type Session struct {
 // runs the probe through s.Run, and says whether the invariant held.
 type Judge func(ctx context.Context, s Session) (pass bool, detail string, err error)
 
-// Want is the sandbox a test needs: an export, and the caps the adapter is to
-// state (zero: the adapter's default).
+// Want is the sandbox a test needs: an export, the caps the adapter is to
+// state (zero: the adapter's default), the names the policy allows, and
+// whether a fresh secret is bound to the first of them.
 type Want struct {
 	Workspace bool
 	CPUs      int
 	MemoryMiB int
 	DiskMiB   int
+	Allow     []string
+	Secret    bool
 }
 
 // Test is one escape test.

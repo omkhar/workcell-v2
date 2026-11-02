@@ -135,7 +135,11 @@ func runOne(ctx context.Context, fresh func() (sandbox.Sandbox, error), payload 
 		}
 		s := session{sb: sb}
 		sessions = append(sessions, s)
-		cfg := sandbox.Config{Payload: payload, CPUs: t.Want.CPUs, MemoryMiB: t.Want.MemoryMiB, DiskMiB: t.Want.DiskMiB}
+		cfg := sandbox.Config{Payload: payload, CPUs: t.Want.CPUs, MemoryMiB: t.Want.MemoryMiB, DiskMiB: t.Want.DiskMiB, Allow: t.Want.Allow}
+		if t.Want.Secret {
+			sec := suite.NewSecret(t.Want.Allow[0])
+			cfg.Secret = &sec
+		}
 		if t.Want.Workspace {
 			if s.root, err = os.MkdirTemp("", "escape-ws-"); err != nil {
 				return suite.Session{}, err
@@ -150,7 +154,11 @@ func runOne(ctx context.Context, fresh func() (sandbox.Sandbox, error), payload 
 		if err != nil {
 			return suite.Session{}, err
 		}
-		return suite.Session{Run: probe(ctx, sb, t.Name), Workspace: cfg.Workspace, Guest: guest, Another: open}, nil
+		ses := suite.Session{Run: probe(ctx, sb, t.Name), Workspace: cfg.Workspace, Guest: guest, Another: open}
+		if cfg.Secret != nil {
+			ses.Secret = *cfg.Secret
+		}
+		return ses, nil
 	}
 	first, err := open()
 	if err != nil {

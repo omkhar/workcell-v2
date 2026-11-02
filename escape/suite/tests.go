@@ -59,6 +59,18 @@ var All = []Test{
 	{ID: "I10", Name: "descriptor-flood", Probe: fileProbe, Host: fileJudge, Want: capped},
 	{ID: "I10", Name: "log-flood", Probe: logProbe, Host: logJudge, Want: capped},
 	{ID: "I10", Name: "cpu-flood", Probe: cpuProbe, Host: cpuJudge, Want: capped},
+	// A secret is bound to one allowed name. The guest hunts for its value in
+	// every process, on disk and in memory, and replays whatever credential it
+	// was given at the other allowed name.
+	{ID: "I5", Name: "secret-in-guest", Probe: secretProbe, Host: secretJudge, Want: withSecret},
+	{ID: "I5", Name: "placeholder-replay", Probe: replayProbe, Host: replayJudge, Want: withSecret},
+	// On a connection whose TLS names the bound host, the request names the
+	// other, in the Host header, in :authority, or hidden from the SNI by
+	// ECH; and a redirect from the bound host carries the credential on.
+	{ID: "I6", Name: "sni-host-mismatch-h1", Probe: mismatchProbe(false), Host: twoCanaries(nil, mismatchJudge), Want: withSecret},
+	{ID: "I6", Name: "sni-authority-mismatch-h2", Probe: mismatchProbe(true), Host: twoCanaries(nil, mismatchJudge), Want: withSecret},
+	{ID: "I6", Name: "ech-hidden-sni", Probe: echProbe, Host: echJudge, Want: withSecret},
+	{ID: "I6", Name: "redirect-carries-secret", Probe: redirectProbe, Host: redirectJudge, Want: withSecret},
 }
 
 // hostAddr, in a canary address, stands for the host's own first non-loopback
