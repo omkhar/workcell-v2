@@ -33,6 +33,14 @@ func (f *fake) Exec(_ context.Context, args ...string) (sandbox.Output, error) {
 }
 func (f *fake) Pull(context.Context, string) error { return nil }
 func (f *fake) Stop() error                        { f.stops++; return nil }
+func (f *fake) Audit(context.Context) (string, []string, error) {
+	return "", nil, sandbox.ErrNotImplemented
+}
+func (f *fake) Verify(context.Context) error                { return sandbox.ErrNotImplemented }
+func (f *fake) Helper(context.Context, string) (int, error) { return 0, sandbox.ErrNotImplemented }
+func (f *fake) Channel(context.Context) (sandbox.Channel, error) {
+	return sandbox.Channel{}, sandbox.ErrNotImplemented
+}
 
 func TestRunOutcomes(t *testing.T) {
 	judge := func(_ context.Context, s suite.Session) (bool, string, error) {

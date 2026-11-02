@@ -5,11 +5,14 @@ package suite
 
 import (
 	"bufio"
+	"bytes"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"strconv"
 	"strings"
+	"syscall"
 
 	"golang.org/x/sys/unix"
 )
@@ -94,6 +97,23 @@ func hostDiskFree() (int64, error) {
 		free += int64(st.Bavail) * int64(st.Bsize)
 	}
 	return free, nil
+}
+
+// helperAlive says whether the process runs on the host: it has a /proc
+// entry and is neither a zombie nor dead.
+func helperAlive(pid int) (bool, error) {
+	b, err := os.ReadFile(fmt.Sprintf("/proc/%d/stat", pid))
+	if errors.Is(err, fs.ErrNotExist) || errors.Is(err, syscall.ESRCH) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	i := bytes.LastIndexByte(b, ')') // the state follows the comm, which may hold spaces
+	if i < 0 || i+2 >= len(b) {
+		return false, fmt.Errorf("/proc/%d/stat is malformed", pid)
+	}
+	return b[i+2] != 'Z' && b[i+2] != 'X', nil
 }
 
 // procField reads the first number after the label (or the first number of

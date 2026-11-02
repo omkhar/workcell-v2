@@ -16,3 +16,4 @@ func hostMemAvailable() (int64, error) { return 0, errLinuxHost }
 func hostFiles() (int64, error)        { return 0, errLinuxHost }
 func hostBusy() (int64, error)         { return 0, errLinuxHost }
 func hostDiskFree() (int64, error)     { return 0, errLinuxHost }
+func helperAlive(int) (bool, error)    { return false, errLinuxHost }

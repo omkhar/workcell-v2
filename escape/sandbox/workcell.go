@@ -18,3 +18,8 @@ func (*workcell) Exec(context.Context, ...string) (Output, error) {
 func (*workcell) Pull(context.Context, string) error { return ErrNotImplemented }
 
 func (*workcell) Stop() error { return ErrNotImplemented }
+
+func (*workcell) Audit(context.Context) (string, []string, error) { return "", nil, ErrNotImplemented }
+func (*workcell) Verify(context.Context) error                    { return ErrNotImplemented }
+func (*workcell) Helper(context.Context, string) (int, error)     { return 0, ErrNotImplemented }
+func (*workcell) Channel(context.Context) (Channel, error)        { return Channel{}, ErrNotImplemented }

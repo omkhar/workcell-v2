@@ -87,6 +87,26 @@ var All = []Test{
 	{ID: "I13", Name: "repo-policy-rebinds-secret", Probe: replayProbe, Host: twoCanaries(false, nil, leakJudge), Want: rebound},
 	{ID: "I13", Name: "repo-policy-mounts-workspace", Probe: liveProbe, Host: liveJudge, Want: mounted},
 	{ID: "I13", Name: "repo-policy-lifts-memory-cap", Probe: memoryProbe, Host: memoryJudge, Want: uncapped},
+	// The guest, told where the host keeps the session's record, plants a
+	// record, sends the record's path to /dev/null, or empties it; and a user
+	// with the file edits it after the fact, which verify must notice.
+	{ID: "I9", Name: "audit-forge-record", Probe: auditProbe, Host: auditJudge("forge"), Want: exported},
+	{ID: "I9", Name: "audit-suppress-record", Probe: auditProbe, Host: auditJudge("suppress")},
+	{ID: "I9", Name: "audit-truncate-record", Probe: auditProbe, Host: auditJudge("truncate")},
+	{ID: "I9", Name: "verify-dropped-record", Probe: auditProbe, Host: offlineJudge("drop")},
+	{ID: "I9", Name: "verify-altered-byte", Probe: auditProbe, Host: offlineJudge("alter")},
+	{ID: "I9", Name: "verify-truncated-record", Probe: auditProbe, Host: offlineJudge("truncate")},
+	{ID: "I9", Name: "verify-appended-record", Probe: auditProbe, Host: offlineJudge("append")},
+	// Each host helper is killed with SIGKILL while the guest has reached an
+	// allowed name; after, the guest must reach neither it nor a denied one.
+	{ID: "I11", Name: "proxy-killed", Probe: reachProbe, Host: helperKilled("proxy"), Want: reachable},
+	{ID: "I11", Name: "resolver-killed", Probe: reachProbe, Host: helperKilled("resolver"), Want: reachable},
+	{ID: "I11", Name: "broker-killed", Probe: reachProbe, Host: helperKilled("broker"), Want: reachable},
+	// Hostile frames on the host-guest channel, held open while a well-formed
+	// one is sent again: the host end must answer it and stay alive.
+	{ID: "I12", Name: "channel-malformed-frames", Probe: channelProbe, Host: channelJudge("malformed")},
+	{ID: "I12", Name: "channel-oversized-frame", Probe: channelProbe, Host: channelJudge("oversized")},
+	{ID: "I12", Name: "channel-slow-drip", Probe: channelProbe, Host: channelJudge("slow-drip")},
 }
 
 // hostAddr, in a canary address, stands for the host's own first non-loopback

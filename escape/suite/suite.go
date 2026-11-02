@@ -57,6 +57,9 @@ type Session struct {
 	// Another starts a second session with the same Want and its own export.
 	// The runner stops it with the first.
 	Another func() (Session, error)
+	// Observe is the host side of the session: its record, its helpers and
+	// its channel.
+	sandbox.Observe
 }
 
 // Judge runs on the host. It may start canaries (on loopback only, SPEC T8),
