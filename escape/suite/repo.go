@@ -39,10 +39,15 @@ func repoProbe(args []string) Result {
 		return os.WriteFile(path, []byte("#!/bin/sh\ntouch '"+canary(effect)+"'\n"+tail+"\n"), 0o755)
 	}
 	var err error
-	if shape != "fill" {
-		err = gitDir(guest, map[string]string{"dotdot": "[core]\n\tbare = true\n", // so that a snapshot of the work tree cannot replace HEAD
-			"config": "[core]\n\tfsmonitor = " + guest + "/.git/fsmonitor\n\thooksPath = " + guest + "/.hooks\n" +
-				"[filter \"escape\"]\n\tclean = " + guest + "/.git/filter\n\trequired = true\n"}[shape])
+	if shape != "fill" { // an empty template: the shape brings its own hooks, and nothing else
+		_, err = git(guest, "", "init", "-q", "--template=")
+	}
+	// The values are relative to the work tree, so that they hold wherever a pull brings it.
+	for _, kv := range map[string][][2]string{"dotdot": {{"core.bare", "true"}}, // so that a snapshot of the work tree cannot replace HEAD
+		"config": {{"core.fsmonitor", ".git/fsmonitor"}, {"core.hooksPath", ".hooks"}, {"filter.escape.clean", "./.git/filter"}, {"filter.escape.required", "true"}}}[shape] {
+		if err == nil {
+			_, err = git(guest, "", "config", kv[0], kv[1])
+		}
 	}
 	if err == nil {
 		err = os.WriteFile(filepath.Join(guest, "work"), []byte(token+"\n"), 0o644)
@@ -51,7 +56,9 @@ func repoProbe(args []string) Result {
 		return Result{Status: "error", Detail: err.Error()}
 	}
 	switch shape {
+	case "plain": // the work file alone: what a pull must bring
 	case "hooks":
+		err = os.MkdirAll(filepath.Join(guest, ".git", "hooks"), 0o755)
 		for _, h := range []string{"pre-commit", "post-commit", "post-index-change"} {
 			err = errors.Join(err, script(filepath.Join(guest, ".git", "hooks", h), "hook-"+h, ""))
 		}
@@ -90,19 +97,6 @@ func repoProbe(args []string) Result {
 	return Result{Status: "shaped", Detail: shape}
 }
 
-// gitDir lays out a repository by hand, with the configuration given, so
-// that the shape depends on no git in the guest and brings no template.
-func gitDir(guest, config string) error {
-	dir := filepath.Join(guest, ".git")
-	for _, d := range []string{"objects", "refs/heads", "hooks"} {
-		if err := os.MkdirAll(filepath.Join(dir, d), 0o755); err != nil {
-			return err
-		}
-	}
-	return errors.Join(os.WriteFile(filepath.Join(dir, "HEAD"), []byte("ref: refs/heads/main\n"), 0o644),
-		os.WriteFile(filepath.Join(dir, "config"), []byte("[core]\n\trepositoryformatversion = 0\n"+config), 0o644))
-}
-
 // git runs git in the guest's repository with stdin and returns its first
 // line of output.
 func git(guest, stdin string, args ...string) (string, error) {
@@ -139,6 +133,25 @@ func bring(s Session, shape, token, extra string) (refused string, err error) {
 	return "", nil
 }
 
+// pulls has the guest make the plain shape, pulls it, and errors unless the
+// pull brought its work file: a refusal proves nothing about a product that
+// cannot pull at all.
+func pulls(s Session) error {
+	token := newToken()
+	refused, err := bring(s, "plain", token, "")
+	if err == nil && refused != "" {
+		err = errors.New(refused)
+	}
+	b, _ := os.ReadFile(filepath.Join(filepath.Dir(s.Workspace), "pulled", "work"))
+	if err == nil && string(b) != token+"\n" {
+		err = fmt.Errorf("pulled/work holds %q, not the token", b)
+	}
+	if err != nil {
+		return fmt.Errorf("the pull brought nothing: %w", err)
+	}
+	return nil
+}
+
 // effects fails if any shape's effect landed beside the export.
 func effects(s Session, note string) (bool, string, error) {
 	written, _ := filepath.Glob(filepath.Join(filepath.Dir(s.Workspace), "written-*"))
@@ -155,6 +168,9 @@ func effects(s Session, note string) (bool, string, error) {
 // if an effect landed beside the export.
 func obeyed(shapes ...string) Judge {
 	return func(ctx context.Context, s Session) (bool, string, error) {
+		if err := pulls(s); err != nil {
+			return false, "", err
+		}
 		token, note := newToken(), ""
 		for _, shape := range shapes {
 			refused, err := bring(s, shape, token, "")
@@ -172,6 +188,9 @@ func obeyed(shapes ...string) Judge {
 // fetched names, in .gitmodules, a submodule at a listener on the host's own
 // address, and fails if the pull connects to it.
 func fetched(ctx context.Context, s Session) (bool, string, error) {
+	if err := pulls(s); err != nil {
+		return false, "", err
+	}
 	addr, err := resolve(hostAddr + ":0")
 	if err != nil {
 		return false, "", err
@@ -211,6 +230,9 @@ func fetched(ctx context.Context, s Session) (bool, string, error) {
 // only in case: a launch host (SPEC P6) folds case, and there the second
 // name's content lands on the first.
 func collided(ctx context.Context, s Session) (bool, string, error) {
+	if err := pulls(s); err != nil {
+		return false, "", err
+	}
 	refused, err := bring(s, "case", newToken(), "")
 	if err != nil {
 		return false, "", err
