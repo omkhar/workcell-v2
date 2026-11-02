@@ -271,3 +271,5 @@ T2 proof: go run ./escape/cmd/escape -sandbox control -only I8,I13 as root gives
 Review: three findings, all fixed in the one round: every I8 judge passed on any Pull error (now a positive control); the config shape used absolute guest paths, so a real clone could never fail it (now relative); the submodule fetch honoured http_proxy on control (T2, S12). The less-code note was applied with them (git init --template= per shape instead of a hand-laid .git), so nothing is parked.
 Budget: product 3508 of 15000, test 8464 of 10262, direct dependencies 2 of 15. 1798 test lines remain for U-010 and U-010b, so each must stay near 800.
 Next: U-010 (I9, I11, I12, escape, env:any, model fable, deps U-004) is the next takeable unit for the cloud, then U-010b. The real adapter (U-204b) must implement Pull through workcell diff and pull, honour Config.Deny (names that resolve but are not allowed) and read only the user-level policy it is given, with the repo-local workcell.toml allowed to narrow only. The claim was PR #45, which this run gives its final title.
+
+## 2026-11-02T14:23Z U-010 START mode=cloud
