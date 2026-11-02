@@ -23,6 +23,7 @@ import (
 type control struct {
 	dir     string
 	payload string
+	env     []string // what a naive sandbox exports to the guest: the real secret
 }
 
 func newControl() (Sandbox, error) { return &control{}, nil }
@@ -41,13 +42,24 @@ func (c *control) Start(_ context.Context, cfg Config) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("control: place payload: %w", err)
 	}
+	c.env = []string{"PATH=/usr/sbin:/usr/bin:/sbin:/bin", "HOME=/root"}
+	if sec := cfg.Secret; sec != nil {
+		// The naive way: the real value in the environment, and in a dotenv
+		// file in the workspace for tools that read one.
+		c.env = append(c.env, sec.Env+"="+sec.Value)
+		if cfg.Workspace != "" {
+			if err := os.WriteFile(filepath.Join(cfg.Workspace, ".env"), []byte(sec.Env+"="+sec.Value+"\n"), 0o600); err != nil {
+				return "", fmt.Errorf("control: stage secret: %w", err)
+			}
+		}
+	}
 	return cfg.Workspace, nil // the host's root is the guest's: the export is where it lies
 }
 
 func (c *control) Exec(ctx context.Context, args ...string) (Output, error) {
 	cmd := exec.CommandContext(ctx, c.payload, args...)
 	cmd.Dir = "/"
-	cmd.Env = []string{"PATH=/usr/sbin:/usr/bin:/sbin:/bin", "HOME=/root"}
+	cmd.Env = c.env
 	attr := &syscall.SysProcAttr{
 		Cloneflags: syscall.CLONE_NEWNS | syscall.CLONE_NEWPID | syscall.CLONE_NEWUTS | syscall.CLONE_NEWIPC,
 	}

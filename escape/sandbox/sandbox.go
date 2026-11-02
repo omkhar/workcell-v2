@@ -42,6 +42,21 @@ type Config struct {
 	CPUs      int
 	MemoryMiB int
 	DiskMiB   int
+	// Allow names the hosts the session policy allows. Each resolves, for
+	// the session, to the test host's own address, where the judge's canaries
+	// listen (SPEC T8). The control adapter has no policy and ignores it.
+	Allow []string
+	// Secret is a credential bound to one allowed name; nil for none.
+	Secret *Secret
+}
+
+// Secret is one [[secret]] table entry as a test wants it: Value is bound to
+// Host and goes in Header. The guest is to see the credential only as a
+// placeholder, in the environment variable Env, and only a terminated
+// connection to Host is to carry Value (SPEC A4, I5, I6). The control adapter
+// does what a naive sandbox does and stages Value itself.
+type Secret struct {
+	Name, Value, Host, Header, Env string
 }
 
 // Sandbox is one sandbox holding the payload. A test gets a fresh one.
