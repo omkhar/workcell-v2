@@ -241,3 +241,5 @@ Tests: TestLookup 31 rows (advisory, no-advisory and error rows named after what
 Review: two findings fixed in one round (B4: a multi-range advisory let a candidate inside another vulnerable range ride the lane; B5: the advisory ID left the package verbatim). Three notes parked, above all that internal/advisory sits outside the bump-tool count like internal/artifact, and that reporting the lookup error in an issue is B-825's half.
 Budget: product 3508 of 15000, test 6051 of 7262, bump tool 675 of 800 (125 left for cmd/bump, so B-825 must trim sources.go or ask the maintainer to rule on the count), direct dependencies 2 of 15, Markdown 288 of 2500. Local gate 19 s; hosted gate, gate-macos and guard green on the claim a8c0c3d and on the unit commit 3bd3bc6 before the fix.
 Next: no unit is takeable for the cloud after this one without H-103, U-102 or W-800 (which waits on U-207 behind the kvm chain); the next run will find nothing to do unless the maintainer closes a gate or resets U-007 to U-010b. The claim was PR #40, which this run gives its final title.
+
+## 2026-11-02T12:20Z U-007 START mode=cloud
