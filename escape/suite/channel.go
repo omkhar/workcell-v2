@@ -21,8 +21,10 @@ import (
 // reach, as guest init has it. It sends the one well-formed frame the
 // adapter named and reads the answer; then its kind of hostile traffic, on
 // connections it keeps open; then the well-formed frame again on a fresh
-// connection, while the hostile ones still stand. The judge holds the host
-// end to answering both and to being alive after.
+// connection, while the hostile ones still stand; last it reads the
+// connections whose header no host can accept: a correct host closed them, a
+// naive one holds each with a buffer and a reader for the guest to multiply.
+// The judge holds the host end to both answers, the closes and staying alive.
 
 const (
 	channelWait  = 3 * time.Second        // for an answer to the well-formed frame
@@ -33,6 +35,7 @@ const (
 	rawBytes     = 4096                   // random bytes sent as frames
 	chewTime     = 500 * time.Millisecond // for the host to take the hostile traffic
 	sendWait     = 2 * time.Second        // a write to a host that stopped reading gives up
+	holdWait     = time.Second            // for the host to close a connection it had to refuse
 )
 
 // channelProbe sends the hostile traffic of kind args[0] to the channel at
@@ -52,6 +55,7 @@ func channelProbe(args []string) Result {
 		return Result{Status: "error", Detail: "no answer to the well-formed frame before anything hostile: " + err.Error()}
 	}
 	var held []net.Conn
+	var refuse []net.Conn // the ones whose header no host can accept
 	defer func() {
 		for _, c := range held {
 			c.Close()
@@ -59,20 +63,21 @@ func channelProbe(args []string) Result {
 	}()
 	// send opens a connection, writes b on it with a deadline, and keeps it
 	// open: a host that reads whole frames with no cap or clock stays stuck.
-	send := func(b []byte) {
+	send := func(b []byte) net.Conn {
 		c, err := dialChannel(addr)
 		if err != nil {
-			return
+			return nil
 		}
 		held = append(held, c)
 		c.SetWriteDeadline(time.Now().Add(sendWait))
 		c.Write(b)
+		return c
 	}
 	switch kind {
 	case "hello":
 	case "malformed":
-		send(make([]byte, 4*zeroFrames)) // zero-length frames
-		send([]byte{0, 0, 0, 1})         // a one-byte frame with no byte
+		refuse = append(refuse, send(make([]byte, 4*zeroFrames))) // zero-length frames
+		send([]byte{0, 0, 0, 1})                                  // a one-byte frame with no byte
 		off := binary.BigEndian.AppendUint32(nil, uint32(len(hello)-4+1))
 		send(append(off, hello[4:]...)) // the hello, length off by one
 		odd := append([]byte{}, hello...)
@@ -83,9 +88,9 @@ func channelProbe(args []string) Result {
 		send(raw)
 		send(append([]byte{0xff, 0xff}, hello...)) // a version or type the host never issued
 	case "oversized":
-		send([]byte{0xff, 0xff, 0xff, 0xff})                         // 4 GiB declared, then silence
-		send([]byte{0x7f, 0xff, 0xff, 0xff})                         // 2 GiB declared
-		send([]byte{0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff}) // a 64-bit length
+		refuse = append(refuse, send([]byte{0xff, 0xff, 0xff, 0xff}))                         // 4 GiB declared, then silence
+		refuse = append(refuse, send([]byte{0x7f, 0xff, 0xff, 0xff}))                         // 2 GiB declared
+		refuse = append(refuse, send([]byte{0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff})) // a 64-bit length
 		big := binary.BigEndian.AppendUint32(nil, bigFrame)
 		send(append(big, make([]byte, bigFrame)...)) // a frame the host must refuse to buffer
 	case "slow-drip":
@@ -110,7 +115,22 @@ func channelProbe(args []string) Result {
 	if err := sayHello(addr, hello, reply); err != nil {
 		return Result{Status: "unanswered", Detail: fmt.Sprintf("%d hostile connections open; the well-formed frame then got: %s", len(held), err)}
 	}
-	return Result{Status: "served", Detail: fmt.Sprintf("%d hostile connections open; the well-formed frame was still answered", len(held))}
+	// Read each connection the host had to refuse until it closes it, holdWait
+	// in all: one still open then waits for the rest of a frame it cannot take.
+	kept, by := 0, time.Now().Add(holdWait)
+	for _, c := range refuse {
+		if c == nil {
+			continue
+		}
+		c.SetReadDeadline(by)
+		if _, err := io.Copy(io.Discard, c); errors.Is(err, os.ErrDeadlineExceeded) {
+			kept++
+		}
+	}
+	if kept > 0 {
+		return Result{Status: "held", Detail: fmt.Sprintf("%d hostile connections open; the well-formed frame was answered, but the host still holds %d of the %d it had to refuse on the header", len(held), kept, len(refuse))}
+	}
+	return Result{Status: "served", Detail: fmt.Sprintf("%d hostile connections open; the well-formed frame was still answered and the host closed the %d it had to refuse", len(held), len(refuse))}
 }
 
 // sayHello sends the well-formed frame on a fresh connection and expects the
@@ -153,8 +173,8 @@ func dialChannel(addr string) (net.Conn, error) {
 
 // channelJudge sends the probe of kind at the channel and holds the host end
 // to its promise: it answered the well-formed frame before (else nothing is
-// proven), it answers it after, the supervisor still runs, and a plain run
-// still completes.
+// proven), it answers it after, it closed every connection whose header it
+// had to refuse, the supervisor still runs, and a plain run still completes.
 func channelJudge(kind string) Judge {
 	return func(ctx context.Context, s Session) (bool, string, error) {
 		ch, err := s.Channel(ctx)
@@ -183,7 +203,7 @@ func channelJudge(kind string) Judge {
 			return false, fmt.Sprintf("the supervisor (pid %d) died on %s traffic%s", pid, kind, say), nil
 		}
 		if r.Status != "served" {
-			return false, "the host end stopped answering the well-formed frame under " + kind + " traffic" + say, nil
+			return false, "the host end did not hold up under " + kind + " traffic" + say, nil
 		}
 		args[0] = "hello"
 		if r2, err := s.Run(args...); err != nil || r2.Status != "served" {

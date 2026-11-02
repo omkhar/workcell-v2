@@ -6,7 +6,6 @@ package sandbox
 import (
 	"bytes"
 	"context"
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
@@ -33,7 +32,7 @@ type control struct {
 }
 
 // helperNames are the session's helpers. Control starts them on first use,
-// from one binary built beside the payload, and they enforce nothing.
+// each a payload serving a socket of its name, and they enforce nothing.
 var helperNames = []string{"proxy", "resolver", "broker", "supervisor"}
 
 func newControl() (Sandbox, error) { return &control{}, nil }
@@ -198,8 +197,8 @@ func (c *control) Verify(context.Context) error {
 	return err
 }
 
-func (c *control) Helper(ctx context.Context, name string) (int, error) {
-	if err := c.startHelpers(ctx); err != nil {
+func (c *control) Helper(_ context.Context, name string) (int, error) {
+	if err := c.startHelpers(); err != nil {
 		return 0, err
 	}
 	h, ok := c.helpers[name]
@@ -209,34 +208,23 @@ func (c *control) Helper(ctx context.Context, name string) (int, error) {
 	return h.Process.Pid, nil
 }
 
-func (c *control) Channel(ctx context.Context) (Channel, error) {
-	if err := c.startHelpers(ctx); err != nil {
+func (c *control) Channel(context.Context) (Channel, error) {
+	if err := c.startHelpers(); err != nil {
 		return Channel{}, err
 	}
-	return Channel{Addr: "unix:" + filepath.Join(c.dir, "channel"), Hello: frame(1, []byte("hello")), Reply: frame(2, []byte("hi"))}, nil
+	return Channel{Addr: "unix:" + filepath.Join(c.dir, "supervisor"), Hello: frame(1, []byte("hello")), Reply: frame(2, []byte("hi"))}, nil
 }
 
-// frame encodes one frame of the control channel as controlhelper reads it.
-func frame(kind byte, body []byte) []byte {
-	b := binary.BigEndian.AppendUint32(nil, uint32(1+len(body)))
-	return append(append(b, kind), body...)
-}
-
-// startHelpers builds controlhelper into the session directory and starts
-// one process per helper name, once.
-func (c *control) startHelpers(ctx context.Context) error {
+// startHelpers starts one payload process per helper name, once, and waits
+// for the supervisor's socket, which is the channel.
+func (c *control) startHelpers() error {
 	if c.helpers != nil {
 		return nil
 	}
-	bin := filepath.Join(c.dir, "controlhelper")
-	cmd := exec.CommandContext(ctx, "go", "build", "-o", bin, "github.com/omkhar/workcell/v2/escape/cmd/controlhelper")
-	if b, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("control: build controlhelper: %v: %s", err, b)
-	}
-	sock := filepath.Join(c.dir, "channel")
+	sock := filepath.Join(c.dir, "supervisor")
 	c.helpers = map[string]*exec.Cmd{}
 	for _, name := range helperNames {
-		h := exec.Command(bin, name, sock)
+		h := exec.Command(c.payload, "supervisor", filepath.Join(c.dir, name))
 		if err := h.Start(); err != nil {
 			return fmt.Errorf("control: start %s: %w", name, err)
 		}
