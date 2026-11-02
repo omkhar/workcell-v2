@@ -35,6 +35,7 @@ func TestTreeOps(t *testing.T) {
 		{"bad kind", func(tr *Tree) error { return tr.Put("/f", Node{Kind: 9}) }, ErrBadNode, nil},
 		{"bad mode", func(tr *Tree) error { return tr.Put("/f", Node{Kind: File, Mode: 0o10000}) }, ErrBadNode, nil},
 		{"empty target", func(tr *Tree) error { return tr.Put("/l", Node{Kind: Symlink}) }, ErrBadNode, nil},
+		{"nul target", func(tr *Tree) error { return tr.Put("/l", Node{Kind: Symlink, Target: "a\x00b"}) }, ErrBadNode, nil},
 		{"big minor", func(tr *Tree) error { return tr.Put("/d", Node{Kind: CharDev, Minor: 1 << 20}) }, ErrBadNode, nil},
 		{"link to missing", func(tr *Tree) error { return tr.Link("/no", "/l") }, ErrNotFound, nil},
 		{"link to dir", func(tr *Tree) error {

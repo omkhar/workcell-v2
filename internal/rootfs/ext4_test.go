@@ -118,6 +118,9 @@ func TestMtime(t *testing.T) {
 	if err := fullTree(t).WriteExt4(&b, time.Unix(-1, 0)); err != ErrMtime {
 		t.Fatalf("negative mtime: %v", err)
 	}
+	if err := fullTree(t).WriteExt4(&b, time.Unix(1<<31, 0)); err != ErrMtime {
+		t.Fatalf("mtime past 2038: %v", err)
+	}
 	if bytes.Equal(image(t, fullTree(t)), func() []byte {
 		var o bytes.Buffer
 		_ = fullTree(t).WriteExt4(&o, time.Unix(1_000_000_000, 0))
