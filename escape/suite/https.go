@@ -17,6 +17,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -38,9 +39,11 @@ type request struct {
 }
 
 // canary is one HTTPS server the judge runs on the host's own address, for
-// one allowed name.
+// one allowed name. ech, when set, is the config list under which it accepts
+// a hidden name.
 type canary struct {
 	name, addr string
+	ech        []byte
 	mu         sync.Mutex
 	seen       []request
 	stop       func()
@@ -93,11 +96,17 @@ func listen(name string, keys []tls.EncryptedClientHelloKey, respond http.Handle
 	return c, nil
 }
 
-// carried says whether a request's URL or headers held the secret.
-func (c *canary) carried(secret string) (string, bool) {
+// requests is a copy of what the canary has received, taken under its lock,
+// so that nothing else ever holds the lock while it reads.
+func (c *canary) requests() []request {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	for _, r := range c.seen {
+	return slices.Clone(c.seen)
+}
+
+// carried says whether a request's URL or headers held the secret.
+func (c *canary) carried(secret string) (string, bool) {
+	for _, r := range c.requests() {
 		if strings.Contains(r.url, secret) {
 			return fmt.Sprintf("the URL of %s %s (Host %s) at %s", r.method, r.url, r.host, c.name), true
 		}
@@ -112,13 +121,12 @@ func (c *canary) carried(secret string) (string, bool) {
 
 // served describes what the canary received, or says it saw nothing.
 func (c *canary) served() string {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if len(c.seen) == 0 {
+	rs := c.requests()
+	if len(rs) == 0 {
 		return c.name + " saw nothing"
 	}
 	var out []string
-	for _, r := range c.seen {
+	for _, r := range rs {
 		s := fmt.Sprintf("%s %s %s (SNI %s, Host %s", r.proto, r.method, r.url, r.sni, r.host)
 		if r.ech {
 			s += ", ECH accepted"
@@ -126,6 +134,16 @@ func (c *canary) served() string {
 		out = append(out, s+")")
 	}
 	return c.name + " served " + strings.Join(out, "; ")
+}
+
+// wellFormed says whether the request named the canary's name in the SNI and
+// the Host alike, in the open.
+func (r request) wellFormed(name string) bool {
+	h, _, err := net.SplitHostPort(r.host)
+	if err != nil {
+		h = r.host
+	}
+	return r.sni == name && h == name && !r.ech
 }
 
 // echKeys makes an ECH key pair whose public name is publicName: the config
@@ -153,14 +171,49 @@ func echKeys(publicName string) ([]byte, []tls.EncryptedClientHelloKey, error) {
 	return list, []tls.EncryptedClientHelloKey{{Config: cfg, PrivateKey: key.Bytes(), SendAsRetry: true}}, nil
 }
 
-// credential is what the guest was given under the variable name, with the
-// two headers a client would send it in.
-func credential(env string) (string, http.Header, bool) {
-	v := os.Getenv(env)
-	if v == "" {
-		return "", nil, false
+// targets is what every HTTPS probe is given: the bound name and the other,
+// each with the address of the judge's canary for it, the variable holding
+// the credential as the guest sees it, and whatever else the test adds.
+type targets struct {
+	bound, other string
+	addrs        map[string]string
+	value        string
+	header       http.Header // the two headers a client sends a credential in
+	extra        []string
+}
+
+func parseTargets(args []string) (targets, Result) {
+	if len(args) < 5 {
+		return targets{}, Result{Status: "error", Detail: "want two names with addresses and the credential variable"}
 	}
-	return v, http.Header{"X-Api-Key": {v}, "Authorization": {"Bearer " + v}}, true
+	v := os.Getenv(args[4])
+	if v == "" {
+		return targets{}, Result{Status: "no-credential", Detail: args[4] + " is empty"}
+	}
+	return targets{bound: args[0], other: args[2], addrs: map[string]string{args[0]: args[1], args[2]: args[3]}, value: v,
+		header: http.Header{"X-Api-Key": {v}, "Authorization": {"Bearer " + v}}, extra: args[5:]}, Result{}
+}
+
+func (t targets) url(name, path string) string {
+	return "https://" + name + ":" + port(t.addrs[name]) + path
+}
+
+func (t targets) get(name, path string) *http.Request {
+	req, _ := http.NewRequest(http.MethodGet, t.url(name, path), nil)
+	req.Header = t.header.Clone()
+	return req
+}
+
+// check sends the bound name the request a well-behaved client would: SNI,
+// Host and URL all name it, in the open. A correct product serves it, so the
+// judge can tell "refused the attack" from "reached nothing".
+func (t targets) check() string {
+	return "check=" + report(fetch(t.get(t.bound, "/check"), t.addrs, &tls.Config{}, false)).Status
+}
+
+func port(addr string) string {
+	_, p, _ := net.SplitHostPort(addr)
+	return p
 }
 
 // fetch sends req from the guest to the name in its URL, dialled at the
@@ -199,90 +252,6 @@ func fetch(req *http.Request, addrs map[string]string, cfg *tls.Config, h2 bool)
 	return resp, err
 }
 
-// replayProbe presents the credential it was given to the other allowed name,
-// args[0] at args[1], as a client would to the bound one.
-func replayProbe(args []string) Result {
-	if len(args) != 3 {
-		return Result{Status: "error", Detail: "want the other name, its address and the credential variable"}
-	}
-	_, hdr, ok := credential(args[2])
-	if !ok {
-		return Result{Status: "no-credential", Detail: args[2] + " is empty"}
-	}
-	req, _ := http.NewRequest(http.MethodGet, "https://"+args[0]+":"+port(args[1])+"/replay", nil)
-	req.Header = hdr
-	return report(fetch(req, map[string]string{args[0]: args[1]}, &tls.Config{}, false))
-}
-
-// mismatchProbe opens TLS to the bound name args[0] at args[1] and asks, on
-// that connection, for the other name args[2] at args[3] in the Host header
-// or the :authority pseudo-header, with the credential.
-func mismatchProbe(h2 bool) Probe {
-	return func(args []string) Result {
-		if len(args) != 5 {
-			return Result{Status: "error", Detail: "want two names with addresses and the credential variable"}
-		}
-		_, hdr, ok := credential(args[4])
-		if !ok {
-			return Result{Status: "no-credential", Detail: args[4] + " is empty"}
-		}
-		req, _ := http.NewRequest(http.MethodGet, "https://"+args[0]+":"+port(args[1])+"/mismatch", nil)
-		req.Header, req.Host = hdr, args[2]+":"+port(args[3])
-		return report(fetch(req, map[string]string{args[0]: args[1], args[2]: args[3]}, &tls.Config{ServerName: args[0]}, h2))
-	}
-}
-
-// echProbe connects to the bound name args[0] at args[1] with the name hidden
-// by ECH under the config list args[2] (base64), with the credential.
-func echProbe(args []string) Result {
-	if len(args) != 4 {
-		return Result{Status: "error", Detail: "want the name, its address, an ECH config list and the credential variable"}
-	}
-	list, err := base64.StdEncoding.DecodeString(args[2])
-	if err != nil {
-		return Result{Status: "error", Detail: "ECH config list: " + err.Error()}
-	}
-	_, hdr, ok := credential(args[3])
-	if !ok {
-		return Result{Status: "no-credential", Detail: args[3] + " is empty"}
-	}
-	req, _ := http.NewRequest(http.MethodGet, "https://"+args[0]+":"+port(args[1])+"/ech", nil)
-	req.Header = hdr
-	cfg := &tls.Config{ServerName: args[0], MinVersion: tls.VersionTLS13, EncryptedClientHelloConfigList: list,
-		EncryptedClientHelloRejectionVerify: func(tls.ConnectionState) error { return nil }}
-	resp, err := fetch(req, map[string]string{args[0]: args[1]}, cfg, false)
-	var rejected *tls.ECHRejectionError
-	if errors.As(err, &rejected) {
-		return Result{Status: "ech-rejected", Detail: err.Error()}
-	}
-	r := report(resp, err)
-	if err == nil && resp.TLS != nil && resp.TLS.ECHAccepted {
-		r.Status = "ech-accepted"
-	}
-	return r
-}
-
-// redirectProbe asks the bound name args[0] at args[1] with the credential in
-// the query and the headers, and follows wherever it is sent, headers and
-// all; the judge sends it to the other name args[2] at args[3].
-func redirectProbe(args []string) Result {
-	if len(args) != 5 {
-		return Result{Status: "error", Detail: "want two names with addresses and the credential variable"}
-	}
-	v, hdr, ok := credential(args[4])
-	if !ok {
-		return Result{Status: "no-credential", Detail: args[4] + " is empty"}
-	}
-	req, _ := http.NewRequest(http.MethodGet, "https://"+args[0]+":"+port(args[1])+"/start?key="+v, nil)
-	req.Header = hdr
-	return report(fetch(req, map[string]string{args[0]: args[1], args[2]: args[3]}, &tls.Config{}, false))
-}
-
-func port(addr string) string {
-	_, p, _ := net.SplitHostPort(addr)
-	return p
-}
-
 // report turns a response, or the error instead, into a result.
 func report(resp *http.Response, err error) Result {
 	if err != nil {
@@ -291,11 +260,90 @@ func report(resp *http.Response, err error) Result {
 	return Result{Status: "served", Detail: fmt.Sprintf("%s %d from %s", resp.Proto, resp.StatusCode, resp.Request.URL.Host)}
 }
 
-// twoCanaries starts the bound name's canary and the other's, and hands them
+// after prefixes the hostile request's result with the check's.
+func after(check string, r Result) Result {
+	r.Detail = check + "; " + r.Detail
+	return r
+}
+
+// replayProbe presents the credential it was given to the other name, as a
+// client would to the bound one.
+func replayProbe(args []string) Result {
+	t, bad := parseTargets(args)
+	if bad.Status != "" {
+		return bad
+	}
+	check := t.check()
+	return after(check, report(fetch(t.get(t.other, "/replay"), t.addrs, &tls.Config{}, false)))
+}
+
+// mismatchProbe opens TLS to the bound name and asks, on that connection, for
+// the other name in the Host header or the :authority pseudo-header.
+func mismatchProbe(h2 bool) Probe {
+	return func(args []string) Result {
+		t, bad := parseTargets(args)
+		if bad.Status != "" {
+			return bad
+		}
+		check := t.check()
+		req := t.get(t.bound, "/mismatch")
+		req.Host = t.other + ":" + port(t.addrs[t.other])
+		return after(check, report(fetch(req, t.addrs, &tls.Config{ServerName: t.bound}, h2)))
+	}
+}
+
+// echProbe connects to the bound name with the name hidden by ECH under the
+// config list in args[5] (base64), whose public name is the other.
+func echProbe(args []string) Result {
+	t, bad := parseTargets(args)
+	if bad.Status != "" {
+		return bad
+	}
+	if len(t.extra) != 1 {
+		return Result{Status: "error", Detail: "want an ECH config list"}
+	}
+	list, err := base64.StdEncoding.DecodeString(t.extra[0])
+	if err != nil {
+		return Result{Status: "error", Detail: "ECH config list: " + err.Error()}
+	}
+	check := t.check()
+	cfg := &tls.Config{ServerName: t.bound, MinVersion: tls.VersionTLS13, EncryptedClientHelloConfigList: list,
+		EncryptedClientHelloRejectionVerify: func(tls.ConnectionState) error { return nil }}
+	resp, err := fetch(t.get(t.bound, "/ech"), t.addrs, cfg, false)
+	var rejected *tls.ECHRejectionError
+	if errors.As(err, &rejected) {
+		return after(check, Result{Status: "ech-rejected", Detail: err.Error()})
+	}
+	r := report(resp, err)
+	if err == nil && resp.TLS != nil && resp.TLS.ECHAccepted {
+		r.Status = "ech-accepted"
+	}
+	return after(check, r)
+}
+
+// redirectProbe asks the bound name with the credential in the query and the
+// headers, and follows wherever it is sent, headers and all; the judge sends
+// it to the other name.
+func redirectProbe(args []string) Result {
+	t, bad := parseTargets(args)
+	if bad.Status != "" {
+		return bad
+	}
+	return report(fetch(t.get(t.bound, "/start?key="+t.value), t.addrs, &tls.Config{}, false))
+}
+
+// twoCanaries starts a canary for the bound name and one for the other, the
+// first with ECH keys under the other's name when ech is set, and hands them
 // to judge with the session, stopping both after.
-func twoCanaries(respondBound func(other *canary) http.HandlerFunc, judge func(s Session, bound, other *canary) (bool, string, error)) Judge {
+func twoCanaries(ech bool, respondBound func(other *canary) http.HandlerFunc, judge func(s Session, bound, other *canary) (bool, string, error)) Judge {
 	return func(ctx context.Context, s Session) (bool, string, error) {
-		other, err := listen(otherName(s), nil, nil)
+		var otherName string
+		for _, n := range s.Allow {
+			if n != s.Secret.Host {
+				otherName = n
+			}
+		}
+		other, err := listen(otherName, nil, nil)
 		if err != nil {
 			return false, "", err
 		}
@@ -304,102 +352,83 @@ func twoCanaries(respondBound func(other *canary) http.HandlerFunc, judge func(s
 		if respondBound != nil {
 			respond = respondBound(other)
 		}
-		bound, err := listen(s.Secret.Host, nil, respond)
+		var list []byte
+		var keys []tls.EncryptedClientHelloKey
+		if ech {
+			if list, keys, err = echKeys(other.name); err != nil {
+				return false, "", err
+			}
+		}
+		bound, err := listen(s.Secret.Host, keys, respond)
 		if err != nil {
 			return false, "", err
 		}
 		defer bound.stop()
+		bound.ech = list
 		return judge(s, bound, other)
 	}
 }
 
-// otherName is the allowed name the session's secret is not bound to.
-func otherName(s Session) string {
-	for _, n := range withSecret.Allow {
-		if n != s.Secret.Host {
-			return n
-		}
+// run gives the probe its targets and, for a canary that accepts ECH, the
+// config list.
+func run(s Session, bound, other *canary) (Result, error) {
+	args := []string{bound.name, bound.addr, other.name, other.addr, s.Secret.Env}
+	if bound.ech != nil {
+		args = append(args, base64.StdEncoding.EncodeToString(bound.ech))
 	}
-	return ""
+	return s.Run(args...)
 }
 
-// replayJudge fails if the other name received the real secret.
-var replayJudge = twoCanaries(nil, func(s Session, bound, other *canary) (bool, string, error) {
-	r, err := s.Run(other.name, other.addr, s.Secret.Env)
+// strictJudge expects the bound name to serve exactly the one well-formed
+// request the probe sends first, and the other name nothing. A request that
+// named another host, hid its name, or reached the other name was a mismatch
+// served; no request at all means the product reached nothing, which proves
+// nothing.
+func strictJudge(s Session, bound, other *canary) (bool, string, error) {
+	r, err := run(s, bound, other)
+	if err != nil {
+		return false, "", err
+	}
+	rs := bound.requests()
+	for _, q := range rs {
+		if !q.wellFormed(bound.name) {
+			return false, fmt.Sprintf("%s served %s %s with SNI %s and Host %s, ECH %v (guest says %s: %s)", bound.name, q.proto, q.method, q.sni, q.host, q.ech, r.Status, r.Detail), nil
+		}
+	}
+	if len(other.requests()) > 0 {
+		return false, fmt.Sprintf("%s (the connection named %s; guest says %s: %s)", other.served(), bound.name, r.Status, r.Detail), nil
+	}
+	switch {
+	case r.Status == "ech-accepted":
+		return false, "the guest completed an ECH handshake: " + r.Detail, nil
+	case len(rs) == 0:
+		return false, "", fmt.Errorf("%s saw nothing, not even the well-formed request a correct product serves (guest says %s: %s)", bound.name, r.Status, r.Detail)
+	case len(rs) > 1:
+		return false, fmt.Sprintf("%s served %d requests where the well-formed one alone was due: the mismatch was served with its names rewritten (guest says %s: %s)", bound.name, len(rs), r.Status, r.Detail), nil
+	}
+	return true, fmt.Sprintf("%s (guest says %s: %s)", bound.served(), r.Status, r.Detail), nil
+}
+
+// leakJudge fails if the other name received the real secret. If neither
+// canary saw the guest, nothing was proven.
+func leakJudge(s Session, bound, other *canary) (bool, string, error) {
+	r, err := run(s, bound, other)
 	if err != nil {
 		return false, "", err
 	}
 	if what, ok := other.carried(s.Secret.Value); ok {
 		return false, "the real secret reached " + what + " (guest says " + r.Status + ": " + r.Detail + ")", nil
 	}
-	return true, fmt.Sprintf("%s (guest says %s: %s)", other.served(), r.Status, r.Detail), nil
-})
-
-// mismatchJudge fails if the bound name served a request that named another
-// host, or if the other name received anything on a connection opened to the
-// bound one.
-func mismatchJudge(s Session, bound, other *canary) (bool, string, error) {
-	r, err := s.Run(bound.name, bound.addr, other.name, other.addr, s.Secret.Env)
-	if err != nil {
-		return false, "", err
+	if len(bound.requests()) == 0 && len(other.requests()) == 0 {
+		return false, "", fmt.Errorf("no canary saw the guest, not even %s, which a correct product serves (guest says %s: %s)", bound.name, r.Status, r.Detail)
 	}
-	bound.mu.Lock()
-	defer bound.mu.Unlock()
-	for _, q := range bound.seen {
-		if h, _, _ := net.SplitHostPort(q.host); h != bound.name && q.host != bound.name {
-			return false, fmt.Sprintf("%s served %s %s with SNI %s and Host %s (guest says %s: %s)", bound.name, q.proto, q.method, q.sni, q.host, r.Status, r.Detail), nil
-		}
-	}
-	other.mu.Lock()
-	defer other.mu.Unlock()
-	if len(other.seen) > 0 {
-		return false, fmt.Sprintf("%s (routed by Host, SNI was %s; guest says %s: %s)", other.served(), bound.name, r.Status, r.Detail), nil
-	}
-	return true, fmt.Sprintf("%s (guest says %s: %s)", bound.served(), r.Status, r.Detail), nil
+	return true, fmt.Sprintf("%s; %s (guest says %s: %s)", bound.served(), other.served(), r.Status, r.Detail), nil
 }
 
-// echJudge runs the bound name's canary with ECH keys whose public name is the
-// other name, and fails if a request completed with ECH accepted.
-func echJudge(ctx context.Context, s Session) (bool, string, error) {
-	list, keys, err := echKeys(otherName(s))
-	if err != nil {
-		return false, "", err
-	}
-	bound, err := listen(s.Secret.Host, keys, nil)
-	if err != nil {
-		return false, "", err
-	}
-	defer bound.stop()
-	r, err := s.Run(bound.name, bound.addr, base64.StdEncoding.EncodeToString(list), s.Secret.Env)
-	if err != nil {
-		return false, "", err
-	}
-	bound.mu.Lock()
-	defer bound.mu.Unlock()
-	for _, q := range bound.seen {
-		if q.ech {
-			return false, fmt.Sprintf("%s served %s %s with the name hidden by ECH (guest says %s: %s)", bound.name, q.proto, q.method, r.Status, r.Detail), nil
-		}
-	}
-	if r.Status == "ech-accepted" {
-		return false, "the guest completed an ECH handshake: " + r.Detail, nil
-	}
-	return true, fmt.Sprintf("%s (guest says %s: %s)", bound.served(), r.Status, r.Detail), nil
-}
-
-// redirectJudge has the bound name send the guest on to the other with the
-// query it came with, and fails if the other received the real secret.
-var redirectJudge = twoCanaries(func(other *canary) http.HandlerFunc {
+// redirectTo has the bound name send the guest on to the other with the
+// query it came with.
+func redirectTo(other *canary) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "https://"+other.name+":"+port(other.addr)+"/leak?key="+r.URL.Query().Get("key"), http.StatusFound)
 	}
-}, func(s Session, bound, other *canary) (bool, string, error) {
-	r, err := s.Run(bound.name, bound.addr, other.name, other.addr, s.Secret.Env)
-	if err != nil {
-		return false, "", err
-	}
-	if what, ok := other.carried(s.Secret.Value); ok {
-		return false, "the real secret reached " + what + " (guest says " + r.Status + ": " + r.Detail + ")", nil
-	}
-	return true, fmt.Sprintf("%s; %s (guest says %s: %s)", bound.served(), other.served(), r.Status, r.Detail), nil
-})
+}

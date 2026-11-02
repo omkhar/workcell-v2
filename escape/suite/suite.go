@@ -45,8 +45,10 @@ type Session struct {
 	// removes it afterwards, so a judge may plant files beside Workspace.
 	Workspace string
 	Guest     string // where the guest sees Workspace
-	// Secret is the credential the runner bound for this session when the
-	// test wanted one: its real value, which the guest must never hold.
+	// Allow and Secret are the session's policy as the runner made it from
+	// Want: the allowed names, and the credential bound to the first when the
+	// test wanted one, with its real value, which the guest must never hold.
+	Allow  []string
 	Secret sandbox.Secret
 	// Another starts a second session with the same Want and its own export.
 	// The runner stops it with the first.

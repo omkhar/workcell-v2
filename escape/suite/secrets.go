@@ -12,6 +12,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -31,11 +32,12 @@ const (
 	secretHex    = 24 // hex digits after the prefix
 	secretLen    = len(secretPrefix) + secretHex
 
-	diskBudget = 3 * time.Second // for the processes' environment and the disk
+	diskBudget = 5 * time.Second // for the processes' environment and the disk
 	memBudget  = 3 * time.Second // for process memory
 	fileLimit  = 1 << 20         // bytes read of one file
-	diskLimit  = 128 << 20       // bytes read from disk in all
-	fileQuota  = 20000           // files read in all
+	diskLimit  = 256 << 20       // bytes read from disk in all
+	fileQuota  = 50000           // files read in all
+	maxValues  = 6               // distinct values the result names; more is marked
 	procLimit  = 512 << 20       // bytes read of one process's memory
 	memLimit   = 1 << 30         // bytes read of process memory in all
 	readChunk  = 1 << 20
@@ -64,7 +66,7 @@ func findSecrets(b []byte) []string {
 		b = b[i:]
 		if len(b) >= secretLen && isHex(b[len(secretPrefix):secretLen]) && (len(b) == secretLen || !isHexByte(b[secretLen])) {
 			v := string(b[:secretLen])
-			if !contains(out, v) {
+			if !slices.Contains(out, v) {
 				out = append(out, v)
 			}
 		}
@@ -76,23 +78,15 @@ func isHex(b []byte) bool { return all(b, isHexByte) }
 func isHexByte(c byte) bool {
 	return c >= '0' && c <= '9' || c >= 'a' && c <= 'f'
 }
-func contains(xs []string, s string) bool {
-	for _, x := range xs {
-		if x == s {
-			return true
-		}
-	}
-	return false
-}
 
 // scan is one run of the probe: what it found, and how far it got.
 type scan struct {
-	hits     map[string][]string // value -> where it was seen, first few
-	order    []string            // values in the order first seen
-	procs    int                 // processes whose environment and arguments were read
-	files    int                 // files read
-	mem      int64               // bytes of process memory read
-	cut      []string            // phases a budget cut short
+	hits     map[string]string // value -> where it was first seen
+	order    []string          // values in the order first seen
+	procs    int               // processes whose environment and arguments were read
+	files    int               // files read
+	mem      int64             // bytes of process memory read
+	cut      []string          // phases a budget cut short
 	deadline time.Time
 }
 
@@ -102,9 +96,7 @@ func (s *scan) note(b []byte, where string) bool {
 	for _, v := range found {
 		if _, ok := s.hits[v]; !ok {
 			s.order = append(s.order, v)
-		}
-		if len(s.hits[v]) < 3 && !contains(s.hits[v], where) {
-			s.hits[v] = append(s.hits[v], where)
+			s.hits[v] = where
 		}
 	}
 	return len(found) > 0
@@ -116,7 +108,7 @@ func (s *scan) spent(phase string, limit bool) bool {
 	if !limit && !time.Now().After(s.deadline) {
 		return false
 	}
-	if !contains(s.cut, phase) {
+	if !slices.Contains(s.cut, phase) {
 		s.cut = append(s.cut, phase)
 	}
 	return true
@@ -125,12 +117,14 @@ func (s *scan) spent(phase string, limit bool) bool {
 // secretProbe scans the environment and arguments of every process it can
 // see, the disk, and process memory: every process in its own pid namespace,
 // then a few ancestors nearest first (the agent that launched it holds what
-// the host gave it), stopping at the first ancestor that holds a hit.
+// the host gave it), stopping at the first ancestor that holds a hit. The
+// values come first in the result, so that the line's bound (maxDetail) can
+// cut only where they were seen; a seventh value is marked with "+".
 func secretProbe(args []string) Result {
 	if len(args) != 1 {
 		return Result{Status: "error", Detail: "want the export path"}
 	}
-	s := &scan{hits: map[string][]string{}, deadline: time.Now().Add(diskBudget)}
+	s := &scan{hits: map[string]string{}, deadline: time.Now().Add(diskBudget)}
 	pids := listPids()
 	for _, pid := range pids {
 		for _, f := range []string{"environ", "cmdline"} {
@@ -140,23 +134,29 @@ func secretProbe(args []string) Result {
 		}
 		s.procs++
 	}
-	dirs := []string{"/tmp", "/var/tmp", "/dev/shm", "/run", "/etc", "/var/log", "/root", "/home"}
+	// Where a session leaves things first, then the rest of the disk.
+	dirs := []string{"/tmp", "/var/tmp", "/dev/shm", "/run", "/etc", "/var/log", "/var/lib", "/root", "/home", "/opt", "/srv", "/mnt", "/"}
 	if args[0] != "" {
 		dirs = append([]string{args[0]}, dirs...)
 	}
 	s.disk(dirs)
 	s.deadline = time.Now().Add(memBudget)
 	s.memory(pids)
-	var found []string
-	for _, v := range s.order {
-		found = append(found, v+"@"+strings.Join(s.hits[v], ","))
+	var detail string
+	if n := len(s.order); n > 0 {
+		values := s.order[:min(n, maxValues)]
+		detail = "found=" + strings.Join(values, " ")
+		if n > maxValues {
+			detail += "+"
+		}
+		detail += " "
 	}
-	detail := fmt.Sprintf("procs=%d files=%d mem=%dMiB", s.procs, s.files, s.mem>>20)
+	detail += fmt.Sprintf("procs=%d files=%d mem=%dMiB", s.procs, s.files, s.mem>>20)
 	if len(s.cut) > 0 {
 		detail += " cut=" + strings.Join(s.cut, ",")
 	}
-	if len(found) > 0 {
-		detail += " found=" + strings.Join(found, " ")
+	for _, v := range s.order {
+		detail += " " + v[len(secretPrefix):][:6] + "@" + s.hits[v]
 	}
 	return Result{Status: "scanned", Detail: detail}
 }
@@ -186,12 +186,20 @@ func readPrefix(path string, n int) ([]byte, error) {
 }
 
 // disk reads the first fileLimit bytes of every regular file under dirs, in
-// order, until the budgets run out. Links are not followed.
+// order, until the budgets run out. Links are not followed; the kernel's
+// views of itself are not files, and a directory walked once is not walked
+// again from a later root.
 func (s *scan) disk(dirs []string) {
 	var read int64
-	for _, dir := range dirs {
+	for i, dir := range dirs {
 		filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
-			if err != nil || !d.Type().IsRegular() {
+			if err != nil {
+				return nil
+			}
+			if d.IsDir() && path != dir && (slices.Contains(dirs[:i], path) || path == "/proc" || path == "/sys" || path == "/dev") {
+				return filepath.SkipDir
+			}
+			if !d.Type().IsRegular() {
 				return nil
 			}
 			if s.spent("disk", s.files >= fileQuota || read >= diskLimit) {
@@ -298,7 +306,8 @@ func (s *scan) process(pid int) (hit, spent bool) {
 }
 
 // secretJudge binds a fresh secret to the session and fails if the guest's
-// scan turns the real value up anywhere.
+// scan turns the real value up anywhere. A scan that found more values than
+// it could name proves nothing either way.
 func secretJudge(ctx context.Context, s Session) (bool, string, error) {
 	r, err := s.Run(s.Guest)
 	if err != nil {
@@ -309,6 +318,9 @@ func secretJudge(ctx context.Context, s Session) (bool, string, error) {
 	}
 	if strings.Contains(r.Detail, s.Secret.Value) {
 		return false, "the guest holds the real secret: " + r.Detail, nil
+	}
+	if strings.Contains(r.Detail, "+ ") {
+		return false, "", fmt.Errorf("the guest found more secret-shaped values than it can name: %s", r.Detail)
 	}
 	return true, "the real secret is not in the guest: " + r.Detail, nil
 }
