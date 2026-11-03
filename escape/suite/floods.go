@@ -74,7 +74,7 @@ func sampled(s Session, read func() (int64, error), args ...string) (r Result, b
 
 // forkJudge fails if the guest's processes show up on the host.
 func forkJudge(ctx context.Context, s Session) (bool, string, error) {
-	r, _, above, err := sampled(s, hostProcs, strconv.Itoa(forkCount))
+	r, _, above, err := sampled(s, hostProcs, "parent", strconv.Itoa(forkCount))
 	if err != nil {
 		return false, "", err
 	}
@@ -169,14 +169,21 @@ func memoryProbe(args []string) Result {
 		runtime.KeepAlive(b)
 		return Result{Status: "touched", Detail: fmt.Sprintf("%d MiB", mib)}
 	}
+	return asChild(os.Args[1], "child", args[1], "asking for "+args[1]+" MiB")
+}
+
+// asChild runs this binary again as a child with the arguments and returns
+// what the child reports, or child-killed, as a tried result, when the guest
+// killed it, which is what a sandbox that holds I10 does to a flood.
+func asChild(args ...string) Result {
 	exe, err := os.Executable()
 	if err != nil {
 		return Result{Status: "error", Detail: err.Error()}
 	}
-	out, err := exec.Command(exe, os.Args[1], "child", args[1]).Output()
+	out, err := exec.Command(exe, args[:len(args)-1]...).Output()
 	var exit *exec.ExitError
 	if errors.As(err, &exit) {
-		return Result{Status: "child-killed", Detail: exit.String() + " after asking for " + args[1] + " MiB"}
+		return Result{Status: "child-killed", Detail: exit.String() + " after " + args[len(args)-1]}
 	}
 	if err != nil {
 		return Result{Status: "error", Detail: "child: " + err.Error()}
@@ -232,8 +239,9 @@ func diskProbe(args []string) Result {
 	return Result{Status: "tried", Detail: detail}
 }
 
-// fileProbe raises its own descriptor limit as far as it goes and opens up to
-// args[0] descriptors, as pipe ends, then holds them.
+// fileProbe raises its own descriptor limit as far as it goes, past the hard
+// limit when it may as root, and opens up to args[0] descriptors, as pipe
+// ends, then holds them.
 func fileProbe(args []string) Result {
 	if len(args) != 1 {
 		return Result{Status: "error", Detail: "want count"}
@@ -242,8 +250,14 @@ func fileProbe(args []string) Result {
 	if err != nil {
 		return Result{Status: "error", Detail: err.Error()}
 	}
+	time.Sleep(ms) // the runtime's poller takes two descriptors on first use: make that now, not once the table is full
 	var lim unix.Rlimit
 	unix.Getrlimit(unix.RLIMIT_NOFILE, &lim)
+	if want := uint64(n) + 64; lim.Max < want {
+		if raised := (unix.Rlimit{Cur: want, Max: want}); unix.Setrlimit(unix.RLIMIT_NOFILE, &raised) == nil {
+			lim = raised
+		}
+	}
 	lim.Cur = lim.Max
 	unix.Setrlimit(unix.RLIMIT_NOFILE, &lim)
 	var fds []int
