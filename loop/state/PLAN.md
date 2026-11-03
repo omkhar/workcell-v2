@@ -114,7 +114,7 @@ with ADR-003 and ADR-004, they build on the proposal, and you can accept it at a
       accept: I10 added to `enforced.txt` and green
 - [x] U-207 | flow:build | model:sonnet | env:kvm | deps:U-204b | tries:0 | `workcell bench start`, and a `P1` entry in the suite that fails above the hosted budget
       accept: `P1` added to `enforced.txt`; the number is printed in the run log
-- [ ] U-208 | flow:boundary | model:fable | env:kvm | deps:U-204b,U-010 | tries:0 | Harden the channel end to end
+- [x] U-208 | flow:boundary | model:fable | env:kvm | deps:U-204b,U-010 | tries:0 | Harden the channel end to end
       accept: I12 added to `enforced.txt` and green
 
 ## Phase 3: network
