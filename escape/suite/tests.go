@@ -317,15 +317,17 @@ func (t *trap) addr() string {
 }
 
 // stop closes the trap, after a moment for a datagram still in flight on
-// loopback, and returns everything that arrived.
+// loopback or a connection the kernel queued that serve has not accepted
+// yet (closing the listener would drop it uncounted), and returns
+// everything that arrived.
 func (t *trap) stop() [][]byte {
 	t.mu.Lock()
 	done := t.done
 	t.done = true
 	t.mu.Unlock()
 	if !done {
+		time.Sleep(200 * time.Millisecond)
 		if t.pc != nil {
-			time.Sleep(200 * time.Millisecond)
 			t.pc.Close()
 		} else {
 			t.ln.Close()
