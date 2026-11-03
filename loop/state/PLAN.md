@@ -104,7 +104,7 @@ with ADR-003 and ADR-004, they build on the proposal, and you can accept it at a
       accept: I12 unit and fuzz tests pass; every frame has a hard size and time limit
 - [x] U-203 | flow:boundary | model:fable | env:kvm | deps:U-200,U-201,U-202 | tries:0 | `cmd/workcell-init`: static guest init. Mounts, exec, PTY, signals, exit status
       accept: runs as PID 1; reaps zombies; a host disconnect powers the guest off
-- [ ] U-204 | flow:build | model:sonnet | env:kvm | deps:U-203 | tries:0 | `workcell run -- <cmd>` end to end, with a PTY, window resize and exit code
+- [x] U-204 | flow:build | model:sonnet | env:kvm | deps:U-203 | tries:0 | `workcell run -- <cmd>` end to end, with a PTY, window resize and exit code
       accept: `workcell run -- sh -c 'exit 7'` exits 7; an interactive shell works over a real terminal
 - [ ] U-204b | flow:escape | model:fable | env:kvm | deps:U-204,U-004 | tries:0 | The real `workcell` adapter in `escape/`, driven only through the CLI. It replaces the stub from U-004
       accept: `go run ./escape/cmd/escape -sandbox workcell -list` works in hosted CI, and the log shows one test that runs in a real guest
