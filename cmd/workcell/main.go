@@ -17,6 +17,8 @@ func main() {
 		fmt.Println(version.String())
 	case len(os.Args) >= 2 && os.Args[1] == "run":
 		os.Exit(run(os.Args[2:], os.Stderr))
+	case len(os.Args) >= 2 && os.Args[1] == "bench":
+		os.Exit(bench(os.Args[2:], os.Stderr))
 	default:
 		fmt.Fprintln(os.Stderr, "workcell v2 is under construction; see loop/state/PLAN.md")
 		os.Exit(2)

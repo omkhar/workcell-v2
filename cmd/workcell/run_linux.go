@@ -63,27 +63,12 @@ func session(argv []string, caps limits, a artifacts) (int, error) {
 	sigs := make(chan os.Signal, 4)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM, syscall.SIGWINCH)
 	defer signal.Stop(sigs)
-	dir, err := os.MkdirTemp("", "wc") // short: a unix socket path has 108 bytes
-	if err != nil {
-		return 0, err
-	}
-	defer os.RemoveAll(dir)
-	console := &tail{}
-	m := firecracker.New(vmm.Config{Binary: a.firecracker, Kernel: a.kernel, Initrd: a.initrd, Image: a.image,
-		Cmdline: caps.cmdline(), CPUs: caps.CPUs, MemoryMiB: caps.MemoryMiB, CID: 3, Console: console, Dir: dir})
-	defer m.Close() // kills the VM on every path out of here
-	ln, err := m.Listen(guest.Port)
-	if err != nil {
-		return 0, err
-	}
-	if err := m.Start(context.Background()); err != nil {
-		return 0, err
-	}
-	raw, code, err := accept(ln, m, sigs, console)
-	if raw == nil {
+	b, code, err := boot(a, caps, sigs)
+	if b == nil {
 		return code, err
 	}
-	defer raw.Close()
+	defer b.close()
+	raw := b.conn
 
 	req := guest.Exec{Argv: argv, Env: []string{path, "HOME=/root", "LANG=C.UTF-8"}, Dir: "/"}
 	restore, tty := rawMode(unix.Stdin)
@@ -131,6 +116,43 @@ func session(argv []string, caps limits, a artifacts) (int, error) {
 			return 0, fmt.Errorf("guest channel: %w", err)
 		}
 	}
+}
+
+// booted is a guest whose init has connected. close ends the VM and removes its files; it
+// returns only once the VMM process is gone, so the next boot may reuse the CID.
+type booted struct {
+	conn  net.Conn
+	took  time.Duration // from just before the VMM started to the guest's connection
+	close func()
+}
+
+// boot starts a guest and waits for its init to dial in. A nil result means the session
+// goes no further: code and err say how it ended (see accept).
+func boot(a artifacts, caps limits, sigs <-chan os.Signal) (*booted, int, error) {
+	dir, err := os.MkdirTemp("", "wc") // short: a unix socket path has 108 bytes
+	if err != nil {
+		return nil, 0, err
+	}
+	console := &tail{}
+	m := firecracker.New(vmm.Config{Binary: a.firecracker, Kernel: a.kernel, Initrd: a.initrd, Image: a.image,
+		Cmdline: caps.cmdline(), CPUs: caps.CPUs, MemoryMiB: caps.MemoryMiB, CID: 3, Console: console, Dir: dir})
+	closeAll := func() { m.Close(); os.RemoveAll(dir) } // kills the VM on every path out
+	ln, err := m.Listen(guest.Port)
+	if err != nil {
+		closeAll()
+		return nil, 0, err
+	}
+	start := time.Now()
+	if err := m.Start(context.Background()); err != nil {
+		closeAll()
+		return nil, 0, err
+	}
+	raw, code, err := accept(ln, m, sigs, console)
+	if raw == nil {
+		closeAll()
+		return nil, code, err
+	}
+	return &booted{conn: raw, took: time.Since(start), close: func() { raw.Close(); closeAll() }}, 0, nil
 }
 
 // accept waits for the guest to dial in. A guest that never does is reported with the end
