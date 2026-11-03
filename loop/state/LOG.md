@@ -499,3 +499,5 @@ One red push (cbdc94d): internal/fileserve TestAdversarial, a U-502b test, flake
 Review: no findings; the reviewer checked framing (I12, I10), host teardown (I7, A9), the halt order, ADR conformance and the kernel pins. One less-code note and the redteam's ideas are one PARKED.md line. No S14 trigger: nothing ported.
 Budget: product 9869 of 15000, test 17247 of 19803, direct dependencies 3 of 15, Markdown 524 of 2500, verbs 4 of 14, flags 3 of 20.
 Next: U-502 (the last part: --mount on run, pull and diff refusing a mount session, the explain verb's workspace line, the escape adapter's mode field, I1 in both modes; boundary, env:kvm, model fable) is the next takeable unit for the cloud. It inherits boot(..., mount) with no caller, the init's pull() still walking /workspace with os.NewFile (the host must refuse TypePull in mount mode), the ENFILE-above-4095-directories note from U-502b, and that in mount mode [resources] disk bounds nothing on the host (I10). U-205, U-303 and U-401 wait on H-011, U-504 on U-205. The claim was PR #75, which this run gives its final title.
+
+## 2026-11-03T11:18Z U-502 START mode=cloud
