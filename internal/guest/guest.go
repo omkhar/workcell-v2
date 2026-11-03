@@ -18,6 +18,14 @@ import (
 // Port is the vsock port the init dials on the host.
 const Port = 5000
 
+// StdinWindow is how many Stdin frames the host may have sent that the init has not yet
+// acknowledged. The init queues twice as many, so for a host that keeps to the window
+// its queue never fills and nothing is dropped. A Stdin frame holds at most MaxStdin bytes.
+const (
+	StdinWindow = 32
+	MaxStdin    = 64 << 10
+)
+
 // Frame types. The host sends the first four; the init sends the rest.
 const (
 	TypeExec   uint8 = 1 // an Exec: run one command. The init runs one at a time
@@ -27,6 +35,7 @@ const (
 	TypeStdout uint8 = 5 // bytes the command wrote. With a PTY everything it wrote comes here
 	TypeStderr uint8 = 6 // bytes the command wrote to stderr, without a PTY
 	TypeExit   uint8 = 7 // an Exit: how the command ended
+	TypeAck    uint8 = 8 // four bytes, big-endian: how many bytes of one Stdin frame the init has written to the command
 )
 
 // MaxErr bounds Exit.Err on the wire.
@@ -138,4 +147,15 @@ func DecodeExit(b []byte) (Exit, error) {
 		}
 	}
 	return Exit{}, bad
+}
+
+// EncodeAck is the payload of a TypeAck frame: the length of the Stdin frame that was written.
+func EncodeAck(n int) []byte { return binary.BigEndian.AppendUint32(nil, uint32(n)) }
+
+// DecodeAck reads the length of an acknowledged Stdin frame: four bytes, at most MaxStdin.
+func DecodeAck(b []byte) (int, error) {
+	if len(b) != 4 || binary.BigEndian.Uint32(b) > MaxStdin {
+		return 0, fmt.Errorf("ack: payload %.8x is not a length up to %d", b, MaxStdin)
+	}
+	return int(binary.BigEndian.Uint32(b)), nil
 }

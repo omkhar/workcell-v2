@@ -39,6 +39,10 @@ func main() {
 	case "pipes": // stdin back on stdout, a word on stderr
 		_, _ = io.Copy(os.Stdout, os.Stdin)
 		fmt.Fprintln(os.Stderr, "err")
+	case "count": // after a second, the bytes of stdin; a slow reader of a lot of input
+		time.Sleep(time.Second)
+		n, _ := io.Copy(io.Discard, os.Stdin)
+		fmt.Printf("bytes=%d\n", n)
 	case "sleep": // until a signal ends it
 		fmt.Println("sleeping")
 		time.Sleep(time.Minute)

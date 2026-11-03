@@ -86,9 +86,11 @@ func start(req guest.Exec, s *server) (*command, error) {
 		for b := range c.in {
 			if len(b) == 0 && c.pty == nil {
 				_ = c.stdin.Close()
+				_ = s.send(guest.TypeAck, guest.EncodeAck(0))
 				return
 			}
-			_, _ = c.stdin.Write(b) // a command that closed its stdin or died gives EPIPE: not news
+			_, _ = c.stdin.Write(b)                            // a command that closed its stdin or died gives EPIPE: not news
+			_ = s.send(guest.TypeAck, guest.EncodeAck(len(b))) // the host's window: it may send one frame more
 		}
 	})
 	return c, nil
@@ -162,8 +164,9 @@ func (c *command) relay(f *os.File, typ uint8, s *server) {
 
 // input queues host bytes for the command's stdin. An empty payload is the end of its
 // stdin, which only a pipe can convey; a terminal needs the host to send the EOF character.
-// A command that does not read its stdin fills the queue, and what arrives then is dropped:
-// serve must keep handling frames, so that a signal or the host's hang-up still ends things.
+// A host that keeps to guest.StdinWindow never fills the queue. One that ignores the window
+// has what arrives past the queue dropped: serve must keep handling frames, so that a
+// signal or the host's hang-up still ends things.
 func (c *command) input(b []byte) {
 	select {
 	case c.in <- b:

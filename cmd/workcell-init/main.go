@@ -34,15 +34,20 @@ func main() {
 		fmt.Fprintln(os.Stderr, "workcell-init: must run as PID 1 of a guest")
 		os.Exit(1)
 	}
-	setup()
-	err := serve()
+	err := setup()
+	if err == nil {
+		err = serve()
+	}
 	fmt.Fprintln(os.Stderr, "workcell-init:", err)
 	halt()
 }
 
-// setup mounts what commands expect. A mount that is there already is fine.
-func setup() {
-	for _, d := range []string{"/dev", "/proc", "/sys", "/tmp"} {
+// setup mounts what commands expect. A mount that is there already is fine. When the host
+// put root= on the kernel command line, the image it names becomes the root, and a failure
+// to make it so is fatal: the console then says why. Without root= the initramfs stays the
+// root.
+func setup() error {
+	for _, d := range []string{"/dev", "/proc", "/sys"} {
 		_ = os.MkdirAll(d, 0o755)
 	}
 	mount("devtmpfs", "/dev", "devtmpfs", "")
@@ -55,7 +60,18 @@ func setup() {
 	mount("devpts", "/dev/pts", "devpts", "mode=0620,ptmxmode=0666")
 	mount("proc", "/proc", "proc", "")
 	mount("sysfs", "/sys", "sysfs", "")
+	cmdline, err := os.ReadFile("/proc/cmdline")
+	if err != nil {
+		return err
+	}
+	if dev := rootDevice(string(cmdline)); dev != "" {
+		if err := switchRoot(dev); err != nil {
+			return err
+		}
+	}
+	_ = os.MkdirAll("/tmp", 0o755)
 	mount("tmpfs", "/tmp", "tmpfs", "")
+	return nil
 }
 
 func mount(src, dir, fs, data string) {
