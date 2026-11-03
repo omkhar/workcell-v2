@@ -5,6 +5,7 @@ package sandbox
 
 import (
 	"bytes"
+	"slices"
 	"strconv"
 	"testing"
 )
@@ -63,17 +64,46 @@ func TestUnsupported(t *testing.T) {
 	}{
 		{Config{}, false},
 		{Config{CPUs: 2, MemoryMiB: 1024}, false},
+		{Config{CPUs: 1}, false},
+		{Config{CPUs: 32}, false},
+		{Config{MemoryMiB: 128}, false},
+		{Config{MemoryMiB: 512}, false},
+		{Config{DiskMiB: 100}, false},
+		{Config{CPUs: 1, MemoryMiB: 256, DiskMiB: 64}, false},
 		{Config{Workspace: "/w"}, true},
 		{Config{Secret: &Secret{}}, true},
 		{Config{Allow: []string{"a"}}, true},
 		{Config{Deny: []string{"a"}}, true},
-		{Config{CPUs: 1}, true},
-		{Config{MemoryMiB: 512}, true},
-		{Config{DiskMiB: 100}, true},
+		{Config{CPUs: 33}, true},
+		{Config{CPUs: -1}, true},
+		{Config{MemoryMiB: 127}, true},
+		{Config{MemoryMiB: -1}, true},
+		{Config{DiskMiB: -1}, true},
 	}
 	for _, c := range cases {
 		if got := unsupported(c.cfg) != ""; got != c.want {
 			t.Errorf("%+v: refused %v, want %v", c.cfg, got, c.want)
+		}
+	}
+}
+
+func TestRunArgs(t *testing.T) {
+	tail := []string{"--", "/bin/sh", "-c", "L", "sh", "probe", "x"}
+	cases := []struct {
+		cfg  Config
+		caps []string
+	}{
+		{Config{}, nil},
+		{Config{CPUs: 2, MemoryMiB: 1024}, []string{"--cpus", "2", "--memory", "1024MiB"}},
+		{Config{CPUs: 1}, []string{"--cpus", "1"}},
+		{Config{MemoryMiB: 256}, []string{"--memory", "256MiB"}},
+		{Config{DiskMiB: 64}, []string{"--disk", "64MiB"}},
+		{Config{CPUs: 1, MemoryMiB: 256, DiskMiB: 64}, []string{"--cpus", "1", "--memory", "256MiB", "--disk", "64MiB"}},
+	}
+	for _, c := range cases {
+		want := append(append([]string{"run"}, c.caps...), tail...)
+		if got := runArgs(c.cfg, "L", "probe", "x"); !slices.Equal(got, want) {
+			t.Errorf("%+v: argv %q, want %q", c.cfg, got, want)
 		}
 	}
 }

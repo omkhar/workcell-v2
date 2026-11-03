@@ -31,15 +31,12 @@ const (
 	path       = "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 )
 
-// run is `workcell run [--] <cmd> [args...]`: it boots a guest, runs the command in it and
+// run is `workcell run [--cpus N] [--memory SIZE] [--disk SIZE] [--] <cmd> [args...]`: it boots a guest, runs the command in it and
 // exits as the command did. This process is the session's supervisor (A9): it owns the VM
 // and the channel, and the VM dies with it.
 func run(args []string, stderr io.Writer) int {
-	if len(args) > 0 && args[0] == "--" {
-		args = args[1:]
-	}
-	if len(args) == 0 {
-		fmt.Fprintln(stderr, "usage: workcell run [--] <cmd> [args...]")
+	caps, args, ok := parseRun(args, stderr)
+	if !ok {
 		return 2
 	}
 	dir, err := dataDir()
@@ -49,7 +46,7 @@ func run(args []string, stderr io.Writer) int {
 	}
 	code := 0
 	if err == nil {
-		code, err = session(args, a)
+		code, err = session(args, caps, a)
 	}
 	if err != nil {
 		fmt.Fprintln(stderr, "workcell:", err)
@@ -62,7 +59,7 @@ func run(args []string, stderr io.Writer) int {
 
 // session boots a guest and runs argv in it. It returns the command's exit code. A nonzero
 // code with an error means the command could not run; an error alone means the session failed.
-func session(argv []string, a artifacts) (int, error) {
+func session(argv []string, caps limits, a artifacts) (int, error) {
 	sigs := make(chan os.Signal, 4)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM, syscall.SIGWINCH)
 	defer signal.Stop(sigs)
@@ -73,7 +70,7 @@ func session(argv []string, a artifacts) (int, error) {
 	defer os.RemoveAll(dir)
 	console := &tail{}
 	m := firecracker.New(vmm.Config{Binary: a.firecracker, Kernel: a.kernel, Initrd: a.initrd, Image: a.image,
-		Cmdline: "root=/dev/vda ro", CPUs: 2, MemoryMiB: 1024, CID: 3, Console: console, Dir: dir})
+		Cmdline: caps.cmdline(), CPUs: caps.CPUs, MemoryMiB: caps.MemoryMiB, CID: 3, Console: console, Dir: dir})
 	defer m.Close() // kills the VM on every path out of here
 	ln, err := m.Listen(guest.Port)
 	if err != nil {

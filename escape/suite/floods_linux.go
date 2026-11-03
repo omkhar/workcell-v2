@@ -5,6 +5,7 @@ package suite
 
 import (
 	"fmt"
+	"os"
 	"strconv"
 	"time"
 	"unsafe"
@@ -12,18 +13,27 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-// forkProbe forks args[0] processes at once, holds them, and reaps them. Each
-// child waits for one byte on a pipe and exits; it makes raw system calls
-// only, since a forked copy of a Go process can call nothing else safely, and
-// it dies with the probe.
+// forkProbe runs itself again as a child that forks args[1] processes at
+// once, holds them, and reaps them, so that a guest which kills the child,
+// or the parent's bound on the child, still reports. The child marks itself,
+// and so every process it forks, as the first to kill when memory runs out,
+// so that the parent survives to report. Each forked process waits for one
+// byte on a pipe and exits; it makes raw system calls only, since a forked
+// copy of a Go process can call nothing else safely, and it dies with the
+// child. A forked copy of a Go process costs the kernel about 190 KiB, most
+// of it page tables, which is what bounds the count.
 func forkProbe(args []string) Result {
-	if len(args) != 1 {
-		return Result{Status: "error", Detail: "want count"}
+	if len(args) != 2 {
+		return Result{Status: "error", Detail: "want parent|child and count"}
 	}
-	n, err := strconv.Atoi(args[0])
+	n, err := strconv.Atoi(args[1])
 	if err != nil {
 		return Result{Status: "error", Detail: err.Error()}
 	}
+	if args[0] != "child" {
+		return asChild(os.Args[1], "child", args[1], "forking "+args[1]+" processes")
+	}
+	os.WriteFile("/proc/self/oom_score_adj", []byte("1000"), 0) // best effort; the flood is the same without
 	var pipe [2]int
 	if err := unix.Pipe(pipe[:]); err != nil {
 		return Result{Status: "error", Detail: "pipe: " + err.Error()}
@@ -37,7 +47,7 @@ func forkProbe(args []string) Result {
 			errno = e
 			break
 		}
-		if pid == 0 { // the child
+		if pid == 0 { // the forked process
 			unix.RawSyscall(unix.SYS_PRCTL, unix.PR_SET_PDEATHSIG, uintptr(unix.SIGKILL), 0)
 			unix.RawSyscall(unix.SYS_READ, uintptr(pipe[0]), uintptr(unsafe.Pointer(&buf)), 1)
 			unix.RawSyscall(unix.SYS_EXIT_GROUP, 0, 0, 0)
@@ -46,7 +56,7 @@ func forkProbe(args []string) Result {
 	}
 	time.Sleep(hold)
 	release := make([]byte, made)
-	unix.Write(pipe[1], release) // one byte per child; a 2000-byte write fits the pipe whole
+	unix.Write(pipe[1], release) // one byte per process; the write fits the pipe whole
 	reaped := 0
 	for reaped < made {
 		if _, err := unix.Wait4(-1, nil, 0, nil); err != nil {

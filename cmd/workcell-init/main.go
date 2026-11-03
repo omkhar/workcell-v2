@@ -64,13 +64,14 @@ func setup() error {
 	if err != nil {
 		return err
 	}
+	disk := diskMiB(string(cmdline))
 	if dev := rootDevice(string(cmdline)); dev != "" {
-		if err := switchRoot(dev); err != nil {
+		if err := switchRoot(dev, disk); err != nil {
 			return err
 		}
 	}
 	_ = os.MkdirAll("/tmp", 0o755)
-	mount("tmpfs", "/tmp", "tmpfs", "")
+	mount("tmpfs", "/tmp", "tmpfs", tmpfsSize(disk))
 	return nil
 }
 

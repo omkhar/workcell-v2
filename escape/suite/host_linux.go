@@ -54,23 +54,32 @@ func hostBusy() (int64, error) {
 	defer f.Close()
 	sc := bufio.NewScanner(f)
 	for sc.Scan() {
-		fields := strings.Fields(sc.Text())
-		if len(fields) < 8 || fields[0] != "cpu" {
-			continue
+		if line := sc.Text(); strings.HasPrefix(line, "cpu ") {
+			return busyTicks(line)
 		}
-		var busy int64
-		for i, s := range fields[1:] {
-			v, err := strconv.ParseInt(s, 10, 64)
-			if err != nil {
-				return 0, err
-			}
-			if i != 3 && i != 4 { // idle, iowait
-				busy += v
-			}
-		}
-		return busy, nil
 	}
 	return 0, errors.New("/proc/stat has no cpu line")
+}
+
+// busyTicks sums the columns of a /proc/stat cpu line that are both busy and
+// counted once: user nice system irq softirq steal, skipping idle, iowait,
+// and guest and guest_nice, which user and nice already hold.
+func busyTicks(line string) (int64, error) {
+	fields := strings.Fields(line)
+	if len(fields) < 8 {
+		return 0, fmt.Errorf("short cpu line %q", line)
+	}
+	var busy int64
+	for i, s := range fields[1:] {
+		v, err := strconv.ParseInt(s, 10, 64)
+		if err != nil {
+			return 0, err
+		}
+		if i != 3 && i != 4 && i != 8 && i != 9 { // idle, iowait, guest, guest_nice
+			busy += v
+		}
+	}
+	return busy, nil
 }
 
 // hostDiskFree sums the free bytes of every real filesystem the host has
