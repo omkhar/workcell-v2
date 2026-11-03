@@ -8,6 +8,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 
 	"golang.org/x/sys/unix"
@@ -25,11 +26,34 @@ func rootDevice(cmdline string) string {
 	return dev
 }
 
+// diskMiB is the writable-space cap in the last workcell.disk= on the kernel command line, or 0
+// for none. It sizes the tmpfs mounts; it is a courtesy so that the guest sees ENOSPC at the
+// cap. The host's memory cap is what holds, since a tmpfs lives in guest RAM (A1).
+func diskMiB(cmdline string) int {
+	mib := 0
+	for _, f := range strings.Fields(cmdline) {
+		if v, ok := strings.CutPrefix(f, "workcell.disk="); ok {
+			if n, err := strconv.ParseUint(v, 10, 31); err == nil {
+				mib = int(n)
+			}
+		}
+	}
+	return mib
+}
+
+// tmpfsSize is the mount option that caps a tmpfs at mib MiB, or nothing when mib is 0.
+func tmpfsSize(mib int) string {
+	if mib == 0 {
+		return ""
+	}
+	return "size=" + strconv.Itoa(mib) + "m"
+}
+
 // switchRoot makes the image on dev the root of everything that runs from here on. The
 // image is mounted read-only and an overlay on a tmpfs takes every write, so nothing a
 // session writes outlives the VM (I7). The pseudo filesystems move across and the init
 // chroots into the overlay; it is a static binary already in memory, so it needs no re-exec.
-func switchRoot(dev string) error {
+func switchRoot(dev string, disk int) error {
 	for _, d := range []string{"/ro", "/rw", "/new"} {
 		if err := os.MkdirAll(d, 0o755); err != nil {
 			return err
@@ -38,7 +62,7 @@ func switchRoot(dev string) error {
 	if err := unix.Mount(dev, "/ro", "ext4", unix.MS_RDONLY, ""); err != nil {
 		return fmt.Errorf("mount %s: %w", dev, err)
 	}
-	if err := unix.Mount("tmpfs", "/rw", "tmpfs", 0, ""); err != nil {
+	if err := unix.Mount("tmpfs", "/rw", "tmpfs", 0, tmpfsSize(disk)); err != nil {
 		return fmt.Errorf("mount tmpfs for the overlay: %w", err)
 	}
 	for _, d := range []string{"/rw/upper", "/rw/work"} {

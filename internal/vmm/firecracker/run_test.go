@@ -46,10 +46,11 @@ func TestRun(t *testing.T) {
 	if out, err := mk.CombinedOutput(); err != nil {
 		t.Fatalf("mkimage: %v\n%s", err, out)
 	}
+	var flags []string // flags of `workcell run`, before the --
 	workcell := func(stdin *os.File, args ...string) *exec.Cmd {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 		t.Cleanup(cancel)
-		cmd := exec.CommandContext(ctx, filepath.Join(bin, "workcell"), append([]string{"run", "--"}, args...)...)
+		cmd := exec.CommandContext(ctx, filepath.Join(bin, "workcell"), append(append([]string{"run"}, append(flags, "--")...), args...)...)
 		cmd.Env = append(os.Environ(), "XDG_DATA_HOME="+tmp, "HOME="+tmp, "TERM=xterm")
 		if stdin != nil {
 			cmd.Stdin = stdin
@@ -113,6 +114,35 @@ func TestRun(t *testing.T) {
 		stdout, _, code := pipes(t, bytes.NewReader(make([]byte, size)), "sh", "-c", "sleep 1; wc -c")
 		if want := strconv.Itoa(size) + "\n"; stdout != want || code != 0 {
 			t.Errorf("wc -c printed %q with exit %d, want %q", stdout, code, want)
+		}
+	})
+
+	// The caps of I10 as the guest sees them: one vCPU, at most 256 MiB of RAM, and ENOSPC
+	// at 64 MiB of writes to the root while less than that succeeds.
+	t.Run("resource-caps", func(t *testing.T) {
+		flags = []string{"--cpus", "1", "--memory", "256MiB", "--disk", "64MiB"}
+		t.Cleanup(func() { flags = nil })
+		const script = `nproc
+sed -n 's/^MemTotal: *\([0-9]*\) kB/\1/p' /proc/meminfo
+dd if=/dev/zero of=/var/tmp/a bs=1M count=32 2>/dev/null && echo small-ok
+rm -f /var/tmp/a
+dd if=/dev/zero of=/var/tmp/b bs=1M count=80 2>&1 | grep -o 'No space left on device'`
+		stdout, _, _ := pipes(t, nil, "sh", "-c", script)
+		got := strings.Split(strings.TrimSpace(stdout), "\n")
+		if len(got) != 4 {
+			t.Fatalf("the guest printed %q, want 4 lines", stdout)
+		}
+		if got[0] != "1" {
+			t.Errorf("nproc is %q, want 1", got[0])
+		}
+		if kb, err := strconv.Atoi(got[1]); err != nil || kb > 256<<10 {
+			t.Errorf("MemTotal is %q kB, want at most %d", got[1], 256<<10)
+		}
+		if got[2] != "small-ok" {
+			t.Errorf("a 32 MiB write: %q, want small-ok", got[2])
+		}
+		if got[3] != "No space left on device" {
+			t.Errorf("an 80 MiB write: %q, want ENOSPC", got[3])
 		}
 	})
 

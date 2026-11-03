@@ -45,11 +45,13 @@ var prepared struct {
 	xdg string // XDG_DATA_HOME holding workcell/{firecracker,vmlinux,initrd.cpio,root.ext4}
 }
 
-// workcell is one session of the product: a directory for its cwd and the
-// payload it carries in. A VM lives only as long as one Exec.
+// workcell is one session of the product: a directory for its cwd, the
+// payload it carries in and the caps each of its VMs gets. A VM lives only
+// as long as one Exec.
 type workcell struct {
 	dir     string
 	payload string
+	cfg     Config
 }
 
 // prepareWorkcell fetches, builds and assembles under dir what `workcell run`
@@ -209,7 +211,7 @@ func (w *workcell) Start(_ context.Context, cfg Config) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	w.dir, w.payload = dir, cfg.Payload
+	w.dir, w.payload, w.cfg = dir, cfg.Payload, cfg
 	return "", nil
 }
 
@@ -227,8 +229,7 @@ func (w *workcell) Exec(ctx context.Context, args ...string) (Output, error) {
 		return Output{}, fmt.Errorf("workcell: payload: %w", err)
 	}
 	defer payload.Close()
-	argv := append([]string{"run", "--", "/bin/sh", "-c", loader, "sh"}, args...)
-	cmd := exec.CommandContext(ctx, prepared.bin, argv...)
+	cmd := exec.CommandContext(ctx, prepared.bin, runArgs(w.cfg, loader, args...)...)
 	cmd.Dir = w.dir
 	cmd.Env = append(os.Environ(), "XDG_DATA_HOME="+prepared.xdg)
 	cmd.Stdin = payload
