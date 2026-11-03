@@ -7,7 +7,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
-	"encoding/json"
 	"fmt"
 	"slices"
 	"sync"
@@ -27,9 +26,8 @@ import (
 //
 // Frames: a 6-byte header of version 1, a type and a big-endian length of at
 // most 65536, then the payload. Guest-to-host types are Stdout 5, Stderr 6,
-// Exit 7 and Ack 8. An Exit payload is a tagged value, a code, a signal or an
-// error text; its encoding is tried two ways, a tag byte and a JSON object,
-// so that one of them reaches the host's decoder.
+// Exit 7 and Ack 8. An Exit payload is a tag byte and a value: 0 then one
+// byte of status, 1 then one byte of signal, 2 then up to 256 bytes of text.
 const (
 	typeStdout = 5
 	typeExit   = 7
@@ -59,14 +57,9 @@ func frame(kind byte, payload []byte) []byte {
 	return append(h, payload...)
 }
 
-// exitTag and exitJSON are a forged Exit payload naming code, in each encoding.
-func exitTag(code uint32) []byte { return binary.BigEndian.AppendUint32([]byte{tagCode}, code) }
-func exitJSON(code int) []byte   { b, _ := json.Marshal(map[string]int{"code": code}); return b }
+// exitTag and textTag are a forged Exit payload: a status, and an error text.
+func exitTag(code byte) []byte   { return []byte{tagCode, code} }
 func textTag(text []byte) []byte { return append([]byte{tagText}, text...) }
-func textJSON(text []byte) []byte {
-	b, _ := json.Marshal(map[string]string{"error": string(text)})
-	return b
-}
 
 // hostileText is an error text of n bytes that would retitle, clear and
 // recolour a terminal and plant a fake result line, were it printed raw.
@@ -107,20 +100,11 @@ func channelProbe(args []string) Result {
 		b = frame(typeAck, []byte{1})
 	case "unknown-type":
 		b = frame(200, []byte("?"))
-	case "version-2-tag":
+	case "version-2":
 		b = frame(typeExit, exitTag(forgedCode))
 		b[0] = 2
-	case "version-2-json":
-		b = frame(typeExit, exitJSON(forgedCode))
-		b[0] = 2
-	case "exit-text-tag":
-		b = frame(typeExit, textTag(hostileText(maxExitText-1)))
-	case "exit-text-json":
-		n := maxExitText
-		for b = textJSON(hostileText(n)); len(b) > maxExitText; b = textJSON(hostileText(n)) {
-			n -= 8 // JSON spells a control byte in six
-		}
-		b = frame(typeExit, b)
+	case "exit-text":
+		b = frame(typeExit, textTag(hostileText(maxExitText)))
 	case "giant-header":
 		b = frame(typeStdout, nil)
 		binary.BigEndian.PutUint32(b[2:], 0xffffffff) // then silence
@@ -151,13 +135,13 @@ func drip(ch *rawConn, f []byte) Result {
 }
 
 // storm opens stormSize fresh connections to the host end at once, sends a
-// forged Exit on each, in both encodings, holds them open, and counts.
+// forged Exit on each, holds them open, and counts.
 func storm(addr string) Result {
 	var mu sync.Mutex
 	var wg sync.WaitGroup
 	opened, sent := 0, 0
 	var last error
-	for i := range stormSize {
+	for range stormSize {
 		wg.Go(func() {
 			c, err := dialChannel(addr)
 			if err != nil {
@@ -167,11 +151,7 @@ func storm(addr string) Result {
 				return
 			}
 			defer c.close()
-			payload := exitTag(forgedCode)
-			if i%2 == 1 {
-				payload = exitJSON(forgedCode)
-			}
-			err = c.write(frame(typeExit, payload), sendWait)
+			err = c.write(frame(typeExit, exitTag(forgedCode)), sendWait)
 			mu.Lock()
 			opened++
 			if err == nil {
@@ -194,16 +174,14 @@ func storm(addr string) Result {
 // clean refusal of the session; 126, the error path a forged error text
 // reaches. Never the forged code, and never a crash.
 var allowed = map[string][]int{
-	"exit-empty":     {0, rawCleanExit},
-	"ack-short":      {0, rawCleanExit},
-	"unknown-type":   {0, rawCleanExit},
-	"version-2-tag":  {0, rawCleanExit},
-	"version-2-json": {0, rawCleanExit},
-	"exit-text-tag":  {0, rawCleanExit, rawNoStart},
-	"exit-text-json": {0, rawCleanExit, rawNoStart},
-	"giant-header":   {rawCleanExit},
-	"slow-drip":      {rawCleanExit},
-	"storm":          {0, rawCleanExit},
+	"exit-empty":   {0, rawCleanExit},
+	"ack-short":    {0, rawCleanExit},
+	"unknown-type": {0, rawCleanExit},
+	"version-2":    {0, rawCleanExit},
+	"exit-text":    {rawCleanExit, rawNoStart},
+	"giant-header": {rawCleanExit},
+	"slow-drip":    {rawCleanExit},
+	"storm":        {0, rawCleanExit},
 }
 
 // channelRun runs kind against the session's channel and holds the host end
@@ -272,32 +250,6 @@ func channelJudge(kinds ...string) Judge {
 		}
 		return true, fmt.Sprintf("the host end held: %v; a plain run after still works", exits), nil
 	}
-}
-
-// escapesJudge sends the forged error text in each encoding; one of them
-// must reach the host's error path (exit 126), else nothing was tested, and
-// whichever did must have left the host's stderr free of control bytes.
-func escapesJudge(ctx context.Context, s Session) (bool, string, error) {
-	ch, err := s.Channel(ctx)
-	if err != nil {
-		return false, "", err
-	}
-	kinds := []string{"exit-text-tag", "exit-text-json"}
-	var exits []int
-	for _, kind := range kinds {
-		exit, why, err := channelRun(ctx, s, ch.Addr, kind)
-		if err != nil || why != "" {
-			return false, why, err
-		}
-		exits = append(exits, exit)
-	}
-	if !slices.Contains(exits, rawNoStart) {
-		return false, "", fmt.Errorf("no forged error text reached the host's error path (exits %v for %v): the probe's Exit encodings need fixing", exits, kinds)
-	}
-	if why, err := plainAfter(s, ch.Addr, "the forged error texts"); err != nil || why != "" {
-		return false, why, err
-	}
-	return true, fmt.Sprintf("the host reported the forged error text (exits %v) with no control byte on its stderr; a plain run after still works", exits), nil
 }
 
 func plainAfter(s Session, addr, after string) (string, error) {

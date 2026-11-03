@@ -7,7 +7,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net"
@@ -107,36 +106,18 @@ func (h *naiveHost) serve(c net.Conn) {
 	}
 }
 
-// exited takes an Exit payload at its word: a JSON object when it looks like
-// one, else a tag byte and the value, a code, a signal or an error text.
+// exited takes an Exit payload at its word: a tag byte, then one byte of
+// status or signal, or an error text.
 func (h *naiveHost) exited(b []byte) {
 	code := 0
-	if b[0] == '{' {
-		var v struct {
-			Code   *int    `json:"code"`
-			Signal *int    `json:"signal"`
-			Error  *string `json:"error"`
-		}
-		json.Unmarshal(b, &v)
-		switch {
-		case v.Error != nil:
-			fmt.Fprintf(h.stderr, "control: %s\n", *v.Error)
-			code = 126
-		case v.Signal != nil:
-			code = 128 + *v.Signal
-		case v.Code != nil:
-			code = *v.Code
-		}
-	} else {
-		switch b[0] {
-		case 0:
-			code = int(binary.BigEndian.Uint32(b[1:]))
-		case 1:
-			code = 128 + int(b[1])
-		case 2:
-			fmt.Fprintf(h.stderr, "control: %s\n", b[1:])
-			code = 126
-		}
+	switch b[0] {
+	case 0:
+		code = int(b[1])
+	case 1:
+		code = 128 + int(b[1])
+	case 2:
+		fmt.Fprintf(h.stderr, "control: %s\n", b[1:])
+		code = 126
 	}
 	h.mu.Lock()
 	h.exit = &code

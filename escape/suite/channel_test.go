@@ -26,16 +26,11 @@ func TestHostileText(t *testing.T) {
 			t.Errorf("hostileText(%d) is %d bytes, escapes %v", n, len(b), bytes.Contains(b, []byte{0x1b}))
 		}
 	}
-	if b := textTag(hostileText(maxExitText - 1)); len(b) != maxExitText || b[0] != tagText {
+	if b := textTag(hostileText(maxExitText)); len(b) != maxExitText+1 || b[0] != tagText {
 		t.Errorf("tagged text is %d bytes, tag %d", len(b), b[0])
 	}
-	n := maxExitText
-	var b []byte
-	for b = textJSON(hostileText(n)); len(b) > maxExitText; b = textJSON(hostileText(n)) {
-		n -= 8
-	}
-	if n < 32 || !bytes.Contains(b, []byte(`\u001b`)) || b[0] != '{' {
-		t.Errorf("JSON text: %d raw bytes fit, payload %q", n, b)
+	if b := exitTag(forgedCode); !bytes.Equal(b, []byte{tagCode, forgedCode}) {
+		t.Errorf("exitTag = % x", b)
 	}
 }
 
@@ -50,7 +45,7 @@ func TestControlBytes(t *testing.T) {
 		{"\x1b[2J", 1},
 		{"\x1b]0;x\x07\r\x00\x7f", 5},
 		{"caf\xc3\xa9\n", 0},           // UTF-8 shows; only C0 controls and DEL steer
-		{string(hostileText(255)), 71}, // what the control run reports, raw
+		{string(hostileText(256)), 71}, // what the control run reports, raw
 	}
 	for _, c := range cases {
 		if got := control([]byte(c.in)); got != c.want {
