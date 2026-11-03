@@ -120,6 +120,11 @@ type Observe interface {
 	Helper(ctx context.Context, name string) (pid int, err error)
 	// Channel describes the host-guest channel as the guest reaches it.
 	Channel(ctx context.Context) (Channel, error)
+	// Relay describes the host end of the network relay as the guest reaches
+	// it: where the init opens one stream per relayed connection, behind the
+	// 20-byte header of ADR-003 (version, proto, port, 16-byte address). A
+	// probe may dial it afresh and speak the header itself.
+	Relay(ctx context.Context) (Channel, error)
 	// Update runs the product's update client once on the host, as
 	// `workcell update` does, with what u names, and returns the bytes of
 	// the artifact installed for u.Name afterwards, nil when none is. The
@@ -137,10 +142,11 @@ type Observe interface {
 	Bench(ctx context.Context) (Output, error)
 }
 
-// Channel is the host end of the host-guest channel as the guest's init is
-// connected to it and as a fresh connection dials it: Addr is "unix:<path>"
-// or "vsock:<cid>:<port>". The host answers no guest frame; what a hostile
-// frame did shows in the run's own exit status and streams (SPEC I12).
+// Channel is the host end of the host-guest channel, or of the relay, as
+// the guest's init is connected to it and as a fresh connection dials it:
+// Addr is "unix:<path>" or "vsock:<cid>:<port>". The host answers no guest
+// frame; what a hostile frame did shows in the run's own exit status and
+// streams (SPEC I12).
 type Channel struct {
 	Addr string
 }

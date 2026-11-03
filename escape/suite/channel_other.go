@@ -17,6 +17,9 @@ func (*rawConn) close() {}
 func (*rawConn) write([]byte, time.Duration) (int, error) {
 	return 0, errors.New("the channel is Linux only")
 }
+func (*rawConn) read([]byte, time.Duration) (int, error) {
+	return 0, errors.New("the channel is Linux only")
+}
 func (*rawConn) shutdown(bool) error { return errors.New("the channel is Linux only") }
 
 func stealChannel(string) (*rawConn, error) { return nil, errors.New("the channel is Linux only") }

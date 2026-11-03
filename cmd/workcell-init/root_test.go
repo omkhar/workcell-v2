@@ -5,7 +5,10 @@
 
 package main
 
-import "testing"
+import (
+	"slices"
+	"testing"
+)
 
 func TestRootDevice(t *testing.T) {
 	tests := []struct{ name, cmdline, want string }{
@@ -44,6 +47,35 @@ func TestDiskMiB(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			if got := diskMiB(tc.cmdline); got != tc.want {
 				t.Errorf("diskMiB(%q) = %d, want %d", tc.cmdline, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestPorts(t *testing.T) {
+	tests := []struct {
+		name, cmdline string
+		want          []uint16
+		ok            bool
+	}{
+		{"none", "root=/dev/vda ro", nil, true},
+		{"empty", "root=/dev/vda ro workcell.ports= quiet", nil, true},
+		{"one", "workcell.ports=443", []uint16{443}, true},
+		{"many", "ro workcell.ports=443,80,8443\n", []uint16{443, 80, 8443}, true},
+		{"the last wins", "workcell.ports=443 workcell.ports=80", []uint16{80}, true},
+		{"the last wins when empty", "workcell.ports=443 workcell.ports=", nil, true},
+		{"another name", "other.workcell.ports=443", nil, true},
+		{"not a number", "workcell.ports=https", nil, false},
+		{"zero", "workcell.ports=0", nil, false},
+		{"too large", "workcell.ports=65536", nil, false},
+		{"negative", "workcell.ports=-1", nil, false},
+		{"a blank entry", "workcell.ports=443,", nil, false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := ports(tc.cmdline)
+			if (err == nil) != tc.ok || !slices.Equal(got, tc.want) {
+				t.Errorf("ports(%q) = %v, %v; want %v, ok=%t", tc.cmdline, got, err, tc.want, tc.ok)
 			}
 		})
 	}

@@ -41,6 +41,31 @@ func diskMiB(cmdline string) int {
 	return mib
 }
 
+// ports is the list in the last workcell.ports= on the kernel command line: the TCP ports the
+// init relays to the host (ADR-003), none when there is no list or it is empty. The host wrote
+// it (A1); an entry that is not a port is an error, so that the console says so.
+func ports(cmdline string) ([]uint16, error) {
+	var ps []uint16
+	for _, f := range strings.Fields(cmdline) {
+		v, ok := strings.CutPrefix(f, "workcell.ports=")
+		if !ok {
+			continue
+		}
+		ps = nil
+		if v == "" {
+			continue
+		}
+		for _, s := range strings.Split(v, ",") {
+			n, err := strconv.ParseUint(s, 10, 16)
+			if err != nil || n == 0 {
+				return nil, fmt.Errorf("workcell.ports: %q is not a port", s)
+			}
+			ps = append(ps, uint16(n))
+		}
+	}
+	return ps, nil
+}
+
 // tmpfsSize is the mount option that caps a tmpfs at mib MiB, or nothing when mib is 0.
 func tmpfsSize(mib int) string {
 	if mib == 0 {
