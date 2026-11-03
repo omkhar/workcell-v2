@@ -45,9 +45,9 @@ var prepared struct {
 	xdg string // XDG_DATA_HOME holding workcell/{firecracker,vmlinux,initrd.cpio,root.ext4}
 }
 
-// workcell is one session of the product: a directory for its cwd, the
-// payload it carries in and the caps each of its VMs gets. A VM lives only
-// as long as one Exec.
+// workcell is one session of the product: a directory for its cwd when the
+// test exports nothing, the payload it carries in and the caps each of its
+// VMs gets. A VM lives only as long as one Exec or one Pull.
 type workcell struct {
 	dir     string
 	payload string
@@ -212,6 +212,9 @@ func (w *workcell) Start(_ context.Context, cfg Config) (string, error) {
 		return "", err
 	}
 	w.dir, w.payload, w.cfg = dir, cfg.Payload, cfg
+	if cfg.Workspace != "" {
+		return "/workspace", nil // where `workcell run` shows a copy of its working directory
+	}
 	return "", nil
 }
 
@@ -232,6 +235,30 @@ func (w *workcell) Exec(ctx context.Context, args ...string) (Output, error) {
 	return w.cli(ctx, payload, runArgs(w.cfg, loader, args...)...)
 }
 
+// Pull is one `workcell pull <dest>` in the export: the product takes the
+// newest session that ran there, boots a guest with its image and writes
+// the work tree the guest streams into dest. A non-zero exit is a refusal,
+// returned as an error holding the product's stderr; the judge reads it.
+func (w *workcell) Pull(ctx context.Context, dest string) error {
+	if w.dir == "" {
+		return errors.New("workcell: Pull before Start")
+	}
+	if w.cfg.Workspace == "" {
+		return errors.New("workcell: the session has no workspace to pull")
+	}
+	if err := os.MkdirAll(dest, 0o755); err != nil {
+		return err
+	}
+	out, err := w.cli(ctx, nil, pullArgs(dest)...)
+	if err != nil {
+		return err
+	}
+	if out.Exit != 0 {
+		return fmt.Errorf("workcell pull: exit %d: %s", out.Exit, bytes.TrimSpace(out.Stderr))
+	}
+	return nil
+}
+
 // Bench is one `workcell bench start` with the session's artifacts: the
 // product boots its guest once to warm up and twenty timed times, by itself,
 // and prints the one line of SPEC P1. Nothing runs in any of those guests.
@@ -242,13 +269,16 @@ func (w *workcell) Bench(ctx context.Context) (Output, error) {
 	return w.cli(ctx, nil, "bench", "start")
 }
 
-// cli runs the product once with the prepared artifacts, stdin from in, both
-// streams bounded. An exit status is reported in Output, not as an error. On
-// cancel the product gets SIGTERM, which it forwards, and a little while to
-// take its VM down.
+// cli runs the product once with the prepared artifacts, in the session's
+// export when it has one, stdin from in, both streams bounded. An exit
+// status is reported in Output, not as an error. On cancel the product gets
+// SIGTERM, which it forwards, and a little while to take its VM down.
 func (w *workcell) cli(ctx context.Context, in io.Reader, args ...string) (Output, error) {
 	cmd := exec.CommandContext(ctx, prepared.bin, args...)
 	cmd.Dir = w.dir
+	if w.cfg.Workspace != "" {
+		cmd.Dir = w.cfg.Workspace
+	}
 	cmd.Env = append(os.Environ(), "XDG_DATA_HOME="+prepared.xdg)
 	cmd.Stdin = in
 	stdout, stderr := &bounded{limit: MaxStdout}, &bounded{limit: MaxStderr}
@@ -270,9 +300,12 @@ func (w *workcell) cli(ctx context.Context, in io.Reader, args ...string) (Outpu
 	return out, nil
 }
 
+// Stop removes the session's directory and every session image the product
+// kept, since no `workcell rm` exists yet and tests run one at a time: the
+// next test's pull must find only its own runs.
 func (w *workcell) Stop() error {
 	if w.dir == "" {
 		return nil
 	}
-	return os.RemoveAll(w.dir)
+	return errors.Join(os.RemoveAll(w.dir), os.RemoveAll(filepath.Join(prepared.xdg, "workcell", "sessions")))
 }

@@ -88,14 +88,15 @@ var All = []Test{
 	{ID: "I6", Name: "redirect-carries-secret", Probe: redirectProbe, Host: twoCanaries(false, redirectTo, leakJudge), Want: withSecret},
 	// The repository the guest hands back is hostile: its hooks, config,
 	// attributes and submodule URL aim at the host, and its tree names paths
-	// through "..", through a symlink an earlier pull brought, and twice in
-	// different case.
+	// through "..", through a symlink an earlier pull brought, twice in
+	// different case, and under ".git".
 	{ID: "I8", Name: "pull-runs-hook", Probe: repoProbe, Host: obeyed("hooks"), Want: exported},
 	{ID: "I8", Name: "pull-obeys-git-config", Probe: repoProbe, Host: obeyed("config"), Want: exported},
 	{ID: "I8", Name: "pull-fetches-submodule", Probe: repoProbe, Host: fetched, Want: exported},
 	{ID: "I8", Name: "pull-dotdot-path", Probe: repoProbe, Host: obeyed("dotdot"), Want: exported},
 	{ID: "I8", Name: "pull-through-symlink", Probe: repoProbe, Host: obeyed("link", "fill"), Want: exported},
 	{ID: "I8", Name: "pull-case-collision", Probe: repoProbe, Host: collided, Want: exported},
+	{ID: "I8", Name: "pull-writes-dotgit", Probe: repoProbe, Host: planted, Want: exported},
 	// A workcell.toml in the repository tries to widen the policy: the
 	// allowlist, the secret's binding, the workspace mode and the caps.
 	{ID: "I13", Name: "repo-policy-widens-allowlist", Probe: replayProbe, Host: twoCanaries(false, nil, reachJudge), Want: widened},

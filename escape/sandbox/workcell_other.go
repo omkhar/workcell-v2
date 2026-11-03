@@ -21,4 +21,6 @@ func (*workcell) Exec(context.Context, ...string) (Output, error) {
 
 func (*workcell) Bench(context.Context) (Output, error) { return Output{}, ErrNotImplemented }
 
+func (*workcell) Pull(context.Context, string) error { return ErrNotImplemented }
+
 func (*workcell) Stop() error { return nil }

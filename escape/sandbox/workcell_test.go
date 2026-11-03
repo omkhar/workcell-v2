@@ -70,7 +70,7 @@ func TestUnsupported(t *testing.T) {
 		{Config{MemoryMiB: 512}, false},
 		{Config{DiskMiB: 100}, false},
 		{Config{CPUs: 1, MemoryMiB: 256, DiskMiB: 64}, false},
-		{Config{Workspace: "/w"}, true},
+		{Config{Workspace: "/w"}, false},
 		{Config{Secret: &Secret{}}, true},
 		{Config{Allow: []string{"a"}}, true},
 		{Config{Deny: []string{"a"}}, true},
@@ -105,5 +105,11 @@ func TestRunArgs(t *testing.T) {
 		if got := runArgs(c.cfg, "L", "probe", "x"); !slices.Equal(got, want) {
 			t.Errorf("%+v: argv %q, want %q", c.cfg, got, want)
 		}
+	}
+}
+
+func TestPullArgs(t *testing.T) {
+	if got := pullArgs("/x/pulled"); !slices.Equal(got, []string{"pull", "/x/pulled"}) {
+		t.Errorf("argv %q", got)
 	}
 }
