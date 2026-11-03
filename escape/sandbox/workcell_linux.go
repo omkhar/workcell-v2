@@ -218,8 +218,7 @@ func (w *workcell) Start(_ context.Context, cfg Config) (string, error) {
 // Exec is one `workcell run`: a fresh VM boots, the guest's shell takes the
 // payload from stdin and runs it with the arguments, and the VM goes away.
 // Exit 125 (no session) and 126 (the guest could not run it) are errors of
-// the run, not results of the probe. On cancel the product gets SIGTERM,
-// which it forwards, and a little while to take its VM down.
+// the run, not results of the probe.
 func (w *workcell) Exec(ctx context.Context, args ...string) (Output, error) {
 	if w.dir == "" {
 		return Output{}, errors.New("workcell: Exec before Start")
@@ -229,28 +228,47 @@ func (w *workcell) Exec(ctx context.Context, args ...string) (Output, error) {
 		return Output{}, fmt.Errorf("workcell: payload: %w", err)
 	}
 	defer payload.Close()
-	cmd := exec.CommandContext(ctx, prepared.bin, runArgs(w.cfg, loader, args...)...)
+	out, err := w.cli(ctx, payload, runArgs(w.cfg, loader, args...)...)
+	if err == nil && (out.Exit == 125 || out.Exit == 126) {
+		err = fmt.Errorf("workcell run exited %d: %s", out.Exit, bytes.TrimSpace(out.Stderr))
+	}
+	return out, err
+}
+
+// Bench is one `workcell bench start` with the session's artifacts: the
+// product boots its guest once to warm up and twenty timed times, by itself,
+// and prints the one line of SPEC P1. Nothing runs in any of those guests.
+func (w *workcell) Bench(ctx context.Context) (Output, error) {
+	if w.dir == "" {
+		return Output{}, errors.New("workcell: Bench before Start")
+	}
+	return w.cli(ctx, nil, "bench", "start")
+}
+
+// cli runs the product once with the prepared artifacts, stdin from in, both
+// streams bounded. An exit status is reported in Output, not as an error. On
+// cancel the product gets SIGTERM, which it forwards, and a little while to
+// take its VM down.
+func (w *workcell) cli(ctx context.Context, in io.Reader, args ...string) (Output, error) {
+	cmd := exec.CommandContext(ctx, prepared.bin, args...)
 	cmd.Dir = w.dir
 	cmd.Env = append(os.Environ(), "XDG_DATA_HOME="+prepared.xdg)
-	cmd.Stdin = payload
+	cmd.Stdin = in
 	stdout, stderr := &bounded{limit: MaxStdout}, &bounded{limit: MaxStderr}
 	cmd.Stdout, cmd.Stderr = stdout, stderr
 	cmd.Cancel = func() error { return cmd.Process.Signal(syscall.SIGTERM) }
 	cmd.WaitDelay = 3 * time.Second
-	err = cmd.Run()
+	err := cmd.Run()
 	out := Output{Stdout: stdout.buf, Stderr: stderr.buf}
 	var exit *exec.ExitError
 	switch {
 	case err == nil:
 	case ctx.Err() != nil:
-		return out, fmt.Errorf("workcell run: %w", ctx.Err())
+		return out, fmt.Errorf("workcell %s: %w", args[0], ctx.Err())
 	case errors.As(err, &exit):
 		out.Exit = exit.ExitCode()
 	default:
-		return out, fmt.Errorf("workcell run: %w", err)
-	}
-	if out.Exit == 125 || out.Exit == 126 {
-		return out, fmt.Errorf("workcell run exited %d: %s", out.Exit, bytes.TrimSpace(out.Stderr))
+		return out, fmt.Errorf("workcell %s: %w", args[0], err)
 	}
 	return out, nil
 }

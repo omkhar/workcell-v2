@@ -15,3 +15,9 @@ func run(_ []string, stderr io.Writer) int {
 	fmt.Fprintln(stderr, "workcell: no backend for this OS yet")
 	return 125
 }
+
+// benchStart has no backend here yet either.
+func benchStart(_, stderr io.Writer) int {
+	fmt.Fprintln(stderr, "workcell: bench start needs Linux")
+	return 1
+}

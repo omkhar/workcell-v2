@@ -128,6 +128,12 @@ type Observe interface {
 	// however it likes and leaves the install as it was. An error means the
 	// client could not be run or its install could not be read.
 	Update(ctx context.Context, u UpdateConfig) (installed []byte, err error)
+	// Bench runs the product's start benchmark once on the host, as
+	// `workcell bench start` does, with the artifacts this session's runs
+	// use, and returns what it printed and its exit status (SPEC P1). The
+	// product's own exit status is not an error; an error means it could
+	// not be run.
+	Bench(ctx context.Context) (Output, error)
 }
 
 // Channel is the host end of the host-guest channel, as the guest dials it:
