@@ -17,8 +17,8 @@ type Machine interface {
 	// Check proves the host can run a guest (the hypervisor device and the pinned
 	// binary) and boots nothing. doctor calls it alone.
 	Check(ctx context.Context) error
-	// Listen accepts guest-initiated vsock connections to one host port. It must be
-	// called before Start.
+	// Listen accepts one guest-initiated vsock connection to one host port; after it,
+	// the guest's later connections to that port are refused. It must be called before Start.
 	Listen(port uint32) (net.Listener, error)
 	// Start boots the guest. A second call is an error.
 	Start(ctx context.Context) error
