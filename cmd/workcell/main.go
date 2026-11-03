@@ -12,10 +12,13 @@ import (
 )
 
 func main() {
-	if len(os.Args) == 2 && os.Args[1] == "--version" {
+	switch {
+	case len(os.Args) == 2 && os.Args[1] == "--version":
 		fmt.Println(version.String())
-		return
+	case len(os.Args) >= 2 && os.Args[1] == "run":
+		os.Exit(run(os.Args[2:], os.Stderr))
+	default:
+		fmt.Fprintln(os.Stderr, "workcell v2 is under construction; see loop/state/PLAN.md")
+		os.Exit(2)
 	}
-	fmt.Fprintln(os.Stderr, "workcell v2 is under construction; see loop/state/PLAN.md")
-	os.Exit(2)
 }

@@ -122,6 +122,32 @@ func TestExit(t *testing.T) {
 	}
 }
 
+func TestAck(t *testing.T) {
+	tests := []struct {
+		name string
+		in   []byte
+		want int
+		ok   bool
+	}{
+		{"zero, the end of a pipe", EncodeAck(0), 0, true},
+		{"one byte", EncodeAck(1), 1, true},
+		{"a full frame", EncodeAck(MaxStdin), MaxStdin, true},
+		{"one over", EncodeAck(MaxStdin + 1), 0, false},
+		{"huge", []byte{0xff, 0xff, 0xff, 0xff}, 0, false},
+		{"empty", nil, 0, false},
+		{"three bytes", []byte{0, 0, 1}, 0, false},
+		{"five bytes", []byte{0, 0, 0, 1, 0}, 0, false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := DecodeAck(tc.in)
+			if (err == nil) != tc.ok || got != tc.want {
+				t.Errorf("DecodeAck(%x) = %d, %v; want %d, ok=%t", tc.in, got, err, tc.want, tc.ok)
+			}
+		})
+	}
+}
+
 // FuzzDecode runs every decoder on arbitrary bytes. What decodes must be in bounds and
 // encode back to the same bytes, so the guest has exactly one way to say each thing.
 func FuzzDecode(f *testing.F) {
@@ -129,6 +155,7 @@ func FuzzDecode(f *testing.F) {
 	f.Add([]byte{1, 15})
 	f.Add([]byte("\x02fork/exec /nope: no such file or directory"))
 	f.Add([]byte{0, 24, 0, 80})
+	f.Add([]byte{0, 1, 0, 0})
 	f.Add([]byte(`{"argv":["sh"],"pty":true,"rows":24,"cols":80}`))
 	f.Fuzz(func(t *testing.T, in []byte) {
 		if e, err := DecodeExit(in); err == nil {
@@ -144,6 +171,9 @@ func FuzzDecode(f *testing.F) {
 		}
 		if s, err := DecodeSignal(in); err == nil && (s < 1 || s > 64 || !bytes.Equal(EncodeSignal(s), in)) {
 			t.Fatalf("signal %x decodes to %d", in, s)
+		}
+		if n, err := DecodeAck(in); err == nil && (n < 0 || n > MaxStdin || !bytes.Equal(EncodeAck(n), in)) {
+			t.Fatalf("ack %x decodes to %d", in, n)
 		}
 		if e, err := DecodeExec(in); err == nil {
 			if len(e.Argv) == 0 {

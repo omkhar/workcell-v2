@@ -88,6 +88,21 @@ func TestInit(t *testing.T) {
 		}
 	})
 
+	// More frames than the init queues, to a command that reads slowly: the window holds the
+	// host back, nothing is dropped, and every frame is acknowledged.
+	t.Run("stdin-window", func(t *testing.T) {
+		g := connect(t, in)
+		g.exec(guest.Exec{Argv: []string{probe, "count"}})
+		const frames, size = 100, 32 << 10
+		for range frames {
+			g.stdin(make([]byte, size))
+		}
+		g.stdin(nil)
+		if e := g.exit(); e != (guest.Exit{}) || g.out.String() != fmt.Sprintf("bytes=%d\n", frames*size) || g.acks != g.sent {
+			t.Fatalf("%d frames of %d bytes: exit %+v, stdout %q, %d of %d acknowledged", frames, size, e, g.out.String(), g.acks, g.sent)
+		}
+	})
+
 	t.Run("disconnect", func(t *testing.T) {
 		g := connect(t, in)
 		g.exec(guest.Exec{Argv: []string{probe, "sleep"}})
@@ -116,15 +131,16 @@ func TestInit(t *testing.T) {
 // client is the host's end of the channel to one guest, with every frame seen kept
 // for the log of a failure.
 type client struct {
-	t         *testing.T
-	m         *Machine
-	raw       net.Conn
-	dir       string
-	c         *wire.Conn
-	frames    chan wire.Frame
-	readErr   chan error
-	seen      []string
-	out, errs strings.Builder // of the current command
+	t          *testing.T
+	m          *Machine
+	raw        net.Conn
+	dir        string
+	c          *wire.Conn
+	frames     chan wire.Frame
+	readErr    chan error
+	seen       []string
+	out, errs  strings.Builder // of the current command
+	sent, acks int             // Stdin frames sent and acknowledged for the current command
 }
 
 func connect(t *testing.T, in inputs) *client {
@@ -160,10 +176,21 @@ func (g *client) send(typ uint8, payload []byte) {
 	}
 }
 
+// stdin sends one Stdin frame as a host must: never with guest.StdinWindow unacknowledged.
+func (g *client) stdin(b []byte) {
+	g.t.Helper()
+	for g.sent-g.acks >= guest.StdinWindow {
+		g.read()
+	}
+	g.sent++
+	g.send(guest.TypeStdin, b)
+}
+
 func (g *client) exec(e guest.Exec) {
 	g.t.Helper()
 	g.out.Reset()
 	g.errs.Reset()
+	g.sent, g.acks = 0, 0
 	g.send(guest.TypeExec, guest.EncodeExec(e))
 }
 
@@ -178,6 +205,8 @@ func (g *client) read() wire.Frame {
 			g.out.Write(f.Payload)
 		case guest.TypeStderr:
 			g.errs.Write(f.Payload)
+		case guest.TypeAck:
+			g.acks++
 		}
 		return f
 	case err := <-g.readErr:
