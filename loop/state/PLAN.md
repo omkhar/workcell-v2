@@ -110,7 +110,7 @@ with ADR-003 and ADR-004, they build on the proposal, and you can accept it at a
       accept: `go run ./escape/cmd/escape -sandbox workcell -list` works in hosted CI, and the log shows one test that runs in a real guest
 - [ ] U-205 | flow:build | model:sonnet | env:kvm | deps:U-204b,U-007,H-011 | tries:0 | Session directory and lifecycle: `ls`, `stop`, `rm`, crash cleanup. Port `_legacy/rootio` only where R6 applies (S14)
       accept: I7 added to `enforced.txt` and green
-- [ ] U-206 | flow:build | model:sonnet | env:kvm | deps:U-204b,U-007 | tries:0 | Resource caps: CPU, memory, disk, processes, log volume
+- [x] U-206 | flow:build | model:sonnet | env:kvm | deps:U-204b,U-007 | tries:0 | Resource caps: CPU, memory, disk, processes, log volume
       accept: I10 added to `enforced.txt` and green
 - [ ] U-207 | flow:build | model:sonnet | env:kvm | deps:U-204b | tries:0 | `workcell bench start`, and a `P1` entry in the suite that fails above the hosted budget
       accept: `P1` added to `enforced.txt`; the number is printed in the run log
