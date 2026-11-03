@@ -14,6 +14,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"sync"
 )
 
 // ErrNotImplemented is returned by an adapter that cannot do the operation yet.
@@ -136,14 +137,12 @@ type Observe interface {
 	Bench(ctx context.Context) (Output, error)
 }
 
-// Channel is the host end of the host-guest channel, as the guest dials it:
-// Addr is "unix:<path>", "tcp:<host:port>" or "vsock:<cid>:<port>"; Hello is
-// one well-formed frame the host answers on a fresh connection, and Reply is
-// a prefix of its answer. A probe sends Hello before and after its hostile
-// traffic, so that a channel it never reached cannot pass (SPEC I12).
+// Channel is the host end of the host-guest channel as the guest's init is
+// connected to it and as a fresh connection dials it: Addr is "unix:<path>"
+// or "vsock:<cid>:<port>". The host answers no guest frame; what a hostile
+// frame did shows in the run's own exit status and streams (SPEC I12).
 type Channel struct {
-	Addr         string
-	Hello, Reply []byte
+	Addr string
 }
 
 // Names lists the adapters, in the order shown to a user.
@@ -173,13 +172,23 @@ func BuildPayload(ctx context.Context, dir string) (string, error) {
 	return out, nil
 }
 
-// bounded keeps the first limit bytes written and drops the rest.
+// bounded keeps the first limit bytes written and drops the rest. More than
+// one goroutine may write: the command's pipe and the control channel.
 type bounded struct {
+	mu    sync.Mutex
 	limit int
 	buf   []byte
 }
 
 func (b *bounded) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
 	b.buf = append(b.buf, p[:min(len(p), b.limit-len(b.buf))]...)
 	return len(p), nil
+}
+
+func (b *bounded) bytes() []byte {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf
 }

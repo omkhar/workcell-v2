@@ -27,6 +27,9 @@ import (
 // namespaces, the host's network namespace kept so that the network is open,
 // and the host's root shared, and with no cap on what it logs. A user
 // namespace maps the caller to root when the caller is not root already.
+// Its channel is a unix socket in the session directory, served by naiveHost
+// for each run; the command, pid 1 of its namespace, holds the guest end as
+// an inherited descriptor, since a plain container has no init.
 // Every escape test must fail here.
 type control struct {
 	dir       string
@@ -34,10 +37,11 @@ type control struct {
 	workspace string
 	env       []string // what a naive sandbox exports to the guest: the real secret
 	helpers   map[string]*exec.Cmd
+	ln        *net.UnixListener // the host end of the channel
 }
 
 // helperNames are the session's helpers. Control starts them on first use,
-// each a payload serving a socket of its name, and they enforce nothing.
+// each a payload that sleeps, and they enforce nothing.
 var helperNames = []string{"proxy", "resolver", "broker", "supervisor"}
 
 func newControl() (Sandbox, error) { return &control{}, nil }
@@ -58,6 +62,11 @@ func (c *control) Start(_ context.Context, cfg Config) (string, error) {
 	}
 	c.env = []string{"PATH=/usr/sbin:/usr/bin:/sbin:/bin", "HOME=/root"}
 	c.workspace = cfg.Workspace
+	ln, err := net.Listen("unix", filepath.Join(dir, "channel"))
+	if err != nil {
+		return "", fmt.Errorf("control: open the channel: %w", err)
+	}
+	c.ln = ln.(*net.UnixListener)
 	if sec := cfg.Secret; sec != nil {
 		// The naive way: the real value in the environment, and in a dotenv
 		// file in the workspace for tools that read one.
@@ -84,9 +93,28 @@ func (c *control) record(line string) error {
 }
 
 func (c *control) Exec(ctx context.Context, args ...string) (Output, error) {
-	cmd := exec.CommandContext(ctx, c.payload, args...)
+	// The guest end of the channel: one connection, which the command
+	// inherits as descriptor 3 and the host end serves.
+	guest, err := net.Dial("unix", c.ln.Addr().String())
+	if err != nil {
+		return Output{}, fmt.Errorf("control: dial the channel: %w", err)
+	}
+	end, err := guest.(*net.UnixConn).File()
+	guest.Close()
+	if err != nil {
+		return Output{}, fmt.Errorf("control: the channel's guest end: %w", err)
+	}
+	defer end.Close()
+	cctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	stdout := &bounded{limit: MaxStdout}
+	stderr := &bounded{limit: MaxStderr}
+	host := &naiveHost{stdout: stdout, stderr: stderr, cancel: cancel}
+	host.wg.Go(func() { host.accept(c.ln) })
+	cmd := exec.CommandContext(cctx, c.payload, args...)
 	cmd.Dir = "/"
 	cmd.Env = c.env
+	cmd.ExtraFiles = []*os.File{end}
 	attr := &syscall.SysProcAttr{
 		Cloneflags: syscall.CLONE_NEWNS | syscall.CLONE_NEWPID | syscall.CLONE_NEWUTS | syscall.CLONE_NEWIPC,
 	}
@@ -108,11 +136,11 @@ func (c *control) Exec(ctx context.Context, args ...string) (Output, error) {
 		return Output{}, fmt.Errorf("control: open log: %w", err)
 	}
 	defer log.Close()
-	stdout := &bounded{limit: MaxStdout}
-	stderr := &bounded{limit: MaxStderr}
 	cmd.Stdout, cmd.Stderr = io.MultiWriter(stdout, log), io.MultiWriter(stderr, log)
 	err = cmd.Run()
-	out := Output{Stdout: stdout.buf, Stderr: stderr.buf}
+	end.Close()
+	host.stop(ctx, c.ln) // the host end outlives the command only until its connections close
+	out := Output{Stdout: stdout.bytes(), Stderr: stderr.bytes()}
 	var exit *exec.ExitError
 	switch {
 	case err == nil:
@@ -123,7 +151,10 @@ func (c *control) Exec(ctx context.Context, args ...string) (Output, error) {
 	default: // the namespaces could not be created, or the payload could not start
 		return out, fmt.Errorf("control: start payload in new namespaces: %w (unprivileged user namespaces may be restricted here)", err)
 	}
-	return out, nil
+	if ctx.Err() != nil {
+		return out, fmt.Errorf("control: payload: %w", ctx.Err())
+	}
+	return host.result(out), nil
 }
 
 // Pull does what a naive sandbox does: it snapshots the guest's work with git,
@@ -214,34 +245,23 @@ func (c *control) Helper(_ context.Context, name string) (int, error) {
 }
 
 func (c *control) Channel(context.Context) (Channel, error) {
-	if err := c.startHelpers(); err != nil {
-		return Channel{}, err
-	}
-	return Channel{Addr: "unix:" + filepath.Join(c.dir, "supervisor"), Hello: frame(1, []byte("hello")), Reply: frame(2, []byte("hi"))}, nil
+	return Channel{Addr: "unix:" + c.ln.Addr().String()}, nil
 }
 
-// startHelpers starts one payload process per helper name, once, and waits
-// for the supervisor's socket, which is the channel.
+// startHelpers starts one payload process per helper name, once.
 func (c *control) startHelpers() error {
 	if c.helpers != nil {
 		return nil
 	}
-	sock := filepath.Join(c.dir, "supervisor")
 	c.helpers = map[string]*exec.Cmd{}
 	for _, name := range helperNames {
-		h := exec.Command(c.payload, "supervisor", filepath.Join(c.dir, name))
+		h := exec.Command(c.payload, "helper", name)
 		if err := h.Start(); err != nil {
 			return fmt.Errorf("control: start %s: %w", name, err)
 		}
 		c.helpers[name] = h
 	}
-	for start := time.Now(); time.Since(start) < 3*time.Second; time.Sleep(20 * time.Millisecond) {
-		if conn, err := net.Dial("unix", sock); err == nil {
-			conn.Close()
-			return nil
-		}
-	}
-	return errors.New("control: the supervisor did not open its channel")
+	return nil
 }
 
 // Update does what a naive updater does: it reads the manifest's payload
@@ -309,6 +329,9 @@ func (c *control) Stop() error {
 	for _, h := range c.helpers {
 		h.Process.Kill()
 		h.Wait()
+	}
+	if c.ln != nil {
+		c.ln.Close()
 	}
 	return os.RemoveAll(c.dir)
 }

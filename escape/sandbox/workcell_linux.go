@@ -217,8 +217,9 @@ func (w *workcell) Start(_ context.Context, cfg Config) (string, error) {
 
 // Exec is one `workcell run`: a fresh VM boots, the guest's shell takes the
 // payload from stdin and runs it with the arguments, and the VM goes away.
-// Exit 125 (no session) and 126 (the guest could not run it) are errors of
-// the run, not results of the probe.
+// Every exit status is a result, 125 (no session) and 126 (the guest could
+// not run it) included: the runner treats a non-zero one as the probe not
+// having run, and an I12 judge reads it as the host's answer to the guest.
 func (w *workcell) Exec(ctx context.Context, args ...string) (Output, error) {
 	if w.dir == "" {
 		return Output{}, errors.New("workcell: Exec before Start")
@@ -228,11 +229,7 @@ func (w *workcell) Exec(ctx context.Context, args ...string) (Output, error) {
 		return Output{}, fmt.Errorf("workcell: payload: %w", err)
 	}
 	defer payload.Close()
-	out, err := w.cli(ctx, payload, runArgs(w.cfg, loader, args...)...)
-	if err == nil && (out.Exit == 125 || out.Exit == 126) {
-		err = fmt.Errorf("workcell run exited %d: %s", out.Exit, bytes.TrimSpace(out.Stderr))
-	}
-	return out, err
+	return w.cli(ctx, payload, runArgs(w.cfg, loader, args...)...)
 }
 
 // Bench is one `workcell bench start` with the session's artifacts: the
@@ -259,7 +256,7 @@ func (w *workcell) cli(ctx context.Context, in io.Reader, args ...string) (Outpu
 	cmd.Cancel = func() error { return cmd.Process.Signal(syscall.SIGTERM) }
 	cmd.WaitDelay = 3 * time.Second
 	err := cmd.Run()
-	out := Output{Stdout: stdout.buf, Stderr: stderr.buf}
+	out := Output{Stdout: stdout.bytes(), Stderr: stderr.bytes()}
 	var exit *exec.ExitError
 	switch {
 	case err == nil:

@@ -41,6 +41,12 @@ type Run func(args ...string) (Result, error)
 // Session is one running sandbox, as the host knows it.
 type Session struct {
 	Run Run
+	// Exec runs the test's probe inside the sandbox as Run does, but gives
+	// back the run itself, exit status and streams unparsed, under ctx: the
+	// evidence for a judge that holds the host end of a run to account
+	// (SPEC I12). A status the host could not run the command under is a
+	// result here, not an error.
+	Exec func(ctx context.Context, args ...string) (sandbox.Output, error)
 	// Workspace is the host directory exported into the guest, "" when the
 	// test wanted none. The runner made its parent for this test alone and
 	// removes it afterwards, so a judge may plant files beside Workspace.
