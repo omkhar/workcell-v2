@@ -423,3 +423,5 @@ The first hosted run showed seven passing on the product as it was and one real 
 Review: no findings. Two reviewer notes and the redteam's unexpressed ideas are one line in PARKED.md. No S14 trigger: nothing ported.
 Budget: product 6714 of 15000, test 13598 of 15071, WORKCELL_* 1 of 12, direct dependencies 3 of 15, flags 3 of 20, verbs 2 of 14.
 Next: U-205 and U-303 wait on H-011; U-300 (ADR-003, the network path, spike, env:kvm, model opus, deps U-204) is the next takeable unit for the cloud, then U-301. The guest has no NIC today, so I2 passes trivially and U-301 must keep it green; the channel listener now takes one connection per session, so a later attach (U-602) needs its own port or a new Listen. The claim was PR #66, which this run gives its final title.
+
+## 2026-11-03T04:06Z U-300 START mode=cloud
