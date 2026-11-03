@@ -205,11 +205,10 @@ func (r *reaper) collect() {
 }
 
 // halt ends the guest: every other process dies, the disks are synced and the machine
-// powers off. POWER_OFF halts the machine where the VMM offers an ACPI power-off. Where it
-// does not, the kernel ends the calling thread instead of returning, so a second thread
-// restarts the guest a moment later; with reboot=k on the command line Firecracker exits
-// on that too. The host does not depend on any of this (A1): its deadline and Kill end
-// the VM from outside.
+// restarts, which with reboot=k on the command line ends the VMM. POWER_OFF is not used:
+// on a kernel without an ACPI power-off handler it halts the CPUs without exiting, so the
+// VMM would live until the host's deadline. The host does not depend on any of this (A1):
+// its deadline and Kill end the VM from outside.
 func halt() {
 	_ = unix.Kill(-1, unix.SIGKILL)
 	for {
@@ -218,15 +217,8 @@ func halt() {
 		}
 	}
 	unix.Sync()
-	go func() {
-		time.Sleep(time.Second)
-		for {
-			_ = unix.Reboot(unix.LINUX_REBOOT_CMD_RESTART)
-			time.Sleep(time.Second)
-		}
-	}()
 	for {
-		_ = unix.Reboot(unix.LINUX_REBOOT_CMD_POWER_OFF)
+		_ = unix.Reboot(unix.LINUX_REBOOT_CMD_RESTART)
 		time.Sleep(time.Second)
 	}
 }
