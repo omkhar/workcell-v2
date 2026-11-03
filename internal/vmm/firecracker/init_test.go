@@ -146,9 +146,15 @@ type client struct {
 func connect(t *testing.T, in inputs) *client {
 	t.Helper()
 	m, raw, dir, bootMS := launch(t, in)
+	t.Logf("init boot_ms=%d", bootMS)
+	return newClient(t, m, raw, dir)
+}
+
+// newClient drives the guest behind raw, the channel connection launch accepted.
+func newClient(t *testing.T, m *Machine, raw net.Conn, dir string) *client {
+	t.Helper()
 	g := &client{t: t, m: m, raw: raw, dir: dir, c: wire.New(raw, 5*time.Second),
 		frames: make(chan wire.Frame), readErr: make(chan error, 1)}
-	t.Logf("init boot_ms=%d", bootMS)
 	t.Cleanup(func() {
 		_ = raw.Close()
 		if t.Failed() {

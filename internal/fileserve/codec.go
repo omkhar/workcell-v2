@@ -295,8 +295,7 @@ func checkName(s string) error {
 	return nil
 }
 
-// Out is a reply: the header, then the body. errno 0 is success. The guest init uses it for
-// the one reply it writes itself, E2BIG to a request too long for a frame.
+// Out is a reply: the header, then the body. errno 0 is success.
 func Out(unique uint64, errno syscall.Errno, body ...[]byte) []byte {
 	b := make([]byte, OutHeaderLen, OutHeaderLen+64)
 	for _, p := range body {

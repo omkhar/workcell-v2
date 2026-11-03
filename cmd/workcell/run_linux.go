@@ -21,6 +21,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/omkhar/workcell/v2/internal/fileserve"
 	"github.com/omkhar/workcell/v2/internal/guest"
 	"github.com/omkhar/workcell/v2/internal/relay"
 	"github.com/omkhar/workcell/v2/internal/vmm"
@@ -76,7 +77,7 @@ func session(argv []string, caps limits, a artifacts) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	b, code, err := boot(a, caps, sigs, image)
+	b, code, err := boot(a, caps, sigs, image, "")
 	if b == nil {
 		return code, err
 	}
@@ -175,24 +176,35 @@ func export(a artifacts, caps limits, repo string) (string, error) {
 	return image, nil
 }
 
-// boot starts a guest and waits for its init to dial in. The ext4 image at image is the
-// guest's /workspace, unless image is empty. close ends the VM and removes its files; the
-// image stays. A nil result means the session goes no further: code and err say how it
-// ended (see accept).
-func boot(a artifacts, caps limits, sigs <-chan os.Signal, image string) (*booted, int, error) {
+// boot starts a guest and waits for its init to dial in. The guest's /workspace is the ext4
+// image at image (clone mode), or the directory mount itself, served live over vsock (mount
+// mode, ADR-005), or empty when both are "". close ends the VM and removes its files; the
+// image stays, and the mounted directory is never anything but the user's own tree. A nil
+// result means the session goes no further: code and err say how it ended (see accept).
+func boot(a artifacts, caps limits, sigs <-chan os.Signal, image, mount string) (*booted, int, error) {
 	dir, err := os.MkdirTemp("", "wc") // short: a unix socket path has 108 bytes
 	if err != nil {
 		return nil, 0, err
 	}
 	cmdline := caps.cmdline()
-	if image != "" {
+	switch {
+	case mount != "":
+		cmdline += " workcell.mount=1"
+	case image != "":
 		cmdline += " workcell.workspace=/dev/vdb"
 	}
 	console := &tail{}
 	// No allowlist yet, so no TCP port is relayed: the guest relays UDP 53 alone (U-303).
 	m := firecracker.New(vmm.Config{Binary: a.firecracker, Kernel: a.kernel, Initrd: a.initrd, Image: a.image,
 		Workspace: image, Cmdline: cmdline + " " + portsArg(nil), CPUs: caps.CPUs, MemoryMiB: caps.MemoryMiB, CID: 3, Console: console, Dir: dir})
-	closeAll := func() { m.Close(); os.RemoveAll(dir) } // kills the VM on every path out
+	var served *fileserve.Server
+	closeAll := func() { // kills the VM on every path out; the export's descriptors go with it
+		m.Close()
+		if served != nil {
+			served.Close()
+		}
+		os.RemoveAll(dir)
+	}
 	ln, err := m.Listen(guest.Port)
 	if err != nil {
 		closeAll()
@@ -204,6 +216,17 @@ func boot(a artifacts, caps limits, sigs <-chan os.Signal, image string) (*boote
 		return nil, 0, err
 	}
 	go serveRelay(streams) // until Close closes the listener
+	if mount != "" {
+		files, err := m.Listen(fileserve.Port)
+		if err == nil {
+			served, err = fileserve.Open(mount)
+		}
+		if err != nil {
+			closeAll()
+			return nil, 0, err
+		}
+		go serveMount(once{files}, served)
+	}
 	start := time.Now()
 	if err := m.Start(context.Background()); err != nil {
 		closeAll()
@@ -229,6 +252,17 @@ func (l once) Accept() (net.Conn, error) {
 		_ = l.Listener.Close()
 	}
 	return c, err
+}
+
+// serveMount answers the guest's FUSE stream, the one connection to fileserve.Port, from the
+// export until either side ends. Nothing is left to release but what close releases.
+func serveMount(ln net.Listener, s *fileserve.Server) {
+	c, err := ln.Accept()
+	if err != nil {
+		return // the session ended before the guest dialled
+	}
+	defer c.Close()
+	_ = s.Serve(c)
 }
 
 // accept waits for the guest to dial in. A guest that never does is reported with the end

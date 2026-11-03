@@ -33,7 +33,7 @@ func benchStart(stdout, stderr io.Writer) int {
 	caps := defaults()
 	var samples []time.Duration
 	for i := 0; i <= benchSamples; i++ { // boot 0 is the warm-up
-		b, code, err := boot(a, caps, sigs, "")
+		b, code, err := boot(a, caps, sigs, "", "")
 		if b == nil {
 			if err != nil {
 				fmt.Fprintln(stderr, "workcell:", err)

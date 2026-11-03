@@ -75,10 +75,14 @@ func setup() (string, error) {
 	}
 	_ = os.MkdirAll("/tmp", 0o755)
 	mount("tmpfs", "/tmp", "tmpfs", tmpfsSize(disk))
-	if dev := workspaceDevice(string(cmdline)); dev != "" {
-		if err := mountWorkspace(dev); err != nil { // the command then runs in an empty /workspace
-			fmt.Fprintln(os.Stderr, "workcell-init: workspace:", err)
-		}
+	var werr error
+	if mounted(string(cmdline)) {
+		werr = mountFUSE()
+	} else if dev := workspaceDevice(string(cmdline)); dev != "" {
+		werr = mountWorkspace(dev)
+	}
+	if werr != nil { // the command then runs in an empty /workspace: less, never more
+		fmt.Fprintln(os.Stderr, "workcell-init: workspace:", werr)
 	}
 	return string(cmdline), nil
 }
@@ -240,11 +244,13 @@ func (r *reaper) collect() {
 }
 
 // halt ends the guest: every other process dies, the disks are synced and the machine
-// restarts, which with reboot=k on the command line ends the VMM. POWER_OFF is not used:
-// on a kernel without an ACPI power-off handler it halts the CPUs without exiting, so the
-// VMM would live until the host's deadline. The host does not depend on any of this (A1):
-// its deadline and Kill end the VM from outside.
+// restarts, which with reboot=k on the command line ends the VMM. A mounted /workspace is
+// aborted first, since a process waiting on the host there cannot die until it is. POWER_OFF
+// is not used: on a kernel without an ACPI power-off handler it halts the CPUs without
+// exiting, so the VMM would live until the host's deadline. The host does not depend on any
+// of this (A1): its deadline and Kill end the VM from outside.
 func halt() {
+	abortFUSE()
 	_ = unix.Kill(-1, unix.SIGKILL)
 	for {
 		if _, err := unix.Wait4(-1, nil, 0, nil); err != nil {

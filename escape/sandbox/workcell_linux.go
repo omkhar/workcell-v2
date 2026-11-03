@@ -29,8 +29,8 @@ const (
 	firecrackerURL = "https://github.com/firecracker-microvm/firecracker/releases/download/v1.17.0/firecracker-v1.17.0-x86_64.tgz"
 	firecrackerSum = "06094a1108ae9e82aa4c23a775aa92758f53f1175d422270d9d6162cb9ade558"
 	firecrackerBin = "release-v1.17.0-x86_64/firecracker-v1.17.0-x86_64"
-	vmlinuxURL     = "https://s3.amazonaws.com/spec.ccfc.min/firecracker-ci/v1.14/x86_64/vmlinux-6.1.155"
-	vmlinuxSum     = "e41c7048bd2475e7e788153823fcb9166a7e0b78c4c443bd6446d015fa735f53"
+	vmlinuxURL     = "https://github.com/cloud-hypervisor/linux/releases/download/ch-release-v7.2.8-20261009/vmlinux-x86_64"
+	vmlinuxSum     = "edfeb8a8a6c04ff2979e9f1c700feaa29b8f564f952261834ef0b7d2e673a853"
 	maxDownload    = 256 << 20 // more than any of them; a runaway body stops here
 	module         = "github.com/omkhar/workcell/v2"
 )

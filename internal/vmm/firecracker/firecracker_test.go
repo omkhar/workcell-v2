@@ -33,13 +33,14 @@ import (
 	"github.com/omkhar/workcell/v2/internal/vmm"
 )
 
-// The same inputs, URLs and digests as the U-101 spike (spikes/fcch).
+// Firecracker as the U-101 spike (spikes/fcch) pinned it; the kernel is B of ADR-005, which
+// has FUSE_FS for mount mode, the same bytes escape/sandbox boots.
 const (
 	fcURL     = "https://github.com/firecracker-microvm/firecracker/releases/download/v1.17.0/firecracker-v1.17.0-x86_64.tgz"
 	fcSHA256  = "06094a1108ae9e82aa4c23a775aa92758f53f1175d422270d9d6162cb9ade558"
 	fcMember  = "release-v1.17.0-x86_64/firecracker-v1.17.0-x86_64"
-	kernelURL = "https://s3.amazonaws.com/spec.ccfc.min/firecracker-ci/v1.14/x86_64/vmlinux-6.1.155"
-	kernelSHA = "e41c7048bd2475e7e788153823fcb9166a7e0b78c4c443bd6446d015fa735f53"
+	kernelURL = "https://github.com/cloud-hypervisor/linux/releases/download/ch-release-v7.2.8-20261009/vmlinux-x86_64"
+	kernelSHA = "edfeb8a8a6c04ff2979e9f1c700feaa29b8f564f952261834ef0b7d2e673a853"
 
 	port      = 5000 // testdata/guest dials this
 	helperEnv = "FIRECRACKER_TEST_HELPER"
@@ -82,8 +83,9 @@ func TestConfig(t *testing.T) {
 	}
 }
 
-// inputs are the pinned binary and kernel, and the initramfs built from testdata/guest.
-type inputs struct{ binary, kernel, initrd string }
+// inputs are the pinned binary and kernel, the initramfs built from testdata/guest or from
+// the init, and, for a guest with a root image, the image and the init's command line.
+type inputs struct{ binary, kernel, initrd, image, cmdline string }
 
 // needKVM skips a test that boots a guest where it cannot.
 func needKVM(t *testing.T) {
@@ -253,7 +255,7 @@ func TestHelper(t *testing.T) {
 // machine is a Machine over the inputs in dir, closed when the test ends.
 func (in inputs) machine(t *testing.T, dir string, console io.Writer) *Machine {
 	t.Helper()
-	m := New(vmm.Config{Binary: in.binary, Kernel: in.kernel, Initrd: in.initrd,
+	m := New(vmm.Config{Binary: in.binary, Kernel: in.kernel, Initrd: in.initrd, Image: in.image, Cmdline: in.cmdline,
 		CPUs: 2, MemoryMiB: 512, CID: 3, Console: console, Dir: dir})
 	t.Cleanup(func() { _ = m.Close() })
 	return m
@@ -270,10 +272,8 @@ func boot(t *testing.T, in inputs) (m *Machine, conn net.Conn, dir string, bootM
 	return m, conn, dir, bootMS
 }
 
-// launch starts a guest in a fresh short Dir and returns it with the guest's
-// connection, once the guest dialled. The console goes to a file that is logged
-// if the test fails.
-func launch(t *testing.T, in inputs) (m *Machine, conn net.Conn, dir string, bootMS int64) {
+// consoleFile is a file for the guest's console, logged if the test fails.
+func consoleFile(t *testing.T) *os.File {
 	t.Helper()
 	console, err := os.Create(filepath.Join(t.TempDir(), "console.txt"))
 	if err != nil {
@@ -285,8 +285,15 @@ func launch(t *testing.T, in inputs) (m *Machine, conn net.Conn, dir string, boo
 			t.Logf("console:\n%s", b)
 		}
 	})
+	return console
+}
+
+// launch starts a guest in a fresh short Dir and returns it with the guest's
+// connection, once the guest dialled.
+func launch(t *testing.T, in inputs) (m *Machine, conn net.Conn, dir string, bootMS int64) {
+	t.Helper()
 	dir = shortDir(t)
-	m = in.machine(t, dir, console)
+	m = in.machine(t, dir, consoleFile(t))
 	ln, err := m.Listen(port)
 	if err != nil {
 		t.Fatal(err)
