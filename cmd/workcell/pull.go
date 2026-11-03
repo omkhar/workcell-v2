@@ -49,9 +49,10 @@ func (m *manifest) add(e guest.Entry) error {
 	if m.names += len(e.Path) + len(e.Target); m.names > m.limit.names {
 		return fmt.Errorf("more than %d bytes of names", m.limit.names)
 	}
-	if m.bytes += e.Size; m.bytes > m.limit.bytes {
+	if e.Size > m.limit.bytes-m.bytes { // never a sum: with sizes up to MaxInt64 one would wrap
 		return fmt.Errorf("more than %d bytes of files, which the session's image cannot hold", m.limit.bytes)
 	}
+	m.bytes += e.Size
 	key := fold(e.Path)
 	if m.folded[key] {
 		return fmt.Errorf("path %s: another path is the same under case folding", shown(e.Path))

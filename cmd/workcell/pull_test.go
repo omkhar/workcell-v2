@@ -4,6 +4,7 @@
 package main
 
 import (
+	"math"
 	"strings"
 	"testing"
 
@@ -44,6 +45,7 @@ func TestManifestAdd(t *testing.T) {
 		{"too many bytes of names", small, []guest.Entry{link("l", strings.Repeat("t", 20))}, "more than 20 bytes of names"},
 		{"path over MaxPath", bounds{10, guest.MaxPath * 2, 1}, []guest.Entry{dir(strings.Repeat("p", guest.MaxPath+1))}, "longer than"},
 		{"more bytes than the image", small, []guest.Entry{file("a", 60), file("b", 41)}, "image cannot hold"},
+		{"a size that would wrap the sum", small, []guest.Entry{file("a", 1), file("b", math.MaxInt64)}, "image cannot hold"},
 		{"exactly the image", small, []guest.Entry{file("a", 60), file("b", 40)}, ""},
 	}
 	for _, tc := range tests {
