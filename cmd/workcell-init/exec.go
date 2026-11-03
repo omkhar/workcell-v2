@@ -23,9 +23,10 @@ import (
 // pipes. Its status arrives on exited, from the reaper.
 type command struct {
 	pid    int
-	stdin  *os.File   // where host input goes: the PTY master or the stdin pipe
-	pty    *os.File   // the PTY master, or nil with pipes
-	outs   []*os.File // what the relays read: the master, or the stdout and stderr pipes
+	stdin  *os.File    // where host input goes: the PTY master or the stdin pipe
+	pty    *os.File    // the PTY master, or nil with pipes
+	outs   []*os.File  // what the relays read: the master, or the stdout and stderr pipes
+	in     chan []byte // host bytes on their way to stdin
 	relays sync.WaitGroup
 	exited <-chan unix.WaitStatus
 }
@@ -33,7 +34,7 @@ type command struct {
 // start runs req. Its process group is its own, so a signal from the host reaches all
 // of it. The error names what failed: the host reports it in place of an exit status.
 func start(req guest.Exec, s *server) (*command, error) {
-	c := &command{}
+	c := &command{in: make(chan []byte, 64)}
 	attr := &os.ProcAttr{Dir: req.Dir, Env: req.Env, Sys: &syscall.SysProcAttr{}}
 	var child []*os.File // the command's fds 0, 1 and 2; closed here once it runs
 	if req.PTY {
@@ -81,6 +82,15 @@ func start(req guest.Exec, s *server) (*command, error) {
 	for i, typ := range []uint8{guest.TypeStdout, guest.TypeStderr}[:len(c.outs)] {
 		c.relay(c.outs[i], typ, s)
 	}
+	c.relays.Go(func() { // the stdin writer: a command that stops reading parks it, not serve
+		for b := range c.in {
+			if len(b) == 0 && c.pty == nil {
+				_ = c.stdin.Close()
+				return
+			}
+			_, _ = c.stdin.Write(b) // a command that closed its stdin or died gives EPIPE: not news
+		}
+	})
 	return c, nil
 }
 
@@ -150,14 +160,15 @@ func (c *command) relay(f *os.File, typ uint8, s *server) {
 	})
 }
 
-// input writes host bytes to the command. An empty payload is the end of its stdin, which
-// only a pipe can convey; a terminal needs the host to send the EOF character.
+// input queues host bytes for the command's stdin. An empty payload is the end of its
+// stdin, which only a pipe can convey; a terminal needs the host to send the EOF character.
+// A command that does not read its stdin fills the queue, and what arrives then is dropped:
+// serve must keep handling frames, so that a signal or the host's hang-up still ends things.
 func (c *command) input(b []byte) {
-	if len(b) == 0 && c.pty == nil {
-		_ = c.stdin.Close()
-		return
+	select {
+	case c.in <- b:
+	default:
 	}
-	_, _ = c.stdin.Write(b) // a command that closed its stdin or died gives EPIPE: not news
 }
 
 func (c *command) resize(r guest.Resize) {
@@ -181,6 +192,7 @@ func (c *command) finish(st unix.WaitStatus) guest.Exit {
 	for _, f := range c.outs {
 		_ = f.SetReadDeadline(deadline)
 	}
+	_ = c.stdin.SetWriteDeadline(deadline) // unparks the writer if the command stopped reading
 	c.close()
 	if st.Signaled() {
 		return guest.Exit{Signal: int(st.Signal())}
@@ -188,8 +200,9 @@ func (c *command) finish(st unix.WaitStatus) guest.Exit {
 	return guest.Exit{Code: st.ExitStatus()}
 }
 
-// close waits for the relays and closes the init's ends.
+// close ends the stdin queue, waits for the relays and the writer, and closes the init's ends.
 func (c *command) close() {
+	close(c.in)
 	c.relays.Wait()
 	closeAll(append(c.outs, c.stdin)...) // the stdin pipe may be closed already: the host ended it
 }

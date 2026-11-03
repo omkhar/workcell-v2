@@ -74,6 +74,20 @@ func TestInit(t *testing.T) {
 		}
 	})
 
+	// A command that never reads its stdin must not stall the init: a signal still ends it.
+	t.Run("stdin-flood", func(t *testing.T) {
+		g := connect(t, in)
+		g.exec(guest.Exec{Argv: []string{probe, "sleep"}})
+		g.until("sleeping")
+		flood := make([]byte, wire.MaxPayload)
+		g.send(guest.TypeStdin, flood)
+		g.send(guest.TypeStdin, flood)
+		g.send(guest.TypeSignal, guest.EncodeSignal(15))
+		if e := g.exit(); e != (guest.Exit{Signal: 15}) {
+			t.Fatalf("after two 64 KiB stdin frames, SIGTERM reported as %+v", e)
+		}
+	})
+
 	t.Run("disconnect", func(t *testing.T) {
 		g := connect(t, in)
 		g.exec(guest.Exec{Argv: []string{probe, "sleep"}})
