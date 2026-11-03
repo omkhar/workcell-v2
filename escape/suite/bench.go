@@ -22,9 +22,10 @@ const (
 )
 
 // benchJudge runs the benchmark through the adapter. A start the product
-// could not do, a line it did not print as SPEC P1 says, or a median over
-// the budget is a fail, with the product's own words as the detail so that
-// the number is in the run log.
+// could not do, a line it did not print as SPEC P1 says, or a median not
+// under the budget (the product prints whole milliseconds, truncated, so
+// 2500 may stand for 2500.9) is a fail, with the product's own words as
+// the detail so that the number is in the run log.
 func benchJudge(ctx context.Context, s Session) (bool, string, error) {
 	out, err := s.Bench(ctx)
 	if err != nil {
@@ -38,7 +39,7 @@ func benchJudge(ctx context.Context, s Session) (bool, string, error) {
 	if err != nil {
 		return false, clean("bench start printed: "+err.Error(), maxDetail, isPrint, '?'), nil
 	}
-	return p50 <= benchBudgetMs, clean(string(bytes.TrimSpace(out.Stdout)), maxDetail, isPrint, '?'), nil
+	return p50 < benchBudgetMs, clean(string(bytes.TrimSpace(out.Stdout)), maxDetail, isPrint, '?'), nil
 }
 
 // parseBench reads the one line `bench start n=20 p50=<ms> min=<ms> max=<ms>`
