@@ -129,20 +129,25 @@ func diskJudge(ctx context.Context, s Session) (bool, string, error) {
 // cap under the export itself, and grows a file there far past it without
 // writing. It fails if the host lost more free disk than the cap and its
 // slack, or if a file in the export, as the host sees it, grew past them.
+// A run that did not end in the probe's own "tried" report is never a pass:
+// an error of the run is the row's error, and any other report fails the row
+// with what the guest said, so that a log shows what happened in the guest.
 func mountDiskJudge(ctx context.Context, s Session) (bool, string, error) {
 	var r Result
 	var size int64
 	var rerr error
 	below, _, err := sampledRun(hostDiskFree, func() {
-		_, size, rerr = sampledRun(func() (int64, error) { return exportSize(s.Workspace) }, func() {
-			r, rerr = s.Run(s.Guest, strconv.Itoa(diskWrite), strconv.Itoa(sparseGrow))
-		})
+		r, _, size, rerr = sampled(s, func() (int64, error) { return exportSize(s.Workspace) },
+			s.Guest, strconv.Itoa(diskWrite), strconv.Itoa(sparseGrow))
 	})
 	if err == nil {
 		err = rerr
 	}
 	if err != nil {
 		return false, "", err
+	}
+	if r.Status != "tried" {
+		return false, fmt.Sprintf("the guest did not report its flood as tried (guest says %s: %s)", r.Status, r.Detail), nil
 	}
 	bound := int64(capped.DiskMiB+diskSlack) << 20
 	detail := fmt.Sprintf("the host lost %d MiB of free disk and a file in the export reached %d MiB while the guest, capped at %d MiB, wrote %d MiB and grew a file to %d GiB in its live export (guest says %s: %s)",
