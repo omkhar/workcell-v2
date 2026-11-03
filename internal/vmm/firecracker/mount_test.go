@@ -44,7 +44,7 @@ func TestMount(t *testing.T) {
 	t.Run("operations", func(t *testing.T) {
 		export := repository(t)
 		at := func(name string) string { return filepath.Join(export, name) }
-		g, _ := connectMount(t, in, export)
+		g, _ := connectMount(t, in, export, uncapped)
 		steps := []struct {
 			name, script string
 			before       func() error // on the host, before the command
@@ -111,10 +111,43 @@ func TestMount(t *testing.T) {
 		}
 	})
 
+	// The caps of I10 in mount mode, as the escape row mount-disk-flood runs them: one vCPU, so
+	// the init has one P, 256 MiB, and 64 MiB of growth. The command is started with /workspace
+	// as its directory by a vfork whose child waits on the mount for the init's own copier, so the
+	// init must keep a second P (mountFUSE). It takes a payload-sized stdin as the escape loader
+	// does, floods the export past the cap, and its exit is reported.
+	t.Run("capped", func(t *testing.T) {
+		capped := in
+		capped.cpus, capped.memoryMiB, capped.cmdline = 1, 256, in.cmdline+" workcell.disk=64"
+		export := repository(t)
+		g, _ := connectMount(t, capped, export, 64<<20)
+		const script = `cat >/tmp/p && chmod 755 /tmp/p && echo stdin=$(wc -c </tmp/p)
+truncate -s 4G sparse 2>&1 | grep -o 'No space left on device'
+dd if=/dev/zero of=fill bs=1M count=128 2>&1 | grep -o 'No space left on device'
+sync && rm -f sparse fill && echo done`
+		t0 := time.Now()
+		g.exec(guest.Exec{Argv: []string{"/bin/sh", "-c", script, "sh"}, Dir: "/workspace", Env: []string{guestPath, "HOME=/root"}})
+		const size = 12 << 20 // about the escape payload: 192 frames of guest.MaxStdin
+		for sent := 0; sent < size; sent += guest.MaxStdin {
+			g.stdin(make([]byte, guest.MaxStdin))
+		}
+		g.stdin(nil)
+		t.Logf("mount capped stdin_ms=%d", time.Since(t0).Milliseconds())
+		e := g.exit()
+		t.Logf("mount capped exit_ms=%d", time.Since(t0).Milliseconds())
+		want := fmt.Sprintf("stdin=%d\nNo space left on device\nNo space left on device\ndone\n", size)
+		if e != (guest.Exit{}) || g.out.String() != want {
+			t.Fatalf("under the caps the flood ended %+v and printed %q, want exit 0 and %q; stderr %q", e, g.out.String(), want, g.errs.String())
+		}
+		if err := errors.Join(hostGone(filepath.Join(export, "sparse")), hostGone(filepath.Join(export, "fill"))); err != nil {
+			t.Fatal(err)
+		}
+	})
+
 	// The file service goes away under a command that is using the mount: the command gets an
 	// error, not a wait with no end.
 	t.Run("stream-end", func(t *testing.T) {
-		g, h := connectMount(t, in, repository(t))
+		g, h := connectMount(t, in, repository(t), uncapped)
 		g.exec(guest.Exec{Argv: []string{"sh", "-c", busyLoop}, Dir: "/workspace", Env: []string{guestPath}})
 		g.until("looping")
 		t0 := time.Now()
@@ -131,7 +164,7 @@ func TestMount(t *testing.T) {
 	// command waits in the kernel where no signal reaches it: the init must still get the guest
 	// powered off promptly, which takes aborting the mount before killing.
 	t.Run("channel-end", func(t *testing.T) {
-		g, h := connectMount(t, in, repository(t))
+		g, h := connectMount(t, in, repository(t), uncapped)
 		g.exec(guest.Exec{Argv: []string{"sh", "-c", busyLoop}, Dir: "/workspace", Env: []string{guestPath}})
 		g.until("looping")
 		h.stream.hold()
@@ -226,8 +259,11 @@ func (h *mountHost) wait() error {
 	return h.err
 }
 
-// connectMount boots a mount-mode guest on export and drives its init.
-func connectMount(t *testing.T, in inputs, export string) (*client, *mountHost) {
+// uncapped is the export's growth cap where the test is not about it: far more than any writes.
+const uncapped = 1 << 30
+
+// connectMount boots a mount-mode guest on export, which may grow by limit bytes, and drives its init.
+func connectMount(t *testing.T, in inputs, export string, limit int64) (*client, *mountHost) {
 	t.Helper()
 	dir := shortDir(t)
 	m := in.machine(t, dir, consoleFile(t))
@@ -239,7 +275,7 @@ func connectMount(t *testing.T, in inputs, export string) (*client, *mountHost) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	srv, err := fileserve.Open(export, 1<<30)
+	srv, err := fileserve.Open(export, limit)
 	if err != nil {
 		t.Fatal(err)
 	}

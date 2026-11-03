@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"runtime"
 	"strconv"
 	"time"
 
@@ -42,6 +43,13 @@ func mountFUSE() error {
 		_ = unix.Close(dev)
 		_ = host.Close()
 		return fmt.Errorf("mount fuse: %w", err)
+	}
+	// os.StartProcess forks with vfork: the forking thread keeps its P, held as if running, until
+	// the child has exec'd, and the child's chdir into /workspace, or its exec of a file there, is
+	// a FUSE request that only the copier below can carry. On one CPU that P would be the only
+	// one, so the copier could never run and the init would wait on itself: it keeps two.
+	if runtime.GOMAXPROCS(0) < 2 {
+		runtime.GOMAXPROCS(2)
 	}
 	go copyFUSE(dev, host)
 	return nil
