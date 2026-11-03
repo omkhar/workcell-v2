@@ -82,6 +82,9 @@ func app() int {
 	}
 	defer os.RemoveAll(dir)
 	payload, err := sandbox.BuildPayload(ctx, dir)
+	if err == nil {
+		err = sandbox.Prepare(ctx, *name, dir) // once, outside any test's time
+	}
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "escape:", err)
 		return 2
@@ -101,6 +104,7 @@ func run(ctx context.Context, name string, fresh func() (sandbox.Sandbox, error)
 	rep := Report{Sandbox: name, Results: []Result{}}
 	for _, t := range tests {
 		outcome, detail := runOne(ctx, fresh, payload, t)
+		fmt.Fprintf(os.Stderr, "escape: %s: %s %s: %s %s\n", name, t.ID, t.Name, outcome, detail) // as it goes, so that a log shows where a hang was
 		rep.Results = append(rep.Results, Result{Invariant: t.ID, Name: t.Name, Outcome: outcome, Detail: detail})
 		switch outcome {
 		case Pass:
