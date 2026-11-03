@@ -75,6 +75,11 @@ func setup() (string, error) {
 	}
 	_ = os.MkdirAll("/tmp", 0o755)
 	mount("tmpfs", "/tmp", "tmpfs", tmpfsSize(disk))
+	if dev := workspaceDevice(string(cmdline)); dev != "" {
+		if err := mountWorkspace(dev); err != nil { // the command then runs in an empty /workspace
+			fmt.Fprintln(os.Stderr, "workcell-init: workspace:", err)
+		}
+	}
 	return string(cmdline), nil
 }
 

@@ -18,7 +18,8 @@
 //
 // The output is deterministic: the same tree and mtime give the same bytes. Every
 // inode's atime, ctime, mtime and crtime, and the superblock's times, are that one
-// mtime. The writer never seeks, so any io.Writer works.
+// mtime. WriteExt4 never seeks, so any io.Writer works; WriteExt4File (ext4file.go) takes
+// file data from host files, and leaves free space as holes.
 //
 // A file may be any size the image allows (at most 256 groups, 32 GiB); a file split by
 // group metadata becomes several extents, and more than four make a depth-1 extent tree
@@ -82,41 +83,64 @@ type inode struct {
 	num    uint32
 	node   *Node
 	links  uint32
-	parent uint32  // directories only
-	kids   []child // directories only, sorted by name
-	body   []byte  // directory blocks, file data, or a long symlink target
+	parent uint32    // directories only
+	kids   []child   // directories only, sorted by name
+	body   []byte    // directory blocks, file data, or a long symlink target
+	src    *HostFile // a file whose data is in a host file, not in body
 }
 
-func (c *inode) blocks() uint32 { return uint32((len(c.body) + blockSize - 1) / blockSize) }
+// length is the size in bytes of what the inode holds in blocks.
+func (c *inode) length() int64 {
+	if c.src != nil {
+		return c.src.Size
+	}
+	return int64(len(c.body))
+}
+
+func (c *inode) blocks() uint32 { return uint32((c.length() + blockSize - 1) / blockSize) }
 
 // WriteExt4 writes the tree as an ext4 image to w. A zero mtime means DefaultMtime.
 func (t *Tree) WriteExt4(w io.Writer, mtime time.Time) error {
+	list, p, err := t.layout(mtime, 0)
+	if err != nil {
+		return err
+	}
+	s := &streamSink{bw: bufio.NewWriterSize(w, 1<<20)}
+	if err := p.emit(s, list); err != nil {
+		return err
+	}
+	if err := s.bw.Flush(); err != nil {
+		return fmt.Errorf("rootfs: write image: %w", err)
+	}
+	return nil
+}
+
+// layout numbers the tree and plans the smallest image that holds it plus free blocks of
+// free space, one inode for every four of them.
+func (t *Tree) layout(mtime time.Time, free uint32) ([]*inode, *plan, error) {
 	sec := int64(DefaultMtime)
 	if !mtime.IsZero() {
 		sec = mtime.Unix()
 	}
 	if sec < 0 || sec > math.MaxInt32 {
-		return ErrMtime
+		return nil, nil, ErrMtime
 	}
 	list, err := collect(t)
 	if err != nil {
-		return err
+		return nil, nil, err
 	}
-	var data uint64
+	data := uint64(free)
 	for _, c := range list {
 		data += uint64(c.blocks())
 	}
 	for g := max(1, uint32(data/blocksPerGroup)); g <= maxGroups; g++ {
-		p, err := makePlan(list, g, uint32(sec))
+		p, err := makePlan(list, g, uint32(sec), free)
 		if errors.Is(err, errNoFit) {
 			continue
 		}
-		if err != nil {
-			return err
-		}
-		return p.emit(w, list)
+		return list, p, err
 	}
-	return ErrTooLarge
+	return nil, nil, ErrTooLarge
 }
 
 // collect numbers the inodes and builds every directory's blocks.
@@ -152,7 +176,7 @@ func collect(t *Tree) ([]*inode, error) {
 				list = append(list, c)
 				switch {
 				case n.Kind == File:
-					c.body = n.Data
+					c.body, c.src = n.Data, n.Source
 				case n.Kind == Symlink && len(n.Target) >= fastLen:
 					c.body = []byte(n.Target)
 				case n.Kind == Dir:
@@ -160,7 +184,7 @@ func collect(t *Tree) ([]*inode, error) {
 						return err
 					}
 				}
-				if int64(len(c.body)) > maxImage {
+				if c.length() > maxImage {
 					return ErrTooLarge
 				}
 			}
@@ -220,7 +244,9 @@ type run struct{ start, n uint32 }
 
 type seg struct {
 	start, n uint32
-	data     []byte // zero-padded to n blocks
+	data     []byte    // zero-padded to n blocks
+	src      *HostFile // or the host file that holds this run's data from byte off on
+	off      int64
 }
 
 // plan is the whole layout for one group count.
@@ -238,10 +264,11 @@ type plan struct {
 }
 
 // makePlan allocates every inode's blocks into the given number of groups, or returns
-// errNoFit.
-func makePlan(list []*inode, groups, mtime uint32) (*plan, error) {
+// errNoFit. The image then ends free blocks after the last block used, and holds free/4
+// more inodes than the tree needs.
+func makePlan(list []*inode, groups, mtime, free uint32) (*plan, error) {
 	p := &plan{groups: groups, mtime: mtime, maxNum: uint32(len(list)) + firstIno - 2}
-	p.ipg = (p.maxNum + groups - 1) / groups
+	p.ipg = (p.maxNum + free/4 + groups - 1) / groups
 	p.ipg = (p.ipg + inodesPerBlock - 1) / inodesPerBlock * inodesPerBlock
 	p.gdt = (groups*32 + blockSize - 1) / blockSize
 	p.over = 1 + p.gdt + 2 + p.ipg/inodesPerBlock
@@ -296,6 +323,17 @@ func makePlan(list []*inode, groups, mtime uint32) (*plan, error) {
 			p.dirs[(c.num-1)/p.ipg]++
 		}
 	}
+	for rest := free; rest > 0; { // the space the guest may fill
+		if off == blocksPerGroup {
+			grp, off = grp+1, p.over
+		}
+		if grp >= groups {
+			return nil, errNoFit
+		}
+		take := min(rest, blocksPerGroup-off)
+		off += take
+		rest -= take
+	}
 	// The last group ends at its last used block, but is never shorter than its metadata.
 	last := grp
 	p.blocks = (groups-1)*blocksPerGroup + p.over
@@ -329,7 +367,7 @@ func (p *plan) place(i int, c *inode, runs, leaf []run) {
 	var ib [60]byte
 	var leafSeg *seg // allocated after the runs, so queued after them
 	flags := uint32(0)
-	size := uint64(len(c.body))
+	size := uint64(c.length())
 	switch {
 	case n.Kind == Symlink && c.body == nil: // fast symlink
 		size = uint64(copy(ib[:], n.Target))
@@ -353,13 +391,13 @@ func (p *plan) place(i int, c *inode, runs, leaf []run) {
 		le.PutUint16(blk[2:], uint16(len(runs)))
 		le.PutUint16(blk[4:], leafExtents)
 		putExtents(blk[12:], runs)
-		leafSeg = &seg{leaf[0].start, 1, blk}
+		leafSeg = &seg{start: leaf[0].start, n: 1, data: blk}
 	}
 	var off uint32
 	for _, r := range runs {
 		lo := min(int(off)*blockSize, len(c.body))
 		hi := min(int(off+r.n)*blockSize, len(c.body))
-		p.segs = append(p.segs, seg{r.start, r.n, c.body[lo:hi]})
+		p.segs = append(p.segs, seg{r.start, r.n, c.body[lo:hi], c.src, int64(off) * blockSize})
 		off += r.n
 	}
 	if leafSeg != nil {
@@ -404,13 +442,19 @@ func ones(b []byte, n uint32) (c uint32) {
 	return c
 }
 
-// emit writes the image: for each group its metadata, then its data, then zeros.
-func (p *plan) emit(w io.Writer, list []*inode) error {
-	bw := bufio.NewWriterSize(w, 1<<20)
-	zeros := make([]byte, 64<<10)
-	pad := func(n int64) {
-		for ; n > 0; n -= int64(len(zeros)) {
-			bw.Write(zeros[:min(n, int64(len(zeros)))])
+// sink takes the image in order, from the first byte to the last.
+type sink interface {
+	put(b []byte) error // write b
+	skip(n int64) error // n zero bytes
+	file(s seg) error   // the run's bytes from its host file, zero-padded to its blocks
+}
+
+// emit writes the image to w: for each group its metadata, then its data, then zeros.
+func (p *plan) emit(w sink, list []*inode) error {
+	var first error
+	keep := func(err error) {
+		if first == nil {
+			first = err
 		}
 	}
 	gdt := make([]byte, p.gdt*blockSize)
@@ -435,35 +479,59 @@ func (p *plan) emit(w io.Writer, list []*inode) error {
 		} else {
 			p.superblock(blk, g)
 		}
-		bw.Write(blk)
-		bw.Write(gdt)
-		bw.Write(p.bitmaps[g])
+		keep(w.put(blk))
+		keep(w.put(gdt))
+		keep(w.put(p.bitmaps[g]))
 		ib := make([]byte, blockSize)
 		for i := uint32(0); i < blocksPerGroup; i++ {
 			if i >= p.ipg || g*p.ipg+i < p.maxNum {
 				setBit(ib, i)
 			}
 		}
-		bw.Write(ib)
+		keep(w.put(ib))
 		table := make([]byte, p.ipg*inodeSize)
 		for ; si < len(list) && (list[si].num-1)/p.ipg == g; si++ {
 			copy(table[(list[si].num-1)%p.ipg*inodeSize:], p.raw[si][:])
 		}
-		bw.Write(table)
+		keep(w.put(table))
 		cur := gs + p.over
 		for ; di < len(p.segs) && p.segs[di].start < gs+size; di++ {
 			s := p.segs[di]
-			pad(int64(s.start-cur) * blockSize)
-			bw.Write(s.data)
-			pad(int64(s.n)*blockSize - int64(len(s.data)))
+			keep(w.skip(int64(s.start-cur) * blockSize))
+			if s.src != nil {
+				keep(w.file(s))
+			} else {
+				keep(w.put(s.data))
+				keep(w.skip(int64(s.n)*blockSize - int64(len(s.data))))
+			}
 			cur = s.start + s.n
 		}
-		pad(int64(gs+size-cur) * blockSize)
-	}
-	if err := bw.Flush(); err != nil {
-		return fmt.Errorf("rootfs: write image: %w", err)
+		keep(w.skip(int64(gs+size-cur) * blockSize))
+		if first != nil {
+			return first
+		}
 	}
 	return nil
+}
+
+// streamSink is the sink of WriteExt4: everything goes to one io.Writer.
+type streamSink struct{ bw *bufio.Writer }
+
+func (s *streamSink) put(b []byte) error { _, err := s.bw.Write(b); return err }
+
+func (s *streamSink) skip(n int64) error {
+	for ; n > 0; n -= int64(len(zeros)) {
+		if _, err := s.bw.Write(zeros[:min(n, int64(len(zeros)))]); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+var zeros [64 << 10]byte // read only
+
+func (s *streamSink) file(seg) error {
+	return fmt.Errorf("%w: a node with a host file needs WriteExt4File", ErrBadNode)
 }
 
 // superblock writes the 1024-byte superblock of group g into b.

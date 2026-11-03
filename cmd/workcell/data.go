@@ -22,8 +22,8 @@ func dataDir() (string, error) {
 	return filepath.Join(home, ".local", "share", "workcell"), nil
 }
 
-// artifacts are the four files a session boots from.
-type artifacts struct{ firecracker, kernel, initrd, image string }
+// artifacts are the four files a session boots from, and the directory they are in.
+type artifacts struct{ firecracker, kernel, initrd, image, dir string }
 
 // findArtifacts names the files in dir and says which one is missing, if any.
 func findArtifacts(dir string) (artifacts, error) {
@@ -32,6 +32,7 @@ func findArtifacts(dir string) (artifacts, error) {
 		kernel:      filepath.Join(dir, "vmlinux"),
 		initrd:      filepath.Join(dir, "initrd.cpio"),
 		image:       filepath.Join(dir, "root.ext4"),
+		dir:         dir,
 	}
 	for _, p := range []string{a.firecracker, a.kernel, a.initrd, a.image} {
 		if _, err := os.Stat(p); err != nil {

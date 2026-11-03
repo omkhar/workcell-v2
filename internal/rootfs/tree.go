@@ -46,14 +46,25 @@ const (
 	permAndSug = 0o7777
 )
 
-// Node is one inode. Which fields count depends on Kind: Data for File, Target for
-// Symlink, Major and Minor for CharDev and BlockDev. Mode holds the permission bits
+// HostFile is a regular file on the host that a File node takes its bytes from, when
+// WriteExt4File writes the image. Size, Dev and Ino are what the caller saw when it
+// looked at the file; the writer opens Path without following a final symlink and fails if
+// the file it gets is another one, or has another size.
+type HostFile struct {
+	Path     string
+	Size     int64 // more than zero
+	Dev, Ino uint64
+}
+
+// Node is one inode. Which fields count depends on Kind: Data or Source for File, Target
+// for Symlink, Major and Minor for CharDev and BlockDev. Mode holds the permission bits
 // plus setuid, setgid and sticky, and nothing else.
 type Node struct {
 	Kind         Kind
 	Mode         uint32
 	UID, GID     uint32
 	Data         []byte
+	Source       *HostFile
 	Target       string
 	Major, Minor uint32
 
@@ -221,6 +232,8 @@ func (n *Node) validate() error {
 		return fmt.Errorf("%w: unknown kind %d", ErrBadNode, n.Kind)
 	case n.Mode&^permAndSug != 0:
 		return fmt.Errorf("%w: mode %#o has bits beyond 07777", ErrBadNode, n.Mode)
+	case n.Source != nil && (n.Kind != File || n.Data != nil || n.Source.Size <= 0):
+		return fmt.Errorf("%w: a host file belongs to a File node without Data, and is not empty", ErrBadNode)
 	case n.Kind == Symlink && (n.Target == "" || len(n.Target) > maxTarget || strings.IndexByte(n.Target, 0) >= 0):
 		return fmt.Errorf("%w: symlink target must be 1 to %d bytes without NUL", ErrBadNode, maxTarget)
 	case (n.Kind == CharDev || n.Kind == BlockDev) && (n.Major > maxMajor || n.Minor > maxMinor):
