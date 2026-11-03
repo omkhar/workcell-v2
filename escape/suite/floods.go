@@ -13,6 +13,7 @@ import (
 	"runtime"
 	"strconv"
 	"sync"
+	"syscall"
 	"time"
 
 	"golang.org/x/sys/unix"
@@ -24,20 +25,21 @@ import (
 var capped = Want{CPUs: 1, MemoryMiB: 256, DiskMiB: 64}
 
 const (
-	forkCount   = 2000      // processes the fork probe makes at once
-	forkSlack   = 64        // host processes a whole session may add
-	memoryTouch = 512       // MiB the memory probe touches
-	memorySlack = 128       // MiB of host memory the session may take over its cap
-	diskWrite   = 128       // MiB the disk probe writes
-	diskSlack   = 32        // MiB of host disk the session may fill over its cap
-	fileCount   = 8192      // descriptors the descriptor probe opens
-	fileSlack   = 2048      // open file handles a whole session may add to the host
-	logWrite    = 96 << 20  // bytes the log probe streams
-	logCap      = 1 << 20   // bytes of one session's output the host may keep
-	cpuSpin     = 3         // seconds the CPU probe spins on every CPU it sees
-	cpuSlack    = 1.0       // CPU seconds of host noise allowed
-	ticksPerSec = 100       // USER_HZ, the unit of /proc/stat
-	hold        = 1500 * ms // how long a probe holds its load for the judge's samples
+	forkCount   = 256             // processes the fork probe makes at once: about 50 MiB of page tables, stacks and slab, which a 256 MiB guest holds without thrashing
+	forkSlack   = 64              // host processes a whole session may add
+	memoryTouch = 512             // MiB the memory probe touches
+	memorySlack = 128             // MiB of host memory the session may take over its cap
+	diskWrite   = 128             // MiB the disk probe writes
+	diskSlack   = 32              // MiB of host disk the session may fill over its cap
+	fileCount   = 8192            // descriptors the descriptor probe opens
+	fileSlack   = 2048            // open file handles a whole session may add to the host
+	logWrite    = 96 << 20        // bytes the log probe streams
+	logCap      = 1 << 20         // bytes of one session's output the host may keep
+	cpuSpin     = 3               // seconds the CPU probe spins on every CPU it sees
+	cpuSlack    = 1.0             // CPU seconds of host noise allowed
+	ticksPerSec = 100             // USER_HZ, the unit of /proc/stat
+	hold        = 1500 * ms       // how long a probe holds its load for the judge's samples
+	childWait   = 5 * time.Second // how long a probe waits for its child, which needs about hold, before killing it
 	ms          = time.Millisecond
 )
 
@@ -172,20 +174,33 @@ func memoryProbe(args []string) Result {
 	return asChild(os.Args[1], "child", args[1], "asking for "+args[1]+" MiB")
 }
 
-// asChild runs this binary again as a child with the arguments and returns
-// what the child reports, or child-killed, as a tried result, when the guest
-// killed it, which is what a sandbox that holds I10 does to a flood.
+// asChild runs this binary again as a child, in its own process group, with
+// the arguments and returns what the child reports; or child-killed, as a
+// tried result, when the guest killed it, which is what a sandbox that holds
+// I10 does to a flood. A child still running after childWait is killed with
+// everything it forked, and reported the same way, so that a guest thrashing
+// on a flood never takes the session's whole bound without a report.
 func asChild(args ...string) Result {
 	exe, err := os.Executable()
 	if err != nil {
 		return Result{Status: "error", Detail: err.Error()}
 	}
-	out, err := exec.Command(exe, args[:len(args)-1]...).Output()
+	doing := args[len(args)-1]
+	ctx, cancel := context.WithTimeout(context.Background(), childWait)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, exe, args[:len(args)-1]...)
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	cmd.Cancel = func() error { return unix.Kill(-cmd.Process.Pid, unix.SIGKILL) } // the whole group: the child and what it forked
+	cmd.WaitDelay = time.Second                                                    // a forked copy that still holds the child's stdout does not hold the report
+	out, err := cmd.Output()
 	var exit *exec.ExitError
-	if errors.As(err, &exit) {
-		return Result{Status: "child-killed", Detail: exit.String() + " after " + args[len(args)-1]}
-	}
-	if err != nil {
+	switch {
+	case err == nil:
+	case ctx.Err() != nil:
+		return Result{Status: "child-killed", Detail: fmt.Sprintf("by the probe, still %s after %s", doing, childWait)}
+	case errors.As(err, &exit):
+		return Result{Status: "child-killed", Detail: exit.String() + " after " + doing}
+	default:
 		return Result{Status: "error", Detail: "child: " + err.Error()}
 	}
 	r, err := ParseResult(out)
