@@ -46,6 +46,30 @@ func TestWorkspaceDevice(t *testing.T) {
 	}
 }
 
+func TestMounted(t *testing.T) {
+	tests := []struct {
+		name, cmdline string
+		want          bool
+	}{
+		{"none", "root=/dev/vda ro", false},
+		{"set", "root=/dev/vda ro workcell.mount=1", true},
+		{"newline", "ro workcell.mount=1\n", true},
+		{"zero", "workcell.mount=0", false},
+		{"empty", "workcell.mount=", false},
+		{"the last wins", "workcell.mount=1 workcell.mount=0", false},
+		{"the last wins when on", "workcell.mount=0 workcell.mount=1", true},
+		{"another name", "other.workcell.mount=1", false},
+		{"no value", "workcell.mount", false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := mounted(tc.cmdline); got != tc.want {
+				t.Errorf("mounted(%q) = %t, want %t", tc.cmdline, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestDiskMiB(t *testing.T) {
 	tests := []struct {
 		name, cmdline string

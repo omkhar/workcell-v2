@@ -35,16 +35,11 @@ func TestRun(t *testing.T) {
 	}
 	bin := t.TempDir()
 	build(t, bin, "github.com/omkhar/workcell/v2/cmd/workcell")
-	build(t, bin, "github.com/omkhar/workcell/v2/cmd/mkimage")
 	initrd := initramfs(t, bin, file{"init", build(t, t.TempDir(), "github.com/omkhar/workcell/v2/cmd/workcell-init")})
-	for dst, src := range map[string]string{"firecracker": binary, "vmlinux": kernel, "initrd.cpio": initrd} {
+	for dst, src := range map[string]string{"firecracker": binary, "vmlinux": kernel, "initrd.cpio": initrd, "root.ext4": debianImage(t, bin)} {
 		if err := os.Symlink(src, filepath.Join(data, dst)); err != nil {
 			t.Fatal(err)
 		}
-	}
-	mk := exec.Command(filepath.Join(bin, "mkimage"), "-pin", "../../../pins/debian.json", "-arch", "amd64", "-o", filepath.Join(data, "root.ext4"))
-	if out, err := mk.CombinedOutput(); err != nil {
-		t.Fatalf("mkimage: %v\n%s", err, out)
 	}
 	var flags []string  // flags of `workcell run`, before the --
 	repo := t.TempDir() // the directory `workcell run` starts in, and copies into the guest
@@ -241,6 +236,19 @@ dd if=/dev/zero of=/var/tmp/b bs=1M count=80 2>&1 | grep -o 'No space left on de
 			t.Errorf("the terminal was left changed: %+v, was %+v (%v)", after, before, err)
 		}
 	})
+}
+
+// debianImage builds cmd/mkimage into dir and runs it on the pinned Debian: the root image
+// `workcell update` will leave, as the escape adapter makes it.
+func debianImage(t *testing.T, dir string) string {
+	t.Helper()
+	build(t, dir, "github.com/omkhar/workcell/v2/cmd/mkimage")
+	image := filepath.Join(dir, "root.ext4")
+	mk := exec.Command(filepath.Join(dir, "mkimage"), "-pin", "../../../pins/debian.json", "-arch", "amd64", "-o", image)
+	if out, err := mk.CombinedOutput(); err != nil {
+		t.Fatalf("mkimage: %v\n%s", err, out)
+	}
+	return image
 }
 
 // openPTY is a host pseudo-terminal pair, closed when the test ends.

@@ -22,6 +22,19 @@ func rootDevice(cmdline string) string { return device(cmdline, "root=") }
 // or "" if there is none: the copy of the repository (clone mode, ADR-002).
 func workspaceDevice(cmdline string) string { return device(cmdline, "workcell.workspace=") }
 
+// mounted reports whether the last workcell.mount= on the command line is 1: mount mode
+// (ADR-005), in which /workspace is the host's own tree, served by the host over vsock, and
+// no workspace disk is passed.
+func mounted(cmdline string) bool {
+	on := false
+	for _, f := range strings.Fields(cmdline) {
+		if v, ok := strings.CutPrefix(f, "workcell.mount="); ok {
+			on = v == "1"
+		}
+	}
+	return on
+}
+
 func device(cmdline, key string) string {
 	dev := ""
 	for _, f := range strings.Fields(cmdline) {

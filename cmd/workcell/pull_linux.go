@@ -114,7 +114,7 @@ func fetch(use func(*manifest, source) error) (int, error) {
 	sigs := make(chan os.Signal, 4)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
 	defer signal.Stop(sigs)
-	b, code, err := boot(a, defaults(), sigs, image)
+	b, code, err := boot(a, defaults(), sigs, image, "")
 	if b == nil {
 		return code, err
 	}
