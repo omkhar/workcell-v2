@@ -182,12 +182,8 @@ func export(a artifacts, caps limits, repo string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	free := int64(1 << 30)
-	if caps.DiskMiB > 0 {
-		free = int64(caps.DiskMiB) << 20
-	}
 	image := filepath.Join(dir, "workspace.ext4")
-	if _, err := workspace.Export(context.Background(), repo, image, free); err != nil {
+	if _, err := workspace.Export(context.Background(), repo, image, caps.disk()); err != nil {
 		os.RemoveAll(dir)
 		return "", fmt.Errorf("copy %s for the guest: %w", repo, err)
 	}
@@ -237,7 +233,7 @@ func boot(a artifacts, caps limits, sigs <-chan os.Signal, image, mount string) 
 	if mount != "" {
 		files, err := m.Listen(fileserve.Port)
 		if err == nil {
-			served, err = fileserve.Open(mount)
+			served, err = fileserve.Open(mount, caps.disk())
 		}
 		if err != nil {
 			closeAll()

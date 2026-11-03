@@ -112,10 +112,20 @@ type reply struct {
 	body   []byte
 }
 
-// start serves fx.export to a new kern. stop ends the stream and returns what Serve did.
+// start serves fx.export to a new kern, with room to grow by testLimit. stop ends the stream
+// and returns what Serve did.
 func start(t *testing.T, export string) (*kern, func() error) {
 	t.Helper()
-	s, err := Open(export)
+	return startCapped(t, export, testLimit)
+}
+
+// testLimit is the growth cap of a test that is not about it: far more than any writes.
+const testLimit = 1 << 30
+
+// startCapped is start with the export's growth cap chosen.
+func startCapped(t *testing.T, export string, limit int64) (*kern, func() error) {
+	t.Helper()
+	s, err := Open(export, limit)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -239,7 +239,7 @@ func connectMount(t *testing.T, in inputs, export string) (*client, *mountHost) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	srv, err := fileserve.Open(export)
+	srv, err := fileserve.Open(export, 1<<30)
 	if err != nil {
 		t.Fatal(err)
 	}

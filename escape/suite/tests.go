@@ -85,6 +85,10 @@ var All = []Test{
 	{ID: "I10", Name: "descriptor-flood", Probe: fileProbe, Host: fileJudge, Want: capped},
 	{ID: "I10", Name: "log-flood", Probe: logProbe, Host: logJudge, Want: capped},
 	{ID: "I10", Name: "cpu-flood", Probe: cpuProbe, Host: cpuJudge, Want: capped},
+	// The same disk flood in mount mode: the export is the host's own tree,
+	// served live, so a byte the guest writes under it is the host's at once,
+	// and so is a size the guest sets without writing.
+	{ID: "I10", Name: "mount-disk-flood", Probe: mountDiskProbe, Host: mountDiskJudge, Want: cappedLive},
 	// A secret is bound to one allowed name. The guest hunts for its value in
 	// every process, on disk and in memory, and replays whatever credential it
 	// was given at the other allowed name.

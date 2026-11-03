@@ -20,7 +20,7 @@ const (
 	maxCPUs      = 32
 )
 
-// limits are the resource caps of one session. DiskMiB 0 means no cap.
+// limits are the resource caps of one session. DiskMiB 0 means the default, 1 GiB.
 type limits struct{ CPUs, MemoryMiB, DiskMiB int }
 
 // parseSize reads a size such as "256MiB" or "4GiB" (the spelling of SPEC section 5) into
@@ -43,6 +43,15 @@ func parseSize(s string) (int, error) {
 		return 0, fmt.Errorf("%q is too large", s)
 	}
 	return int(n), nil
+}
+
+// disk is how many bytes the guest may write in all: --disk, or 1 GiB (I10). In clone mode
+// it sizes the image's free room; in mount mode it is the export's cap on growth.
+func (l limits) disk() int64 {
+	if l.DiskMiB == 0 {
+		return 1 << 30
+	}
+	return int64(l.DiskMiB) << 20
 }
 
 // cmdline is what the init is told on the kernel command line. The disk size is a courtesy to
@@ -74,7 +83,7 @@ func parseRun(args []string, stderr io.Writer) (l limits, mount bool, argv []str
 	live := fs.Bool("mount", false, "serve the current directory itself into the guest, live, instead of a copy")
 	cpus := fs.Int("cpus", 2, "virtual CPUs for the guest")
 	memory := fs.String("memory", "1GiB", "guest memory, such as 512MiB or 4GiB")
-	disk := fs.String("disk", "", "cap on what the guest may write, such as 20GiB (default: only the memory cap)")
+	disk := fs.String("disk", "", "cap on what the guest may write, such as 20GiB (default: 1GiB)")
 	if err := fs.Parse(args); err != nil {
 		return l, false, nil, false
 	}
