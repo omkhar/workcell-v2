@@ -30,7 +30,7 @@ func benchStart(stdout, stderr io.Writer) int {
 	sigs := make(chan os.Signal, 4)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
 	defer signal.Stop(sigs)
-	caps, _, _ := parseRun([]string{"--", "true"}, io.Discard) // run's defaults
+	caps := defaults()
 	var samples []time.Duration
 	for i := 0; i <= benchSamples; i++ { // boot 0 is the warm-up
 		b, code, err := boot(a, caps, sigs, "")

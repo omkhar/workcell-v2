@@ -38,6 +38,43 @@ const (
 	TypeAck    uint8 = 8 // four bytes, big-endian: how many bytes of one Stdin frame the init has written to the command
 )
 
+// A Pull brings the work tree back. The host sends TypePull, with no payload, while no command
+// runs; the init answers with what /workspace holds: one TypeEntry frame per entry, every
+// directory before what it holds, then an empty TypeEntry; then the bytes of each regular
+// file, in that order and exactly Size each, in TypeData frames; then TypeExit, with Code 0,
+// or Err when the walk failed. The host judges every entry before it writes anything (I8),
+// so one entry is bounded here and the whole tree there.
+const (
+	TypePull  uint8 = 9
+	TypeEntry uint8 = 10
+	TypeData  uint8 = 11
+)
+
+// The kinds of an Entry. A socket, FIFO or device is never sent.
+const (
+	KindDir uint8 = 1 + iota
+	KindFile
+	KindLink
+)
+
+// Bounds on a work tree the host takes.
+const (
+	MaxPath    = 4096     // bytes of one path or link target
+	MaxEntries = 1 << 20  // entries in one tree
+	MaxNames   = 64 << 20 // bytes of every path and target together
+)
+
+// Entry is one member of a work tree: its path relative to the workspace, with / between the
+// components; for a file, whether it is executable and how many bytes follow in the data;
+// for a link, its target as it is. Nothing in it is trusted: the host judges the path.
+type Entry struct {
+	Kind   uint8
+	Exec   bool
+	Size   int64
+	Path   string
+	Target string
+}
+
 // MaxErr bounds Exit.Err on the wire.
 const MaxErr = 256
 
@@ -147,6 +184,46 @@ func DecodeExit(b []byte) (Exit, error) {
 		}
 	}
 	return Exit{}, bad
+}
+
+// EncodeEntry is the payload of a TypeEntry frame: the kind, the executable bit, the size
+// in 8 bytes, then the path and the target, each with its length in 2 bytes before it.
+func EncodeEntry(e Entry) []byte {
+	b := []byte{e.Kind, 0}
+	if e.Exec {
+		b[1] = 1
+	}
+	b = binary.BigEndian.AppendUint64(b, uint64(e.Size))
+	b = binary.BigEndian.AppendUint16(b, uint16(len(e.Path)))
+	b = append(b, e.Path...)
+	b = binary.BigEndian.AppendUint16(b, uint16(len(e.Target)))
+	return append(b, e.Target...)
+}
+
+// DecodeEntry reads an Entry. It accepts exactly what EncodeEntry writes of an entry with a
+// known kind, a path of 1 to MaxPath bytes, a size and an executable bit for a file alone,
+// and a target of at most MaxPath bytes for a link alone.
+func DecodeEntry(b []byte) (Entry, error) {
+	bad := fmt.Errorf("entry: payload %.16x is not a tree entry", b)
+	if len(b) < 12 {
+		return Entry{}, bad
+	}
+	e := Entry{Kind: b[0], Exec: b[1] == 1, Size: int64(binary.BigEndian.Uint64(b[2:]))}
+	n := int(binary.BigEndian.Uint16(b[10:]))
+	if n == 0 || n > MaxPath || len(b) < 14+n {
+		return Entry{}, bad
+	}
+	e.Path = string(b[12 : 12+n])
+	t := int(binary.BigEndian.Uint16(b[12+n:]))
+	if t > MaxPath || len(b) != 14+n+t || b[1] > 1 || e.Size < 0 {
+		return Entry{}, bad
+	}
+	e.Target = string(b[14+n:])
+	switch {
+	case e.Kind == KindFile && t == 0, e.Kind == KindLink && !e.Exec && e.Size == 0, e.Kind == KindDir && !e.Exec && e.Size == 0 && t == 0:
+		return e, nil
+	}
+	return Entry{}, bad
 }
 
 // EncodeAck is the payload of a TypeAck frame: the length of the Stdin frame that was written.

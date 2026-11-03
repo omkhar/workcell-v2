@@ -7,6 +7,8 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"net"
@@ -70,7 +72,11 @@ func session(argv []string, caps limits, a artifacts) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	b, code, err := boot(a, caps, sigs, cwd)
+	image, err := export(a, caps, cwd)
+	if err != nil {
+		return 0, err
+	}
+	b, code, err := boot(a, caps, sigs, image)
 	if b == nil {
 		return code, err
 	}
@@ -133,41 +139,60 @@ type booted struct {
 	close func()
 }
 
-// boot starts a guest and waits for its init to dial in. A copy of the directory repo is
-// the guest's /workspace, unless repo is empty. The copy is a file in the session's own
-// sessions directory of the data directory, not under TMPDIR, because a reflink only works
-// within one filesystem and the data directory shares the home filesystem with most
-// repositories. close removes the copy (I7). It is as big as the repository plus the
-// room the guest may write, which is --disk or 1 GiB (I10). A nil result means the session
-// goes no further: code and err say how it ended (see accept).
-func boot(a artifacts, caps limits, sigs <-chan os.Signal, repo string) (*booted, int, error) {
+// sessionTime names a session directory by when it began, so that the names sort by time;
+// a random suffix keeps two that began in the same instant apart.
+const sessionTime = "20060102T150405.000000000Z"
+
+// export copies the directory repo into a new session, <data>/sessions/<id>/: the image the
+// guest gets as /workspace, and a file repo naming the directory, so that diff and pull find
+// the newest session of a directory later. The image lives in the data directory, not under
+// TMPDIR, because a reflink only works within one filesystem and the data directory shares
+// the home filesystem with most repositories. It is as big as the repository plus the room
+// the guest may write, which is --disk or 1 GiB (I10). It stays when the session ends, for
+// diff and pull; rm removes it (I7).
+func export(a artifacts, caps limits, repo string) (string, error) {
+	var r [4]byte
+	if _, err := rand.Read(r[:]); err != nil {
+		return "", err
+	}
+	dir := filepath.Join(a.dir, "sessions", time.Now().UTC().Format(sessionTime)+"-"+hex.EncodeToString(r[:]))
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return "", err
+	}
+	free := int64(1 << 30)
+	if caps.DiskMiB > 0 {
+		free = int64(caps.DiskMiB) << 20
+	}
+	image := filepath.Join(dir, "workspace.ext4")
+	err := os.WriteFile(filepath.Join(dir, "repo"), []byte(repo+"\n"), 0o600)
+	if err == nil {
+		_, err = workspace.Export(context.Background(), repo, image, free)
+	}
+	if err != nil {
+		os.RemoveAll(dir)
+		return "", fmt.Errorf("copy %s for the guest: %w", repo, err)
+	}
+	return image, nil
+}
+
+// boot starts a guest and waits for its init to dial in. The ext4 image at image is the
+// guest's /workspace, unless image is empty. close ends the VM and removes its files; the
+// image stays. A nil result means the session goes no further: code and err say how it
+// ended (see accept).
+func boot(a artifacts, caps limits, sigs <-chan os.Signal, image string) (*booted, int, error) {
 	dir, err := os.MkdirTemp("", "wc") // short: a unix socket path has 108 bytes
 	if err != nil {
 		return nil, 0, err
 	}
-	cmdline, image := caps.cmdline(), ""
-	if repo != "" {
-		sessions := filepath.Join(a.dir, "sessions")
-		if err := os.MkdirAll(sessions, 0o700); err != nil {
-			os.RemoveAll(dir)
-			return nil, 0, err
-		}
-		image = filepath.Join(sessions, filepath.Base(dir)+".ext4") // unique, as dir is
-		free := int64(1 << 30)
-		if caps.DiskMiB > 0 {
-			free = int64(caps.DiskMiB) << 20
-		}
-		if _, err := workspace.Export(context.Background(), repo, image, free); err != nil {
-			os.RemoveAll(dir)
-			return nil, 0, fmt.Errorf("copy %s for the guest: %w", repo, err)
-		}
+	cmdline := caps.cmdline()
+	if image != "" {
 		cmdline += " workcell.workspace=/dev/vdb"
 	}
 	console := &tail{}
 	// No allowlist yet, so no TCP port is relayed: the guest relays UDP 53 alone (U-303).
 	m := firecracker.New(vmm.Config{Binary: a.firecracker, Kernel: a.kernel, Initrd: a.initrd, Image: a.image,
 		Workspace: image, Cmdline: cmdline + " " + portsArg(nil), CPUs: caps.CPUs, MemoryMiB: caps.MemoryMiB, CID: 3, Console: console, Dir: dir})
-	closeAll := func() { m.Close(); os.RemoveAll(dir); os.Remove(image) } // kills the VM on every path out
+	closeAll := func() { m.Close(); os.RemoveAll(dir) } // kills the VM on every path out
 	ln, err := m.Listen(guest.Port)
 	if err != nil {
 		closeAll()

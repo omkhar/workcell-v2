@@ -12,10 +12,12 @@ import (
 
 // The workcell adapter drives the product through its CLI alone: one
 // `workcell run` per Exec, each a fresh microVM, with the payload carried in
-// through stdin (SPEC T1, A8). It is Linux only; elsewhere every operation
-// reports ErrNotImplemented. What the CLI cannot honour yet, an export, a
-// policy, a secret, a cap outside its range, is refused at Start
-// with ErrNotImplemented, so that such a test is never a false pass.
+// through stdin (SPEC T1, A8), with the test's export as the product's
+// working directory, and one `workcell pull` per Pull, which brings the
+// newest session's work tree back. It is Linux only; elsewhere every
+// operation reports ErrNotImplemented. What the CLI cannot honour yet, a
+// policy, a secret, a cap outside its range, is refused at Start with
+// ErrNotImplemented, so that such a test is never a false pass.
 
 // Prepare does the one-time setup the named adapter needs, under dir, which
 // the caller removes when the process ends. For workcell that is the four
@@ -29,12 +31,10 @@ func Prepare(ctx context.Context, name, dir string) error {
 }
 
 // unsupported says why the CLI cannot honour cfg today, "" when it can: it
-// takes a CPU count of 1 to 32, memory of at least 128 MiB and any disk cap,
-// a zero meaning the CLI's default, but no export, no policy, no secret.
+// takes an export, a CPU count of 1 to 32, memory of at least 128 MiB and
+// any disk cap, a zero meaning the CLI's default, but no policy, no secret.
 func unsupported(cfg Config) string {
 	switch {
-	case cfg.Workspace != "":
-		return "a workspace export"
 	case cfg.Secret != nil:
 		return "a secret"
 	case len(cfg.Allow) > 0 || len(cfg.Deny) > 0:
@@ -67,6 +67,10 @@ func runArgs(cfg Config, loader string, args ...string) []string {
 	return append(argv, args...)
 }
 
+// pullArgs is the argv of one `workcell pull` into dest, run in the export
+// the session's runs started from, so that the newest session is theirs.
+func pullArgs(dest string) []string { return []string{"pull", dest} }
+
 // cpioEntry writes one newc ("070701") cpio entry: a header of the magic and
 // thirteen 8-digit hex fields, the name with its NUL, and the data, each of
 // the last two padded to four bytes. A trailer is the entry named
@@ -96,8 +100,6 @@ func pad4(b []byte) []byte {
 	}
 	return b
 }
-
-func (*workcell) Pull(context.Context, string) error { return ErrNotImplemented }
 
 func (*workcell) Audit(context.Context) (string, []string, error) { return "", nil, ErrNotImplemented }
 func (*workcell) Verify(context.Context) error                    { return ErrNotImplemented }

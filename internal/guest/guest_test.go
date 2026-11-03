@@ -148,6 +148,48 @@ func TestAck(t *testing.T) {
 	}
 }
 
+func TestEntry(t *testing.T) {
+	file := Entry{Kind: KindFile, Exec: true, Size: 1 << 40, Path: "bin/run"}
+	link := Entry{Kind: KindLink, Path: "l", Target: "../x"}
+	long := strings.Repeat("p", MaxPath)
+	tests := []struct {
+		name string
+		in   []byte
+		want Entry
+		ok   bool
+	}{
+		{"file", EncodeEntry(file), file, true},
+		{"dir", EncodeEntry(Entry{Kind: KindDir, Path: "a/b"}), Entry{Kind: KindDir, Path: "a/b"}, true},
+		{"link", EncodeEntry(link), link, true},
+		{"longest path", EncodeEntry(Entry{Kind: KindDir, Path: long}), Entry{Kind: KindDir, Path: long}, true},
+		{"longest target", EncodeEntry(Entry{Kind: KindLink, Path: "l", Target: long}), Entry{Kind: KindLink, Path: "l", Target: long}, true},
+		{"empty link target", EncodeEntry(Entry{Kind: KindLink, Path: "l"}), Entry{Kind: KindLink, Path: "l"}, true},
+		{"path over the bound", EncodeEntry(Entry{Kind: KindDir, Path: long + "p"}), Entry{}, false},
+		{"target over the bound", EncodeEntry(Entry{Kind: KindLink, Path: "l", Target: long + "p"}), Entry{}, false},
+		{"empty path", EncodeEntry(Entry{Kind: KindDir}), Entry{}, false},
+		{"unknown kind", EncodeEntry(Entry{Kind: 4, Path: "a"}), Entry{}, false},
+		{"zero kind", EncodeEntry(Entry{Path: "a"}), Entry{}, false},
+		{"executable dir", EncodeEntry(Entry{Kind: KindDir, Exec: true, Path: "a"}), Entry{}, false},
+		{"dir with a size", EncodeEntry(Entry{Kind: KindDir, Size: 1, Path: "a"}), Entry{}, false},
+		{"dir with a target", EncodeEntry(Entry{Kind: KindDir, Path: "a", Target: "b"}), Entry{}, false},
+		{"file with a target", EncodeEntry(Entry{Kind: KindFile, Path: "a", Target: "b"}), Entry{}, false},
+		{"link with a size", EncodeEntry(Entry{Kind: KindLink, Size: 1, Path: "a"}), Entry{}, false},
+		{"negative size", EncodeEntry(Entry{Kind: KindFile, Size: -1, Path: "a"}), Entry{}, false},
+		{"exec byte of 2", append([]byte{KindFile, 2}, EncodeEntry(Entry{Kind: KindFile, Path: "a"})[2:]...), Entry{}, false},
+		{"truncated", EncodeEntry(file)[:14], Entry{}, false},
+		{"trailing byte", append(EncodeEntry(file), 0), Entry{}, false},
+		{"empty", nil, Entry{}, false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := DecodeEntry(tc.in)
+			if (err == nil) != tc.ok || got != tc.want {
+				t.Errorf("DecodeEntry(%.32x) = %+v, %v; want %+v, ok=%t", tc.in, got, err, tc.want, tc.ok)
+			}
+		})
+	}
+}
+
 // FuzzDecode runs every decoder on arbitrary bytes. What decodes must be in bounds and
 // encode back to the same bytes, so the guest has exactly one way to say each thing.
 func FuzzDecode(f *testing.F) {
@@ -157,6 +199,8 @@ func FuzzDecode(f *testing.F) {
 	f.Add([]byte{0, 24, 0, 80})
 	f.Add([]byte{0, 1, 0, 0})
 	f.Add([]byte(`{"argv":["sh"],"pty":true,"rows":24,"cols":80}`))
+	f.Add(EncodeEntry(Entry{Kind: KindFile, Exec: true, Size: 3, Path: "a/b"}))
+	f.Add(EncodeEntry(Entry{Kind: KindLink, Path: "l", Target: ".."}))
 	f.Fuzz(func(t *testing.T, in []byte) {
 		if e, err := DecodeExit(in); err == nil {
 			if e.Code < 0 || e.Code > 255 || e.Signal < 0 || e.Signal > 64 || len(e.Err) > MaxErr {
@@ -174,6 +218,14 @@ func FuzzDecode(f *testing.F) {
 		}
 		if n, err := DecodeAck(in); err == nil && (n < 0 || n > MaxStdin || !bytes.Equal(EncodeAck(n), in)) {
 			t.Fatalf("ack %x decodes to %d", in, n)
+		}
+		if e, err := DecodeEntry(in); err == nil {
+			if e.Kind < KindDir || e.Kind > KindLink || e.Size < 0 || len(e.Path) == 0 || len(e.Path) > MaxPath || len(e.Target) > MaxPath {
+				t.Fatalf("entry out of bounds: %+v", e)
+			}
+			if again := EncodeEntry(e); !bytes.Equal(again, in) {
+				t.Fatalf("entry %x re-encodes to %x", in, again)
+			}
 		}
 		if e, err := DecodeExec(in); err == nil {
 			if len(e.Argv) == 0 {

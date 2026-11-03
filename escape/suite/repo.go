@@ -7,9 +7,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"net"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -23,6 +23,11 @@ import (
 // file beside the export (written-*) or at a listener the judge started. The
 // judge pulls, then looks. Nothing the guest says counts.
 //
+// The guest has no git, so each shape writes .git itself (gitdir.go): the
+// shapes git's own tools refuse, a tree named ".." or ".git", come the same
+// way as the ones they allow. Each shape starts from a fresh .git, since
+// each run of the product starts from a fresh copy of the export.
+//
 // Each shape is given where the guest sees its export, the host directory
 // beside the export (an attacker knows the host's layout), a token, and one
 // extra argument: the submodule URL for the submodule shape.
@@ -34,21 +39,18 @@ func repoProbe(args []string) Result {
 	}
 	shape, guest, beside, token, extra := args[0], args[1], args[2], args[3], args[4]
 	canary := func(effect string) string { return filepath.Join(beside, "written-"+effect) }
-	// script writes a shell script that makes an effect on the host, then runs tail.
-	script := func(path, effect, tail string) error {
-		return os.WriteFile(path, []byte("#!/bin/sh\ntouch '"+canary(effect)+"'\n"+tail+"\n"), 0o755)
+	// hook is a shell script that makes an effect on the host, then runs tail.
+	hook := func(effect, tail string) []byte {
+		return []byte("#!/bin/sh\ntouch '" + canary(effect) + "'\n" + tail + "\n")
 	}
-	var err error
-	if shape != "fill" { // an empty template: the shape brings its own hooks, and nothing else
-		_, err = git(guest, "", "init", "-q", "--template=")
-	}
+	script := func(path, effect, tail string) error { return os.WriteFile(path, hook(effect, tail), 0o755) }
+	r := repo{guest}
 	// The values are relative to the work tree, so that they hold wherever a pull brings it.
-	for _, kv := range map[string][][2]string{"dotdot": {{"core.bare", "true"}}, // so that a snapshot of the work tree cannot replace HEAD
-		"config": {{"core.fsmonitor", ".git/fsmonitor"}, {"core.hooksPath", ".hooks"}, {"filter.escape.clean", "./.git/filter"}, {"filter.escape.required", "true"}}}[shape] {
-		if err == nil {
-			_, err = git(guest, "", "config", kv[0], kv[1])
-		}
-	}
+	err := r.create(map[string]string{
+		"dotdot": "\tbare = true\n", // so that a snapshot of the work tree cannot replace HEAD
+		"dotgit": "\tbare = true\n",
+		"config": "\tfsmonitor = .git/fsmonitor\n\thooksPath = .hooks\n[filter \"escape\"]\n\tclean = ./.git/filter\n\trequired = true\n",
+	}[shape])
 	if err == nil {
 		err = os.WriteFile(filepath.Join(guest, "work"), []byte(token+"\n"), 0o644)
 	}
@@ -68,23 +70,33 @@ func repoProbe(args []string) Result {
 			script(filepath.Join(guest, ".git", "fsmonitor"), "fsmonitor", "echo /"),
 			script(filepath.Join(guest, ".git", "filter"), "filter", "cat"),
 			os.WriteFile(filepath.Join(guest, ".gitattributes"), []byte("* filter=escape\n"), 0o644))
-	case "submodule":
+	case "submodule": // the index holds a gitlink at sub, as `update-index --cacheinfo` would leave it
 		err = errors.Join(os.WriteFile(filepath.Join(guest, ".gitmodules"), []byte("[submodule \"sub\"]\n\tpath = sub\n\turl = "+extra+"\n"), 0o644),
-			os.Mkdir(filepath.Join(guest, "sub"), 0o755))
-		_, e := git(guest, "", "update-index", "--add", "--cacheinfo", "160000,"+(token + token)[:40]+",sub")
-		err = errors.Join(err, e)
+			os.Mkdir(filepath.Join(guest, "sub"), 0o755),
+			r.index(entry{"160000", "sub", (token + token)[:40]}))
 	case "dotdot": // a commit whose tree holds a subtree named "..": git's own tools refuse to make one
-		blob, e1 := git(guest, "escape\n", "hash-object", "-w", "--stdin")
-		sub, e2 := git(guest, "100644 blob "+blob+"\twritten-"+token+"\n", "mktree")
-		top, e3 := git(guest, "040000 tree "+sub+"\t..\n100644 blob "+blob+"\twork\n", "mktree")
-		commit, e4 := git(guest, "", "commit-tree", top, "-m", "escape")
-		_, e5 := git(guest, "", "update-ref", "HEAD", commit)
-		err = errors.Join(e1, e2, e3, e4, e5)
+		err = committed(r, func(blob string) ([]entry, error) {
+			sub, err := r.tree(entry{"100644", "written-" + token, blob})
+			return []entry{{"40000", "..", sub}}, err
+		})
+	case "dotgit": // a commit whose tree holds a subtree named ".git", with a hook in it
+		err = committed(r, func(string) ([]entry, error) {
+			blob, err := r.object("blob", hook("dotgit-hook", ""))
+			if err != nil {
+				return nil, err
+			}
+			hooks, err := r.tree(entry{"100755", "pre-commit", blob})
+			if err != nil {
+				return nil, err
+			}
+			dotgit, err := r.tree(entry{"40000", "hooks", hooks})
+			return []entry{{"40000", ".git", dotgit}}, err
+		})
 	case "link":
 		err = os.Symlink("..", filepath.Join(guest, "updir"))
 	case "fill": // the link of the pull before is now a directory with a file in it
 		dir := filepath.Join(guest, "updir")
-		err = errors.Join(os.Remove(dir), os.Mkdir(dir, 0o755), os.WriteFile(filepath.Join(dir, "written-"+token), []byte("escape\n"), 0o644))
+		err = errors.Join(os.RemoveAll(dir), os.Mkdir(dir, 0o755), os.WriteFile(filepath.Join(dir, "written-"+token), []byte("escape\n"), 0o644))
 	case "case":
 		err = errors.Join(os.WriteFile(filepath.Join(guest, "Readme"), []byte("upper\n"), 0o644),
 			os.WriteFile(filepath.Join(guest, "readme"), []byte("lower\n"), 0o644))
@@ -97,18 +109,22 @@ func repoProbe(args []string) Result {
 	return Result{Status: "shaped", Detail: shape}
 }
 
-// git runs git in the guest's repository with stdin and returns its first
-// line of output.
-func git(guest, stdin string, args ...string) (string, error) {
-	cmd := exec.Command("git", append([]string{"-C", guest}, args...)...)
-	cmd.Stdin = strings.NewReader(stdin)
-	cmd.Env = append(os.Environ(), "GIT_AUTHOR_NAME=escape", "GIT_AUTHOR_EMAIL=escape@localhost", "GIT_COMMITTER_NAME=escape", "GIT_COMMITTER_EMAIL=escape@localhost")
-	out, err := cmd.Output()
+// committed writes a commit whose tree holds the work file and the entries
+// more makes, given the id of a blob to use.
+func committed(r repo, more func(blob string) ([]entry, error)) error {
+	blob, err := r.object("blob", []byte("escape\n"))
 	if err != nil {
-		return "", fmt.Errorf("git %s: %w", args[0], err)
+		return err
 	}
-	line, _, _ := strings.Cut(string(out), "\n")
-	return line, nil
+	entries, err := more(blob)
+	if err != nil {
+		return err
+	}
+	top, err := r.tree(append(entries, entry{"100644", "work", blob})...)
+	if err != nil {
+		return err
+	}
+	return r.commit(top)
 }
 
 // bring has the guest make the shape and pulls the workspace into the
@@ -250,6 +266,31 @@ func collided(ctx context.Context, s Session) (bool, string, error) {
 		return false, refused + ", and it still brought " + strings.Join(brought, " and "), nil
 	}
 	return true, refused, nil
+}
+
+// planted fails if the pull wrote any path with a .git component into the
+// host's tree: a hook there runs the moment the user runs git in it.
+func planted(ctx context.Context, s Session) (bool, string, error) {
+	if err := pulls(s); err != nil {
+		return false, "", err
+	}
+	refused, err := bring(s, "dotgit", newToken(), "")
+	if err != nil {
+		return false, "", err
+	}
+	var found []string
+	pulled := filepath.Join(filepath.Dir(s.Workspace), "pulled")
+	filepath.WalkDir(pulled, func(p string, d fs.DirEntry, err error) error {
+		if err == nil && d.Name() == ".git" {
+			rel, _ := filepath.Rel(pulled, p)
+			found = append(found, rel)
+		}
+		return nil
+	})
+	if len(found) > 0 {
+		return false, "the pull wrote a .git component into the host's tree: " + strings.Join(found, ", ") + refused, nil
+	}
+	return true, "no .git component in the host's tree; " + refused, nil
 }
 
 // The I13 tests bring a workcell.toml, in the export before the session

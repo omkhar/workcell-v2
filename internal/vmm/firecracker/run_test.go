@@ -157,12 +157,15 @@ dd if=/dev/zero of=/var/tmp/b bs=1M count=80 2>&1 | grep -o 'No space left on de
 	})
 
 	// Clone mode: the guest starts in a copy of the directory, what it writes there stays
-	// there (I1), and the copy is gone once the session ends (I7).
+	// there (I1), and once the session ends the VMM's files are gone while the copy stays
+	// as a session, with the directory it came from on record, for diff and pull.
 	t.Run("workspace", func(t *testing.T) {
 		own := t.TempDir() // this case's own repository; repo, which other cases use, is never reassigned
 		if err := os.WriteFile(filepath.Join(own, "hello.txt"), []byte("hi\n"), 0o644); err != nil {
 			t.Fatal(err)
 		}
+		kept := filepath.Join(data, "sessions")
+		before, _ := os.ReadDir(kept) // other cases leave their own sessions
 		stdout, _, code := pipesIn(t, own, nil, "sh", "-c", "cat hello.txt; pwd; echo new > created.txt; cat created.txt")
 		if want := "hi\n/workspace\nnew\n"; stdout != want || code != 0 {
 			t.Errorf("the guest printed %q with exit %d, want %q and 0", stdout, code, want)
@@ -170,10 +173,19 @@ dd if=/dev/zero of=/var/tmp/b bs=1M count=80 2>&1 | grep -o 'No space left on de
 		if _, err := os.Stat(filepath.Join(own, "created.txt")); !errors.Is(err, os.ErrNotExist) {
 			t.Errorf("a file the guest wrote is on the host: %v", err)
 		}
-		for _, d := range []string{sessions, filepath.Join(data, "sessions")} {
-			if left, err := os.ReadDir(d); err != nil || len(left) != 0 {
-				t.Errorf("left in %s after the session: %v (%v), want nothing", d, left, err)
-			}
+		if left, err := os.ReadDir(sessions); err != nil || len(left) != 0 {
+			t.Errorf("left in %s after the session: %v (%v), want nothing", sessions, left, err)
+		}
+		after, err := os.ReadDir(kept)
+		if err != nil || len(after) != len(before)+1 {
+			t.Fatalf("%s holds %d entries after the session (%v), want %d: one more than before", kept, len(after), err, len(before)+1)
+		}
+		session := filepath.Join(kept, after[len(after)-1].Name()) // the names sort by time
+		if _, err := os.Stat(filepath.Join(session, "workspace.ext4")); err != nil {
+			t.Errorf("the session's image: %v", err)
+		}
+		if b, err := os.ReadFile(filepath.Join(session, "repo")); err != nil || strings.TrimSpace(string(b)) != own {
+			t.Errorf("the session's repo file holds %q (%v), want %q", b, err, own)
 		}
 	})
 
