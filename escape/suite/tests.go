@@ -122,6 +122,9 @@ var All = []Test{
 	{ID: "I14", Name: "update-truncated-download", Probe: idleProbe, Host: updateJudge("truncated")},
 	{ID: "I14", Name: "update-redirected-url", Probe: idleProbe, Host: updateJudge("redirected")},
 	{ID: "I14", Name: "update-plain-http-url", Probe: idleProbe, Host: updateJudge("plain-http")},
+	// The product's own start benchmark, run on the host: twenty warm boots,
+	// and the median must be under the hosted budget.
+	{ID: "P1", Name: "warm-start", Probe: idleProbe, Host: benchJudge, Bound: benchBound},
 }
 
 // hostAddr, in a canary address, stands for the host's own first non-loopback

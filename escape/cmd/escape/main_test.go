@@ -44,6 +44,9 @@ func (f *fake) Channel(context.Context) (sandbox.Channel, error) {
 func (f *fake) Update(context.Context, sandbox.UpdateConfig) ([]byte, error) {
 	return nil, sandbox.ErrNotImplemented
 }
+func (f *fake) Bench(context.Context) (sandbox.Output, error) {
+	return sandbox.Output{}, sandbox.ErrNotImplemented
+}
 
 func TestRunOutcomes(t *testing.T) {
 	judge := func(_ context.Context, s suite.Session) (bool, string, error) {

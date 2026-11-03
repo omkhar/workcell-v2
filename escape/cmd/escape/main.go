@@ -33,7 +33,8 @@ const (
 	Error          = "error"
 )
 
-// perTest bounds one test, sandbox start to stop (SPEC: under 20 seconds).
+// perTest bounds one test, sandbox start to stop (SPEC: under 20 seconds),
+// unless the test states its own Bound.
 const perTest = 20 * time.Second
 
 // Report is the JSON the runner prints.
@@ -123,7 +124,11 @@ func run(ctx context.Context, name string, fresh func() (sandbox.Sandbox, error)
 // runOne starts the test's first session, lets the judge open more, and stops
 // them all, last first, when the judge is done.
 func runOne(ctx context.Context, fresh func() (sandbox.Sandbox, error), payload string, t suite.Test) (string, string) {
-	ctx, cancel := context.WithTimeout(ctx, perTest)
+	bound := perTest
+	if t.Bound > 0 {
+		bound = t.Bound
+	}
+	ctx, cancel := context.WithTimeout(ctx, bound)
 	defer cancel()
 	var sessions []session
 	defer func() {

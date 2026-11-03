@@ -229,7 +229,7 @@ func moved(url string) http.HandlerFunc {
 
 // idleProbe is the probe of a test the guest plays no part in.
 func idleProbe([]string) Result {
-	return Result{Status: "idle", Detail: "the update client runs on the host"}
+	return Result{Status: "idle", Detail: "this test runs on the host"}
 }
 
 // updateJudge serves a valid channel and has the client install from it; then

@@ -43,6 +43,9 @@ func (noObserve) Helper(context.Context, string) (int, error) { return 0, sandbo
 func (noObserve) Channel(context.Context) (sandbox.Channel, error) {
 	return sandbox.Channel{}, sandbox.ErrNotImplemented
 }
+func (noObserve) Bench(context.Context) (sandbox.Output, error) {
+	return sandbox.Output{}, sandbox.ErrNotImplemented
+}
 
 type idle struct{ noObserve }
 

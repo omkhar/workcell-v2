@@ -295,6 +295,13 @@ func (c *control) Update(ctx context.Context, u UpdateConfig) ([]byte, error) {
 	return art, os.WriteFile(filepath.Join(c.dir, "installed-"+u.Name), art, 0o755)
 }
 
+// Bench: a plain container boots no VM, so there is no start to time. It
+// says so as the CLI reports a boot it could not do: one line on stderr and
+// exit 1. It never prints a measurement.
+func (c *control) Bench(context.Context) (Output, error) {
+	return Output{Stderr: []byte("control: a plain container boots no VM\n"), Exit: 1}, nil
+}
+
 func (c *control) Stop() error {
 	if c.dir == "" {
 		return nil

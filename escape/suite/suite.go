@@ -11,6 +11,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/omkhar/workcell/v2/escape/sandbox"
 )
@@ -89,6 +90,9 @@ type Test struct {
 	Probe Probe
 	Host  Judge
 	Want  Want
+	// Bound is the runner's limit on the whole test, start to stop, when
+	// the test needs more than the runner's default; zero is that default.
+	Bound time.Duration
 }
 
 // Lookup finds a test by name.
