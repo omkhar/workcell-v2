@@ -102,7 +102,7 @@ with ADR-003 and ADR-004, they build on the proposal, and you can accept it at a
       accept: two clean builds give the same digest; under 400 MB; build needs no shell
 - [x] U-202 | flow:boundary | model:opus | env:any | deps:U-001 | tries:0 | `internal/wire`: length-prefixed, versioned, bounded host-guest protocol, with a fuzz target
       accept: I12 unit and fuzz tests pass; every frame has a hard size and time limit
-- [ ] U-203 | flow:boundary | model:fable | env:kvm | deps:U-200,U-201,U-202 | tries:0 | `cmd/workcell-init`: static guest init. Mounts, exec, PTY, signals, exit status
+- [x] U-203 | flow:boundary | model:fable | env:kvm | deps:U-200,U-201,U-202 | tries:0 | `cmd/workcell-init`: static guest init. Mounts, exec, PTY, signals, exit status
       accept: runs as PID 1; reaps zombies; a host disconnect powers the guest off
 - [ ] U-204 | flow:build | model:sonnet | env:kvm | deps:U-203 | tries:0 | `workcell run -- <cmd>` end to end, with a PTY, window resize and exit code
       accept: `workcell run -- sh -c 'exit 7'` exits 7; an interactive shell works over a real terminal

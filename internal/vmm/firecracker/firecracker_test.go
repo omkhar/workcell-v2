@@ -85,7 +85,9 @@ func TestConfig(t *testing.T) {
 // inputs are the pinned binary and kernel, and the initramfs built from testdata/guest.
 type inputs struct{ binary, kernel, initrd string }
 
-func TestFirecracker(t *testing.T) {
+// needKVM skips a test that boots a guest where it cannot.
+func needKVM(t *testing.T) {
+	t.Helper()
 	if runtime.GOOS != "linux" || runtime.GOARCH != "amd64" {
 		t.Skip("the pinned Firecracker and kernel are linux/amd64 builds")
 	}
@@ -94,6 +96,10 @@ func TestFirecracker(t *testing.T) {
 	} else {
 		_ = f.Close()
 	}
+}
+
+func TestFirecracker(t *testing.T) {
+	needKVM(t)
 	in := fetch(t)
 	ctx := context.Background()
 
@@ -253,10 +259,21 @@ func (in inputs) machine(t *testing.T, dir string, console io.Writer) *Machine {
 	return m
 }
 
-// boot starts a guest in a fresh short Dir and returns it with the guest's
-// connection, once the guest's hello arrived. The console goes to a file that
-// is logged if the test fails.
+// boot is launch, then the guest's hello.
 func boot(t *testing.T, in inputs) (m *Machine, conn net.Conn, dir string, bootMS int64) {
+	t.Helper()
+	m, conn, dir, bootMS = launch(t, in)
+	line, err := bufio.NewReader(conn).ReadString('\n')
+	if err != nil || line != "hello\n" {
+		t.Fatalf("guest said %q (%v), want hello", line, err)
+	}
+	return m, conn, dir, bootMS
+}
+
+// launch starts a guest in a fresh short Dir and returns it with the guest's
+// connection, once the guest dialled. The console goes to a file that is logged
+// if the test fails.
+func launch(t *testing.T, in inputs) (m *Machine, conn net.Conn, dir string, bootMS int64) {
 	t.Helper()
 	console, err := os.Create(filepath.Join(t.TempDir(), "console.txt"))
 	if err != nil {
@@ -283,10 +300,6 @@ func boot(t *testing.T, in inputs) (m *Machine, conn net.Conn, dir string, bootM
 	}
 	if conn, err = ln.Accept(); err != nil {
 		t.Fatalf("no vsock connection from the guest within %v: %v", bootLimit, err)
-	}
-	line, err := bufio.NewReader(conn).ReadString('\n')
-	if err != nil || line != "hello\n" {
-		t.Fatalf("guest said %q (%v), want hello", line, err)
 	}
 	return m, conn, dir, time.Since(t0).Milliseconds()
 }
@@ -341,39 +354,73 @@ func scanProc(dir string) (pids []string) {
 	return pids
 }
 
-// fetch downloads the pinned inputs, checks their digests before anything is
-// used, extracts the binary and builds the guest into an initramfs.
+// fetch is the pinned inputs with testdata/guest as /init.
 func fetch(t *testing.T) inputs {
 	t.Helper()
-	dl := t.TempDir()
-	var tgz, kernel string
-	var errs [2]error
-	var wg sync.WaitGroup
-	wg.Go(func() { tgz, errs[0] = download(dl, fcURL, "firecracker.tgz", fcSHA256) })
-	wg.Go(func() { kernel, errs[1] = download(dl, kernelURL, "vmlinux", kernelSHA) })
-	wg.Wait()
-	if err := errors.Join(errs[:]...); err != nil {
-		t.Fatal(err)
+	binary, kernel := pinned(t)
+	dir := t.TempDir()
+	return inputs{binary: binary, kernel: kernel,
+		initrd: initramfs(t, dir, file{"init", build(t, dir, "./testdata/guest")})}
+}
+
+// pins holds the pinned binary and kernel, downloaded once per test binary into a
+// directory that TestMain removes.
+var pins struct {
+	sync.Once
+	dir, binary, kernel string
+	err                 error
+}
+
+func TestMain(m *testing.M) {
+	code := m.Run()
+	if pins.dir != "" {
+		_ = os.RemoveAll(pins.dir)
 	}
-	binary := filepath.Join(dl, "firecracker")
-	if err := untar(tgz, fcMember, binary); err != nil {
-		t.Fatal(err)
+	os.Exit(code)
+}
+
+// pinned downloads the pinned inputs and checks their digests before anything is used.
+func pinned(t *testing.T) (binary, kernel string) {
+	t.Helper()
+	pins.Do(func() {
+		dl, err := os.MkdirTemp("", "wcpin")
+		if err != nil {
+			pins.err = err
+			return
+		}
+		pins.dir = dl
+		var tgz string
+		var errs [2]error
+		var wg sync.WaitGroup
+		wg.Go(func() { tgz, errs[0] = download(dl, fcURL, "firecracker.tgz", fcSHA256) })
+		wg.Go(func() { pins.kernel, errs[1] = download(dl, kernelURL, "vmlinux", kernelSHA) })
+		wg.Wait()
+		if pins.err = errors.Join(errs[:]...); pins.err != nil {
+			return
+		}
+		pins.binary = filepath.Join(dl, "firecracker")
+		pins.err = untar(tgz, fcMember, pins.binary)
+	})
+	if pins.err != nil {
+		t.Fatal(pins.err)
 	}
-	guest := filepath.Join(dl, "init")
-	cmd := exec.Command("go", "build", "-trimpath", "-o", guest, "./testdata/guest")
+	return pins.binary, pins.kernel
+}
+
+// build compiles pkg for the guest and returns the binary.
+func build(t *testing.T, dir, pkg string) []byte {
+	t.Helper()
+	out := filepath.Join(dir, filepath.Base(pkg))
+	cmd := exec.Command("go", "build", "-trimpath", "-o", out, pkg)
 	cmd.Env = append(os.Environ(), "CGO_ENABLED=0", "GOOS=linux", "GOARCH=amd64")
-	if out, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("go build testdata/guest: %v\n%s", err, out)
+	if o, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("go build %s: %v\n%s", pkg, err, o)
 	}
-	b, err := os.ReadFile(guest)
+	b, err := os.ReadFile(out)
 	if err != nil {
 		t.Fatal(err)
 	}
-	initrd := filepath.Join(dl, "initramfs.cpio")
-	if err := os.WriteFile(initrd, initramfs(b), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	return inputs{binary: binary, kernel: kernel, initrd: initrd}
+	return b
 }
 
 // download fetches url into dir/name and compares its SHA-256 with want.
@@ -449,7 +496,22 @@ func newc(name string, mode uint32, data []byte) []byte {
 	return b.Bytes()
 }
 
-// initramfs is an uncompressed cpio holding one executable, /init.
-func initramfs(init []byte) []byte {
-	return slices.Concat(newc("init", 0o100755, init), newc("TRAILER!!!", 0, nil))
+// file is one executable of an initramfs, by its name at the root.
+type file struct {
+	name string
+	data []byte
+}
+
+// initramfs writes an uncompressed cpio of the files into dir and returns its path.
+func initramfs(t *testing.T, dir string, files ...file) string {
+	t.Helper()
+	var b []byte
+	for _, f := range files {
+		b = append(b, newc(f.name, 0o100755, f.data)...)
+	}
+	path := filepath.Join(dir, "initramfs.cpio")
+	if err := os.WriteFile(path, append(b, newc("TRAILER!!!", 0, nil)...), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return path
 }
