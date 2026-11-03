@@ -37,11 +37,12 @@ const (
 	path       = "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 )
 
-// run is `workcell run [--cpus N] [--memory SIZE] [--disk SIZE] [--] <cmd> [args...]`: it boots a guest with a copy of
-// the current directory in it, runs the command there and exits as the command did. This process is the session's supervisor (A9): it owns the VM
+// run is `workcell run [--mount] [--cpus N] [--memory SIZE] [--disk SIZE] [--] <cmd> [args...]`: it boots a guest
+// with a copy of the current directory in it, or with the directory itself served live (`--mount`, A5), runs the
+// command there and exits as the command did. This process is the session's supervisor (A9): it owns the VM
 // and the channel, and the VM dies with it.
 func run(args []string, stderr io.Writer) int {
-	caps, args, ok := parseRun(args, stderr)
+	caps, mount, args, ok := parseRun(args, stderr)
 	if !ok {
 		return 2
 	}
@@ -52,7 +53,7 @@ func run(args []string, stderr io.Writer) int {
 	}
 	code := 0
 	if err == nil {
-		code, err = session(args, caps, a)
+		code, err = session(args, caps, mount, a)
 	}
 	if err != nil {
 		fmt.Fprintln(stderr, "workcell:", err)
@@ -63,9 +64,10 @@ func run(args []string, stderr io.Writer) int {
 	return code
 }
 
-// session boots a guest and runs argv in it. It returns the command's exit code. A nonzero
-// code with an error means the command could not run; an error alone means the session failed.
-func session(argv []string, caps limits, a artifacts) (int, error) {
+// session boots a guest and runs argv in it, with the current directory copied in, or served
+// live when mount holds. It returns the command's exit code. A nonzero code with an error
+// means the command could not run; an error alone means the session failed.
+func session(argv []string, caps limits, mount bool, a artifacts) (int, error) {
 	sigs := make(chan os.Signal, 4)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM, syscall.SIGWINCH)
 	defer signal.Stop(sigs)
@@ -73,11 +75,17 @@ func session(argv []string, caps limits, a artifacts) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	image, err := export(a, caps, cwd)
+	image, live := "", ""
+	if mount {
+		_, err = newSession(a, cwd) // the record alone: the work lands in cwd itself
+		live = cwd
+	} else {
+		image, err = export(a, caps, cwd)
+	}
 	if err != nil {
 		return 0, err
 	}
-	b, code, err := boot(a, caps, sigs, image, "")
+	b, code, err := boot(a, caps, sigs, image, live)
 	if b == nil {
 		return code, err
 	}
@@ -144,14 +152,11 @@ type booted struct {
 // a random suffix keeps two that began in the same instant apart.
 const sessionTime = "20060102T150405.000000000Z"
 
-// export copies the directory repo into a new session, <data>/sessions/<id>/: the image the
-// guest gets as /workspace, and a file repo naming the directory, so that diff and pull find
-// the newest session of a directory later. The image lives in the data directory, not under
-// TMPDIR, because a reflink only works within one filesystem and the data directory shares
-// the home filesystem with most repositories. It is as big as the repository plus the room
-// the guest may write, which is --disk or 1 GiB (I10). It stays when the session ends, for
-// diff and pull; rm removes it (I7).
-func export(a artifacts, caps limits, repo string) (string, error) {
+// newSession records a session of the directory repo: <data>/sessions/<id>/ holding a file repo
+// that names the directory, so that diff and pull find the newest session of a directory
+// later. A mount session leaves this record alone, so that pull and diff know the work went
+// into the directory itself; a clone session adds its image. rm removes it (I7).
+func newSession(a artifacts, repo string) (string, error) {
 	var r [4]byte
 	if _, err := rand.Read(r[:]); err != nil {
 		return "", err
@@ -160,16 +165,29 @@ func export(a artifacts, caps limits, repo string) (string, error) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return "", err
 	}
+	if err := os.WriteFile(filepath.Join(dir, "repo"), []byte(repo+"\n"), 0o600); err != nil {
+		os.RemoveAll(dir)
+		return "", err
+	}
+	return dir, nil
+}
+
+// export copies the directory repo into a new session: the image the guest gets as /workspace.
+// The image lives in the data directory, not under TMPDIR, because a reflink only works
+// within one filesystem and the data directory shares the home filesystem with most
+// repositories. It is as big as the repository plus the room the guest may write, which is
+// --disk or 1 GiB (I10). It stays when the session ends, for diff and pull.
+func export(a artifacts, caps limits, repo string) (string, error) {
+	dir, err := newSession(a, repo)
+	if err != nil {
+		return "", err
+	}
 	free := int64(1 << 30)
 	if caps.DiskMiB > 0 {
 		free = int64(caps.DiskMiB) << 20
 	}
 	image := filepath.Join(dir, "workspace.ext4")
-	err := os.WriteFile(filepath.Join(dir, "repo"), []byte(repo+"\n"), 0o600)
-	if err == nil {
-		_, err = workspace.Export(context.Background(), repo, image, free)
-	}
-	if err != nil {
+	if _, err := workspace.Export(context.Background(), repo, image, free); err != nil {
 		os.RemoveAll(dir)
 		return "", fmt.Errorf("copy %s for the guest: %w", repo, err)
 	}
