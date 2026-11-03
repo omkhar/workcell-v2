@@ -119,7 +119,7 @@ with ADR-003 and ADR-004, they build on the proposal, and you can accept it at a
 
 ## Phase 3: network
 
-- [ ] U-300 | flow:spike | model:opus | env:kvm | deps:U-204 | tries:0 | ADR-003: how guest packets reach the host proxy (userspace stack over vsock, passt, or transparent socket impersonation)
+- [x] U-300 | flow:spike | model:opus | env:kvm | deps:U-204 | tries:0 | ADR-003: how guest packets reach the host proxy (userspace stack over vsock, passt, or transparent socket impersonation)
       accept: `docs/adr/003-network-path.md`, `status: proposed`; a working prototype; the same design must work on macOS
 - [ ] U-301 | flow:boundary | model:fable | env:kvm | deps:U-300 | tries:0 | Implement the network path with no route except the proxy
       accept: the guest has no working default route to anything else
