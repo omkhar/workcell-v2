@@ -20,28 +20,39 @@ type rawConn struct{ fd int }
 
 func (c *rawConn) close() { unix.Close(c.fd) }
 
-// write sends all of b, waiting at most wait for the peer to take it.
-func (c *rawConn) write(b []byte, wait time.Duration) error {
-	by := time.Now().Add(wait)
-	for len(b) > 0 {
+// write sends b, waiting at most wait for the peer to take it, and returns
+// how much it took; less than all of it is an error.
+func (c *rawConn) write(b []byte, wait time.Duration) (int, error) {
+	by, sent := time.Now().Add(wait), 0
+	for sent < len(b) {
 		left := time.Until(by)
 		if left <= 0 {
-			return errors.New("the host stopped taking bytes")
+			return sent, errors.New("the host stopped taking bytes")
 		}
 		fds := []unix.PollFd{{Fd: int32(c.fd), Events: unix.POLLOUT}}
 		if _, err := unix.Poll(fds, int(left/time.Millisecond)+1); err != nil && err != unix.EINTR {
-			return err
+			return sent, err
 		}
-		n, err := unix.Write(c.fd, b)
+		n, err := unix.Write(c.fd, b[sent:])
 		switch {
 		case err == unix.EAGAIN || err == unix.EINTR:
 			continue
 		case err != nil:
-			return err
+			return sent, err
 		}
-		b = b[n:]
+		sent += n
 	}
-	return nil
+	return sent, nil
+}
+
+// shutdown closes the socket's write side, or both sides, for every holder
+// of it: on the init's connection, the init's too.
+func (c *rawConn) shutdown(both bool) error {
+	how := unix.SHUT_WR
+	if both {
+		how = unix.SHUT_RDWR
+	}
+	return unix.Shutdown(c.fd, how)
 }
 
 // channelPeer is the host end as the guest's socket names it: cid and port
@@ -142,5 +153,6 @@ func dialChannel(addr string) (*rawConn, error) {
 		unix.Close(fd)
 		return nil, fmt.Errorf("connect %s: %w", addr, err)
 	}
+	unix.SetNonblock(fd, true) // write polls; a host that stops taking bytes never holds the probe
 	return &rawConn{fd: fd}, nil
 }

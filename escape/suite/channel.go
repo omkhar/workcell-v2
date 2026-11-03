@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"slices"
 	"sync"
@@ -44,6 +45,12 @@ const (
 	dripInterval = time.Second      // between bytes of the slow drip
 	stormSize    = 32               // fresh connections in the storm
 	stormHold    = time.Second      // how long each is held open
+	floodSize    = 768              // fresh connections in the flood
+	floodBytes   = 256 << 10        // bytes each flood connection offers the host side
+	floodWait    = 500 * ms         // how long a flood connection waits for the host side to take more
+	floodSlack   = 64               // MiB the host may lose during the flood beyond a plain run
+	cutPayload   = 100              // bytes a cut frame's header promises
+	cutSent      = 10               // bytes of it sent before the cut
 	channelBound = 45 * time.Second // Test.Bound: several boots, one of which may hang
 	rawCleanExit = 125              // the CLI's status for a session it could not keep
 	rawNoStart   = 126              // the CLI's status when the guest could not start the command
@@ -85,6 +92,8 @@ func channelProbe(args []string) Result {
 		return Result{Status: "ran", Detail: "nothing hostile sent"}
 	case "storm":
 		return storm(addr)
+	case "storm-flood":
+		return flood(addr)
 	}
 	ch, err := stealChannel(addr)
 	if err != nil {
@@ -105,6 +114,20 @@ func channelProbe(args []string) Result {
 		b[0] = 2
 	case "exit-text":
 		b = frame(typeExit, textTag(hostileText(maxExitText)))
+	case "after-exit":
+		b = frame(typeExit, exitTag(0)) // the command's own status first
+		b = append(b, frame(typeStdout, []byte("after exit\n"))...)
+		b = append(b, frame(typeExit, exitTag(forgedCode))...)
+	case "half-close", "full-shutdown":
+		b = frame(typeStdout, make([]byte, cutPayload))[:6+cutSent]
+		if _, err := ch.write(b, sendWait); err != nil {
+			return Result{Status: "unsent", Detail: kind + ": " + err.Error()}
+		}
+		if err := ch.shutdown(kind == "full-shutdown"); err != nil {
+			return Result{Status: "error", Detail: kind + ": shutdown: " + err.Error()}
+		}
+		time.Sleep(longLinger)
+		return Result{Status: "sent", Detail: fmt.Sprintf("%s after %d of %d payload bytes, still running %s later", kind, cutSent, cutPayload, longLinger)}
 	case "giant-header":
 		b = frame(typeStdout, nil)
 		binary.BigEndian.PutUint32(b[2:], 0xffffffff) // then silence
@@ -114,7 +137,7 @@ func channelProbe(args []string) Result {
 	default:
 		return Result{Status: "error", Detail: "unknown kind " + kind}
 	}
-	if err := ch.write(b, sendWait); err != nil {
+	if _, err := ch.write(b, sendWait); err != nil {
 		return Result{Status: "unsent", Detail: kind + ": " + err.Error()}
 	}
 	time.Sleep(linger)
@@ -126,7 +149,7 @@ func channelProbe(args []string) Result {
 func drip(ch *rawConn, f []byte) Result {
 	sent := 0
 	for by := time.Now().Add(longLinger); time.Now().Before(by); sent++ {
-		if err := ch.write(f[sent%len(f):sent%len(f)+1], sendWait); err != nil {
+		if _, err := ch.write(f[sent%len(f):sent%len(f)+1], sendWait); err != nil {
 			return Result{Status: "cut", Detail: fmt.Sprintf("the host stopped taking the drip after %d bytes: %s", sent, err)}
 		}
 		time.Sleep(dripInterval)
@@ -151,7 +174,7 @@ func storm(addr string) Result {
 				return
 			}
 			defer c.close()
-			err = c.write(frame(typeExit, exitTag(forgedCode)), sendWait)
+			_, err = c.write(frame(typeExit, exitTag(forgedCode)), sendWait)
 			mu.Lock()
 			opened++
 			if err == nil {
@@ -169,19 +192,60 @@ func storm(addr string) Result {
 	return Result{Status: "stormed", Detail: detail}
 }
 
+// flood opens floodSize fresh connections at once and offers the host side
+// floodBytes on each, under one header that promises 4 GiB, until it stops
+// taking them; then holds them all for the judge's samples. Whatever the
+// host side took it holds somewhere for as long as the connections stand.
+func flood(addr string) Result {
+	chunk := frame(typeStdout, make([]byte, floodBytes-6))
+	binary.BigEndian.PutUint32(chunk[2:], 0xffffffff)
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+	opened, taken := 0, 0
+	var last error
+	for range floodSize {
+		wg.Go(func() {
+			c, err := dialChannel(addr)
+			if err != nil {
+				mu.Lock()
+				last = err
+				mu.Unlock()
+				return
+			}
+			defer c.close()
+			n, _ := c.write(chunk, floodWait)
+			mu.Lock()
+			opened++
+			taken += n
+			mu.Unlock()
+			time.Sleep(hold)
+		})
+	}
+	wg.Wait()
+	detail := fmt.Sprintf("%d of %d connections opened, the host side took %d MiB", opened, floodSize, taken>>20)
+	if last != nil {
+		detail += "; last error: " + last.Error()
+	}
+	return Result{Status: "flooded", Detail: detail}
+}
+
 // allowed is the exit status each kind lets a sound host report: 0, the
 // command's own, when the host ignored the frame or the connections; 125, a
 // clean refusal of the session; 126, the error path a forged error text
 // reaches. Never the forged code, and never a crash.
 var allowed = map[string][]int{
-	"exit-empty":   {0, rawCleanExit},
-	"ack-short":    {0, rawCleanExit},
-	"unknown-type": {0, rawCleanExit},
-	"version-2":    {0, rawCleanExit},
-	"exit-text":    {rawCleanExit, rawNoStart},
-	"giant-header": {rawCleanExit},
-	"slow-drip":    {rawCleanExit},
-	"storm":        {0, rawCleanExit},
+	"exit-empty":    {0, rawCleanExit},
+	"ack-short":     {0, rawCleanExit},
+	"unknown-type":  {0, rawCleanExit},
+	"version-2":     {0, rawCleanExit},
+	"exit-text":     {rawCleanExit, rawNoStart},
+	"giant-header":  {rawCleanExit},
+	"slow-drip":     {rawCleanExit},
+	"storm":         {0, rawCleanExit},
+	"storm-flood":   {0, rawCleanExit},
+	"after-exit":    {0, rawCleanExit},
+	"half-close":    {rawCleanExit},
+	"full-shutdown": {rawCleanExit},
 }
 
 // channelRun runs kind against the session's channel and holds the host end
@@ -250,6 +314,37 @@ func channelJudge(kinds ...string) Judge {
 		}
 		return true, fmt.Sprintf("the host end held: %v; a plain run after still works", exits), nil
 	}
+}
+
+// floodJudge runs the flood with the host's available memory sampled, as
+// the I10 judges do, against a plain run's own cost measured the same way
+// just before: the host may hold no more for a guest's connections than
+// for none. The flood run must also end as any hostile run must.
+func floodJudge(ctx context.Context, s Session) (bool, string, error) {
+	ch, err := s.Channel(ctx)
+	if err != nil {
+		return false, "", err
+	}
+	_, plain, _, err := sampled(s, hostMemAvailable, "plain", ch.Addr)
+	if err != nil {
+		return false, "", err
+	}
+	var exit int
+	var why string
+	var rerr error
+	flooded, _, err := sampledRun(hostMemAvailable, func() { exit, why, rerr = channelRun(ctx, s, ch.Addr, "storm-flood") })
+	if err != nil || rerr != nil || why != "" {
+		return false, why, errors.Join(err, rerr)
+	}
+	extra := (flooded - plain) >> 20
+	say := fmt.Sprintf("the host lost %d MiB of available memory beyond a plain run's %d MiB while the guest offered %d connections %d KiB each (flood run exit %d)", extra, plain>>20, floodSize, floodBytes>>10, exit)
+	if extra > floodSlack {
+		return false, say, nil
+	}
+	if why, err := plainAfter(s, ch.Addr, "the flood"); err != nil || why != "" {
+		return false, why, err
+	}
+	return true, say + "; a plain run after still works", nil
 }
 
 func plainAfter(s Session, addr, after string) (string, error) {
