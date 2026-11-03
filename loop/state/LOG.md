@@ -432,3 +432,5 @@ Added spikes/netpath (builder; netpath_test.go 491, util_test.go 274, pure_test.
 Spike flow: no reviewer, nothing parked. No S14 trigger: nothing ported, and the Firecracker vsock limits and AnyIP behaviour are documented public design.
 Budget: product 6714 of 15000, test 13598 of 15071, Markdown rises by 79, direct dependencies 3 of 15, no product file changed.
 Next: U-301 (implement the network path, boundary, env:kvm, model fable, deps U-300) is the next takeable unit for the cloud; U-205 and U-303 wait on H-011. U-301 inherits from ADR-003: the init setup (routes, sysctls, listeners from workcell.ports=), the per-stream relay with the 20-byte header and close-for-FIN, a many-connection relay listener on 5001 with the one-shot moved to the channel's caller in boot(), and the I2 probes must read "refused" or lost, never a byte at a canary; spikes/netpath/cmd/guest/main.go holds working setup and relay code to lift, and relay/relay.go the header codec. The claim was PR #67, which this run gives its final title.
+
+## 2026-11-03T05:16Z U-301 START mode=cloud
