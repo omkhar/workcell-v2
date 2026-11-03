@@ -11,23 +11,28 @@ spike. The tables below say which key to read. Nothing here was measured in a VM
 1. Downloads the pinned Firecracker v1.17.0, kernel A (6.1.155) and kernel B (`ch-release-v7.2.8-20261009`, FUSE_FS=y)
    in parallel, using the URLs and SHA-256 constants of spikes/netpath and spikes/fcch. It also builds `cmd/guest` as `/init`
    and writes the host tree, 100 dirs x 100 files of 16 bytes, in a TempDir. Then it waits (cap 240 s) for `fcch.test`,
-   `libkrun.test` and `netpath.test`. The hard limit is 120 s from the first boot. Each guest has 2 vCPU and 1024 MiB on
-   `firecracker.New` with the product's boot args.
-2. Kernel A: `features` and one `mount`, for the fact only. Kernel B: `features`, `mount`, then every measurement.
+   `libkrun.test` and `netpath.test`. The hard limit is 100 s from the first boot. Reaching it kills the VM and logs
+   `hard_limit=reached`, which is not a test failure. Only a changed host tree (`host_tree_intact=false`) fails the test.
+   Each guest has 2 vCPU and 1024 MiB on `firecracker.New` with the product's boot args.
+2. Kernel A: `features` and one `mount`, for the fact only. Kernel B: `features`, `mount`, then walk_t1, walk_t1_warm,
+   write, read, cat, tmpfs, walk_t0 (stopped at 15 s with `walk_t0_ms=partial:<entries>`), rtt, umount. This order puts
+   the steps most likely to hang last.
 3. Ports: control 5000 (netpath's line protocol), FUSE 5002 (`Machine.Listen`; one connection; the listener is closed
    after accept). Frames are `internal/wire` type 1, one FUSE request or reply each, at most 64 KiB.
 4. The mount is `fd=N,rootmode=40000,user_id=0,group_id=0,max_read=61440` on `/workspace`. The INIT reply gives minor
    min(kernel, 37), ASYNC_READ, BIG_WRITES, ATOMIC_O_TRUNC, AUTO_INVAL_DATA, DO_READDIRPLUS (not AUTO), PARALLEL_DIROPS and
    CACHE_SYMLINKS, with max_write 61440 (15 pages: one WRITE or READ is one frame) and max_readahead 131072.
-5. Every step is non-fatal: a failure logs `<key>=err:<text>` and the next step runs. On kernel B the console tail is
-   always printed: the guest logs its first 20 forwarded opcodes and every `/dev/fuse` errno there.
+5. Every step is non-fatal. The guest bounds each one at 20 s and then reports `<key>=partial:<progress>`; a failure is
+   `<key>=err:<text>`. After a broken or late control reply the host asks nothing more (`<key>=skipped`). On kernel B the
+   console tail is always printed. It holds every `/dev/fuse` errno, progress lines (`guest: rtt lstat=1000 open=ok
+   fstat=1000`), and a ring of the last 40 forwarded requests, dumped on a partial step, at quit and when the copier ends.
 
 ## Keys to read in the log
 
 | Line | Keys | Meaning |
 |------|------|---------|
 | `mount kernel=A ...` | `cfg_FUSE_FS`, `fuse_dev`, `fuse_mknod`, `fuse_open`, `mount` | Expected `n`, `ENOENT`, `ok`, an errno, `ENODEV` |
-| `mount kernel=B ...` | `boot_ms`, `mount`, `mount_ms`, `mount_stat`, `fuse_init_minor`, `fuse_init_flags`, `fuse_reply_flags` | handshake; `mount_stat=ok` gates the rest |
+| `mount kernel=B ...` | `boot_ms`, `config_gz`, `proc_fs_fuse`, `mount`, `mount_ms`, `mount_stat`; then a line of its own with `fuse_init_minor`, `fuse_init_flags`, `fuse_reply_flags` | kernel B has no `/proc/config.gz` (cfg_* absent); `mount_stat=ok` gates the rest |
 | guest step lines | `walk_t1_ms`, `walk_entries` (10100), `walk_t1_warm_ms`, `walk_t0_ms` | WalkDir plus Lstat; timeouts 1 s cold, 1 s warm, 0 after a drop_caches |
 | | `rtt_stat_p50_us` (min, max), `rtt_fstat_p50_us` | 1000 Lstat of `d00/f00` and 1000 fstat of it, timeouts 0 |
 | | `cat_files` (2000), `cat_ms`, `cat_per_file_us` | open, read, close of d00..d19, timeouts 1 s after a drop |
@@ -45,8 +50,8 @@ LOOKUP of `f00` and probably a GETATTR. One fstat costs one GETATTR. So `rtt_fst
 | File | Lines | What |
 |------|-------|------|
 | `serve/serve.go` | 846 (769 without blanks and comments) | the host server: about 100 of those lines are spike counters |
-| `fuse/fuse.go` | 484 | opcodes, decoder (the T5 fuzz target), encoders; `Copy`, the guest copier, is 50 of these lines |
-| `cmd/guest/main.go` | 428 | PID 1. The product part is `mountFUSE` (about 35 lines) plus `Copy`; the rest is measurement |
+| `fuse/fuse.go` | 516 | opcodes, decoder (the T5 fuzz target), encoders, the request ring; `Copy`, the guest copier, is 49 lines |
+| `cmd/guest/main.go` | 534 | PID 1. The product part is `mountFUSE` (40 lines) plus `Copy`; the rest is measurement |
 
 go-fuse v2.12.1 (BSD-3-Clause; fetched into a scratch module, never into go.mod), non-test lines: `fuse` 7731 (6929
 without the darwin and BSD files), `fs` 5564 (5362). Their imports add about 950 more lines from its `internal/...` and
@@ -83,7 +88,18 @@ frames and answered an oversized request E2BIG.
 
 ## Surprises
 
-None measured yet. The open questions only the hosted run answers:
+- The first hosted run (commit 97e255d) hung in `rtt` at its first `os.Open` of a regular file on the mount. The host
+  saw OPEN, one FUSE_POLL (opcode 40, answered ENOSYS), four INTERRUPTs and then nothing. Cause: an `*os.File` adds its
+  descriptor to the Go runtime's epoll set. On a FUSE file, `epoll_ctl` sends FUSE_POLL. The runtime makes that call
+  itself, not as a syscall, so the thread blocks in the kernel holding its P. A stop-the-world GC then waits for that P,
+  while the goroutine that would deliver the reply is parked. The process that serves a FUSE mount deadlocked by
+  touching it. (Directories have no poll method, so `filepath.WalkDir` was safe.) Rule for U-502b: the guest init never
+  opens a file on its own mount through `os`, or the copier lives in a process that never touches the mount. This
+  spike's guest now does every operation on the mount through raw `unix.*` syscalls.
+- Kernel B has no `IKCONFIG_PROC`. `/proc/filesystems` is the fact it gives (`proc_fs_fuse`).
+- Same run, before the hang: `walk_t0` (timeouts 0) took 30857 requests in 10.4 s, about 337 us each with 16 in flight.
+
+The open questions only the hosted run answers:
 - whether kernel B accepts the INIT reply (`mount_stat`);
 - whether readahead stays within `max_read` (`read_sha256_match`);
 - the per-request floor over Firecracker's vsock (`rtt_fstat_p50_us`).

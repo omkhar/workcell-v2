@@ -23,6 +23,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -40,7 +41,10 @@ const (
 var symbols = []string{"FUSE_FS", "VIRTIO_FS", "OVERLAY_FS", "NFS_FS", "NFS_V3", "NFS_V4", "NET_9P", "9P_FS",
 	"IKCONFIG_PROC", "VSOCKETS", "VIRTIO_VSOCKETS", "TMPFS"}
 
-var copied = make(chan error, 1) // fuse.Copy's result, once the mount ends
+var (
+	copied = make(chan error, 1) // fuse.Copy's result, once the mount ends
+	ring   = &fuse.Ring{}        // the last requests forwarded, dumped to the console
+)
 
 func main() {
 	for _, d := range []string{"/dev", "/proc", "/sys", "/tmp", mnt} {
@@ -110,37 +114,68 @@ func serve() error {
 	}
 }
 
-func run(cmd string, args []string) (out []string) {
-	defer func() {
-		if r := recover(); r != nil {
-			out = []string{relay.Pair("error", fmt.Sprint("panic: ", r))}
-		}
-	}()
+// stepLimit bounds every command: after it the guest reports what it has and moves on.
+const stepLimit = 20 * time.Second
+
+func run(cmd string, args []string) []string {
 	switch {
 	case cmd == "features":
 		return features()
 	case cmd == "mount":
-		return mountFUSE()
-	case cmd == "walk" && len(args) == 2:
-		return walk(args[0], args[1])
+		return bounded("mount_stat", func(*progress) []string { return mountFUSE() })
+	case cmd == "walk" && len(args) == 3:
+		return bounded(args[1]+"_ms", func(p *progress) []string {
+			return walk(p, args[0], args[1], time.Duration(atoi(args[2]))*time.Second)
+		})
 	case cmd == "drop":
-		return []string{result("drop_caches", dropCaches())}
+		return bounded("drop_caches", func(*progress) []string { return []string{result("drop_caches", dropCaches())} })
 	case cmd == "rtt" && len(args) == 2:
-		return rtt(args[0], atoi(args[1]))
+		return bounded("rtt_stat_p50_us", func(p *progress) []string { return rtt(p, args[0], atoi(args[1])) })
 	case cmd == "cat" && len(args) == 2:
-		return cat(args[0], atoi(args[1]))
+		return bounded("cat_ms", func(p *progress) []string { return cat(p, args[0], atoi(args[1])) })
 	case cmd == "write" && len(args) == 3:
-		return write(args[0], atoi(args[1]), args[2])
+		return bounded(args[2]+"_ms", func(p *progress) []string { return write(p, args[0], atoi(args[1]), args[2]) })
 	case cmd == "read" && len(args) == 2:
-		return read(args[0], args[1])
+		return bounded("read_mib_s", func(p *progress) []string { return read(p, args[0], args[1]) })
 	case cmd == "tmpfs":
-		return tmpfs()
+		return bounded("walk_tmpfs_ms", tmpfs)
 	case cmd == "umount":
-		return umount()
+		return bounded("umount_ms", func(*progress) []string { return umount() })
 	case cmd == "quit":
+		ring.Dump(logf)
 		return []string{relay.Pair("bye", 1)}
 	}
 	return []string{relay.Pair("error", "bad command "+cmd+" "+strings.Join(args, " "))}
+}
+
+// progress is how far a step got, for its partial report and the console.
+type progress struct{ v atomic.Value }
+
+func (p *progress) set(format string, a ...any) { p.v.Store(fmt.Sprintf(format, a...)) }
+
+// bounded runs a step for at most stepLimit. A step that has not returned by then is left
+// where it is (a syscall on the mount may never return) and reported as key=partial:<progress>.
+func bounded(key string, f func(*progress) []string) []string {
+	p := &progress{}
+	p.set("started")
+	done := make(chan []string, 1)
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				done <- []string{relay.Pair("error", fmt.Sprint("panic: ", r))}
+			}
+		}()
+		done <- f(p)
+	}()
+	select {
+	case out := <-done:
+		return out
+	case <-time.After(stepLimit):
+		s := p.v.Load().(string)
+		logf("%s partial after %v: %s", key, stepLimit, s)
+		ring.Dump(logf)
+		return []string{relay.Pair(key, "partial:"+s)}
+	}
 }
 
 func atoi(s string) int {
@@ -151,12 +186,9 @@ func atoi(s string) int {
 func features() []string {
 	var out []string
 	text, err := kernelConfig()
+	out = append(out, relay.Pair("config_gz", errno(err)))
 	for _, s := range symbols {
-		if err != nil {
-			out = append(out, relay.Err("cfg_"+s, err))
-		} else {
-			out = append(out, relay.Pair("cfg_"+s, relay.Config(text, s)))
-		}
+		out = append(out, relay.Pair("cfg_"+s, relay.Config(text, s))) // absent when there is no config
 	}
 	var u unix.Utsname
 	_ = unix.Uname(&u)
@@ -202,15 +234,19 @@ func mountFUSE() []string {
 	if err != nil || data == nil {
 		return out
 	}
-	dev := os.NewFile(uintptr(fd), "/dev/fuse") // blocking: one read(2) is one request
+	dev := os.NewFile(uintptr(fd), "/dev/fuse") // blocking, so never in the poller: one read(2) is one request
 	go func() {
-		err := fuse.Copy(dev, wire.New(data, 10*time.Second), logf)
+		err := fuse.Copy(dev, wire.New(data, 10*time.Second), ring, logf)
 		logf("fuse copy ended: %v", err)
+		ring.Dump(logf)
 		_ = data.Close()
 		copied <- err
 	}()
 	statted := make(chan error, 1)
-	go func() { _, err := os.Stat(mnt); statted <- err }()
+	go func() {
+		var st unix.Stat_t
+		statted <- unix.Stat(mnt, &st)
+	}()
 	select {
 	case err = <-statted:
 	case <-time.After(10 * time.Second):
@@ -219,84 +255,137 @@ func mountFUSE() []string {
 	return append(out, relay.Pair("mount_ms", ms(time.Since(t0))), relay.Pair("mount_stat", errno(err)))
 }
 
-// walk is filepath.WalkDir plus os.Lstat of every entry below root.
-func walk(root, key string) []string {
+// Every operation on the mount below is a raw syscall. An *os.File would add the descriptor
+// to the runtime's epoll set; on a FUSE file that is a FUSE_POLL request, made from the
+// runtime with a P held and not marked as a syscall, so this process, which also serves
+// the mount, can stop the world around it and never deliver the reply.
+
+// walk lists every directory below root with getdents and lstats every entry, depth first.
+// After limit it stops and reports how many entries it reached.
+func walk(p *progress, root, key string, limit time.Duration) []string {
 	var files, dirs, other int
 	t0 := time.Now()
-	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
-		if err != nil || path == root {
-			return err
+	buf := make([]byte, 64<<10)
+	stack := []string{root}
+	for len(stack) > 0 {
+		dir := stack[len(stack)-1]
+		stack = stack[:len(stack)-1]
+		fd, err := unix.Open(dir, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_CLOEXEC, 0)
+		if err != nil {
+			return []string{relay.Err(key+"_ms", err)}
 		}
-		fi, err := os.Lstat(path)
-		switch {
-		case err != nil:
-			return err
-		case fi.IsDir():
-			dirs++
-		case fi.Mode().IsRegular():
-			files++
-		default:
-			other++
+		var names []string
+		for {
+			n, err := unix.ReadDirent(fd, buf)
+			if err != nil {
+				_ = unix.Close(fd)
+				return []string{relay.Err(key+"_ms", err)}
+			}
+			if n <= 0 {
+				break
+			}
+			_, _, names = unix.ParseDirent(buf[:n], -1, names)
 		}
-		return nil
-	})
-	d := time.Since(t0)
-	if err != nil {
-		return []string{relay.Err(key+"_ms", err)}
+		_ = unix.Close(fd)
+		for _, name := range names {
+			var st unix.Stat_t
+			path := dir + "/" + name
+			if err := unix.Lstat(path, &st); err != nil {
+				return []string{relay.Err(key+"_ms", err)}
+			}
+			switch st.Mode & unix.S_IFMT {
+			case unix.S_IFDIR:
+				dirs++
+				stack = append(stack, path)
+			case unix.S_IFREG:
+				files++
+			default:
+				other++
+			}
+		}
+		p.set("entries=%d", files+dirs+other)
+		if limit > 0 && time.Since(t0) > limit {
+			logf("%s stopped after %v at %d entries", key, limit, files+dirs+other)
+			return []string{relay.Pair(key+"_ms", fmt.Sprintf("partial:%d", files+dirs+other)),
+				relay.Pair(key+"_partial_ms", ms(time.Since(t0)))}
+		}
 	}
+	d := time.Since(t0)
 	return []string{relay.Pair(key+"_ms", ms(d)), relay.Pair("walk_entries", files+dirs+other),
 		relay.Pair("walk_files", files), relay.Pair("walk_dirs", dirs)}
 }
 
 func dropCaches() error { return os.WriteFile("/proc/sys/vm/drop_caches", []byte("3"), 0) }
 
-// rtt is n sequential Lstat of path, then n fstat of it open: one GETATTR each with timeouts 0.
-func rtt(path string, n int) []string {
+// rtt is n sequential lstat of path, then n fstat of it open: one GETATTR each with timeouts 0.
+func rtt(p *progress, path string, n int) []string {
 	var us, fus []int64
-	for range n {
+	var st unix.Stat_t
+	for i := range n {
 		t0 := time.Now()
-		if _, err := os.Lstat(path); err != nil {
+		if err := unix.Lstat(path, &st); err != nil {
 			return []string{relay.Err("rtt_stat_p50_us", err)}
 		}
 		us = append(us, time.Since(t0).Microseconds())
+		p.set("lstat=%d", i+1)
 	}
-	f, err := os.Open(path)
+	fd, err := unix.Open(path, unix.O_RDONLY|unix.O_CLOEXEC, 0)
+	logf("rtt lstat=%d open=%s", len(us), errno(err))
+	p50, lo, hi := relay.Stats(us)
+	out := []string{relay.Pair("rtt_stat_p50_us", p50), relay.Pair("rtt_stat_min_us", lo), relay.Pair("rtt_stat_max_us", hi)}
 	if err != nil {
-		return []string{relay.Err("rtt_stat_p50_us", err)}
+		return append(out, relay.Err("rtt_fstat_p50_us", err))
 	}
-	defer f.Close()
-	for range n {
+	defer unix.Close(fd)
+	for i := range n {
 		t0 := time.Now()
-		if _, err := f.Stat(); err != nil {
-			return []string{relay.Err("rtt_fstat_p50_us", err)}
+		if err := unix.Fstat(fd, &st); err != nil {
+			return append(out, relay.Err("rtt_fstat_p50_us", err))
 		}
 		fus = append(fus, time.Since(t0).Microseconds())
+		p.set("lstat=%d open=ok fstat=%d", n, i+1)
 	}
-	p50, lo, hi := relay.Stats(us)
+	logf("rtt lstat=%d open=ok fstat=%d", n, len(fus))
 	f50, flo, fhi := relay.Stats(fus)
-	return []string{relay.Pair("rtt_stat_p50_us", p50), relay.Pair("rtt_stat_min_us", lo), relay.Pair("rtt_stat_max_us", hi),
-		relay.Pair("rtt_fstat_p50_us", f50), relay.Pair("rtt_fstat_min_us", flo), relay.Pair("rtt_fstat_max_us", fhi)}
+	return append(out, relay.Pair("rtt_fstat_p50_us", f50), relay.Pair("rtt_fstat_min_us", flo), relay.Pair("rtt_fstat_max_us", fhi))
+}
+
+// readAll reads fd to its end into h (nil: discard) with buf, and returns the bytes read.
+func readAll(fd int, buf []byte, h io.Writer) (int64, error) {
+	var total int64
+	for {
+		n, err := unix.Read(fd, buf)
+		if errors.Is(err, unix.EINTR) {
+			continue
+		}
+		if err != nil || n == 0 {
+			return total, err
+		}
+		total += int64(n)
+		if h != nil {
+			h.Write(buf[:n])
+		}
+	}
 }
 
 // cat opens, reads to the end and closes every file of the first dirs directories.
-func cat(root string, dirs int) []string {
+func cat(p *progress, root string, dirs int) []string {
 	buf := make([]byte, 4096)
 	n := 0
 	t0 := time.Now()
 	for d := range dirs {
 		for f := range 100 {
-			fh, err := os.Open(filepath.Join(root, fmt.Sprintf("d%02d/f%02d", d, f)))
+			fd, err := unix.Open(fmt.Sprintf("%s/d%02d/f%02d", root, d, f), unix.O_RDONLY|unix.O_CLOEXEC, 0)
 			if err == nil {
-				for err == nil {
-					_, err = fh.Read(buf)
-				}
-				_ = fh.Close()
+				_, err = readAll(fd, buf, nil)
+				_ = unix.Close(fd)
 			}
-			if err != io.EOF {
+			if err != nil {
 				return []string{relay.Err("cat_ms", err)}
 			}
 			n++
 		}
+		p.set("files=%d", n)
 	}
 	dt := time.Since(t0)
 	return []string{relay.Pair("cat_files", n), relay.Pair("cat_ms", ms(dt)),
@@ -310,29 +399,41 @@ func pattern(buf []byte, k int) {
 	}
 }
 
-func write(path string, mib int, key string) []string {
-	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644)
+func writeFull(fd int, b []byte) error {
+	for len(b) > 0 {
+		n, err := unix.Write(fd, b)
+		if errors.Is(err, unix.EINTR) {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		b = b[n:]
+	}
+	return nil
+}
+
+func write(p *progress, path string, mib int, key string) []string {
+	fd, err := unix.Open(path, unix.O_WRONLY|unix.O_CREAT|unix.O_TRUNC|unix.O_CLOEXEC, 0o644)
 	if err != nil {
 		return []string{relay.Err(key+"_ms", err)}
 	}
-	defer f.Close()
+	defer unix.Close(fd)
 	buf := make([]byte, 1<<20)
 	h := sha256.New()
 	t0 := time.Now()
 	for k := range mib {
 		pattern(buf, k)
 		h.Write(buf)
-		if _, err := f.Write(buf); err != nil {
+		if err := writeFull(fd, buf); err != nil {
 			return []string{relay.Err(key+"_ms", err)}
 		}
+		p.set("mib=%d", k+1)
 	}
 	dw := time.Since(t0)
 	t1 := time.Now()
-	err = f.Sync()
+	err = unix.Fsync(fd)
 	ds := time.Since(t1)
-	if err == nil {
-		err = f.Close()
-	}
 	if err != nil {
 		return []string{relay.Err(key+"_fsync_ms", err)}
 	}
@@ -341,29 +442,30 @@ func write(path string, mib int, key string) []string {
 		relay.Pair(key+"_sha256", hex.EncodeToString(h.Sum(nil)))}
 }
 
-func read(path, want string) []string {
+func read(p *progress, path, want string) []string {
 	if err := dropCaches(); err != nil {
 		return []string{relay.Err("read_mib_s", err)}
 	}
-	f, err := os.Open(path)
+	fd, err := unix.Open(path, unix.O_RDONLY|unix.O_CLOEXEC, 0)
 	if err != nil {
 		return []string{relay.Err("read_mib_s", err)}
 	}
-	defer f.Close()
+	defer unix.Close(fd)
+	p.set("open=ok")
 	h := sha256.New()
 	t0 := time.Now()
-	n, err := io.CopyBuffer(h, struct{ io.Reader }{f}, make([]byte, 1<<20))
+	n, err := readAll(fd, make([]byte, 1<<20), h)
 	d := time.Since(t0)
 	if err != nil {
-		return []string{relay.Err("read_mib_s", err)}
+		return []string{relay.Err("read_mib_s", err), relay.Pair("read_bytes", n)}
 	}
 	return []string{relay.Pair("read_bytes", n), relay.Pair("read_ms", ms(d)),
 		relay.Pair("read_mib_s", fmt.Sprintf("%.1f", float64(n)/(1<<20)/d.Seconds())),
 		relay.Pair("read_sha256_match", hex.EncodeToString(h.Sum(nil)) == want)}
 }
 
-// tmpfs is the baseline: the same tree and the same write on the guest's own tmpfs.
-func tmpfs() []string {
+// tmpfs is the baseline: the same tree, walk and write on the guest's own tmpfs.
+func tmpfs(p *progress) []string {
 	root := "/tmp/tree"
 	t0 := time.Now()
 	for d := range 100 {
@@ -379,23 +481,27 @@ func tmpfs() []string {
 		}
 	}
 	out := []string{relay.Pair("tree_tmpfs_ms", ms(time.Since(t0)))}
-	out = append(out, walk(root, "walk_tmpfs")[0])
-	w := write("/tmp/big.bin", 100, "write_tmpfs")
+	out = append(out, walk(p, root, "walk_tmpfs", 0)[0])
+	w := write(p, "/tmp/big.bin", 100, "write_tmpfs")
 	_ = os.Remove("/tmp/big.bin")
 	_ = os.RemoveAll(root)
-	for _, p := range w {
-		if strings.HasPrefix(p, "write_tmpfs_mib_s=") || strings.Contains(p, "=err:") {
-			out = append(out, p)
+	for _, s := range w {
+		if strings.HasPrefix(s, "write_tmpfs_mib_s=") || strings.Contains(s, "=err:") {
+			out = append(out, s)
 		}
 	}
 	return out
 }
 
+// umount unmounts, lazily if something still holds the mount, and waits for the copier.
 func umount() []string {
 	t0 := time.Now()
 	err := unix.Unmount(mnt, 0)
-	d := time.Since(t0)
-	out := []string{relay.Pair("umount", errno(err)), relay.Pair("umount_ms", ms(d))}
+	how := errno(err)
+	if errors.Is(err, unix.EBUSY) {
+		how = "EBUSY,detach:" + errno(unix.Unmount(mnt, unix.MNT_DETACH))
+	}
+	out := []string{relay.Pair("umount", how), relay.Pair("umount_ms", ms(time.Since(t0)))}
 	select {
 	case err := <-copied:
 		return append(out, relay.Pair("copier_exit", errno(err)))

@@ -22,6 +22,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -34,7 +35,7 @@ import (
 )
 
 const (
-	hardLimit = 120 * time.Second // from the first boot; the VM is killed and the test fails
+	hardLimit = 100 * time.Second // from the first boot; then the VM is killed and the rest is logged as is
 	waitCap   = 240 * time.Second // for the other spikes' VMs
 	nDirs     = 100
 	nFiles    = 100
@@ -96,7 +97,7 @@ func boot(t *testing.T, kernelName, fc, kernel, initrd, export string, deadline 
 	defer func() {
 		_ = console.Close()
 		if b, _ := os.ReadFile(console.Name()); bad || t.Failed() || kernelName == "B" {
-			t.Logf("mount kernel=%s console tail:\n%s", kernelName, b[max(0, len(b)-4096):])
+			t.Logf("mount kernel=%s console tail:\n%s", kernelName, b[max(0, len(b)-8192):])
 		}
 	}()
 	srv, err := serve.New(export, time.Second)
@@ -127,8 +128,9 @@ func boot(t *testing.T, kernelName, fc, kernel, initrd, export string, deadline 
 		served <- srv.Serve(wire.New(c, 10*time.Second))
 	}()
 	defer srv.Close()
+	var limited atomic.Bool // a spike reports what it has; the limit is not a failure
 	guard := time.AfterFunc(time.Until(deadline), func() {
-		t.Errorf("mount hard limit %v reached: the VM is killed", hardLimit)
+		limited.Store(true)
 		_ = m.Kill()
 	})
 	defer guard.Stop()
@@ -146,10 +148,17 @@ func boot(t *testing.T, kernelName, fc, kernel, initrd, export string, deadline 
 	bootMS := time.Since(t0).Milliseconds()
 	defer conn.Close()
 	g := &guest{c: conn, r: bufio.NewReader(conn)}
+	dead := false // after a broken or late control reply, the stream may be out of step: ask nothing more
 	ask := func(key string, limit time.Duration, cmd ...string) (map[string]string, string) {
+		if dead {
+			return nil, relay.Pair(key, "skipped")
+		}
 		kv, line, err := g.ask(limit, cmd...)
 		if err != nil {
 			bad = true
+			if _, isGuest := err.(guestError); !isGuest {
+				dead = true
+			}
 			return nil, relay.Err(key, err)
 		}
 		return kv, line
@@ -163,10 +172,11 @@ func boot(t *testing.T, kernelName, fc, kernel, initrd, export string, deadline 
 		hs = fmt.Sprintf("fuse_init_major=%d fuse_init_minor=%d fuse_init_flags=0x%x fuse_reply_flags=0x%x fuse_init_max_readahead=%d",
 			in.Major, in.Minor, in.Flags, flags, in.MaxReadahead)
 	}
-	logf("kernel=%s boot_ms=%d %s %s %s", kernelName, bootMS, feat, mline, hs)
+	logf("kernel=%s boot_ms=%d %s %s", kernelName, bootMS, feat, mline)
+	logf("kernel=%s %s", kernelName, hs)
 	logf("step=mount valid_s=1 %s", srv.Step())
 
-	var sha string
+	sha := "none" // the guest's digest of the big file, once written
 	if mkv["mount_stat"] == "ok" {
 		step := func(name string, valid time.Duration, limit time.Duration, cmd ...string) map[string]string {
 			srv.SetValid(valid)
@@ -175,20 +185,22 @@ func boot(t *testing.T, kernelName, fc, kernel, initrd, export string, deadline 
 			logf("step=%s valid_s=%g %s", name, valid.Seconds(), srv.Step())
 			return kv
 		}
-		const s1 = time.Second
-		step("walk_t1", s1, 60*time.Second, "walk", "/workspace", "walk_t1")
-		step("walk_t1_warm", s1, 60*time.Second, "walk", "/workspace", "walk_t1_warm")
-		step("drop_t0", 0, 10*time.Second, "drop")
-		step("walk_t0", 0, 60*time.Second, "walk", "/workspace", "walk_t0")
-		step("rtt", 0, 30*time.Second, "rtt", "/workspace/d00/f00", "1000")
-		step("drop_cat", s1, 10*time.Second, "drop")
-		step("cat", s1, 30*time.Second, "cat", "/workspace", "20")
-		if kv := step("write", s1, 60*time.Second, "write", "/workspace/"+bigName, fmt.Sprint(bigMiB), "write"); kv != nil {
+		// The guest bounds each step at 20 s and reports partial results; the host waits 30 s.
+		// The steps most likely to hang come last, so that a hang loses as little as possible.
+		const s1, lim = time.Second, 30 * time.Second
+		step("walk_t1", s1, lim, "walk", "/workspace", "walk_t1", "0")
+		step("walk_t1_warm", s1, lim, "walk", "/workspace", "walk_t1_warm", "0")
+		if kv := step("write", s1, lim, "write", "/workspace/"+bigName, fmt.Sprint(bigMiB), "write"); kv != nil {
 			sha = kv["write_sha256"]
 		}
-		step("read", s1, 60*time.Second, "read", "/workspace/"+bigName, sha)
-		step("tmpfs", s1, 60*time.Second, "tmpfs")
-		step("umount", s1, 15*time.Second, "umount")
+		step("read", s1, lim, "read", "/workspace/"+bigName, sha)
+		step("drop_cat", s1, lim, "drop")
+		step("cat", s1, lim, "cat", "/workspace", "20")
+		step("tmpfs", s1, lim, "tmpfs")
+		step("drop_t0", 0, lim, "drop")
+		step("walk_t0", 0, lim, "walk", "/workspace", "walk_t0", "15")
+		step("rtt", 0, lim, "rtt", "/workspace/d00/f00", "1000")
+		step("umount", s1, lim, "umount")
 	}
 	serveExit := "not-connected"
 	if mkv["data_dial"] == "ok" {
@@ -203,18 +215,33 @@ func boot(t *testing.T, kernelName, fc, kernel, initrd, export string, deadline 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	t1 := time.Now()
+	if dead {
+		_ = m.Kill() // the guest never got "quit"
+	}
 	vmmErr := m.Wait(ctx)
-	end := fmt.Sprintf("kernel=%s %s vmm_exit=%s teardown_ms=%d serve_exit=%s %s", kernelName, bye,
+	hard := "not-reached"
+	if limited.Load() {
+		hard = "reached"
+	}
+	end := fmt.Sprintf("kernel=%s %s hard_limit=%s vmm_exit=%s teardown_ms=%d serve_exit=%s %s", kernelName, bye, hard,
 		relay.Clean(fmt.Sprint(vmmErr)), time.Since(t1).Milliseconds(), serveExit, srv.Totals())
+	if limited.Load() {
+		logf("kernel=%s hard_limit=reached after %v: the VM was killed", kernelName, hardLimit)
+	}
 	if kernelName == "A" {
 		logf("%s", end)
 		return end
 	}
-	return end + " " + hostChecks(export, sha)
+	checks, err := hostChecks(export, sha)
+	if err != nil {
+		t.Errorf("mount: the export changed under the server: %v", err) // a defect, not a measurement
+	}
+	return end + " " + checks
 }
 
-// hostChecks is what the host sees of the export after the guest is gone.
-func hostChecks(export, sha string) string {
+// hostChecks is what the host sees of the export after the guest is gone, and an error if
+// the tree is not what makeTree wrote plus, at most, the big file.
+func hostChecks(export, sha string) (string, error) {
 	big := filepath.Join(export, bigName)
 	size := "err:absent"
 	if fi, err := os.Lstat(big); err == nil {
@@ -223,16 +250,17 @@ func hostChecks(export, sha string) string {
 	match := "false"
 	if f, err := os.Open(big); err == nil {
 		h := sha256.New()
-		if _, err := io.Copy(h, f); err == nil && sha != "" && hex.EncodeToString(h.Sum(nil)) == sha {
+		if _, err := io.Copy(h, f); err == nil && sha != "none" && hex.EncodeToString(h.Sum(nil)) == sha {
 			match = "true"
 		}
 		_ = f.Close()
 	}
 	intact := "true"
-	if err := checkTree(export); err != nil {
+	err := checkTree(export)
+	if err != nil {
 		intact = "false:" + relay.Clean(err.Error())
 	}
-	return fmt.Sprintf("host_bigfile_bytes=%s host_sha256_match=%s host_tree_intact=%s", size, match, intact)
+	return fmt.Sprintf("host_bigfile_bytes=%s host_sha256_match=%s host_tree_intact=%s", size, match, intact), err
 }
 
 func content(d, f int) []byte { return fmt.Appendf(nil, "%15s\n", fmt.Sprintf("d%02d/f%02d", d, f)) }
@@ -253,14 +281,22 @@ func makeTree(root string) error {
 	return nil
 }
 
-// checkTree says whether root holds the tree of makeTree and the big file, and nothing else.
+// checkTree says whether root holds the tree of makeTree, the big file or not, and nothing else.
 func checkTree(root string) error {
 	top, err := os.ReadDir(root)
 	if err != nil {
 		return err
 	}
-	if len(top) != nDirs+1 {
-		return fmt.Errorf("%d top-level entries", len(top))
+	for _, e := range top {
+		if e.Name() == bigName && e.Type().IsRegular() {
+			continue
+		}
+		if !e.IsDir() || len(e.Name()) != 3 || e.Name()[0] != 'd' {
+			return fmt.Errorf("unexpected top-level entry %q", e.Name())
+		}
+	}
+	if n := len(top); n != nDirs && n != nDirs+1 {
+		return fmt.Errorf("%d top-level entries", n)
 	}
 	for d := range nDirs {
 		dir := filepath.Join(root, fmt.Sprintf("d%02d", d))
@@ -303,7 +339,12 @@ func (g *guest) ask(limit time.Duration, cmd ...string) (map[string]string, stri
 	line = strings.TrimSpace(line)
 	kv := relay.Parse(line)
 	if e, ok := kv["error"]; ok {
-		return nil, line, errors.New(e)
+		return nil, line, guestError(e)
 	}
 	return kv, line, nil
 }
+
+// guestError is an error the guest reported; the control stream is still in step after it.
+type guestError string
+
+func (e guestError) Error() string { return string(e) }

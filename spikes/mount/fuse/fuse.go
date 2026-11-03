@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -89,6 +90,7 @@ const (
 	OpCreate      = 35
 	OpInterrupt   = 36
 	OpDestroy     = 38
+	OpPoll        = 40 // sent when a file on the mount is added to an epoll set; answered ENOSYS
 	OpBatchForget = 42
 	OpReaddirplus = 44
 	OpRename2     = 45
@@ -100,7 +102,7 @@ var opNames = map[uint32]string{OpLookup: "lookup", OpForget: "forget", OpGetatt
 	OpRmdir: "rmdir", OpRename: "rename", OpLink: "link", OpOpen: "open", OpRead: "read", OpWrite: "write",
 	OpStatfs: "statfs", OpRelease: "release", OpFsync: "fsync", OpFlush: "flush", OpInit: "init",
 	OpOpendir: "opendir", OpReaddir: "readdir", OpReleasedir: "releasedir", OpFsyncdir: "fsyncdir",
-	OpAccess: "access", OpCreate: "create", OpInterrupt: "interrupt", OpDestroy: "destroy",
+	OpAccess: "access", OpCreate: "create", OpInterrupt: "interrupt", OpDestroy: "destroy", OpPoll: "poll",
 	OpBatchForget: "batch_forget", OpReaddirplus: "readdirplus", OpRename2: "rename2"}
 
 // OpName is a short name for an opcode, or its number.
@@ -427,16 +429,47 @@ func AppendDirent(b, entry []byte, ino, off uint64, typ uint32, name string) []b
 	return append(b, make([]byte, end-len(b))...)
 }
 
+// Ring keeps the last requests Copy forwarded, for the console when something hangs.
+type Ring struct {
+	mu                sync.Mutex
+	last              [40]string
+	requests, replies int
+}
+
+func (g *Ring) add(b []byte) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.last[g.requests%len(g.last)] = fmt.Sprintf("%d %s len=%d unique=%d", g.requests, OpName(le.Uint32(b[4:])), len(b),
+		le.Uint64(b[8:]))
+	g.requests++
+}
+
+func (g *Ring) reply() {
+	g.mu.Lock()
+	g.replies++
+	g.mu.Unlock()
+}
+
+// Dump writes the ring, oldest first.
+func (g *Ring) Dump(logf func(string, ...any)) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	logf("fuse ring: requests=%d replies=%d, the last %d:", g.requests, g.replies, min(g.requests, len(g.last)))
+	for i := max(0, g.requests-len(g.last)); i < g.requests; i++ {
+		logf("fuse req %s", g.last[i%len(g.last)])
+	}
+}
+
 // Copy is the guest's whole FUSE part: each request read from dev goes to the host as
 // one frame, and each frame from the host is written to dev as one reply. It parses
-// nothing but the length and opcode it logs for the first 20 requests, and the unique of
-// a request too long for one frame, which it answers E2BIG itself. It returns when the
-// mount ends (nil) or the stream fails.
-func Copy(dev *os.File, c *wire.Conn, logf func(string, ...any)) error {
+// nothing but the header fields it records in ring, and the unique of a request too long
+// for one frame, which it answers E2BIG itself. It returns when the mount ends (nil) or
+// the stream fails. dev must be a blocking descriptor, never in the runtime's poller.
+func Copy(dev *os.File, c *wire.Conn, ring *Ring, logf func(string, ...any)) error {
 	errc := make(chan error, 2)
 	go func() {
 		buf := make([]byte, 1<<20)
-		for i := 0; ; i++ {
+		for {
 			n, err := dev.Read(buf)
 			switch {
 			case errors.Is(err, syscall.ENODEV):
@@ -452,9 +485,7 @@ func Copy(dev *os.File, c *wire.Conn, logf func(string, ...any)) error {
 				errc <- fmt.Errorf("read /dev/fuse: %w", err)
 				return
 			}
-			if i < 20 && n >= 8 {
-				logf("fuse request %d %s len=%d", i, OpName(le.Uint32(buf[4:])), n)
-			}
+			ring.add(buf[:n])
 			if n > wire.MaxPayload {
 				logf("fuse request of %d bytes answered E2BIG", n)
 				if _, err := dev.Write(Out(le.Uint64(buf[8:]), syscall.E2BIG)); err != nil {
@@ -475,8 +506,9 @@ func Copy(dev *os.File, c *wire.Conn, logf func(string, ...any)) error {
 				errc <- err
 				return
 			}
-			if _, err := dev.Write(f.Payload); err != nil && !errors.Is(err, syscall.ENOENT) {
-				logf("fuse write %v", err) // EINVAL: a reply the kernel refused
+			ring.reply()
+			if _, err := dev.Write(f.Payload); err != nil {
+				logf("fuse write %v", err) // ENOENT: the request was aborted; EINVAL: a reply the kernel refused
 			}
 		}
 	}()
