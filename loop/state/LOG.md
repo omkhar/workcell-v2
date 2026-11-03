@@ -404,3 +404,5 @@ escape/enforced.txt gained I10 (T7). Hosted gate on the third push, in a real gu
 Review: no findings. Two reviewer notes, two less-code notes and four redteam ideas in one PARKED.md line. No S14 trigger: nothing ported.
 Budget: product 6583 of 15000, test 12851 of 14874, WORKCELL_* 1 of 12 (a test canary from U-400b, not a variable), direct dependencies 3 of 15.
 Next: U-207 (workcell bench start and a P1 entry in the suite, build, env:kvm, model sonnet, deps U-204b) is the next takeable unit for the cloud; U-205 and U-303 wait on H-011, U-208 (deps U-204b, U-010) is takeable after it. The escape runner's per-test bound is 20 s and each test boots its own VM, so P1's 20 samples need their own budget in the suite entry. The claim was PR #64, which this run gives its final title.
+
+## 2026-11-03T02:32Z U-207 START mode=cloud
