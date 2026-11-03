@@ -103,11 +103,15 @@ func fetch(use func(*manifest, source) error) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	image, err := newest(filepath.Join(a.dir, "sessions"), cwd)
+	session, err := newest(filepath.Join(a.dir, "sessions"), cwd)
 	if err != nil {
 		return 0, err
 	}
+	image := filepath.Join(session, "workspace.ext4")
 	st, err := os.Stat(image)
+	if errors.Is(err, fs.ErrNotExist) { // a mount session has no image: its work is in the directory itself (ADR-005)
+		return 0, fmt.Errorf("the newest session run in %s was a mount session (--mount): the agent wrote to the directory itself, so there is nothing to bring back", cwd)
+	}
 	if err != nil {
 		return 0, err
 	}
@@ -148,7 +152,7 @@ func fetch(use func(*manifest, source) error) (int, error) {
 	return 0, err
 }
 
-// newest is the image of the newest session whose repo file names dir: the session
+// newest is the directory of the newest session whose repo file names dir: the session
 // directories sort by time.
 func newest(sessions, dir string) (string, error) {
 	ents, err := os.ReadDir(sessions)
@@ -158,7 +162,7 @@ func newest(sessions, dir string) (string, error) {
 	for i := len(ents) - 1; i >= 0; i-- {
 		b, err := os.ReadFile(filepath.Join(sessions, ents[i].Name(), "repo"))
 		if err == nil && strings.TrimSuffix(string(b), "\n") == dir {
-			return filepath.Join(sessions, ents[i].Name(), "workspace.ext4"), nil
+			return filepath.Join(sessions, ents[i].Name()), nil
 		}
 	}
 	return "", fmt.Errorf("no session has run in %s: workcell run one first", dir)

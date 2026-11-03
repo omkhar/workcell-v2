@@ -125,6 +125,9 @@ func (s *Server) op(r request) ([]byte, syscall.Errno) {
 		case r.Offset > math.MaxInt64-uint64(len(r.Data)):
 			return nil, syscall.EINVAL
 		}
+		if e := s.grow(h.fd, int64(r.Offset)+int64(len(r.Data))); e != 0 {
+			return nil, e
+		}
 		for done := 0; done < len(r.Data); {
 			n, err := unix.Pwrite(h.fd, r.Data[done:], int64(r.Offset)+int64(done))
 			if err != nil {
@@ -324,6 +327,9 @@ func (s *Server) setattr(r request) ([]byte, syscall.Errno) {
 	if a.Valid&fattrSize != 0 {
 		if l.mode == unix.S_IFDIR {
 			return nil, syscall.EISDIR
+		}
+		if e := s.grow(fd, int64(a.Size)); e != 0 {
+			return nil, e
 		}
 		if err := unix.Ftruncate(fd, int64(a.Size)); err != nil {
 			return nil, errno(err)

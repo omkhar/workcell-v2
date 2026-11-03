@@ -9,6 +9,7 @@ import (
 	"archive/tar"
 	"bufio"
 	"bytes"
+	"cmp"
 	"compress/gzip"
 	"context"
 	"crypto/sha256"
@@ -84,8 +85,12 @@ func TestConfig(t *testing.T) {
 }
 
 // inputs are the pinned binary and kernel, the initramfs built from testdata/guest or from
-// the init, and, for a guest with a root image, the image and the init's command line.
-type inputs struct{ binary, kernel, initrd, image, cmdline string }
+// the init, and, for a guest with a root image, the image and the init's command line. cpus
+// and memoryMiB size the guest; zero means 2 and 512.
+type inputs struct {
+	binary, kernel, initrd, image, cmdline string
+	cpus, memoryMiB                        int
+}
 
 // needKVM skips a test that boots a guest where it cannot.
 func needKVM(t *testing.T) {
@@ -256,7 +261,7 @@ func TestHelper(t *testing.T) {
 func (in inputs) machine(t *testing.T, dir string, console io.Writer) *Machine {
 	t.Helper()
 	m := New(vmm.Config{Binary: in.binary, Kernel: in.kernel, Initrd: in.initrd, Image: in.image, Cmdline: in.cmdline,
-		CPUs: 2, MemoryMiB: 512, CID: 3, Console: console, Dir: dir})
+		CPUs: cmp.Or(in.cpus, 2), MemoryMiB: cmp.Or(in.memoryMiB, 512), CID: 3, Console: console, Dir: dir})
 	t.Cleanup(func() { _ = m.Close() })
 	return m
 }

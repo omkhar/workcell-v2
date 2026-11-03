@@ -49,11 +49,14 @@ func unsupported(cfg Config) string {
 	return ""
 }
 
-// runArgs is the argv of one `workcell run` for a session with cfg's caps:
-// each non-zero cap as its flag before `--`, then the guest's loader shell
-// and the test's arguments.
+// runArgs is the argv of one `workcell run` for a session with cfg's mode
+// and caps: `--mount` for a live export, each non-zero cap as its flag,
+// all before `--`, then the guest's loader shell and the test's arguments.
 func runArgs(cfg Config, loader string, args ...string) []string {
 	argv := []string{"run"}
+	if cfg.Mount {
+		argv = append(argv, "--mount")
+	}
 	if cfg.CPUs != 0 {
 		argv = append(argv, "--cpus", strconv.Itoa(cfg.CPUs))
 	}

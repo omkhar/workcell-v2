@@ -325,7 +325,7 @@ func TestStreamEnd(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			fx := newFixture(t)
 			before := openFDs(t)
-			s, err := Open(fx.export)
+			s, err := Open(fx.export, testLimit)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -371,12 +371,65 @@ func TestOpen(t *testing.T) {
 		{"file", filepath.Join(fx.export, "a.txt"), false},
 		{"missing", filepath.Join(fx.export, "missing"), false},
 	} {
-		s, err := Open(tc.path)
+		s, err := Open(tc.path, testLimit)
 		if (err == nil) != tc.ok {
 			t.Errorf("%s: %v", tc.name, err)
 		}
 		if s != nil {
 			s.Close()
+		}
+	}
+}
+
+// TestGrowthCap is I10 on the export: files may grow by the cap in all, and the WRITE or
+// SETATTR that would take them past it is ENOSPC and does nothing, whether the growth is
+// bytes or a hole. Writes in place are free; shrinking gives nothing back.
+func TestGrowthCap(t *testing.T) {
+	fx := newFixture(t)
+	const limit = 100_000
+	k, stop := startCapped(t, fx.export, limit)
+	defer func() {
+		if err := stop(); err != nil {
+			t.Error(err)
+		}
+	}()
+	k.ok(reqInit(7, 37))
+	var fill, two, fhFill, fhTwo uint64
+	for _, tc := range []struct {
+		name string
+		req  func() []byte
+		want syscall.Errno
+	}{
+		{"create fill", func() []byte { return reqCreate(1, "fill", unix.O_RDWR, 0o644) }, 0},
+		{"write 60000 under the cap", func() []byte { return reqWrite(fill, fhFill, 0, make([]byte, 60000)) }, 0},
+		{"write 40000 to the cap", func() []byte { return reqWrite(fill, fhFill, 60000, make([]byte, 40000)) }, 0},
+		{"write 1 past the cap", func() []byte { return reqWrite(fill, fhFill, limit, []byte{1}) }, syscall.ENOSPC},
+		{"overwrite in place", func() []byte { return reqWrite(fill, fhFill, 0, make([]byte, 1000)) }, 0},
+		{"truncate past the cap", func() []byte { return reqSetattr(fill, fattrFh|fattrSize, fhFill, limit+1, 0) }, syscall.ENOSPC},
+		{"truncate shorter", func() []byte { return reqSetattr(fill, fattrFh|fattrSize, fhFill, 50000, 0) }, 0},
+		{"regrow after shrinking", func() []byte { return reqWrite(fill, fhFill, 50000, []byte{1}) }, syscall.ENOSPC},
+		{"create two", func() []byte { return reqCreate(1, "two", unix.O_RDWR, 0o644) }, 0},
+		{"write 1 byte at 1 TiB", func() []byte { return reqWrite(two, fhTwo, 1<<40, []byte{1}) }, syscall.ENOSPC},
+		{"truncate two to 2^62 by name", func() []byte { return reqSetattr(two, fattrSize, 0, 1<<62, 0) }, syscall.ENOSPC},
+	} {
+		e, body := k.call(tc.req())
+		if e != tc.want {
+			t.Fatalf("%s: %v, want %v", tc.name, e, tc.want)
+		}
+		switch tc.name {
+		case "create fill":
+			fill, fhFill = le.Uint64(body), le.Uint64(body[entryOutLen:])
+		case "create two":
+			two, fhTwo = le.Uint64(body), le.Uint64(body[entryOutLen:])
+		}
+	}
+	for name, want := range map[string]int64{"fill": 50000, "two": 0} {
+		st, err := os.Stat(filepath.Join(fx.export, name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if st.Size() != want {
+			t.Errorf("%s is %d bytes on the host, want %d", name, st.Size(), want)
 		}
 	}
 }

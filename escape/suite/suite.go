@@ -73,13 +73,16 @@ type Session struct {
 // runs the probe through s.Run, and says whether the invariant held.
 type Judge func(ctx context.Context, s Session) (pass bool, detail string, err error)
 
-// Want is the sandbox a test needs: an export, the caps the adapter is to
-// state (zero: the adapter's default), the names the policy allows and the
-// names it does not, whether a fresh secret is bound to the first allowed
-// name, and the repo-local policy (a workcell.toml the runner plants in the
-// export before the session starts) that the hostile repository brings.
+// Want is the sandbox a test needs: an export, whether it is the user's
+// tree served live rather than a clone (`--mount`, SPEC A5), the caps the
+// adapter is to state (zero: the adapter's default), the names the policy
+// allows and the names it does not, whether a fresh secret is bound to the
+// first allowed name, and the repo-local policy (a workcell.toml the runner
+// plants in the export before the session starts) that the hostile
+// repository brings.
 type Want struct {
 	Workspace bool
+	Mount     bool
 	CPUs      int
 	MemoryMiB int
 	DiskMiB   int

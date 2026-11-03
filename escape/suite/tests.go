@@ -65,6 +65,17 @@ var All = []Test{
 	{ID: "I1", Name: "bind-mount", Probe: mountProbe, Host: outside(nil), Want: exported},
 	{ID: "I1", Name: "open-by-handle", Probe: handleProbe, Host: outside(nil), Want: exported},
 	{ID: "I1", Name: "device-node", Probe: deviceProbe, Host: deviceJudge, Want: exported},
+	{ID: "I1", Name: "link-rename", Probe: moveProbe, Host: outside(nil), Want: exported},
+	// The same in mount mode (`--mount`): the export is the user's own tree,
+	// served live, so every name the guest utters meets the host's file
+	// service (ADR-005) and a write inside the export is correct. Only a
+	// byte beside or above it is a break.
+	{ID: "I1", Name: "mount-dotdot-traversal", Probe: traversalProbe, Host: outside(nil), Want: live},
+	{ID: "I1", Name: "mount-planted-symlink", Probe: symlinkProbe, Host: outside(plantLinks), Want: live},
+	{ID: "I1", Name: "mount-bind-mount", Probe: mountProbe, Host: outside(nil), Want: live},
+	{ID: "I1", Name: "mount-open-by-handle", Probe: handleProbe, Host: outside(nil), Want: live},
+	{ID: "I1", Name: "mount-device-node", Probe: deviceProbe, Host: deviceJudge, Want: live},
+	{ID: "I1", Name: "mount-link-rename", Probe: moveProbe, Host: outside(nil), Want: live},
 	{ID: "I7", Name: "cross-session-residue", Probe: residueProbe, Host: residueJudge, Want: exported},
 	// The guest asks for twice its cap; the host, watched from outside, must
 	// give no more than the cap.
@@ -74,6 +85,10 @@ var All = []Test{
 	{ID: "I10", Name: "descriptor-flood", Probe: fileProbe, Host: fileJudge, Want: capped},
 	{ID: "I10", Name: "log-flood", Probe: logProbe, Host: logJudge, Want: capped},
 	{ID: "I10", Name: "cpu-flood", Probe: cpuProbe, Host: cpuJudge, Want: capped},
+	// The same disk flood in mount mode: the export is the host's own tree,
+	// served live, so a byte the guest writes under it is the host's at once,
+	// and so is a size the guest sets without writing.
+	{ID: "I10", Name: "mount-disk-flood", Probe: mountDiskProbe, Host: mountDiskJudge, Want: cappedLive},
 	// A secret is bound to one allowed name. The guest hunts for its value in
 	// every process, on disk and in memory, and replays whatever credential it
 	// was given at the other allowed name.

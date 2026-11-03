@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strconv"
 	"sync"
@@ -24,6 +25,11 @@ import (
 // asks for about twice as much.
 var capped = Want{CPUs: 1, MemoryMiB: 256, DiskMiB: 64}
 
+// cappedLive is capped in mount mode: the export served live (`--mount`), so
+// a write inside it lands on the host's disk at once, and the cap must hold
+// there, not in a guest image.
+var cappedLive = Want{Workspace: true, Mount: true, CPUs: capped.CPUs, MemoryMiB: capped.MemoryMiB, DiskMiB: capped.DiskMiB}
+
 const (
 	forkCount   = 256             // processes the fork probe makes at once: about 50 MiB of page tables, stacks and slab, which a 256 MiB guest holds without thrashing
 	forkSlack   = 64              // host processes a whole session may add
@@ -31,6 +37,7 @@ const (
 	memorySlack = 128             // MiB of host memory the session may take over its cap
 	diskWrite   = 128             // MiB the disk probe writes
 	diskSlack   = 32              // MiB of host disk the session may fill over its cap
+	sparseGrow  = 4               // GiB the mount-mode disk probe grows a file to without writing it
 	fileCount   = 8192            // descriptors the descriptor probe opens
 	fileSlack   = 2048            // open file handles a whole session may add to the host
 	logWrite    = 96 << 20        // bytes the log probe streams
@@ -116,6 +123,53 @@ func diskJudge(ctx context.Context, s Session) (bool, string, error) {
 	}
 	detail := fmt.Sprintf("the host lost %d MiB of free disk while the guest, capped at %d MiB, wrote %d MiB (guest says %s: %s)", below>>20, capped.DiskMiB, diskWrite, r.Status, r.Detail)
 	return below <= int64(capped.DiskMiB+diskSlack)<<20, detail, nil
+}
+
+// mountDiskJudge is diskJudge for a live export: the probe writes twice the
+// cap under the export itself, and grows a file there far past it without
+// writing. It fails if the host lost more free disk than the cap and its
+// slack, or if a file in the export, as the host sees it, grew past them.
+// A run that did not end in the probe's own "tried" report is never a pass:
+// an error of the run is the row's error, and any other report fails the row
+// with what the guest said, so that a log shows what happened in the guest.
+func mountDiskJudge(ctx context.Context, s Session) (bool, string, error) {
+	var r Result
+	var size int64
+	var rerr error
+	below, _, err := sampledRun(hostDiskFree, func() {
+		r, _, size, rerr = sampled(s, func() (int64, error) { return exportSize(s.Workspace) },
+			s.Guest, strconv.Itoa(diskWrite), strconv.Itoa(sparseGrow))
+	})
+	if err == nil {
+		err = rerr
+	}
+	if err != nil {
+		return false, "", err
+	}
+	if r.Status != "tried" {
+		return false, fmt.Sprintf("the guest did not report its flood as tried (guest says %s: %s)", r.Status, r.Detail), nil
+	}
+	bound := int64(capped.DiskMiB+diskSlack) << 20
+	detail := fmt.Sprintf("the host lost %d MiB of free disk and a file in the export reached %d MiB while the guest, capped at %d MiB, wrote %d MiB and grew a file to %d GiB in its live export (guest says %s: %s)",
+		below>>20, size>>20, capped.DiskMiB, diskWrite, sparseGrow, r.Status, r.Detail)
+	return below <= bound && size <= bound, detail, nil
+}
+
+// exportSize is the largest apparent size of a file directly in the export,
+// as the host sees it: what a sparse growth costs the host in a quota or a
+// later copy, though not in free disk.
+func exportSize(dir string) (int64, error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return 0, err
+	}
+	var size int64
+	for _, e := range entries {
+		if st, err := e.Info(); err == nil && st.Mode().IsRegular() {
+			size = max(size, st.Size())
+		}
+	}
+	return size, nil
 }
 
 // fileJudge fails if the guest's open descriptors count as the host's.
@@ -248,19 +302,78 @@ func diskProbe(args []string) Result {
 	}
 	os.Remove(f.Name())
 	defer f.Close()
+	detail := fill(f, mib) + " in " + dir
+	time.Sleep(hold)
+	return Result{Status: "tried", Detail: detail}
+}
+
+// fill writes mib MiB to f a MiB at a time, stops at the first error, syncs,
+// and says how far it got.
+func fill(f *os.File, mib int) string {
 	chunk := bytes.Repeat([]byte{0x5a}, 1<<20)
 	wrote := 0
+	var err error
 	for ; wrote < mib; wrote++ {
 		if _, err = f.Write(chunk); err != nil {
 			break
 		}
 	}
 	f.Sync()
-	time.Sleep(hold)
-	detail := fmt.Sprintf("wrote=%d of %d MiB in %s", wrote, mib, dir)
+	detail := fmt.Sprintf("wrote=%d of %d MiB", wrote, mib)
 	if err != nil {
 		detail += " err=" + short(err)
 	}
+	return detail
+}
+
+// mountDiskProbe is diskProbe for a live export: in the export at args[0] it
+// grows a file to args[2] GiB without writing it, by ftruncate and then by a
+// byte at the end, then writes args[1] MiB to a second file, syncs, holds
+// both for the judge's samples, and removes them. The growth comes first so
+// that it is judged on its own, not as what a byte count of the writes left.
+func mountDiskProbe(args []string) Result {
+	if len(args) != 3 {
+		return Result{Status: "error", Detail: "want export, MiB and GiB"}
+	}
+	mib, err := strconv.Atoi(args[1])
+	if err != nil {
+		return Result{Status: "error", Detail: err.Error()}
+	}
+	gib, err := strconv.Atoi(args[2])
+	if err != nil {
+		return Result{Status: "error", Detail: err.Error()}
+	}
+	sparse, err := os.Create(filepath.Join(args[0], "escape-sparse"))
+	if err != nil {
+		return Result{Status: "error", Detail: "create in export: " + short(err)}
+	}
+	defer os.Remove(sparse.Name())
+	defer sparse.Close()
+	end := int64(gib) << 30
+	detail := "truncate="
+	if err := sparse.Truncate(end); err != nil {
+		detail += short(err)
+	} else {
+		detail += "ok"
+	}
+	detail += " pwrite="
+	if _, err := sparse.WriteAt([]byte{1}, end-1); err != nil {
+		detail += short(err)
+	} else {
+		detail += "ok"
+	}
+	sparse.Sync()
+	if st, err := sparse.Stat(); err == nil {
+		detail += fmt.Sprintf(" size=%dMiB", st.Size()>>20)
+	}
+	full, err := os.Create(filepath.Join(args[0], "escape-fill"))
+	if err != nil {
+		return Result{Status: "tried", Detail: detail + " create: " + short(err)}
+	}
+	defer os.Remove(full.Name())
+	defer full.Close()
+	detail += " " + fill(full, mib)
+	time.Sleep(hold)
 	return Result{Status: "tried", Detail: detail}
 }
 

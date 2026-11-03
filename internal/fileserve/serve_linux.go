@@ -88,18 +88,24 @@ type Server struct {
 	// where one may close (FORGET, RELEASE, Close) or where the tree changes shape (RENAME), so
 	// no request can use a reused descriptor number or see a half-moved node.
 	life sync.RWMutex
-	mu   sync.Mutex // nodes, index, fhs, every node's fields, fds
+	mu   sync.Mutex // nodes, index, fhs, every node's fields, fds, grown
 	// nodes, index and fhs are the tables the (handle, name) grammar indexes.
 	nodes          map[uint64]*node
 	index          map[key]*node
 	fhs            map[uint64]*handle
 	nextID, nextFH uint64
 	fds            int
+	// grown is how far files in the export have been made longer this session, by WRITE past
+	// the end or SETATTR size, and limit is its cap in bytes (I10): ENOSPC beyond. Shrinking
+	// and unlinking give nothing back, so the host loses at most limit however the guest
+	// mixes them, as a clone's image is fixed-size.
+	grown, limit int64
 }
 
 // Open prepares to serve dir, the export, which must be a directory and not a symbolic
-// link. From here on the export is the descriptor; the path is never used again.
-func Open(dir string) (*Server, error) {
+// link, letting its files grow by limit bytes in all. From here on the export is the
+// descriptor; the path is never used again.
+func Open(dir string, limit int64) (*Server, error) {
 	fd, err := unix.Open(dir, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
 	if err != nil {
 		return nil, fmt.Errorf("open export %s: %w", dir, err)
@@ -111,7 +117,27 @@ func Open(dir string) (*Server, error) {
 	}
 	root := &node{id: rootID, ino: st.Ino, dev: st.Dev, mode: unix.S_IFDIR, fd: fd, nlookup: 1}
 	return &Server{nodes: map[uint64]*node{rootID: root}, index: map[key]*node{}, fhs: map[uint64]*handle{},
-		nextID: rootID, fds: 1}, nil
+		nextID: rootID, fds: 1, limit: limit}, nil
+}
+
+// grow charges the file open on fd for reaching end bytes long, before it does, and is
+// ENOSPC once that would take the export past its limit. A request in flight beside another
+// on the same file charges as if alone: never less than the growth.
+func (s *Server) grow(fd int, end int64) syscall.Errno {
+	var st unix.Stat_t
+	if err := unix.Fstat(fd, &st); err != nil {
+		return errno(err)
+	}
+	if end <= st.Size {
+		return 0
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if end-st.Size > s.limit-s.grown {
+		return syscall.ENOSPC
+	}
+	s.grown += end - st.Size
+	return 0
 }
 
 // Close releases every descriptor. Serve calls it when it returns; a Server that was never
