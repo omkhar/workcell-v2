@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/omkhar/workcell/v2/internal/guest"
+	"github.com/omkhar/workcell/v2/internal/relay"
 	"github.com/omkhar/workcell/v2/internal/vmm"
 	"github.com/omkhar/workcell/v2/internal/vmm/firecracker"
 	"github.com/omkhar/workcell/v2/internal/wire"
@@ -86,7 +87,7 @@ func session(argv []string, caps limits, a artifacts) (int, error) {
 	}
 	window := make(chan struct{}, guest.StdinWindow) // one token per Stdin frame the init has not acknowledged
 	done := make(chan result, 1)
-	go relay(c, window, done)
+	go output(c, window, done)
 	chunks := make(chan []byte)
 	go readStdin(window, chunks, tty)
 
@@ -134,25 +135,46 @@ func boot(a artifacts, caps limits, sigs <-chan os.Signal) (*booted, int, error)
 		return nil, 0, err
 	}
 	console := &tail{}
+	// No allowlist yet, so no TCP port is relayed: the guest relays UDP 53 alone (U-303).
 	m := firecracker.New(vmm.Config{Binary: a.firecracker, Kernel: a.kernel, Initrd: a.initrd, Image: a.image,
-		Cmdline: caps.cmdline(), CPUs: caps.CPUs, MemoryMiB: caps.MemoryMiB, CID: 3, Console: console, Dir: dir})
+		Cmdline: caps.cmdline() + " " + portsArg(nil), CPUs: caps.CPUs, MemoryMiB: caps.MemoryMiB, CID: 3, Console: console, Dir: dir})
 	closeAll := func() { m.Close(); os.RemoveAll(dir) } // kills the VM on every path out
 	ln, err := m.Listen(guest.Port)
 	if err != nil {
 		closeAll()
 		return nil, 0, err
 	}
+	streams, err := m.Listen(relay.Port)
+	if err != nil {
+		closeAll()
+		return nil, 0, err
+	}
+	go serveRelay(streams) // until Close closes the listener
 	start := time.Now()
 	if err := m.Start(context.Background()); err != nil {
 		closeAll()
 		return nil, 0, err
 	}
-	raw, code, err := accept(ln, m, sigs, console)
+	raw, code, err := accept(once{ln}, m, sigs, console)
 	if raw == nil {
 		closeAll()
 		return nil, code, err
 	}
 	return &booted{conn: raw, took: time.Since(start), close: func() { raw.Close(); closeAll() }}, 0, nil
+}
+
+// once is the channel's listener: it takes exactly one connection, the init's, then closes,
+// which unlinks the socket, so Firecracker refuses every later guest connection to the port
+// instead of the host kernel queuing each one, and whatever the guest writes on it, for the
+// whole session (I12).
+type once struct{ net.Listener }
+
+func (l once) Accept() (net.Conn, error) {
+	c, err := l.Listener.Accept()
+	if err == nil {
+		_ = l.Listener.Close()
+	}
+	return c, err
 }
 
 // accept waits for the guest to dial in. A guest that never does is reported with the end
@@ -190,10 +212,10 @@ type result struct {
 	err  error
 }
 
-// relay passes the guest's output to the host's stdout and stderr and gives back a window
+// output passes the guest's output to the host's stdout and stderr and gives back a window
 // slot for every Ack, until the command's Exit or an error ends the session. It decodes
 // bytes the guest chose, so every payload is checked.
-func relay(c *wire.Conn, window chan struct{}, done chan<- result) {
+func output(c *wire.Conn, window chan struct{}, done chan<- result) {
 	for {
 		f, err := c.ReadFrame()
 		if err != nil {

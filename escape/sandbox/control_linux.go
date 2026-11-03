@@ -38,6 +38,7 @@ type control struct {
 	env       []string // what a naive sandbox exports to the guest: the real secret
 	helpers   map[string]*exec.Cmd
 	ln        *net.UnixListener // the host end of the channel
+	relay     *naiveRelay       // the host end of the relay
 }
 
 // helperNames are the session's helpers. Control starts them on first use,
@@ -67,6 +68,12 @@ func (c *control) Start(_ context.Context, cfg Config) (string, error) {
 		return "", fmt.Errorf("control: open the channel: %w", err)
 	}
 	c.ln = ln.(*net.UnixListener)
+	rl, err := net.Listen("unix", filepath.Join(dir, "relay"))
+	if err != nil {
+		return "", fmt.Errorf("control: open the relay: %w", err)
+	}
+	c.relay = &naiveRelay{ln: rl}
+	go c.relay.serve()
 	if sec := cfg.Secret; sec != nil {
 		// The naive way: the real value in the environment, and in a dotenv
 		// file in the workspace for tools that read one.
@@ -248,6 +255,10 @@ func (c *control) Channel(context.Context) (Channel, error) {
 	return Channel{Addr: "unix:" + c.ln.Addr().String()}, nil
 }
 
+func (c *control) Relay(context.Context) (Channel, error) {
+	return Channel{Addr: "unix:" + c.relay.ln.Addr().String()}, nil
+}
+
 // startHelpers starts one payload process per helper name, once.
 func (c *control) startHelpers() error {
 	if c.helpers != nil {
@@ -332,6 +343,9 @@ func (c *control) Stop() error {
 	}
 	if c.ln != nil {
 		c.ln.Close()
+	}
+	if c.relay != nil {
+		c.relay.stop()
 	}
 	return os.RemoveAll(c.dir)
 }

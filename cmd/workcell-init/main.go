@@ -34,8 +34,11 @@ func main() {
 		fmt.Fprintln(os.Stderr, "workcell-init: must run as PID 1 of a guest")
 		os.Exit(1)
 	}
-	err := setup()
+	cmdline, err := setup()
 	if err == nil {
+		if nerr := network(cmdline); nerr != nil { // the guest then has no network, which is the safe side
+			fmt.Fprintln(os.Stderr, "workcell-init: network:", nerr)
+		}
 		err = serve()
 	}
 	fmt.Fprintln(os.Stderr, "workcell-init:", err)
@@ -45,8 +48,8 @@ func main() {
 // setup mounts what commands expect. A mount that is there already is fine. When the host
 // put root= on the kernel command line, the image it names becomes the root, and a failure
 // to make it so is fatal: the console then says why. Without root= the initramfs stays the
-// root.
-func setup() error {
+// root. It returns the kernel command line for what comes after.
+func setup() (string, error) {
 	for _, d := range []string{"/dev", "/proc", "/sys"} {
 		_ = os.MkdirAll(d, 0o755)
 	}
@@ -62,17 +65,17 @@ func setup() error {
 	mount("sysfs", "/sys", "sysfs", "")
 	cmdline, err := os.ReadFile("/proc/cmdline")
 	if err != nil {
-		return err
+		return "", err
 	}
 	disk := diskMiB(string(cmdline))
 	if dev := rootDevice(string(cmdline)); dev != "" {
 		if err := switchRoot(dev, disk); err != nil {
-			return err
+			return "", err
 		}
 	}
 	_ = os.MkdirAll("/tmp", 0o755)
 	mount("tmpfs", "/tmp", "tmpfs", tmpfsSize(disk))
-	return nil
+	return string(cmdline), nil
 }
 
 func mount(src, dir, fs, data string) {
@@ -81,23 +84,25 @@ func mount(src, dir, fs, data string) {
 	}
 }
 
-// connect dials the host (CID 2). The device may still be probing when the guest starts,
-// so it retries for 5 s. The socket is non-blocking so that wire's deadlines work on it.
-func connect() (*os.File, error) {
+// dial connects to the host (CID 2) on port. The device may still be probing when the guest
+// starts, so the channel's dial retries for a while; a relayed stream's does not. The socket
+// is non-blocking so that deadlines work on it.
+func dial(port uint32, retry time.Duration) (*os.File, error) {
 	var err error
-	for end := time.Now().Add(5 * time.Second); time.Now().Before(end); time.Sleep(20 * time.Millisecond) {
+	for end := time.Now().Add(retry); ; time.Sleep(20 * time.Millisecond) {
 		var fd int
-		if fd, err = unix.Socket(unix.AF_VSOCK, unix.SOCK_STREAM|unix.SOCK_CLOEXEC, 0); err != nil {
-			continue
-		}
-		if err = unix.Connect(fd, &unix.SockaddrVM{CID: unix.VMADDR_CID_HOST, Port: guest.Port}); err == nil {
-			if err = unix.SetNonblock(fd, true); err == nil {
-				return os.NewFile(uintptr(fd), "vsock"), nil
+		if fd, err = unix.Socket(unix.AF_VSOCK, unix.SOCK_STREAM|unix.SOCK_CLOEXEC, 0); err == nil {
+			if err = unix.Connect(fd, &unix.SockaddrVM{CID: unix.VMADDR_CID_HOST, Port: port}); err == nil {
+				if err = unix.SetNonblock(fd, true); err == nil {
+					return os.NewFile(uintptr(fd), "vsock"), nil
+				}
 			}
+			_ = unix.Close(fd)
 		}
-		_ = unix.Close(fd)
+		if !time.Now().Before(end) {
+			return nil, fmt.Errorf("vsock connect: %w", err)
+		}
 	}
-	return nil, fmt.Errorf("vsock connect: %w", err)
 }
 
 // server is the one connection to the host. Output goroutines and the main loop share the
@@ -117,7 +122,7 @@ func (s *server) send(typ uint8, payload []byte) error {
 // serve runs the host's commands until the host does something a host never does.
 func serve() error {
 	r := newReaper()
-	f, err := connect()
+	f, err := dial(guest.Port, 5*time.Second)
 	if err != nil {
 		return err
 	}

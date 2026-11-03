@@ -22,6 +22,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 )
 
@@ -135,11 +136,18 @@ func hostileTLS() *tls.Config {
 	return &tls.Config{InsecureSkipVerify: true, ServerName: "dns.invalid"} //nolint:gosec // the probe is the attacker
 }
 
-// dialFailed turns a dial error into the result dialProbe reports for it.
+// dialFailed turns a dial error into the result dialProbe reports for it:
+// no route, a refusal (the guest kernel's own RST under ADR-003), a reset,
+// or a timeout.
 func dialFailed(err error) Result {
 	var ne net.Error
-	if errors.As(err, &ne) && ne.Timeout() {
+	switch {
+	case errors.As(err, &ne) && ne.Timeout():
 		return Result{Status: "timeout", Detail: err.Error()}
+	case errors.Is(err, syscall.ECONNREFUSED):
+		return Result{Status: "refused", Detail: err.Error()}
+	case errors.Is(err, syscall.ECONNRESET):
+		return Result{Status: "reset", Detail: err.Error()}
 	}
 	return Result{Status: "unreachable", Detail: err.Error()}
 }

@@ -107,6 +107,10 @@ func (*workcell) Helper(context.Context, string) (int, error)     { return 0, Er
 // CID 2, port 5000. Nothing else of the channel is known here; a probe finds
 // the init's connection by that peer and may dial the same port afresh.
 func (*workcell) Channel(context.Context) (Channel, error) { return Channel{Addr: "vsock:2:5000"}, nil }
+
+// Relay is where the guest's init opens one vsock stream per relayed
+// connection (ADR-003): the host's CID 2, port 5001.
+func (*workcell) Relay(context.Context) (Channel, error) { return Channel{Addr: "vsock:2:5001"}, nil }
 func (*workcell) Update(context.Context, UpdateConfig) ([]byte, error) {
 	return nil, ErrNotImplemented
 }

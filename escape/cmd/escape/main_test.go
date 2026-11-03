@@ -38,6 +38,9 @@ func (f *fake) Audit(context.Context) (string, []string, error) {
 }
 func (f *fake) Verify(context.Context) error                { return sandbox.ErrNotImplemented }
 func (f *fake) Helper(context.Context, string) (int, error) { return 0, sandbox.ErrNotImplemented }
+func (f *fake) Relay(context.Context) (sandbox.Channel, error) {
+	return sandbox.Channel{}, sandbox.ErrNotImplemented
+}
 func (f *fake) Channel(context.Context) (sandbox.Channel, error) {
 	return sandbox.Channel{}, sandbox.ErrNotImplemented
 }

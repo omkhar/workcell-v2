@@ -1,11 +1,20 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Omkhar Arasaratnam
 
+//go:build linux
+
 package main
 
 import (
+	"errors"
+	"io"
+	"net"
+	"os"
+	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
+	"time"
 )
 
 func TestLastLines(t *testing.T) {
@@ -39,5 +48,57 @@ func TestTailIsBounded(t *testing.T) {
 	_, _ = c.Write([]byte("end"))
 	if b := c.bytes(); len(b) != 4096 || !strings.HasSuffix(string(b), "xend") {
 		t.Errorf("tail holds %d bytes ending %q, want 4096 ending xend", len(b), b[len(b)-4:])
+	}
+}
+
+// TestOnceTakesOneConnection is the regression test for the channel connect flood (I12): once the
+// init's connection is in, a later connection to the port is refused rather than queued on the
+// host with whatever the guest writes on it, and the first one goes on working.
+func TestOnceTakesOneConnection(t *testing.T) {
+	addr := filepath.Join(t.TempDir(), "vsock_5000")
+	raw, err := net.Listen("unix", addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ln := once{raw}
+	defer ln.Close()
+	first, err := net.Dial("unix", addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer first.Close()
+	queued, err := net.Dial("unix", addr) // in the backlog before the host accepts
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer queued.Close()
+	conn, err := ln.Accept()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+
+	if c, err := net.Dial("unix", addr); !errors.Is(err, syscall.ENOENT) {
+		t.Errorf("a connection after the first Accept: %v, want ENOENT", err)
+		if err == nil {
+			_ = c.Close()
+		}
+	}
+	if _, err := os.Stat(addr); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("the socket %s after the first Accept: %v, want gone", addr, err)
+	}
+	if err := queued.SetReadDeadline(time.Now().Add(2 * time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := queued.Read(make([]byte, 1)); err == nil || errors.Is(err, os.ErrDeadlineExceeded) {
+		t.Errorf("the connection queued before the first Accept still stands: %v", err)
+	}
+	if _, err := ln.Accept(); err == nil {
+		t.Error("a second Accept returned a connection")
+	}
+	go func() { _, _ = first.Write([]byte("hi")) }()
+	got := make([]byte, 2)
+	if _, err := io.ReadFull(conn, got); err != nil || string(got) != "hi" {
+		t.Errorf("the first connection after the listener closed: %q, %v", got, err)
 	}
 }

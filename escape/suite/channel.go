@@ -12,6 +12,8 @@ import (
 	"slices"
 	"sync"
 	"time"
+
+	"github.com/omkhar/workcell/v2/escape/sandbox"
 )
 
 // SPEC I12. Root in the guest reaches the host end of the channel two ways:
@@ -264,16 +266,27 @@ func channelRun(ctx context.Context, s Session, addr, kind string) (int, string,
 		return 0, "", err
 	}
 	say := fmt.Sprintf("%s: exit %d after %s", kind, out.Exit, took)
+	if why := hostFault(out); why != "" {
+		return out.Exit, say + ": " + why, nil
+	}
+	if !slices.Contains(allowed[kind], out.Exit) {
+		return out.Exit, fmt.Sprintf("%s, want one of %v: %s", say, allowed[kind], firstLine(out.Stderr)), nil
+	}
+	return out.Exit, "", nil
+}
+
+// hostFault says how the host process fell short of I12 on a run, by its
+// exit status and stderr: it crashed, or it wrote control bytes raw. It is
+// "" when it did neither.
+func hostFault(out sandbox.Output) string {
 	line := firstLine(out.Stderr)
 	switch {
 	case out.Exit == 2 || bytes.Contains(out.Stderr, []byte("panic:")) || bytes.Contains(out.Stderr, []byte("fatal error:")):
-		return out.Exit, fmt.Sprintf("%s: the host process crashed: %s", say, line), nil
+		return "the host process crashed: " + line
 	case control(out.Stderr) > 0:
-		return out.Exit, fmt.Sprintf("%s: the host wrote %d control bytes to its stderr: %q", say, control(out.Stderr), line), nil
-	case !slices.Contains(allowed[kind], out.Exit):
-		return out.Exit, fmt.Sprintf("%s, want one of %v: %s", say, allowed[kind], line), nil
+		return fmt.Sprintf("the host wrote %d control bytes to its stderr: %q", control(out.Stderr), line)
 	}
-	return out.Exit, "", nil
+	return ""
 }
 
 // control counts the bytes of b that would steer a terminal rather than show.

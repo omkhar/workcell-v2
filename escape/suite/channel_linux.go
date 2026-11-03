@@ -6,6 +6,7 @@ package suite
 import (
 	"errors"
 	"fmt"
+	"io"
 	"strconv"
 	"strings"
 	"time"
@@ -43,6 +44,32 @@ func (c *rawConn) write(b []byte, wait time.Duration) (int, error) {
 		sent += n
 	}
 	return sent, nil
+}
+
+// read waits at most wait for the peer to write or to close, and returns what
+// it wrote, io.EOF when it closed, and errHeld when it did neither.
+func (c *rawConn) read(b []byte, wait time.Duration) (int, error) {
+	by := time.Now().Add(wait)
+	for {
+		left := time.Until(by)
+		if left <= 0 {
+			return 0, errHeld
+		}
+		fds := []unix.PollFd{{Fd: int32(c.fd), Events: unix.POLLIN}}
+		if _, err := unix.Poll(fds, int(left/time.Millisecond)+1); err != nil && err != unix.EINTR {
+			return 0, err
+		}
+		n, err := unix.Read(c.fd, b)
+		switch {
+		case err == unix.EAGAIN || err == unix.EINTR:
+			continue
+		case err != nil:
+			return 0, err
+		case n == 0:
+			return 0, io.EOF
+		}
+		return n, nil
+	}
 }
 
 // shutdown closes the socket's write side, or both sides, for every holder

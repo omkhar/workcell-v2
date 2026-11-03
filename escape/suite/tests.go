@@ -5,6 +5,7 @@ package suite
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
@@ -12,6 +13,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -28,12 +30,25 @@ var All = []Test{
 	{ID: "I2", Name: "udp4-datagram", Probe: udpProbe, Host: udpCanary(lineToken)},
 	{ID: "I2", Name: "quic-initial", Probe: quicProbe, Host: udpCanary(quicToken)},
 	{ID: "I2", Name: "icmp-echo", Probe: icmpProbe, Host: icmpJudge},
+	// Root in the guest skips the init and speaks the relay's own header to
+	// the host end (ADR-003), naming the canary as TCP, as UDP, under a
+	// version or proto the host does not serve; and offers a header that
+	// never completes, in one short write or a byte at a time.
+	{ID: "I2", Name: "relay-header-tcp", Probe: relayProbe, Host: relayCanary("tcp4", hostAddr+":0", "tcp")},
+	{ID: "I2", Name: "relay-header-udp", Probe: relayProbe, Host: relayCanary("udp4", hostAddr+":0", "udp")},
+	{ID: "I2", Name: "relay-header-bad-version", Probe: relayProbe, Host: relayCanary("tcp4", hostAddr+":0", "version-0", "version-2")},
+	{ID: "I2", Name: "relay-header-bad-proto", Probe: relayProbe, Host: relayCanary("tcp4", hostAddr+":0", "proto-0", "proto-1")},
+	{ID: "I12", Name: "relay-short-header", Probe: relayProbe, Host: relayHeld("short"), Bound: relayBound},
+	{ID: "I12", Name: "relay-slow-header", Probe: relayProbe, Host: relayHeld("slow"), Bound: relayBound},
 	// A real guest's 127.0.0.1 is its own loopback. The host's loopback services
 	// it could reach are those bound to every host address, dialled as the host.
 	{ID: "I4", Name: "host-loopback-tcp4", Probe: dialProbe, Host: tcpCanary("tcp4", "0.0.0.0:0", hostAddr)},
 	{ID: "I4", Name: "lan-rfc1918-tcp4", Probe: dialProbe, Host: onLoopback("10.255.255.254", tcpCanary("tcp4", "10.255.255.254:0", ""))},
 	{ID: "I4", Name: "link-local-tcp4", Probe: dialProbe, Host: onLoopback("169.254.1.1", tcpCanary("tcp4", "169.254.1.1:0", ""))},
 	{ID: "I4", Name: "metadata-tcp4", Probe: dialProbe, Host: onLoopback("169.254.169.254", tcpCanary("tcp4", "169.254.169.254:0", ""))},
+	// The relay header names the host's own loopback and the metadata address.
+	{ID: "I4", Name: "relay-header-host-loopback", Probe: relayProbe, Host: relayCanary("tcp4", "127.0.0.1:0", "tcp")},
+	{ID: "I4", Name: "relay-header-metadata", Probe: relayProbe, Host: onLoopback("169.254.169.254", relayCanary("tcp4", "169.254.169.254:0", "tcp"))},
 	// DNS for a name no policy allows, sent past the guest's resolver straight to
 	// a host-side capture: as plain DNS, as DoT, as DoH, and as a tunnel.
 	{ID: "I3", Name: "direct-resolver-udp4", Probe: dnsUDPProbe, Host: dnsCanary(dnsOverUDP, queried)},
@@ -153,7 +168,23 @@ func dialProbe(args []string) Result {
 	if _, err := fmt.Fprintln(c, args[1]); err != nil {
 		return Result{Status: "connected-write-failed", Detail: err.Error()}
 	}
-	return Result{Status: "connected", Detail: "to " + args[0]}
+	return answered(c, "to "+args[0])
+}
+
+// answered says what the far end did after the token went: closed the
+// connection, answered on it, or held it open. With every address local to
+// the guest (ADR-003) a completed connect proves nothing by itself; only the
+// canary's catch does.
+func answered(c net.Conn, where string) Result {
+	c.SetReadDeadline(time.Now().Add(2 * time.Second))
+	n, err := c.Read(make([]byte, 64))
+	switch {
+	case n > 0:
+		return Result{Status: "answered", Detail: fmt.Sprintf("%s, %d bytes came back", where, n)}
+	case errors.Is(err, os.ErrDeadlineExceeded):
+		return Result{Status: "connected-held", Detail: where + ", held open 2s without an answer"}
+	}
+	return Result{Status: "connected-closed", Detail: where + ", then closed: " + err.Error()}
 }
 
 // udpProbe sends the token args[1] as a datagram line to args[0].
@@ -219,10 +250,115 @@ func resolve(addr string) (string, error) {
 	return "", errors.New("the host has no non-loopback IPv4 address for a canary")
 }
 
+// trap is a canary: a listener on the host that keeps what every connection
+// (its first line) or every datagram delivered. What arrived is the proof of
+// reach; the guest's word is not.
+type trap struct {
+	ln   net.Listener
+	pc   net.PacketConn
+	mu   sync.Mutex
+	got  [][]byte
+	wg   sync.WaitGroup
+	done bool
+}
+
+// listenTrap starts a trap on network ("tcp4", "tcp6" or "udp4") at addr.
+func listenTrap(network, addr string) (*trap, error) {
+	t := &trap{}
+	var err error
+	if strings.HasPrefix(network, "udp") {
+		t.pc, err = net.ListenPacket(network, addr)
+	} else {
+		t.ln, err = net.Listen(network, addr)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("canary listener: %w", err)
+	}
+	t.wg.Go(t.serve)
+	return t, nil
+}
+
+func (t *trap) serve() {
+	if t.pc != nil {
+		buf := make([]byte, 2048)
+		for {
+			n, _, err := t.pc.ReadFrom(buf)
+			if err != nil {
+				return
+			}
+			t.keep(bytes.Clone(buf[:n]))
+		}
+	}
+	for {
+		c, err := t.ln.Accept()
+		if err != nil {
+			return
+		}
+		c.SetDeadline(time.Now().Add(2 * time.Second))
+		line, _ := bufio.NewReaderSize(c, 128).ReadString('\n')
+		c.Close()
+		t.keep([]byte(line))
+	}
+}
+
+func (t *trap) keep(b []byte) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.got = append(t.got, b)
+}
+
+// addr is where the trap listens.
+func (t *trap) addr() string {
+	if t.pc != nil {
+		return t.pc.LocalAddr().String()
+	}
+	return t.ln.Addr().String()
+}
+
+// stop closes the trap, after a moment for a datagram still in flight on
+// loopback, and returns everything that arrived.
+func (t *trap) stop() [][]byte {
+	t.mu.Lock()
+	done := t.done
+	t.done = true
+	t.mu.Unlock()
+	if !done {
+		if t.pc != nil {
+			time.Sleep(200 * time.Millisecond)
+			t.pc.Close()
+		} else {
+			t.ln.Close()
+		}
+	}
+	t.wg.Wait()
+	return t.got
+}
+
+// verdict judges a trap's catch. A connection or datagram carrying the token
+// is proof that the guest reached the canary; on a stream canary so is any
+// connection at all; a stray datagram from elsewhere on the host is not.
+func verdict(got [][]byte, carries func([]byte, string) bool, want, target string, stream bool, say string) (bool, string) {
+	hits := 0
+	for _, b := range got {
+		if carries(b, want) {
+			hits++
+		}
+	}
+	switch {
+	case hits > 0:
+		return false, fmt.Sprintf("the guest reached the canary at %s and delivered its token, %d times (%s)", target, hits, say)
+	case stream && len(got) > 0:
+		return false, fmt.Sprintf("the guest connected to the canary at %s, %d times (%s)", target, len(got), say)
+	}
+	return true, fmt.Sprintf("nothing from the guest reached the canary at %s (%d others; %s)", target, len(got), say)
+}
+
+// says is a guest's result as a judge quotes it.
+func says(r Result) string { return fmt.Sprintf("guest says %s: %s", r.Status, r.Detail) }
+
 // tcpCanary listens on addr and has the guest dial it, as dialHost when that is
 // set (another address or spelling that reaches the same listener), else as
-// the listener's own address. The invariant holds only if nothing arrives and
-// the guest does not claim a connection.
+// the listener's own address. The invariant holds only if nothing arrives.
 func tcpCanary(network, addr, dialHost string) Judge {
 	return func(ctx context.Context, s Session) (bool, string, error) {
 		addr, err := resolve(addr)
@@ -232,46 +368,24 @@ func tcpCanary(network, addr, dialHost string) Judge {
 		if err != nil {
 			return false, "", err
 		}
-		ln, err := net.Listen(network, addr)
+		t, err := listenTrap(network, addr)
 		if err != nil {
-			return false, "", fmt.Errorf("canary listener: %w", err)
+			return false, "", err
 		}
-		defer ln.Close()
-		want := newToken()
-		var got []string
-		var wg sync.WaitGroup
-		wg.Go(func() {
-			for {
-				c, err := ln.Accept()
-				if err != nil {
-					return
-				}
-				c.SetDeadline(time.Now().Add(2 * time.Second))
-				line, _ := bufio.NewReaderSize(c, 128).ReadString('\n')
-				c.Close()
-				got = append(got, line)
-			}
-		})
-		target := ln.Addr().String()
+		defer t.stop()
+		target := t.addr()
 		if dialHost != "" {
 			_, port, _ := net.SplitHostPort(target)
 			target = net.JoinHostPort(dialHost, port)
 		}
+		want := newToken()
 		r, err := s.Run(target, want)
-		ln.Close()
-		wg.Wait()
+		got := t.stop()
 		if err != nil {
 			return false, "", err
 		}
-		for _, line := range got {
-			if line == want+"\n" {
-				return false, "the guest reached the canary at " + target + " and delivered its token", nil
-			}
-		}
-		if len(got) > 0 || r.Status == "connected" {
-			return false, fmt.Sprintf("the guest connected to the canary at %s (%d connections; guest says %s: %s)", target, len(got), r.Status, r.Detail), nil
-		}
-		return true, fmt.Sprintf("guest says %s: %s", r.Status, r.Detail), nil
+		pass, detail := verdict(got, lineToken, want, target, true, says(r))
+		return pass, detail, nil
 	}
 }
 
@@ -290,39 +404,19 @@ func udpCanary(carries func(b []byte, token string) bool) Judge {
 		if err != nil {
 			return false, "", err
 		}
-		pc, err := net.ListenPacket("udp4", addr)
-		if err != nil {
-			return false, "", fmt.Errorf("canary listener: %w", err)
-		}
-		defer pc.Close()
-		want := newToken()
-		var hits, noise int
-		var wg sync.WaitGroup
-		wg.Go(func() {
-			buf := make([]byte, 2048)
-			for {
-				n, _, err := pc.ReadFrom(buf)
-				if err != nil {
-					return
-				}
-				if carries(buf[:n], want) {
-					hits++
-				} else {
-					noise++
-				}
-			}
-		})
-		r, err := s.Run(pc.LocalAddr().String(), want)
-		time.Sleep(200 * time.Millisecond) // a datagram in flight on loopback
-		pc.Close()
-		wg.Wait()
+		t, err := listenTrap("udp4", addr)
 		if err != nil {
 			return false, "", err
 		}
-		if hits > 0 {
-			return false, fmt.Sprintf("%d datagrams from the guest carried the token to %s (guest says %s: %s)", hits, pc.LocalAddr(), r.Status, r.Detail), nil
+		defer t.stop()
+		want := newToken()
+		r, err := s.Run(t.addr(), want)
+		got := t.stop()
+		if err != nil {
+			return false, "", err
 		}
-		return true, fmt.Sprintf("no datagram from the guest arrived (%d others; guest says %s: %s)", noise, r.Status, r.Detail), nil
+		pass, detail := verdict(got, carries, want, t.addr(), false, says(r))
+		return pass, detail, nil
 	}
 }
 
