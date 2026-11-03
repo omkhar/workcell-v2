@@ -151,6 +151,7 @@ func serve() error {
 		}
 		select {
 		case st := <-exited:
+			unix.Sync() // what the command wrote reaches the workspace image before the host, which may end the VM at once, hears it ended
 			if err := s.send(guest.TypeExit, guest.EncodeExit(cmd.finish(st))); err != nil {
 				return err
 			}
@@ -185,6 +186,13 @@ func serve() error {
 					return err
 				} else if cmd != nil {
 					_ = unix.Kill(-cmd.pid, unix.Signal(sig))
+				}
+			case guest.TypePull:
+				if cmd != nil {
+					return errors.New("the host asked for the work tree while a command runs")
+				}
+				if err := pull(s); err != nil {
+					return err
 				}
 			default:
 				return fmt.Errorf("frame type %d from the host", fr.Type)

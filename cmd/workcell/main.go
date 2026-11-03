@@ -17,6 +17,10 @@ func main() {
 		fmt.Println(version.String())
 	case len(os.Args) >= 2 && os.Args[1] == "run":
 		os.Exit(run(os.Args[2:], os.Stderr))
+	case len(os.Args) >= 2 && os.Args[1] == "diff":
+		os.Exit(diff(os.Args[2:], os.Stderr))
+	case len(os.Args) >= 2 && os.Args[1] == "pull":
+		os.Exit(pull(os.Args[2:], os.Stderr))
 	case len(os.Args) >= 2 && os.Args[1] == "bench":
 		os.Exit(bench(os.Args[2:], os.Stderr))
 	default:

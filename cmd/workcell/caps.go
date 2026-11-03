@@ -54,6 +54,12 @@ func (l limits) cmdline() string {
 	return "root=/dev/vda ro workcell.disk=" + strconv.Itoa(l.DiskMiB)
 }
 
+// defaults are run's caps when no flag is given, for the verbs that take none.
+func defaults() limits {
+	l, _, _ := parseRun([]string{"true"}, io.Discard)
+	return l
+}
+
 // parseRun splits the arguments of `workcell run` into caps and the command. Flags come before
 // the command, and -- ends them. A bad invocation is reported on stderr, and ok is false.
 func parseRun(args []string, stderr io.Writer) (l limits, argv []string, ok bool) {
