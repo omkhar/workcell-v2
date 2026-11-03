@@ -414,3 +414,5 @@ Hosted gate on the second push, real KVM guest: `escape: workcell: P1 warm-start
 Review: one R2-valid finding (P1, user): the judge used <= on a truncated millisecond value, so a true p50 of 2500.9 ms passed; fixed in one round to < with a judge test at 2499, 2500 and 2501. One less-code note and four redteam ideas in one PARKED.md line. No S14 trigger: nothing ported.
 Budget: product 6698 of 15000, test 13033 of 15047, WORKCELL_* 1 of 12, direct dependencies 3 of 15, flags 3 of 20, verbs 2 of 14 (run, bench).
 Next: U-208 (harden the channel end to end, boundary, env:kvm, model fable, deps U-204b, U-010) is the next takeable unit for the cloud; U-205 and U-303 wait on H-011. The hosted boot is about 180 ms to the init's dial-in, so any P1 regression check has 20 s to spare under the 150 s bound. The claim was PR #65, which this run gives its final title.
+
+## 2026-11-03T03:05Z U-208 START mode=cloud
