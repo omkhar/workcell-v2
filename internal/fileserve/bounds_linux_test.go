@@ -344,7 +344,7 @@ func TestStreamEnd(t *testing.T) {
 			tc.end(k, guest)
 			select {
 			case err := <-done:
-				if !errors.Is(err, tc.want) {
+				if err = ended(err); !errors.Is(err, tc.want) {
 					t.Errorf("Serve: %v, want %v", err, tc.want)
 				}
 			case <-time.After(5 * time.Second):

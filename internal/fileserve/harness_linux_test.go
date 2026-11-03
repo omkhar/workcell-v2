@@ -6,6 +6,8 @@
 package fileserve
 
 import (
+	"errors"
+	"io"
 	"net"
 	"os"
 	"path/filepath"
@@ -121,7 +123,17 @@ func start(t *testing.T, export string) (*kern, func() error) {
 	done := make(chan error, 1)
 	go func() { done <- s.Serve(host) }()
 	k := &kern{t: t, c: wire.New(guest, 5*time.Second)}
-	return k, func() error { _ = guest.Close(); return <-done }
+	return k, func() error { _ = guest.Close(); return ended(<-done) }
+}
+
+// ended is Serve's result with net.Pipe's quirk removed: after a peer close a real stream's
+// Read says EOF, which Serve reports as nil, while net.Pipe also says io.ErrClosedPipe from
+// SetReadDeadline, which Serve reports as it is, when its loop is between frames.
+func ended(err error) error {
+	if errors.Is(err, io.ErrClosedPipe) {
+		return nil
+	}
+	return err
 }
 
 // send writes one request with a fresh unique, which it returns.
