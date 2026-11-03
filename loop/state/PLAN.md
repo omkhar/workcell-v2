@@ -171,7 +171,7 @@ with ADR-003 and ADR-004, they build on the proposal, and you can accept it at a
 
 ## Phase 5: workspace
 
-- [ ] U-500 | flow:build | model:sonnet | env:kvm | deps:U-204,H-104 | tries:0 | Clone mode: copy-on-write copy (reflink, `clonefile`, plain copy as fallback) exported to the guest
+- [x] U-500 | flow:build | model:sonnet | env:kvm | deps:U-204,H-104 | tries:0 | Clone mode: copy-on-write copy (reflink, `clonefile`, plain copy as fallback) exported to the guest
       accept: a 1 GB repository adds under 300 ms on a reflink filesystem
 - [ ] U-501 | flow:boundary | model:fable | env:kvm | deps:U-500,U-204b,U-009 | tries:0 | Return path: `workcell diff` and `workcell pull` through a bundle and a hardened fetch
       accept: I8 added to `enforced.txt` and green
