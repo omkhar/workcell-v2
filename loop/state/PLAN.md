@@ -234,7 +234,7 @@ load the workflow file from `main`. Five things follow.
    `settings.sh check` reports either as wrong. A comment at the top of the file names the environment it will use, and H-905
    switches that on too.
 
-- [ ] W-800 | flow:build | model:sonnet | env:any | deps:U-207,U-002b | tries:0 | sign:you | Final `ci.yml`: one gate job per Linux architecture, the macOS job, pinned runner images. The jobs `gate` (amd64), `gate-macos` and `merge` keep their names, and `gate-macos` keeps running the whole gate with `GATE_MACOS=1`, because the rule on `main` requires those checks and `merge` lands the loop's work
+- [S] W-800 | flow:build | model:sonnet | env:any | deps:U-207,U-002b | tries:0 | sign:you | Final `ci.yml`: one gate job per Linux architecture, the macOS job, pinned runner images. The jobs `gate` (amd64), `gate-macos` and `merge` keep their names, and `gate-macos` keeps running the whole gate with `GATE_MACOS=1`, because the rule on `main` requires those checks and `merge` lands the loop's work
       accept: W2 to W6 hold; at most 130 lines while the `merge` job is in it; `actionlint` and `zizmor` pass on the proposal
 - [ ] W-801 | flow:boundary | model:fable | env:any | deps:W-800,U-201 | tries:0 | sign:you | `release.yml`: check that CI passed for this tree, build binaries and image, write `SHA256SUMS`, one attestation, one keyless signature, draft, publish. Here it starts only on `schedule`, as a dry run that stops before any draft release is created, because `settings.sh check` counts a draft as a release. It runs daily, so that W-801b need not wait a week, until H-905 makes it weekly
       accept: W7 to W11 hold; at most 130 lines; at most 4 jobs; `actionlint` and `zizmor` pass on the proposal
