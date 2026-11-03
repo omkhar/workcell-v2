@@ -18,6 +18,11 @@ import (
 // exported is the sandbox the I1 and I7 tests want: a workspace export.
 var exported = Want{Workspace: true}
 
+// live is the sandbox the mount-mode I1 tests want: the export itself served
+// live into the guest (`--mount`, SPEC A5), so that a write inside it is
+// correct and only a byte beside or above it is a break.
+var live = Want{Workspace: true, Mount: true}
+
 // residueDirs are the places a guest writes that another guest must not see.
 var residueDirs = []string{"/tmp", "/var/tmp", "/dev/shm", "/root", "/run"}
 
@@ -107,6 +112,37 @@ func symlinkProbe(args []string) Result {
 	}
 	return Result{Status: "tried", Detail: "link=" + tryRead(filepath.Join(t.guest, "link")) + " own=" + tryRead(own) +
 		" write=" + tryWrite(filepath.Join(t.guest, "updir", "written-"+t.token))}
+}
+
+// moveProbe takes entries across the top of the export without a write of
+// its own: a hard link to the secret's host path made inside the export and
+// read, a directory renamed out through "..", and a file hard-linked out,
+// the last two to names beside the export.
+func moveProbe(args []string) Result {
+	t, err := outsideArgs(args)
+	if err != nil {
+		return Result{Status: "error", Detail: err.Error()}
+	}
+	hard := filepath.Join(t.guest, "hard")
+	in := "ok"
+	if err := os.Link(t.secret, hard); err != nil {
+		in = short(err)
+	} else {
+		in = tryRead(hard)
+	}
+	dir, file := filepath.Join(t.guest, "dir"), filepath.Join(t.guest, "file")
+	if err := errors.Join(os.Mkdir(dir, 0o755), os.WriteFile(file, []byte("escape\n"), 0o644)); err != nil {
+		return Result{Status: "error", Detail: "make entries: " + err.Error()}
+	}
+	out := "ok"
+	if err := os.Rename(dir, t.guest+"/../written-"+t.token); err != nil {
+		out = short(err)
+	}
+	link := "ok"
+	if err := os.Link(file, t.guest+"/../written-"+t.token+"-link"); err != nil {
+		link = short(err)
+	}
+	return Result{Status: "tried", Detail: "hardlink=" + in + " rename=" + out + " linkout=" + link}
 }
 
 // tryRead returns the first line of the file (of its first 64 KiB), or the

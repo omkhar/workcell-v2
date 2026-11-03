@@ -84,7 +84,9 @@ func (c *control) Start(_ context.Context, cfg Config) (string, error) {
 			}
 		}
 	}
-	return cfg.Workspace, c.record("start") // the host's root is the guest's: the export is where it lies
+	// The host's root is the guest's: the export is where it lies, live, in
+	// either mode. cfg.Mount changes nothing here.
+	return cfg.Workspace, c.record("start")
 }
 
 // record appends one lifecycle record to the session's log: a plain file, as

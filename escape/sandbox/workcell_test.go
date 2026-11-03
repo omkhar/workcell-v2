@@ -99,6 +99,8 @@ func TestRunArgs(t *testing.T) {
 		{Config{MemoryMiB: 256}, []string{"--memory", "256MiB"}},
 		{Config{DiskMiB: 64}, []string{"--disk", "64MiB"}},
 		{Config{CPUs: 1, MemoryMiB: 256, DiskMiB: 64}, []string{"--cpus", "1", "--memory", "256MiB", "--disk", "64MiB"}},
+		{Config{Mount: true}, []string{"--mount"}},
+		{Config{Mount: true, CPUs: 2}, []string{"--mount", "--cpus", "2"}},
 	}
 	for _, c := range cases {
 		want := append(append([]string{"run"}, c.caps...), tail...)

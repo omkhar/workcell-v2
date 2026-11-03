@@ -41,6 +41,11 @@ type Output struct {
 type Config struct {
 	Payload   string // host path of the static payload binary
 	Workspace string // host directory exported into the guest as its workspace; "" exports nothing
+	// Mount serves Workspace itself, live, so that the guest's writes land in
+	// the host's tree at once (`--mount`, SPEC A5); false exports a
+	// copy-on-write clone of it. The control adapter shows the workspace
+	// live at its host path in either case, as a naive sandbox does.
+	Mount     bool
 	CPUs      int
 	MemoryMiB int
 	DiskMiB   int

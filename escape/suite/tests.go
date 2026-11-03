@@ -65,6 +65,17 @@ var All = []Test{
 	{ID: "I1", Name: "bind-mount", Probe: mountProbe, Host: outside(nil), Want: exported},
 	{ID: "I1", Name: "open-by-handle", Probe: handleProbe, Host: outside(nil), Want: exported},
 	{ID: "I1", Name: "device-node", Probe: deviceProbe, Host: deviceJudge, Want: exported},
+	{ID: "I1", Name: "link-rename", Probe: moveProbe, Host: outside(nil), Want: exported},
+	// The same in mount mode (`--mount`): the export is the user's own tree,
+	// served live, so every name the guest utters meets the host's file
+	// service (ADR-005) and a write inside the export is correct. Only a
+	// byte beside or above it is a break.
+	{ID: "I1", Name: "mount-dotdot-traversal", Probe: traversalProbe, Host: outside(nil), Want: live},
+	{ID: "I1", Name: "mount-planted-symlink", Probe: symlinkProbe, Host: outside(plantLinks), Want: live},
+	{ID: "I1", Name: "mount-bind-mount", Probe: mountProbe, Host: outside(nil), Want: live},
+	{ID: "I1", Name: "mount-open-by-handle", Probe: handleProbe, Host: outside(nil), Want: live},
+	{ID: "I1", Name: "mount-device-node", Probe: deviceProbe, Host: deviceJudge, Want: live},
+	{ID: "I1", Name: "mount-link-rename", Probe: moveProbe, Host: outside(nil), Want: live},
 	{ID: "I7", Name: "cross-session-residue", Probe: residueProbe, Host: residueJudge, Want: exported},
 	// The guest asks for twice its cap; the host, watched from outside, must
 	// give no more than the cap.
