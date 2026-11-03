@@ -394,3 +394,5 @@ escape/enforced.txt created with I2 (T7): the guest has no NIC, so the invariant
 Review: no findings; the reviewer confirmed Pdeathsig on Firecracker, the 20 s per-test bound and the ratchet. One less-code note and the redteam's variants for U-301, U-303, U-304, U-205 and U-208 are one line in PARKED.md. No S14 trigger: nothing ported.
 Budget: product 6464 of 15000, test 12574 of 14696, direct dependencies 3 of 15.
 Next: U-205 waits on H-011; U-206 (resource caps, build, env:kvm, model sonnet, deps U-204b, U-007) is the next takeable unit for the cloud. Its I10 tests want Want.CPUs 1, MemoryMiB 256 and DiskMiB 64, which the adapter's unsupported() refuses until the CLI takes caps (SPEC section 5 [resources]); U-206 must give the CLI those caps and relax unsupported() in step, and the I10 floods need a workspace only if their judges use one. The claim was PR #63, which this run gives its final title.
+
+## 2026-11-03T01:50Z U-206 START mode=cloud
