@@ -102,11 +102,20 @@ var All = []Test{
 	{ID: "I11", Name: "proxy-killed", Probe: reachProbe, Host: helperKilled("proxy"), Want: reachable},
 	{ID: "I11", Name: "resolver-killed", Probe: reachProbe, Host: helperKilled("resolver"), Want: reachable},
 	{ID: "I11", Name: "broker-killed", Probe: reachProbe, Host: helperKilled("broker"), Want: reachable},
-	// Hostile frames on the host-guest channel, held open while a well-formed
-	// one is sent again: the host end must answer it and stay alive.
-	{ID: "I12", Name: "channel-malformed-frames", Probe: channelProbe, Host: channelJudge("malformed")},
-	{ID: "I12", Name: "channel-oversized-frame", Probe: channelProbe, Host: channelJudge("oversized")},
-	{ID: "I12", Name: "channel-slow-drip", Probe: channelProbe, Host: channelJudge("slow-drip")},
+	// Root in the guest writes on the init's own channel connection: frames
+	// no decoder can take, a forged Exit under a version the host never
+	// issued, an error text made of terminal escapes, a 4 GiB header then
+	// silence, one byte a second; and a storm of fresh connections each
+	// carrying a forged Exit. The host must end each run in time, without a
+	// crash, with a clean stderr and the truthful status, and run again after.
+	{ID: "I12", Name: "channel-malformed-frames", Probe: channelProbe, Host: channelJudge("exit-empty", "ack-short", "version-2", "unknown-type"), Bound: channelBound},
+	{ID: "I12", Name: "channel-forged-exit-text", Probe: channelProbe, Host: channelJudge("exit-text"), Bound: channelBound},
+	{ID: "I12", Name: "channel-oversized-frame", Probe: channelProbe, Host: channelJudge("giant-header"), Bound: channelBound},
+	{ID: "I12", Name: "channel-slow-drip", Probe: channelProbe, Host: channelJudge("slow-drip"), Bound: channelBound},
+	{ID: "I12", Name: "channel-connect-storm", Probe: channelProbe, Host: channelJudge("storm"), Bound: channelBound},
+	{ID: "I12", Name: "channel-connect-flood", Probe: channelProbe, Host: floodJudge, Bound: channelBound},
+	{ID: "I12", Name: "channel-cut-mid-frame", Probe: channelProbe, Host: channelJudge("half-close", "full-shutdown"), Bound: channelBound},
+	{ID: "I12", Name: "channel-frames-after-exit", Probe: channelProbe, Host: channelJudge("after-exit"), Bound: channelBound},
 	// The update client on the host, after one honest install from a channel
 	// the judge signs and serves, meets a manifest signed by another key or
 	// with a corrupted signature, past its expiry, below the last serial or

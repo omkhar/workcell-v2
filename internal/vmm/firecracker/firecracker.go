@@ -64,7 +64,10 @@ func (m *Machine) Check(context.Context) error {
 	return nil
 }
 
-// Listen binds the unix socket Firecracker dials when the guest connects to port.
+// Listen binds the unix socket Firecracker dials when the guest connects to port. The
+// listener takes one connection: the first Accept closes it and unlinks the socket, so
+// Firecracker refuses every later guest connection to the port, instead of the host
+// kernel queuing each one, and whatever the guest writes on it, for the whole session (I12).
 func (m *Machine) Listen(port uint32) (net.Listener, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -75,8 +78,21 @@ func (m *Machine) Listen(port uint32) (net.Listener, error) {
 	if err != nil {
 		return nil, err
 	}
-	m.lns = append(m.lns, ln)
-	return ln, nil
+	one := &oneConn{UnixListener: ln.(*net.UnixListener)}
+	m.lns = append(m.lns, one)
+	return one, nil
+}
+
+// oneConn is a listener for exactly one connection.
+type oneConn struct{ *net.UnixListener }
+
+// Accept takes the connection and closes the listener, which unlinks its socket path.
+func (l *oneConn) Accept() (net.Conn, error) {
+	c, err := l.UnixListener.Accept()
+	if err == nil {
+		_ = l.UnixListener.Close()
+	}
+	return c, err
 }
 
 // Start writes the config file and execs Firecracker. It returns once the child

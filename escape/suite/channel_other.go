@@ -7,8 +7,17 @@ package suite
 
 import (
 	"errors"
-	"net"
+	"time"
 )
 
-// The payload runs in a Linux guest; elsewhere a vsock channel is out of reach.
-func dialVsock(string) (net.Conn, error) { return nil, errors.New("vsock is Linux only") }
+// The payload runs in a Linux guest; elsewhere the channel is out of reach.
+type rawConn struct{}
+
+func (*rawConn) close() {}
+func (*rawConn) write([]byte, time.Duration) (int, error) {
+	return 0, errors.New("the channel is Linux only")
+}
+func (*rawConn) shutdown(bool) error { return errors.New("the channel is Linux only") }
+
+func stealChannel(string) (*rawConn, error) { return nil, errors.New("the channel is Linux only") }
+func dialChannel(string) (*rawConn, error)  { return nil, errors.New("the channel is Linux only") }

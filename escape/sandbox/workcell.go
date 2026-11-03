@@ -102,7 +102,11 @@ func (*workcell) Pull(context.Context, string) error { return ErrNotImplemented 
 func (*workcell) Audit(context.Context) (string, []string, error) { return "", nil, ErrNotImplemented }
 func (*workcell) Verify(context.Context) error                    { return ErrNotImplemented }
 func (*workcell) Helper(context.Context, string) (int, error)     { return 0, ErrNotImplemented }
-func (*workcell) Channel(context.Context) (Channel, error)        { return Channel{}, ErrNotImplemented }
+
+// Channel is where the guest's init dialled the host: AF_VSOCK, the host's
+// CID 2, port 5000. Nothing else of the channel is known here; a probe finds
+// the init's connection by that peer and may dial the same port afresh.
+func (*workcell) Channel(context.Context) (Channel, error) { return Channel{Addr: "vsock:2:5000"}, nil }
 func (*workcell) Update(context.Context, UpdateConfig) ([]byte, error) {
 	return nil, ErrNotImplemented
 }

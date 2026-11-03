@@ -3,23 +3,22 @@
 
 // Payload runs one escape probe inside the guest, as root, and prints its
 // result as a single line for the runner on the host to parse. It is also
-// every helper of the control sandbox (SPEC T2), which enforces nothing.
+// every helper of the control sandbox (SPEC T2), a process that enforces
+// nothing and whose death changes nothing.
 //
 //	payload <test name> [args...]
-//	payload supervisor <unix socket path>
+//	payload helper <name>
 package main
 
 import (
 	"os"
 
-	"github.com/omkhar/workcell/v2/escape/sandbox"
 	"github.com/omkhar/workcell/v2/escape/suite"
 )
 
 func main() {
-	if len(os.Args) == 3 && os.Args[1] == "supervisor" {
-		sandbox.ControlSupervisor(os.Args[2])
-		os.Exit(1)
+	if len(os.Args) == 3 && os.Args[1] == "helper" {
+		select {}
 	}
 	r := suite.Result{Status: "error", Detail: "usage: payload <test name> [args...]"}
 	if len(os.Args) >= 2 {

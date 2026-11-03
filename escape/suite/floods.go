@@ -47,9 +47,19 @@ const (
 // the result with how far below and above the sample taken just before the
 // run the host went meanwhile.
 func sampled(s Session, read func() (int64, error), args ...string) (r Result, below, above int64, err error) {
+	var rerr error
+	below, above, err = sampledRun(read, func() { r, rerr = s.Run(args...) })
+	if err == nil {
+		err = rerr
+	}
+	return r, below, above, err
+}
+
+// sampledRun is sampled around any run.
+func sampledRun(read func() (int64, error), run func()) (below, above int64, err error) {
 	base, err := read()
 	if err != nil {
-		return r, 0, 0, err
+		return 0, 0, err
 	}
 	low, high := base, base
 	stop := make(chan struct{})
@@ -68,10 +78,10 @@ func sampled(s Session, read func() (int64, error), args ...string) (r Result, b
 			}
 		}
 	})
-	r, err = s.Run(args...)
+	run()
 	close(stop)
 	wg.Wait()
-	return r, base - low, high - base, err
+	return base - low, high - base, nil
 }
 
 // forkJudge fails if the guest's processes show up on the host.

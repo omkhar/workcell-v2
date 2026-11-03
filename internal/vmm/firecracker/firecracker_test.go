@@ -295,7 +295,7 @@ func launch(t *testing.T, in inputs) (m *Machine, conn net.Conn, dir string, boo
 	if err := m.Start(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if err := ln.(*net.UnixListener).SetDeadline(time.Now().Add(bootLimit)); err != nil {
+	if err := ln.(interface{ SetDeadline(time.Time) error }).SetDeadline(time.Now().Add(bootLimit)); err != nil {
 		t.Fatal(err)
 	}
 	if conn, err = ln.Accept(); err != nil {
@@ -514,4 +514,59 @@ func initramfs(t *testing.T, dir string, files ...file) string {
 		t.Fatal(err)
 	}
 	return path
+}
+
+// TestListenTakesOneConnection is the regression test for the channel connect flood (I12):
+// once the init's connection is in, a later connection to the port is refused rather than
+// queued on the host with whatever the guest writes on it, and the first one goes on working.
+func TestListenTakesOneConnection(t *testing.T) {
+	m := New(vmm.Config{Dir: shortDir(t)})
+	t.Cleanup(func() { _ = m.Close() })
+	ln, err := m.Listen(port)
+	if err != nil {
+		t.Fatal(err)
+	}
+	addr := ln.Addr().String()
+	first, err := net.Dial("unix", addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer first.Close()
+	queued, err := net.Dial("unix", addr) // in the backlog before the host accepts
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer queued.Close()
+	conn, err := ln.Accept()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+
+	if c, err := net.Dial("unix", addr); !errors.Is(err, syscall.ENOENT) {
+		t.Errorf("a connection after the first Accept: %v, want ENOENT", err)
+		if err == nil {
+			_ = c.Close()
+		}
+	}
+	if _, err := os.Stat(addr); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("the socket %s after the first Accept: %v, want gone", addr, err)
+	}
+	if err := queued.SetReadDeadline(time.Now().Add(2 * time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := queued.Read(make([]byte, 1)); err == nil || errors.Is(err, os.ErrDeadlineExceeded) {
+		t.Errorf("the connection queued before the first Accept still stands: %v", err)
+	}
+	if _, err := ln.Accept(); err == nil {
+		t.Error("a second Accept returned a connection")
+	}
+	go func() { _, _ = first.Write([]byte("hi")) }()
+	got := make([]byte, 2)
+	if _, err := io.ReadFull(conn, got); err != nil || string(got) != "hi" {
+		t.Errorf("the first connection after the listener closed: %q, %v", got, err)
+	}
+	if err := m.Close(); err != nil {
+		t.Errorf("Close: %v", err)
+	}
 }
