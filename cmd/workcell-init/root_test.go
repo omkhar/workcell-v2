@@ -29,6 +29,23 @@ func TestRootDevice(t *testing.T) {
 	}
 }
 
+func TestWorkspaceDevice(t *testing.T) {
+	tests := []struct{ name, cmdline, want string }{
+		{"none", "root=/dev/vda ro", ""},
+		{"set", "root=/dev/vda ro workcell.workspace=/dev/vdb", "/dev/vdb"},
+		{"the last wins", "workcell.workspace=/dev/vdb workcell.workspace=/dev/vdc\n", "/dev/vdc"},
+		{"not a device", "workcell.workspace=vdb", ""},
+		{"another name", "other.workcell.workspace=/dev/vdb", ""},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := workspaceDevice(tc.cmdline); got != tc.want {
+				t.Errorf("workspaceDevice(%q) = %q, want %q", tc.cmdline, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestDiskMiB(t *testing.T) {
 	tests := []struct {
 		name, cmdline string

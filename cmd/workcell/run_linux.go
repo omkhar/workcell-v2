@@ -12,6 +12,7 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
@@ -23,6 +24,7 @@ import (
 	"github.com/omkhar/workcell/v2/internal/vmm"
 	"github.com/omkhar/workcell/v2/internal/vmm/firecracker"
 	"github.com/omkhar/workcell/v2/internal/wire"
+	"github.com/omkhar/workcell/v2/internal/workspace"
 	"golang.org/x/sys/unix"
 )
 
@@ -32,8 +34,8 @@ const (
 	path       = "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 )
 
-// run is `workcell run [--cpus N] [--memory SIZE] [--disk SIZE] [--] <cmd> [args...]`: it boots a guest, runs the command in it and
-// exits as the command did. This process is the session's supervisor (A9): it owns the VM
+// run is `workcell run [--cpus N] [--memory SIZE] [--disk SIZE] [--] <cmd> [args...]`: it boots a guest with a copy of
+// the current directory in it, runs the command there and exits as the command did. This process is the session's supervisor (A9): it owns the VM
 // and the channel, and the VM dies with it.
 func run(args []string, stderr io.Writer) int {
 	caps, args, ok := parseRun(args, stderr)
@@ -64,14 +66,18 @@ func session(argv []string, caps limits, a artifacts) (int, error) {
 	sigs := make(chan os.Signal, 4)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM, syscall.SIGWINCH)
 	defer signal.Stop(sigs)
-	b, code, err := boot(a, caps, sigs)
+	cwd, err := os.Getwd()
+	if err != nil {
+		return 0, err
+	}
+	b, code, err := boot(a, caps, sigs, cwd)
 	if b == nil {
 		return code, err
 	}
 	defer b.close()
 	raw := b.conn
 
-	req := guest.Exec{Argv: argv, Env: []string{path, "HOME=/root", "LANG=C.UTF-8"}, Dir: "/"}
+	req := guest.Exec{Argv: argv, Env: []string{path, "HOME=/root", "LANG=C.UTF-8"}, Dir: "/workspace"}
 	restore, tty := rawMode(unix.Stdin)
 	if tty {
 		defer restore()
@@ -127,18 +133,41 @@ type booted struct {
 	close func()
 }
 
-// boot starts a guest and waits for its init to dial in. A nil result means the session
+// boot starts a guest and waits for its init to dial in. A copy of the directory repo is
+// the guest's /workspace, unless repo is empty. The copy is a file in the session's own
+// sessions directory of the data directory, not under TMPDIR, because a reflink only works
+// within one filesystem and the data directory shares the home filesystem with most
+// repositories. close removes the copy (I7). It is as big as the repository plus the
+// room the guest may write, which is --disk or 1 GiB (I10). A nil result means the session
 // goes no further: code and err say how it ended (see accept).
-func boot(a artifacts, caps limits, sigs <-chan os.Signal) (*booted, int, error) {
+func boot(a artifacts, caps limits, sigs <-chan os.Signal, repo string) (*booted, int, error) {
 	dir, err := os.MkdirTemp("", "wc") // short: a unix socket path has 108 bytes
 	if err != nil {
 		return nil, 0, err
 	}
+	cmdline, image := caps.cmdline(), ""
+	if repo != "" {
+		sessions := filepath.Join(a.dir, "sessions")
+		if err := os.MkdirAll(sessions, 0o700); err != nil {
+			os.RemoveAll(dir)
+			return nil, 0, err
+		}
+		image = filepath.Join(sessions, filepath.Base(dir)+".ext4") // unique, as dir is
+		free := int64(1 << 30)
+		if caps.DiskMiB > 0 {
+			free = int64(caps.DiskMiB) << 20
+		}
+		if _, err := workspace.Export(context.Background(), repo, image, free); err != nil {
+			os.RemoveAll(dir)
+			return nil, 0, fmt.Errorf("copy %s for the guest: %w", repo, err)
+		}
+		cmdline += " workcell.workspace=/dev/vdb"
+	}
 	console := &tail{}
 	// No allowlist yet, so no TCP port is relayed: the guest relays UDP 53 alone (U-303).
 	m := firecracker.New(vmm.Config{Binary: a.firecracker, Kernel: a.kernel, Initrd: a.initrd, Image: a.image,
-		Cmdline: caps.cmdline() + " " + portsArg(nil), CPUs: caps.CPUs, MemoryMiB: caps.MemoryMiB, CID: 3, Console: console, Dir: dir})
-	closeAll := func() { m.Close(); os.RemoveAll(dir) } // kills the VM on every path out
+		Workspace: image, Cmdline: cmdline + " " + portsArg(nil), CPUs: caps.CPUs, MemoryMiB: caps.MemoryMiB, CID: 3, Console: console, Dir: dir})
+	closeAll := func() { m.Close(); os.RemoveAll(dir); os.Remove(image) } // kills the VM on every path out
 	ln, err := m.Listen(guest.Port)
 	if err != nil {
 		closeAll()

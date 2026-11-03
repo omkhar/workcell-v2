@@ -46,12 +46,18 @@ func TestRun(t *testing.T) {
 	if out, err := mk.CombinedOutput(); err != nil {
 		t.Fatalf("mkimage: %v\n%s", err, out)
 	}
-	var flags []string // flags of `workcell run`, before the --
+	var flags []string  // flags of `workcell run`, before the --
+	repo := t.TempDir() // the directory `workcell run` starts in, and copies into the guest
+	sessions := filepath.Join(tmp, "s")
+	if err := os.Mkdir(sessions, 0o755); err != nil {
+		t.Fatal(err)
+	}
 	workcell := func(stdin *os.File, args ...string) *exec.Cmd {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 		t.Cleanup(cancel)
 		cmd := exec.CommandContext(ctx, filepath.Join(bin, "workcell"), append(append([]string{"run"}, append(flags, "--")...), args...)...)
-		cmd.Env = append(os.Environ(), "XDG_DATA_HOME="+tmp, "HOME="+tmp, "TERM=xterm")
+		cmd.Dir = repo
+		cmd.Env = append(os.Environ(), "XDG_DATA_HOME="+tmp, "HOME="+tmp, "TERM=xterm", "TMPDIR="+sessions)
 		if stdin != nil {
 			cmd.Stdin = stdin
 		}
@@ -143,6 +149,37 @@ dd if=/dev/zero of=/var/tmp/b bs=1M count=80 2>&1 | grep -o 'No space left on de
 		}
 		if got[3] != "No space left on device" {
 			t.Errorf("an 80 MiB write: %q, want ENOSPC", got[3])
+		}
+	})
+
+	// Clone mode: the guest starts in a copy of the directory, what it writes there stays
+	// there (I1), and the copy is gone once the session ends (I7).
+	t.Run("workspace", func(t *testing.T) {
+		repo = t.TempDir()
+		if err := os.WriteFile(filepath.Join(repo, "hello.txt"), []byte("hi\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		stdout, _, code := pipes(t, nil, "sh", "-c", "cat hello.txt; pwd; echo new > created.txt; cat created.txt")
+		if want := "hi\n/workspace\nnew\n"; stdout != want || code != 0 {
+			t.Errorf("the guest printed %q with exit %d, want %q and 0", stdout, code, want)
+		}
+		if _, err := os.Stat(filepath.Join(repo, "created.txt")); !errors.Is(err, os.ErrNotExist) {
+			t.Errorf("a file the guest wrote is on the host: %v", err)
+		}
+		for _, d := range []string{sessions, filepath.Join(data, "sessions")} {
+			if left, err := os.ReadDir(d); err != nil || len(left) != 0 {
+				t.Errorf("left in %s after the session: %v (%v), want nothing", d, left, err)
+			}
+		}
+	})
+
+	// The image bounds what the guest writes to /workspace: --disk of room, then ENOSPC (I10).
+	t.Run("workspace-cap", func(t *testing.T) {
+		flags = []string{"--disk", "64MiB"}
+		t.Cleanup(func() { flags = nil })
+		stdout, _, _ := pipes(t, nil, "sh", "-c", "dd if=/dev/zero of=/workspace/big bs=1M count=100 2>&1 | grep -o 'No space left on device'")
+		if strings.TrimSpace(stdout) != "No space left on device" {
+			t.Errorf("a 100 MiB write to /workspace with --disk 64MiB: %q, want ENOSPC", stdout)
 		}
 	})
 

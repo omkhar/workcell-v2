@@ -16,10 +16,16 @@ import (
 
 // rootDevice is the device named by the last root= on the kernel command line, or "" if
 // there is none. The host wrote the command line (A1 lets the init trust it).
-func rootDevice(cmdline string) string {
+func rootDevice(cmdline string) string { return device(cmdline, "root=") }
+
+// workspaceDevice is the device named by the last workcell.workspace= on the command line,
+// or "" if there is none: the copy of the repository (clone mode, ADR-002).
+func workspaceDevice(cmdline string) string { return device(cmdline, "workcell.workspace=") }
+
+func device(cmdline, key string) string {
 	dev := ""
 	for _, f := range strings.Fields(cmdline) {
-		if v, ok := strings.CutPrefix(f, "root="); ok && strings.HasPrefix(v, "/dev/") {
+		if v, ok := strings.CutPrefix(f, key); ok && strings.HasPrefix(v, "/dev/") {
 			dev = v
 		}
 	}
@@ -72,6 +78,17 @@ func tmpfsSize(mib int) string {
 		return ""
 	}
 	return "size=" + strconv.Itoa(mib) + "m"
+}
+
+// mountWorkspace mounts the device that holds the repository read-write at /workspace.
+func mountWorkspace(dev string) error {
+	if err := os.MkdirAll("/workspace", 0o755); err != nil {
+		return err
+	}
+	if err := unix.Mount(dev, "/workspace", "ext4", 0, ""); err != nil {
+		return fmt.Errorf("mount %s: %w", dev, err)
+	}
+	return nil
 }
 
 // switchRoot makes the image on dev the root of everything that runs from here on. The
