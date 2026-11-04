@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"syscall"
@@ -54,6 +55,9 @@ func deviceJudge(ctx context.Context, s Session) (bool, string, error) {
 // losetup runs losetup(8), through sudo when the runner is not root, as a
 // hosted runner grants without a password, and returns what it printed.
 func losetup(args ...string) (string, error) {
+	if runtime.GOOS != "linux" {
+		return "", errors.New("a host loop device is Linux only")
+	}
 	cmd := exec.Command("losetup", args...)
 	if os.Geteuid() != 0 {
 		cmd = exec.Command("sudo", append([]string{"-n", "losetup"}, args...)...)

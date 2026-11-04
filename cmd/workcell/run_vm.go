@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Omkhar Arasaratnam
 
-//go:build linux
+//go:build linux || (darwin && arm64 && cgo)
 
 package main
 
@@ -25,7 +25,6 @@ import (
 	"github.com/omkhar/workcell/v2/internal/guest"
 	"github.com/omkhar/workcell/v2/internal/relay"
 	"github.com/omkhar/workcell/v2/internal/vmm"
-	"github.com/omkhar/workcell/v2/internal/vmm/firecracker"
 	"github.com/omkhar/workcell/v2/internal/wire"
 	"github.com/omkhar/workcell/v2/internal/workspace"
 	"golang.org/x/sys/unix"
@@ -209,9 +208,9 @@ func boot(a artifacts, caps limits, sigs <-chan os.Signal, image, mount string) 
 	}
 	console := &tail{}
 	// No allowlist yet, so no TCP port is relayed: the guest relays UDP 53 alone (U-303).
-	m := firecracker.New(vmm.Config{Binary: a.firecracker, Kernel: a.kernel, Initrd: a.initrd, Image: a.image,
+	m := newMachine(a, vmm.Config{Kernel: a.kernel, Initrd: a.initrd, Image: a.image,
 		Workspace: image, Cmdline: cmdline + " " + portsArg(nil), CPUs: caps.CPUs, MemoryMiB: caps.MemoryMiB, CID: 3, Console: console, Dir: dir})
-	var served *fileserve.Server
+	var served mountService
 	closeAll := func() { // kills the VM on every path out; the export's descriptors go with it
 		m.Close()
 		if served != nil {
@@ -233,7 +232,7 @@ func boot(a artifacts, caps limits, sigs <-chan os.Signal, image, mount string) 
 	if mount != "" {
 		files, err := m.Listen(fileserve.Port)
 		if err == nil {
-			served, err = fileserve.Open(mount, caps.disk())
+			served, err = openMount(mount, caps.disk())
 		}
 		if err != nil {
 			closeAll()
@@ -255,9 +254,8 @@ func boot(a artifacts, caps limits, sigs <-chan os.Signal, image, mount string) 
 }
 
 // once is the channel's listener: it takes exactly one connection, the init's, then closes,
-// which unlinks the socket, so Firecracker refuses every later guest connection to the port
-// instead of the host kernel queuing each one, and whatever the guest writes on it, for the
-// whole session (I12).
+// so the backend refuses every later guest connection to the port instead of queuing each
+// one, and whatever the guest writes on it, for the whole session (I12).
 type once struct{ net.Listener }
 
 func (l once) Accept() (net.Conn, error) {
@@ -268,9 +266,16 @@ func (l once) Accept() (net.Conn, error) {
 	return c, err
 }
 
+// mountService is the host side of mount mode (ADR-005): it answers the guest's FUSE stream from the
+// export. openMount makes one where the OS has it.
+type mountService interface {
+	Serve(wire.Stream) error
+	Close()
+}
+
 // serveMount answers the guest's FUSE stream, the one connection to fileserve.Port, from the
 // export until either side ends. Nothing is left to release but what close releases.
-func serveMount(ln net.Listener, s *fileserve.Server) {
+func serveMount(ln net.Listener, s mountService) {
 	c, err := ln.Accept()
 	if err != nil {
 		return // the session ended before the guest dialled
@@ -281,7 +286,7 @@ func serveMount(ln net.Listener, s *fileserve.Server) {
 
 // accept waits for the guest to dial in. A guest that never does is reported with the end
 // of its console. A non-nil conn means the session goes on; otherwise code and err are the result.
-func accept(ln net.Listener, m *firecracker.Machine, sigs <-chan os.Signal, console *tail) (net.Conn, int, error) {
+func accept(ln net.Listener, m vmm.Machine, sigs <-chan os.Signal, console *tail) (net.Conn, int, error) {
 	type accepted struct {
 		c   net.Conn
 		err error
