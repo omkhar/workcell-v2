@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -32,17 +33,20 @@ func TestDataDir(t *testing.T) {
 }
 
 func TestFindArtifacts(t *testing.T) {
-	names := []string{"firecracker", "vmlinux", "initrd.cpio", "root.ext4"}
+	names := required()
+	without := func(n string) []string {
+		return slices.DeleteFunc(slices.Clone(names), func(s string) bool { return s == n })
+	}
 	tests := []struct {
 		name    string
 		present []string
 		missing string // the file the error must name; "" for success
 	}{
-		{"all four", names, ""},
-		{"none", nil, "firecracker"},
-		{"no kernel", []string{"firecracker", "initrd.cpio", "root.ext4"}, "vmlinux"},
-		{"no initrd", []string{"firecracker", "vmlinux", "root.ext4"}, "initrd.cpio"},
-		{"no image", names[:3], "root.ext4"},
+		{"all", names, ""},
+		{"none", nil, names[0]},
+		{"no kernel", without("vmlinux"), "vmlinux"},
+		{"no initrd", without("initrd.cpio"), "initrd.cpio"},
+		{"no image", without("root.ext4"), "root.ext4"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -55,7 +59,7 @@ func TestFindArtifacts(t *testing.T) {
 			a, err := findArtifacts(dir)
 			switch {
 			case tc.missing == "" && (err != nil || a.image != filepath.Join(dir, "root.ext4")):
-				t.Errorf("findArtifacts = %+v, %v; want all four", a, err)
+				t.Errorf("findArtifacts = %+v, %v; want them all", a, err)
 			case tc.missing != "" && (err == nil || !strings.Contains(err.Error(), filepath.Join(dir, tc.missing))):
 				t.Errorf("findArtifacts error = %v, want one naming %s", err, tc.missing)
 			}
@@ -67,7 +71,7 @@ func TestFindArtifacts(t *testing.T) {
 // empty data directory, elsewhere because there is no backend. Both end with 125 and a
 // line that says why. It boots nothing, so it needs no hypervisor.
 func TestRunUnavailable(t *testing.T) {
-	want := map[string]string{"linux": "firecracker is missing"}
+	want := map[string]string{"linux": "firecracker is missing", "darwin": "vmlinux is missing"}
 	msg, ok := want[runtime.GOOS]
 	if !ok {
 		msg = "no backend for this OS yet"

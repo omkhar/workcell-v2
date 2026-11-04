@@ -22,21 +22,33 @@ func dataDir() (string, error) {
 	return filepath.Join(home, ".local", "share", "workcell"), nil
 }
 
-// artifacts are the four files a session boots from, and the directory they are in.
-type artifacts struct{ firecracker, kernel, initrd, image, dir string }
+// artifacts are the files a session boots from, and the directory they are in: the kernel,
+// the initramfs, the root image and, where the backend is a program (vmmBinary), that too.
+type artifacts struct{ binary, kernel, initrd, image, dir string }
+
+// required names the files the backend here needs in the data directory, the VMM first.
+func required() []string {
+	names := []string{"vmlinux", "initrd.cpio", "root.ext4"}
+	if vmmBinary != "" {
+		names = append([]string{vmmBinary}, names...)
+	}
+	return names
+}
 
 // findArtifacts names the files in dir and says which one is missing, if any.
 func findArtifacts(dir string) (artifacts, error) {
 	a := artifacts{
-		firecracker: filepath.Join(dir, "firecracker"),
-		kernel:      filepath.Join(dir, "vmlinux"),
-		initrd:      filepath.Join(dir, "initrd.cpio"),
-		image:       filepath.Join(dir, "root.ext4"),
-		dir:         dir,
+		kernel: filepath.Join(dir, "vmlinux"),
+		initrd: filepath.Join(dir, "initrd.cpio"),
+		image:  filepath.Join(dir, "root.ext4"),
+		dir:    dir,
 	}
-	for _, p := range []string{a.firecracker, a.kernel, a.initrd, a.image} {
-		if _, err := os.Stat(p); err != nil {
-			return a, fmt.Errorf("%s is missing", p)
+	if vmmBinary != "" {
+		a.binary = filepath.Join(dir, vmmBinary)
+	}
+	for _, n := range required() {
+		if _, err := os.Stat(filepath.Join(dir, n)); err != nil {
+			return a, fmt.Errorf("%s is missing", filepath.Join(dir, n))
 		}
 	}
 	return a, nil

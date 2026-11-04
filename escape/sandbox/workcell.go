@@ -14,8 +14,9 @@ import (
 // `workcell run` per Exec, each a fresh microVM, with the payload carried in
 // through stdin (SPEC T1, A8), with the test's export as the product's
 // working directory, and one `workcell pull` per Pull, which brings the
-// newest session's work tree back. It is Linux only; elsewhere every
-// operation reports ErrNotImplemented. What the CLI cannot honour yet, a
+// newest session's work tree back. It runs on Linux and on macOS, the two
+// hosts with a hypervisor the product drives; elsewhere every operation
+// reports ErrNotImplemented. What the CLI cannot honour yet, a
 // policy, a secret, a cap outside its range, is refused at Start with
 // ErrNotImplemented, so that such a test is never a false pass.
 

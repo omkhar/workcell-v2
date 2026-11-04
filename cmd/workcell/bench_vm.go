@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Omkhar Arasaratnam
 
-//go:build linux
+//go:build linux || (darwin && arm64 && cgo)
 
 package main
 
