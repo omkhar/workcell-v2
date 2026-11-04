@@ -1,12 +1,9 @@
 name: CI
 
-# While the loop runs, this file uses pull_request_target, so its definition always comes from the
-# default branch and a pull request cannot rewrite its own checks. The gate jobs do run code from
-# the pull request. That is safe here for three reasons. Their token can only read a public
-# repository. There are no repository secrets, and these jobs name no environment. And only the
-# maintainer's account can open a pull request. A repository setting keeps that to collaborators
-# and does not expire, the interaction limit says the same for six months at a time, and the
-# maintainer is the only collaborator. H-905 gives this file its final triggers.
+# pull_request_target is safe here: the token reads a public repository only, there are no
+# secrets and no environment, and only the maintainer can open a pull request. The definition
+# comes from main, so a pull request cannot rewrite its own checks. H-905 switches the triggers
+# to pull_request on main and push on main. This workflow names no environment, now or later.
 on:
   pull_request_target:
     branches: [main]
@@ -15,8 +12,8 @@ on:
 
 permissions: {}
 
-# No concurrency group on purpose; see guard.yml.
-
+# No concurrency group on purpose; see guard.yml. Versioned runner labels are the pin GitHub
+# offers; no dated image can be selected (W5).
 jobs:
   gate:
     name: gate
@@ -29,17 +26,11 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           persist-credentials: false
-
-      # Puts the go that go.mod names on PATH, whatever the runner image carries, and keeps go from
-      # fetching another one later. No cache: nothing that an earlier run left behind is restored.
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
           cache: false
-
-      # The first line says what kind of machine this is, in case only some kinds offer KVM. Where
-      # the device is missing the trigger may fail too, so the last line is the judge. Its words
-      # tell the loop that its change is not to blame.
+      # The last line is the judge; its words tell the loop that its change is not to blame.
       - name: Make /dev/kvm usable by the runner account
         run: |
           echo "This machine: $(systemd-detect-virt || true), $(cat /sys/class/dmi/id/sys_vendor 2>/dev/null || true)"
@@ -49,7 +40,6 @@ jobs:
           sudo udevadm trigger --name-match=kvm --settle || true
           ls -l /dev/kvm || true
           test -w /dev/kvm || { echo "::error::no KVM on this runner (infrastructure, not your change)"; exit 1; }
-
       - name: Gate
         env:
           GATE_REQUIRE_VM: "1"
@@ -57,8 +47,29 @@ jobs:
           git fetch --quiet --no-tags --depth=1 origin +refs/heads/main:refs/remotes/origin/main
           loop/gate.sh
 
-  # The same gate, so that code built only for macOS meets the same tree checks and budgets. Hosted
-  # Macs cannot start virtual machines, so here the gate says that it defers the VM suite (H-703).
+  # Hosted arm64 runners expose no /dev/kvm (actions/runner-images issue 14062), so the gate defers
+  # the VM suite to H-704; with KVM this job takes the shape of `gate`. Not in merge's needs.
+  gate-arm64:
+    name: gate-arm64
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Gate
+        run: |
+          git fetch --quiet --no-tags --depth=1 origin +refs/heads/main:refs/remotes/origin/main
+          loop/gate.sh
+
+  # Hosted Macs cannot start virtual machines, so the gate defers the VM suite here (H-703).
   gate-macos:
     name: gate-macos
     runs-on: macos-15
@@ -70,12 +81,10 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           persist-credentials: false
-
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
           cache: false
-
       - name: Gate
         env:
           GATE_MACOS: "1"
@@ -84,8 +93,7 @@ jobs:
           loop/gate.sh
 
   # Loop only; removed at cutover. The ruleset on main also requires `guard` and an up-to-date
-  # branch, so the merge call is refused until both hold. A title that starts with "try: " marks
-  # an experiment: the checks run, and nothing merges.
+  # branch, or the merge call is refused. A title that starts with "try: " means nothing merges.
   merge:
     name: merge
     needs: [gate, gate-macos]
@@ -105,7 +113,7 @@ jobs:
           PR: ${{ github.event.pull_request.number }}
           SHA: ${{ github.event.pull_request.head.sha }}
         run: |
-          for attempt in 1 2 3 4 5 6 7 8 9 10 11 12; do
+          for attempt in $(seq 12); do
             # The title as it is now, not as it was when this run started.
             title="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR}" --jq .title)"
             case "${title}" in
