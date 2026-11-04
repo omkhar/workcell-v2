@@ -240,7 +240,7 @@ load the workflow file from `main`. Five things follow.
       accept: W7 to W11 hold; at most 130 lines; at most 4 jobs; `actionlint` and `zizmor` pass on the proposal
 - [ ] W-801b | flow:mech | model:haiku | env:kvm | deps:W-801 | tries:0 | wait:release.yml | Read the first scheduled run of `release.yml`
       accept: the dry run is green, and left no draft and no release. If not, set W-801 back to `[ ]` and say why at the end of its accept line
-- [ ] W-802 | flow:build | model:sonnet | env:any | deps:W-800,U-201 | tries:0 | sign:you | `nightly.yml`, on `schedule`: reproducibility rebuild and compare, and fuzz. It opens or updates one issue on failure. The fuzz job runs one job per target, takes the minutes per target from `escape/fuzz-minutes.txt` and caps them at 240, prints each crasher's input in its log, and leaves out packages ported from v1 (S14)
+- [S] W-802 | flow:build | model:sonnet | env:any | deps:W-800,U-201 | tries:0 | sign:you | `nightly.yml`, on `schedule`: reproducibility rebuild and compare, and fuzz. It opens or updates one issue on failure. The fuzz job runs one job per target, takes the minutes per target from `escape/fuzz-minutes.txt` and caps them at 240, prints each crasher's input in its log, and leaves out packages ported from v1 (S14)
       accept: at most 80 lines; `actionlint` and `zizmor` pass on the proposal; `escape/fuzz-minutes.txt` holds `10`
 - [ ] W-802b | flow:mech | model:haiku | env:kvm | deps:W-802 | tries:0 | wait:nightly.yml | Read the first scheduled run of `nightly.yml`
       accept: every job is green and each fuzz target ran for 10 minutes. If not, set W-802 back to `[ ]` and say why at the end of its accept line
