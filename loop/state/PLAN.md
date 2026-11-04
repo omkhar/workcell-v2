@@ -244,7 +244,7 @@ load the workflow file from `main`. Five things follow.
       accept: at most 80 lines; `actionlint` and `zizmor` pass on the proposal; `escape/fuzz-minutes.txt` holds `10`
 - [ ] W-802b | flow:mech | model:haiku | env:kvm | deps:W-802 | tries:0 | wait:nightly.yml | Read the first scheduled run of `nightly.yml`
       accept: every job is green and each fuzz target ran for 10 minutes. If not, set W-802 back to `[ ]` and say why at the end of its accept line
-- [ ] W-803 | flow:mech | model:haiku | env:any | deps:W-800 | tries:0 | sign:you | One `dependabot.yml`: gomod, github-actions and docker only; grouped, weekly, 7-day cool-off; nothing under `pins/` (W12). `open-pull-requests-limit: 0` until H-905 raises it, because nothing merges its pull requests while the loop runs
+- [S] W-803 | flow:mech | model:haiku | env:any | deps:W-800 | tries:0 | sign:you | One `dependabot.yml`: gomod, github-actions and docker only; grouped, weekly, 7-day cool-off; nothing under `pins/` (W12). `open-pull-requests-limit: 0` until H-905 raises it, because nothing merges its pull requests while the loop runs
       accept: at most 30 lines
 - [ ] W-804 | flow:doc | model:haiku | env:any | deps:W-800 | tries:0 | sign:you | `CONTRIBUTING.md` at most 80 lines, and `CLAUDE.md` at most 60 lines with a one-line `AGENTS.md` that points to it, including the sunset rule. Keep the section "While the loop runs" of `CLAUDE.md` as it is; H-905 removes it
       accept: a newcomer can build and test from three commands

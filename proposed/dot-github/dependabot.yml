@@ -1,0 +1,24 @@
+# Until cutover this file is a proposal and nothing runs it. The limit is 0 until H-905 raises it,
+# because nothing merges a Dependabot pull request while the loop runs. The 7-day cool-off is the
+# trusted class (B2, W12). Nothing under `pins/` is Dependabot's: `cmd/bump` owns it, and the
+# `docker` entry covers a Dockerfile only.
+version: 2
+updates:
+  - package-ecosystem: gomod
+    directory: "/"
+    schedule: { interval: weekly, day: monday, time: "06:00" }
+    cooldown: { default-days: 7 }
+    open-pull-requests-limit: 0
+    groups: { all: { patterns: ["*"] } }
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule: { interval: weekly, day: monday, time: "06:00" }
+    cooldown: { default-days: 7 }
+    open-pull-requests-limit: 0
+    groups: { all: { patterns: ["*"] } }
+  - package-ecosystem: docker
+    directory: "/"
+    schedule: { interval: weekly, day: monday, time: "06:00" }
+    cooldown: { default-days: 7 }
+    open-pull-requests-limit: 0
+    groups: { all: { patterns: ["*"] } }
