@@ -246,7 +246,7 @@ load the workflow file from `main`. Five things follow.
       accept: every job is green and each fuzz target ran for 10 minutes. If not, set W-802 back to `[ ]` and say why at the end of its accept line
 - [S] W-803 | flow:mech | model:haiku | env:any | deps:W-800 | tries:0 | sign:you | One `dependabot.yml`: gomod, github-actions and docker only; grouped, weekly, 7-day cool-off; nothing under `pins/` (W12). `open-pull-requests-limit: 0` until H-905 raises it, because nothing merges its pull requests while the loop runs
       accept: at most 30 lines
-- [ ] W-804 | flow:doc | model:haiku | env:any | deps:W-800 | tries:0 | sign:you | `CONTRIBUTING.md` at most 80 lines, and `CLAUDE.md` at most 60 lines with a one-line `AGENTS.md` that points to it, including the sunset rule. Keep the section "While the loop runs" of `CLAUDE.md` as it is; H-905 removes it
+- [S] W-804 | flow:doc | model:haiku | env:any | deps:W-800 | tries:0 | sign:you | `CONTRIBUTING.md` at most 80 lines, and `CLAUDE.md` at most 60 lines with a one-line `AGENTS.md` that points to it, including the sunset rule. Keep the section "While the loop runs" of `CLAUDE.md` as it is; H-905 removes it
       accept: a newcomer can build and test from three commands
 - [H] H-806 | env:any | deps:U-005,U-006,U-007,U-008,U-009,U-010,U-010b | In the second account: optional, private, and outside this repository. Compare with other open-source sandboxes. Adapters, runs and results stay off GitHub. Report any weakness to that project's maintainers privately, and wait for them, before you publish a comparison
       accept: this line is ticked, done or declined. Nothing else about it is recorded here (S14)
