@@ -33,6 +33,10 @@ var (
 	token = "tok-do-not-print"
 )
 
+// drip is an upstream body sent one byte at a time after the headers, for ten
+// seconds, far past the planning time of a pin.
+const drip = "\x00drip"
+
 type reply struct {
 	status int
 	body   string
@@ -132,6 +136,14 @@ const (
 	rowPatch = `[{"filename":"pins/tool.json","status":"modified","patch":"@@ -16 +16 @@\n-  \"Version\": \"1.2.0\",\n+  \"Version\": \"1.3.0\","}]`
 )
 
+// openTrusted records open trusted bump pull request 5 with the labels, one row
+// changed and a green gate.
+func openTrusted(f *fixture, labels ...string) {
+	openGuest(f)
+	f.routes[listPRs] = reply{body: "[" + pullJSON(5, "bump/trusted-20261119", "o/r", false, 1, labels...) + "]"}
+	f.routes["GET /repos/o/r/pulls/5"] = reply{body: pullJSON(5, "bump/trusted-20261119", "o/r", false, 1, labels...)}
+}
+
 // openGuest records open guest bump pull request 5 with one row changed and a green gate.
 func openGuest(f *fixture) {
 	f.routes[listPRs] = reply{body: "[" + pullJSON(5, "bump/guest-20261119", "o/r", false, 1) + "]"}
@@ -210,15 +222,18 @@ func TestRun(t *testing.T) {
 			openGuest(f)
 			f.routes[merge5] = reply{status: 405}
 		}},
-		{name: "a security pull request is never merged by the tool", code: 0, out: []string{"waits for the maintainer: 5"}, writes: openTrustedPR,
-			edit: func(f *fixture) {
+		{name: "a guest security pull request merges once the gate is green", code: 0, out: []string{"merged: 5"},
+			writes: slices.Concat(mergeOnce, openTrustedPR), edit: func(f *fixture) {
 				openGuest(f)
 				f.routes["GET /repos/o/r/pulls/5"] = reply{body: pullJSON(5, "bump/guest-20261119", "o/r", false, 1, "security")}
 			}},
-		{name: "a security note in the body without the label: never merged", code: 0, out: []string{"waits for the maintainer: 5"},
-			writes: openTrustedPR, edit: func(f *fixture) {
-				openGuest(f)
-				f.routes["GET /repos/o/r/pulls/5"] = reply{body: strings.Replace(pullJSON(5, "bump/guest-20261119", "o/r", false, 1),
+		{name: "a trusted security pull request is never merged by the tool", code: 0,
+			out: []string{"waits for the maintainer: 5", "already open: trusted"}, writes: openGuestPR,
+			edit: func(f *fixture) { openTrusted(f, "security") }},
+		{name: "a trusted security note in the body without the label: never merged", code: 0, out: []string{"waits for the maintainer: 5"},
+			writes: openGuestPR, edit: func(f *fixture) {
+				openTrusted(f)
+				f.routes["GET /repos/o/r/pulls/5"] = reply{body: strings.Replace(pullJSON(5, "bump/trusted-20261119", "o/r", false, 1),
 					`"number":5`, `"body":"- x: 1.0.0 to 1.1.0, age 1h, security: an advisory affects the pinned version and this release fixes it\n","number":5`, 1)}
 			}},
 		{name: "a fork's bump branch is neither merged nor counted", code: 0, writes: slices.Concat(openGuestPR, openTrustedPR), edit: func(f *fixture) {
@@ -243,7 +258,7 @@ func TestRun(t *testing.T) {
 			edit: func(f *fixture) { f.pins = f.pins[1:]; f.pins[0].Version = "1.3.0" }},
 		{name: "trusted with an advisory opens at once, labelled security", code: 0,
 			out:    []string{"kit trusted 2.0.0 2.1.0 eligible", "opened pull request: trusted 7"},
-			writes: slices.Concat(openTrustedPR, []call{w("POST", "/repos/o/r/issues/7/labels")}),
+			writes: slices.Concat(openTrustedPR, []call{w("POST", "/repos/o/r/issues/7/labels")}), check: securityNote(true),
 			edit: func(f *fixture) {
 				f.pins = f.pins[:1]
 				f.pins[0].Package = pins.Package{Ecosystem: "npm", Name: "kit"}
@@ -259,6 +274,18 @@ func TestRun(t *testing.T) {
 				f.upstream["/osv"] = `{"vulns":[{"id":"GHSA-2","affected":[{"package":{"ecosystem":"npm","name":"tool"},` +
 					`"ranges":[{"type":"SEMVER","events":[{"introduced":"0"},{"fixed":"1.3.0"}]}]}]}]}`
 			}},
+		{name: "guest with an advisory, past its cool-off: no security note, no label", code: 0,
+			out: []string{"tool guest 1.2.0 1.3.0 eligible", "opened pull request: guest 7"}, writes: openGuestPR, check: securityNote(false),
+			edit: func(f *fixture) {
+				f.pins = f.pins[1:]
+				f.pins[0].Package = pins.Package{Ecosystem: "npm", Name: "tool"}
+				f.upstream["/osv"] = `{"vulns":[{"id":"GHSA-3","affected":[{"package":{"ecosystem":"npm","name":"tool"},` +
+					`"ranges":[{"type":"SEMVER","events":[{"introduced":"0"},{"fixed":"1.3.0"}]}]}]}]}`
+			}},
+		{name: "one upstream drips its artifact: that pin fails, the next is planned", code: 0,
+			out:    []string{"kit trusted 2.0.0 2.1.0 verify-failed", "tool guest 1.2.0 1.3.0 eligible", "opened issue: kit", "opened pull request: guest 7"},
+			writes: slices.Concat([]call{w("POST", "/repos/o/r/issues")}, openGuestPR),
+			edit:   func(f *fixture) { f.upstream["/kit/2.1.0/linux-x64/kit"] = drip }},
 	}
 	for _, name := range []string{"../.github/workflows/x", "pins/../x", "/etc/x", `..\x`, "a/b", ".x", "", "x\x00", "x\ny", "UP", strings.Repeat("a", 65)} {
 		cases = append(cases, runCase{name: "pin name " + name, code: 2, edit: func(f *fixture) { f.extra["x.json"] = string(bump.Row(pin(name, pins.Guest, "1.0.0"))) }})
@@ -281,7 +308,11 @@ func TestRun(t *testing.T) {
 			if tc.edit != nil {
 				tc.edit(&f)
 			}
+			start := time.Now()
 			out, code, api, before, after := runFixture(t, f, tc.dry)
+			if d := time.Since(start); d > 6*time.Second {
+				t.Errorf("the run took %v", d)
+			}
 			if code != tc.code {
 				t.Errorf("exit %d, want %d; output:\n%s", code, tc.code, out)
 			}
@@ -321,6 +352,20 @@ func TestRun(t *testing.T) {
 	}
 }
 
+// securityNote checks whether the body of the pull request, the third write,
+// holds the security note.
+func securityNote(want bool) func(*testing.T, []call) {
+	return func(t *testing.T, cs []call) {
+		var pr map[string]string
+		if err := json.Unmarshal([]byte(cs[2].body), &pr); err != nil {
+			t.Fatal(err)
+		}
+		if got := strings.Contains(pr["body"], "security"); got != want {
+			t.Errorf("security note %v, want %v: %q", got, want, pr["body"])
+		}
+	}
+}
+
 // checkOpened checks the branch, the row and the pull request of the guest class.
 func checkOpened(t *testing.T, cs []call) {
 	var ref, put, pr map[string]string
@@ -354,11 +399,22 @@ func checkOpened(t *testing.T, cs []call) {
 func runFixture(t *testing.T, f fixture, dry bool) (string, int, *standIn, map[string]string, map[string]string) {
 	up := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, ok := f.upstream[r.URL.Path]
-		if !ok {
+		switch {
+		case !ok:
 			http.NotFound(w, r)
-			return
+		case body == drip:
+			for range 200 {
+				io.WriteString(w, "x")
+				w.(http.Flusher).Flush()
+				select {
+				case <-r.Context().Done():
+					return
+				case <-time.After(50 * time.Millisecond):
+				}
+			}
+		default:
+			io.WriteString(w, body)
 		}
-		io.WriteString(w, body)
 	}))
 	t.Cleanup(up.Close)
 	api := &standIn{routes: f.routes}
@@ -376,7 +432,7 @@ func runFixture(t *testing.T, f fixture, dry bool) (string, int, *standIn, map[s
 		}
 	}
 	before := snapshot(t, dir)
-	tool := bump.Tool{Pins: dir, Upstream: up.Client(), OSV: up.URL + "/osv", Now: now}
+	tool := bump.Tool{Pins: dir, Upstream: up.Client(), OSV: up.URL + "/osv", PinTime: 2 * time.Second, Now: now}
 	tool.GitHub.Client = &http.Client{Timeout: 300 * time.Millisecond}
 	var out, stderr bytes.Buffer
 	tool.Out = &out

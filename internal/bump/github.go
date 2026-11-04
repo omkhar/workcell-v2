@@ -28,7 +28,10 @@ const (
 	maxPages = 10
 )
 
-var nextRE = regexp.MustCompile(`<([^>]+)>;\s*rel="next"`)
+var (
+	nextRE = regexp.MustCompile(`<([^>]+)>;\s*rel="next"`)
+	shaRE  = regexp.MustCompile(`^[0-9a-f]{40}$`)
+)
 
 // GitHub drives the REST API of one repository. The commits it makes are made
 // by the API, which signs them; it never runs git or gh (A8).
@@ -169,10 +172,11 @@ func (t Tool) merge(ctx context.Context, n int) error {
 	if _, err := g.do(ctx, "read pull request", http.MethodGet, g.url("/pulls/%d", n), nil, &pr); err != nil {
 		return err
 	}
-	if _, ok := g.class(pr); !ok {
+	class, ok := g.class(pr)
+	if !ok {
 		return Refused("pull request")
 	}
-	if sha, err := hex.DecodeString(pr.Head.SHA); err != nil || len(sha) != sha1.Size || strings.ToLower(pr.Head.SHA) != pr.Head.SHA {
+	if !shaRE.MatchString(pr.Head.SHA) {
 		return Refused("head")
 	}
 	fs, err := list[file](ctx, g, "list changed files", g.url("/pulls/%d/files?per_page=100", n))
@@ -190,7 +194,7 @@ func (t Tool) merge(ctx context.Context, n int) error {
 	switch {
 	case err != nil:
 		return err
-	case strings.Contains(pr.Body, securityNote) || slices.ContainsFunc(pr.Labels, func(l struct{ Name string }) bool { return l.Name == "security" }):
+	case class == pins.Trusted && (strings.Contains(pr.Body, securityNote) || slices.ContainsFunc(pr.Labels, func(l struct{ Name string }) bool { return l.Name == "security" })):
 		fmt.Fprintln(t.Out, "waits for the maintainer:", n)
 	case !Green(cr.Runs, cr.Total, pr.Head.SHA):
 		fmt.Fprintln(t.Out, "waits for gate:", n)

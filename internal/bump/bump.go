@@ -61,18 +61,21 @@ func PathOK(p string) bool {
 }
 
 // Tool is one run. Upstream fetches listings, artifacts and advisories; OSV is
-// the advisory database; Now is the clock Select reads.
+// the advisory database; PinTime bounds the planning of one pin (W8); Now is
+// the clock Select reads.
 type Tool struct {
 	Pins     string
 	Upstream *http.Client
 	OSV      string
+	PinTime  time.Duration
 	GitHub   GitHub
 	DryRun   bool
 	Now      time.Time
 	Out      io.Writer
 }
 
-// Change is a pin that moves, and the row it moves to.
+// Change is a pin that moves, and the row it moves to. Security marks a
+// trusted security bump, which waits for the maintainer (B4).
 type Change struct {
 	Old, New pins.Pin
 	Security bool
@@ -172,6 +175,8 @@ func (t Tool) Run(ctx context.Context) error {
 // plan decides one pin. Only a hostile chosen version is an error; anything an
 // upstream fails at is a reason token, so one upstream never blocks the rest (W8).
 func (t Tool) plan(ctx context.Context, p pins.Pin) (Change, string, error) {
+	ctx, cancel := context.WithTimeout(ctx, t.PinTime)
+	defer cancel()
 	cands, err := pins.Candidates(ctx, t.Upstream, p)
 	if err != nil {
 		return Change{}, "source-error", nil
@@ -199,7 +204,7 @@ func (t Tool) plan(ctx context.Context, p pins.Pin) (Change, string, error) {
 	}
 	n := p
 	n.Release, n.Previous, n.Timestamps, n.Released = rel, &p.Release, r.Chosen.Timestamps, t.Now.UTC().Truncate(time.Second)
-	return Change{Old: p, New: n, Security: r.Security}, "eligible", nil
+	return Change{Old: p, New: n, Security: !r.AutoMerge}, "eligible", nil
 }
 
 // Row is the file a pin is stored in: the same bytes as pins/debian.json.
