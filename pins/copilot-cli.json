@@ -1,0 +1,26 @@
+{
+  "Name": "copilot-cli",
+  "Class": "guest",
+  "Source": "github-releases",
+  "Locator": "https://api.github.com/repos/github/copilot-cli/releases",
+  "Package": {
+    "Ecosystem": "npm",
+    "Name": "@github/copilot"
+  },
+  "Assets": {
+    "amd64": "copilot-linux-x64.tar.gz",
+    "arm64": "copilot-linux-arm64.tar.gz"
+  },
+  "Signing": {
+    "Identity": "",
+    "Issuer": "",
+    "Bundles": null,
+    "Members": null
+  },
+  "Version": "",
+  "Artifacts": null,
+  "Timestamps": null,
+  "Released": "0001-01-01T00:00:00Z",
+  "Previous": null,
+  "Withdrawn": null
+}

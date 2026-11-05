@@ -106,7 +106,7 @@ func TestCandidates(t *testing.T) {
 	npmPin := Pin{Name: "tool", Source: NPM, Locator: "/@vendor%2ftool"}
 	ghPin := Pin{Name: "tool", Source: GitHubReleases, Locator: "/repos/vendor/tool/releases",
 		Assets: map[string]string{"amd64": "tool-linux-amd64.tar.gz", "arm64": "tool-linux-arm64.tar.gz"}}
-	vendorPin := Pin{Name: "claude", Source: VendorManifest, Locator: "/root", Assets: map[string]string{"amd64": "linux-x64", "arm64": "linux-arm64"}}
+	vendorPin := Pin{Name: "claude-code", Source: VendorManifest, Locator: "/root", Assets: map[string]string{"amd64": "linux-x64", "arm64": "linux-arm64"}}
 	ociPin := Pin{Name: "tool", Source: OCI, Locator: "/v2/vendor/tool"}
 	signedPin := Pin{Name: "tool", Source: GitHubReleases, Locator: ghPin.Locator, Assets: map[string]string{"amd64": "tool-linux-amd64.tar.gz"},
 		Signing: Signing{Identity: "https://github.com/vendor/tool/.github/workflows/release.yml@refs/tags/{version}",
@@ -250,6 +250,8 @@ func TestCandidates(t *testing.T) {
 			body: `{"version": "1.2.0", "buildDate": "2026-10-20T08:00:00Z", "platforms": {"linux-x64": {"checksum": "3333333333333333333333333333333333333333333333333333333333333333"}}}`})},
 		{name: "vendor bad checksum", pin: vendorPin, routes: withRoute(vendorOK, "/root/1.2.0/manifest.json", route{
 			body: `{"version": "1.2.0", "buildDate": "2026-10-20T08:00:00Z", "platforms": {"linux-x64": {"checksum": "XYZ"}, "linux-arm64": {"checksum": "XYZ"}}}`})},
+		{name: "vendor missing binary name", pin: vendorPin, routes: withRoute(vendorOK, "/root/1.2.0/manifest.json", route{
+			body: `{"version": "1.2.0", "buildDate": "2026-10-20T08:00:00Z", "platforms": {"linux-x64": {"checksum": "3333333333333333333333333333333333333333333333333333333333333333", "binary": "claude"}, "linux-arm64": {"checksum": "2222222222222222222222222222222222222222222222222222222222222222"}}}`})},
 		{name: "vendor missing build date", pin: vendorPin, routes: withRoute(vendorOK, "/root/1.2.0/manifest.json", route{
 			body: `{"version": "1.2.0", "platforms": {}}`})},
 

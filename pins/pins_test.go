@@ -20,6 +20,7 @@ func TestLoad(t *testing.T) {
 		{"none", nil, nil, false},
 		{"two in name order", map[string]string{"b.json": `{"Name":"b","Version":"2"}`, "a.json": `{"Name":"a"}`}, []string{"a", "b"}, false},
 		{"other files ignored", map[string]string{"a.json": `{"Name":"a"}`, "notes.txt": "x"}, []string{"a"}, false},
+		{"unpinned row", map[string]string{"a.json": `{"Name":"a","Version":"","Artifacts":null,"Timestamps":null,"Released":"0001-01-01T00:00:00Z","Previous":null}`}, []string{"a"}, false},
 		{"misnamed", map[string]string{"a.json": `{"Name":"b"}`}, nil, true},
 		{"not json", map[string]string{"a.json": `{`}, nil, true},
 		{"not an object", map[string]string{"a.json": `[1]`}, nil, true},

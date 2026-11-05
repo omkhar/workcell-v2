@@ -6,6 +6,8 @@ package rootfs
 import (
 	"errors"
 	"fmt"
+	"maps"
+	"slices"
 	"strings"
 )
 
@@ -94,6 +96,19 @@ func (t *Tree) Lookup(p string) *Node {
 		return nil
 	}
 	return n
+}
+
+// Names lists the entries of the directory at p, sorted; nil when p is not a directory.
+func (t *Tree) Names(p string) []string {
+	parts, err := split(p)
+	if err != nil {
+		return nil
+	}
+	d, err := t.dir(parts)
+	if err != nil {
+		return nil
+	}
+	return slices.Sorted(maps.Keys(d.kids))
 }
 
 // Put adds the entry n at p, or replaces whatever is there, of any kind. The parent

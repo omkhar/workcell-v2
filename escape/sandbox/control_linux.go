@@ -360,18 +360,36 @@ func (c *control) Update(ctx context.Context, u UpdateConfig) ([]byte, error) {
 
 // Install does what a naive sandbox does: it unpacks the artifact into the
 // one prefix every session's PATH starts with, writable, and keeps no image.
+// It takes the shapes real upstreams serve as the product does: a bare
+// executable, or a tar whose root holds one regular file and no bin/, is
+// bin/<agent>.
 func (c *control) Install(_ context.Context, l Layer) (string, error) {
-	return "", untar(l.Artifact, func(h *tar.Header, r io.Reader) error {
-		if h.Typeflag == tar.TypeDir {
-			return nil
-		}
+	put := func(name string, mode os.FileMode, b []byte) error {
+		p := filepath.Join(prefix, name)
+		return errors.Join(os.MkdirAll(filepath.Dir(p), 0o755), os.WriteFile(p, b, mode))
+	}
+	var files []*tar.Header
+	var bodies [][]byte
+	err := untar(l.Artifact, func(h *tar.Header, r io.Reader) error {
 		b, err := io.ReadAll(r)
-		p := filepath.Join(prefix, h.Name)
-		if err == nil {
-			err = errors.Join(os.MkdirAll(filepath.Dir(p), 0o755), os.WriteFile(p, b, os.FileMode(h.Mode)))
+		if h.Typeflag != tar.TypeDir {
+			files, bodies = append(files, h), append(bodies, b)
 		}
 		return err
 	})
+	if err != nil { // no tar at all: a bare executable
+		return "", put("bin/"+l.Agent, 0o755, l.Artifact)
+	}
+	for i, h := range files {
+		name := h.Name
+		if len(files) == 1 && !strings.HasPrefix(name, "bin/") {
+			name = "bin/" + l.Agent
+		}
+		if err := put(name, os.FileMode(h.Mode), bodies[i]); err != nil {
+			return "", err
+		}
+	}
+	return "", nil
 }
 
 // Bench: a plain container boots no VM, so there is no start to time. It

@@ -124,8 +124,11 @@ type UpdateConfig struct {
 
 // Layer is one provider layer a judge wants installed on the host, as
 // `workcell update <agent>` installs it: the provider, the release, and the
-// tar (plain or gzip) holding bin/<binary> that the judge serves at URL, on
-// the test host's loopback over https under the suite's authority (T8).
+// artifact the row's digest names, in a shape a real upstream serves (a bare
+// executable, or a tar, plain or gzip, holding the binary at its root or
+// under bin/). The judge serves URL on the test host's loopback over https
+// under the suite's authority (T8), the artifact or, to see a digest
+// mismatch refused, other bytes.
 type Layer struct {
 	Agent, Version, URL string
 	Artifact            []byte

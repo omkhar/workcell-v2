@@ -330,7 +330,7 @@ next:
 
 // vendor reads the release the vendor's latest file names, the shape Claude
 // Code publishes: <root>/latest, <root>/<version>/manifest.json and the file at
-// <root>/<version>/<platform>/<pin name>.
+// <root>/<version>/<platform>/<binary>, the name the manifest gives the platform's file.
 func (g getter) vendor(p Pin) ([]Candidate, error) {
 	if len(p.Assets) == 0 {
 		return nil, errors.New("no platforms named")
@@ -349,6 +349,7 @@ func (g getter) vendor(p Pin) ([]Candidate, error) {
 		BuildDate string `json:"buildDate"`
 		Platforms map[string]struct {
 			Checksum string `json:"checksum"`
+			Binary   string `json:"binary"`
 		} `json:"platforms"`
 	}
 	if _, err := g.json(root+"/"+v+"/manifest.json", "", &m); err != nil {
@@ -363,11 +364,14 @@ func (g getter) vendor(p Pin) ([]Candidate, error) {
 	}
 	arts := map[string]Artifact{}
 	for arch, platform := range p.Assets {
-		sum := m.Platforms[platform].Checksum
-		if !isSHA256(sum) {
+		pl := m.Platforms[platform]
+		if !isSHA256(pl.Checksum) {
 			return nil, fmt.Errorf("manifest of %s: no SHA-256 for platform %q", v, platform)
 		}
-		arts[arch] = Artifact{URL: root + "/" + v + "/" + platform + "/" + p.Name, SHA256: sum}
+		if pl.Binary == "" || strings.ContainsAny(pl.Binary, "/?#") {
+			return nil, fmt.Errorf("manifest of %s: no binary name for platform %q", v, platform)
+		}
+		arts[arch] = Artifact{URL: root + "/" + v + "/" + platform + "/" + pl.Binary, SHA256: pl.Checksum}
 	}
 	return []Candidate{{Release: Release{Version: v, Artifacts: arts}, Timestamps: ts}}, nil
 }

@@ -4,6 +4,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -130,7 +131,7 @@ func (in installer) update(ctx context.Context, p provider.Provider, to string, 
 	case prev:
 		return in.point(p.Name, row, dir, prev, cur, "rolled_back")
 	}
-	if err := in.fetch(ctx, dir, name, a); err != nil {
+	if err := in.fetch(ctx, dir, name, p.Binary, a); err != nil {
 		return "", in.refuse(p.Name, rel.Version, a.SHA256, err)
 	}
 	return in.point(p.Name, row, dir, name, cur, "installed")
@@ -145,6 +146,9 @@ func (in installer) row(p provider.Provider) (pins.Pin, error) {
 	if i < 0 {
 		return pins.Pin{}, fmt.Errorf("provider %s names pin %s, which has no row under pins/", p.Name, p.Install.Pin)
 	}
+	if in.rows[i].Version == "" {
+		return pins.Pin{}, fmt.Errorf("provider %s names pin %s, whose row pins no release yet", p.Name, p.Install.Pin)
+	}
 	return in.rows[i], nil
 }
 
@@ -152,7 +156,7 @@ func (in installer) row(p provider.Provider) (pins.Pin, error) {
 // the bytes go to a temporary file as they are hashed, and are unpacked only once the
 // digest is the row's. A mismatch leaves nothing behind. The image takes its name only
 // once it is complete and durable.
-func (in installer) fetch(ctx context.Context, dir, name string, a pins.Artifact) error {
+func (in installer) fetch(ctx context.Context, dir, name, binary string, a pins.Artifact) error {
 	body, err := artifact.Fetch(ctx, in.client, a.URL, artifact.MaxArtifact)
 	if err != nil {
 		return err
@@ -174,8 +178,8 @@ func (in installer) fetch(ctx context.Context, dir, name string, a pins.Artifact
 	if _, err := tmp.Seek(0, io.SeekStart); err != nil {
 		return err
 	}
-	t := rootfs.NewTree()
-	if _, err := t.Apply(tmp, maxLayer); err != nil {
+	t, err := unpack(tmp, binary)
+	if err != nil {
 		return err
 	}
 	img, err := os.CreateTemp(dir, ".image-*")
@@ -191,6 +195,48 @@ func (in installer) fetch(ctx context.Context, dir, name string, a pins.Artifact
 		return err
 	}
 	return os.Rename(img.Name(), filepath.Join(dir, name))
+}
+
+// unpack reads the artifact f into the tree of a layer, its shape told by content and never
+// by URL: a gzip stream or a tar is applied as a layer, anything else is one bare file. Then,
+// once, a tree without bin/<binary> whose root holds exactly one regular file and no bin/
+// entry has that file become bin/<binary>, mode 0755; the bare file is that case. A tree
+// that already holds bin/<binary> is left as it is. Any other shape is refused.
+func unpack(f *os.File, binary string) (*rootfs.Tree, error) {
+	head := make([]byte, 262)
+	n, _ := io.ReadFull(f, head)
+	if _, err := f.Seek(0, io.SeekStart); err != nil {
+		return nil, err
+	}
+	t := rootfs.NewTree()
+	if bytes.HasPrefix(head[:n], []byte{0x1f, 0x8b}) || (n == len(head) && string(head[257:262]) == "ustar") {
+		if _, err := t.Apply(f, maxLayer); err != nil {
+			return nil, err
+		}
+	} else {
+		data, err := io.ReadAll(f)
+		if err != nil {
+			return nil, err
+		}
+		if err := t.Put(binary, rootfs.Node{Kind: rootfs.File, Mode: 0o755, Data: data}); err != nil {
+			return nil, err
+		}
+	}
+	want := "bin/" + binary
+	if t.Lookup(want) != nil {
+		return t, nil
+	}
+	var files []string
+	for _, name := range t.Names("/") {
+		if t.Lookup(name).Kind == rootfs.File {
+			files = append(files, name)
+		}
+	}
+	if len(files) != 1 || t.Lookup("bin") != nil {
+		return nil, fmt.Errorf("the artifact holds neither %s nor one file at its root to become it", want)
+	}
+	t.Lookup(files[0]).Mode = 0o755
+	return t, errors.Join(t.Put("bin", rootfs.Node{Kind: rootfs.Dir, Mode: 0o755}), t.Link(files[0], want), t.Remove(files[0]))
 }
 
 // point makes the complete image current the agent's layer, keeps previous as the one to
