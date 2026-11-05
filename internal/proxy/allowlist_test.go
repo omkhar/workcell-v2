@@ -74,7 +74,7 @@ func TestParseAllowlist(t *testing.T) {
 func TestLoadAllowlistAndPorts(t *testing.T) {
 	t.Parallel()
 	path := filepath.Join(t.TempDir(), "allowlist")
-	if err := os.WriteFile(path, []byte("db.example:5432\napi.example.com:443\nssh.example:22\n"), 0o600); err != nil {
+	if err := os.WriteFile(path, []byte("db.example:5432\napi.example.com:443\nssh.example:22\nDB.example:443\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	a, err := LoadAllowlist(path)
@@ -83,6 +83,9 @@ func TestLoadAllowlistAndPorts(t *testing.T) {
 	}
 	if got, want := a.Ports(), []uint16{22, 443, 5432}; !slices.Equal(got, want) {
 		t.Fatalf("Ports() = %v, want %v", got, want)
+	}
+	if got, want := a.Hosts(), []string{"api.example.com", "db.example", "ssh.example"}; !slices.Equal(got, want) {
+		t.Fatalf("Hosts() = %v, want %v", got, want)
 	}
 	if _, err := LoadAllowlist(filepath.Join(t.TempDir(), "missing")); err == nil {
 		t.Fatal("LoadAllowlist(missing) error = nil, want error")

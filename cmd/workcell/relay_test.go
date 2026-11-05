@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/omkhar/workcell/v2/internal/relay"
+	"github.com/omkhar/workcell/v2/internal/resolver"
 )
 
 func TestPortsArg(t *testing.T) {
@@ -129,6 +130,7 @@ func TestStreamDemultiplexes(t *testing.T) {
 		{"an unserved port", header(1, 6, "203.0.113.5:80"), ""},
 		{"port 443, not served by this policy", header(1, 6, "203.0.113.5:443"), ""},
 		{"UDP on a served port", header(1, 17, "203.0.113.5:8443"), ""},
+		{"UDP on an unserved port", header(1, 17, "203.0.113.5:5353"), ""},
 		{"version 2", header(2, 6, "203.0.113.5:8443"), ""},
 		{"version 0", header(0, 6, "203.0.113.5:8443"), ""},
 		{"proto 0", header(1, 0, "203.0.113.5:8443"), ""},
@@ -138,7 +140,7 @@ func TestStreamDemultiplexes(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			ln := newPipeListener()
 			served := newAdapters([]uint16{8443})
-			go serveRelay(ln, served, time.Second)
+			go serveRelay(ln, served, resolver.New(nil), time.Second)
 			defer ln.Close()
 			guest := ln.dial(t)
 			defer guest.Close()
@@ -168,12 +170,75 @@ func TestStreamDemultiplexes(t *testing.T) {
 	}
 }
 
+// dnsQuery is one A query, id 0x4242, for name as the guest's resolver would send it.
+func dnsQuery(name string) []byte {
+	b := []byte{0x42, 0x42, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0}
+	for _, label := range strings.Split(strings.TrimSuffix(name, "."), ".") {
+		b = append(append(b, byte(len(label))), label...)
+	}
+	return append(b, 0, 0, 1, 0, 1)
+}
+
+// TestStreamAnswersDNS drives whole DNS streams through the dispatcher as the init sends them:
+// header, framed query, and reads the framed reply. An allowed name gets an address, a refused
+// name and a subdomain REFUSED, a garbage frame FORMERR, and a header-only datagram nothing;
+// each stream is closed after its one exchange, and UDP 53 at any address is the resolver's.
+func TestStreamAnswersDNS(t *testing.T) {
+	tests := []struct {
+		name  string
+		dst   string
+		query []byte
+		rcode int // -1 for no reply
+		addr  string
+	}{
+		{"an allowed name", "127.0.0.1:53", dnsQuery("allowed.example."), 0, "127.0.0.1"},
+		{"an allowed name in mixed case", "127.0.0.1:53", dnsQuery("AlLoWeD.eXaMpLe"), 0, "127.0.0.1"},
+		{"a refused name", "127.0.0.1:53", dnsQuery("denied.example."), 5, ""},
+		{"a subdomain", "127.0.0.1:53", dnsQuery("sub.allowed.example."), 5, ""},
+		{"a garbage frame", "127.0.0.1:53", []byte{0x42, 0x42, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0xC0, 12, 0, 1, 0, 1}, 1, ""},
+		{"one byte", "127.0.0.1:53", []byte{0x55}, -1, ""},
+		{"UDP 53 at the host's address", "203.0.113.5:53", dnsQuery("allowed.example."), 0, "127.0.0.1"},
+		{"UDP 53 at a LAN address, refused", "[fd00::1]:53", dnsQuery("denied.example."), 5, ""},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			ln := newPipeListener()
+			served := newAdapters([]uint16{443})
+			go serveRelay(ln, served, resolver.New([]string{"allowed.example"}), time.Second)
+			defer ln.Close()
+			guest := ln.dial(t)
+			defer guest.Close()
+			go func() { _, _ = guest.Write(append(header(1, 17, tc.dst), relay.Frame(tc.query)...)) }()
+			_ = guest.SetReadDeadline(time.Now().Add(5 * time.Second))
+			if tc.rcode < 0 {
+				readEOF(t, guest, "a stream with nothing to answer")
+				return
+			}
+			reply, err := relay.ReadFrame(guest)
+			if err != nil {
+				t.Fatalf("no framed reply: %v", err)
+			}
+			if len(reply) < 12 || reply[0] != 0x42 || reply[1] != 0x42 || reply[2]&0x80 == 0 || int(reply[3]&0x0F) != tc.rcode {
+				t.Fatalf("reply %x, want a response with rcode %d", reply, tc.rcode)
+			}
+			var addr string
+			if reply[7] == 1 && len(reply) >= 16 {
+				addr = net.IP(reply[len(reply)-4:]).String()
+			}
+			if addr != tc.addr {
+				t.Errorf("reply %x carries address %q, want %q", reply, addr, tc.addr)
+			}
+			readEOF(t, guest, "the stream after its one exchange")
+		})
+	}
+}
+
 // TestRelayHoldsAtMostMaxStreams: the 1024th stream is held, the 1025th is closed at once, and
 // a slot is released when the guest ends a stream, or when the proxy closes a delivered one.
 func TestRelayHoldsAtMostMaxStreams(t *testing.T) {
 	ln := newPipeListener()
 	served := newAdapters([]uint16{8443})
-	go serveRelay(ln, served, 30*time.Second)
+	go serveRelay(ln, served, resolver.New(nil), 30*time.Second)
 	defer ln.Close()
 	var guests []net.Conn
 	defer func() {
@@ -215,7 +280,7 @@ func TestRelayHoldsAtMostMaxStreams(t *testing.T) {
 
 func TestRelayDropsAnIncompleteHeader(t *testing.T) {
 	ln := newPipeListener()
-	go serveRelay(ln, newAdapters(nil), 100*time.Millisecond)
+	go serveRelay(ln, newAdapters(nil), resolver.New(nil), 100*time.Millisecond)
 	defer ln.Close()
 	guest := ln.dial(t)
 	defer guest.Close()
@@ -235,7 +300,7 @@ func TestRelayCloseEndsAdapters(t *testing.T) {
 	before := runtime.NumGoroutine()
 	ln := newPipeListener()
 	served := newAdapters([]uint16{443, 8443})
-	go serveRelay(ln, served, 200*time.Millisecond)
+	go serveRelay(ln, served, resolver.New(nil), 200*time.Millisecond)
 	delivered := ln.dial(t)
 	go func() { _, _ = delivered.Write(header(1, 6, "203.0.113.5:8443")) }()
 	c, err := acceptOne(t, served[8443])
