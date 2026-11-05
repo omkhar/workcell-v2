@@ -69,16 +69,28 @@ func validPath(p string) bool {
 }
 
 // tokenEndpoint returns the rule whose token endpoint a request to u on
-// host goes to: one whose path is u's as sent or as decoded with its dot
-// segments resolved, since the server may take either reading, and an
-// answer taken for another path would reach the guest unread.
+// host goes to: one whose path a common router would read as u's, taken as
+// sent or as decoded with its dot segments resolved, in either case, and
+// with a ;param suffix dropped from each segment. The match is wide because
+// an answer taken for another path would reach the guest unread (I5), while
+// a request taken for the endpoint is only read whole and rewritten.
 func (p *Proxy) tokenEndpoint(host string, u *url.URL) (TerminateRule, bool) {
 	for _, r := range p.signin[host] {
-		if u.EscapedPath() == r.SignIn.Path || path.Clean(u.Path) == r.SignIn.Path {
+		if sameEndpoint(u.EscapedPath(), r.SignIn.Path) || sameEndpoint(path.Clean(u.Path), r.SignIn.Path) {
 			return r, true
 		}
 	}
 	return TerminateRule{}, false
+}
+
+// sameEndpoint reports whether a router that folds case or drops a ;param
+// suffix from each segment would serve p as endpoint.
+func sameEndpoint(p, endpoint string) bool {
+	segs := strings.Split(p, "/")
+	for i, seg := range segs {
+		segs[i], _, _ = strings.Cut(seg, ";")
+	}
+	return strings.EqualFold(strings.Join(segs, "/"), endpoint)
 }
 
 // tokenRequest reads the body of a request to rule's token endpoint and
@@ -204,7 +216,10 @@ func readToken(resp *http.Response) ([]byte, error) {
 
 // learn hands the tokens a 2xx JSON object issues to the broker and returns
 // body with every real token the broker holds for the row, before and after,
-// hidden behind its placeholder.
+// hidden behind its placeholder. A 2xx that is not a JSON object is refused:
+// a success answer is one (RFC 6749 section 5.1), and a body that only a
+// lenient client reads, with a BOM or a trailing comma, could carry tokens
+// the broker never sees (I5).
 func (p *Proxy) learn(rule TerminateRule, status int, body []byte) ([]byte, error) {
 	access, refresh := p.broker.Tokens(rule.Host, rule.Header)
 	swaps := []swap{{access, rule.Placeholder}, {refresh, rule.SignIn.Refresh}}
@@ -213,7 +228,11 @@ func (p *Proxy) learn(rule TerminateRule, status int, body []byte) ([]byte, erro
 			clear(s.real)
 		}
 	}()
-	if obj, ok := parseJSON(body).(map[string]any); ok && status/100 == 2 {
+	if status/100 == 2 {
+		obj, ok := parseJSON(body).(map[string]any)
+		if !ok {
+			return nil, errors.New("token answer is not a JSON object")
+		}
 		a, _ := obj["access_token"].(string)
 		r, _ := obj["refresh_token"].(string)
 		if a != "" || r != "" {

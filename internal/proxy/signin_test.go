@@ -112,6 +112,86 @@ func TestHide(t *testing.T) {
 	}
 }
 
+// TestTokenEndpoint: a path a case-folding router, or one that drops a
+// ;param suffix from a segment, would serve as the endpoint is the endpoint;
+// another path is not. Match only the exact spelling → the guest reads the
+// unrewritten answer of /OAUTH/TOKEN → FAIL (I5).
+func TestTokenEndpoint(t *testing.T) {
+	t.Parallel()
+	rule := TerminateRule{Host: "api.example.com", SignIn: &SignIn{Host: "login.example.com", Path: tokenEndpointPath}}
+	p := &Proxy{signin: map[string][]TerminateRule{"login.example.com": {rule}}}
+	cases := []struct {
+		host, target string
+		want         bool
+	}{
+		{"login.example.com", "/oauth/token", true},
+		{"login.example.com", "/OAUTH/TOKEN", true},
+		{"login.example.com", "/oauth/Token", true},
+		{"login.example.com", "/oauth/token;jsessionid=1", true},
+		{"login.example.com", "/oauth;v=2/token", true},
+		{"login.example.com", "/oauth/token%3Bx", true},
+		{"login.example.com", "/oauth/%54oken/", true},
+		{"login.example.com", "/oauth/./x/../token?refresh_token=1", true},
+		{"login.example.com", "/oauth/token;", true},
+		{"login.example.com", "/oauth/tokens", false},
+		{"login.example.com", "/oauth/token/x", false},
+		{"login.example.com", "/oauth/revoke", false},
+		{"login.example.com", "/oauth/token%2Fx", false},
+		{"api.example.com", "/oauth/token", false},
+	}
+	for _, tc := range cases {
+		u, err := url.Parse("https://" + tc.host + tc.target)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, got := p.tokenEndpoint(tc.host, u); got != tc.want {
+			t.Errorf("tokenEndpoint(%q, %q) = %t, want %t", tc.host, tc.target, got, tc.want)
+		}
+	}
+}
+
+// TestLearn: a 2xx that is not a JSON object, as encoding/json reads one,
+// is refused whole and the broker is not asked, while a 2xx object goes to
+// the broker and a non-2xx is only hidden. Pass a 2xx through after hiding
+// → a BOM before the object carries both tokens to the guest → FAIL (I5).
+func TestLearn(t *testing.T) {
+	t.Parallel()
+	pair := `{"access_token":"sk-acc-1","refresh_token":"sk-ref-1"}`
+	cases := []struct {
+		name, body string
+		status     int
+		want       string // "" is refused
+		issued     bool
+	}{
+		{"object", pair, 200, `{"access_token":"` + testPlaceholder + `","refresh_token":"` + testRefreshPlaceholder + `"}`, true},
+		{"object, 201", pair, 201, `{"access_token":"` + testPlaceholder + `","refresh_token":"` + testRefreshPlaceholder + `"}`, true},
+		{"bom", "\ufeff" + pair, 200, "", false},
+		{"trailing comma", `{"access_token":"sk-acc-1","refresh_token":"sk-ref-1",}`, 200, "", false},
+		{"comment", "/*x*/" + pair, 200, "", false},
+		{"nan", `{"access_token":"sk-acc-1","n":NaN}`, 200, "", false},
+		{"two values", pair + pair, 200, "", false},
+		{"array", `[` + pair + `]`, 200, "", false},
+		{"string", `"sk-acc-1"`, 200, "", false},
+		{"empty", "", 200, "", false},
+		{"empty, 204", "", 204, "", false},
+		{"form", "access_token=sk-acc-1", 200, "", false},
+		{"error, not json", "error=invalid_grant&refresh_token=sk-ref-0", 400, "error=invalid_grant&refresh_token=" + testRefreshPlaceholder, false},
+		{"error, bom", "\ufeff" + `{"refresh_token":"sk-ref-0"}`, 400, "\ufeff" + `{"refresh_token":"` + testRefreshPlaceholder + `"}`, false},
+	}
+	for _, tc := range cases {
+		broker := &tokenBroker{refresh: []byte("sk-ref-0")}
+		p := &Proxy{broker: broker}
+		rule := TerminateRule{Host: "api.example.com", Header: "authorization", Placeholder: testPlaceholder, SignIn: &SignIn{Host: "login.example.com", Path: tokenEndpointPath, Refresh: testRefreshPlaceholder}}
+		got, err := p.learn(rule, tc.status, []byte(tc.body))
+		if (err == nil) != (tc.want != "") || string(got) != tc.want {
+			t.Errorf("%s: learn = %q, %v; want %q", tc.name, got, err, tc.want)
+		}
+		if issued := strings.Contains(strings.Join(broker.calls, ";"), "issue"); issued != tc.issued || tc.issued != (string(broker.access) == "sk-acc-1") {
+			t.Errorf("%s: broker calls %v, holds %q; want issued %t", tc.name, broker.calls, broker.access, tc.issued)
+		}
+	}
+}
+
 // tokenBroker holds one row's tokens, as the credential broker does.
 type tokenBroker struct {
 	mu              sync.Mutex
