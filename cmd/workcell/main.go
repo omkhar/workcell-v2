@@ -31,6 +31,8 @@ func main() {
 		os.Exit(explain(os.Args[2:], os.Stderr))
 	case len(os.Args) >= 2 && os.Args[1] == "log":
 		os.Exit(logs(os.Args[2:], os.Stdout, os.Stderr))
+	case len(os.Args) >= 2 && os.Args[1] == "verify":
+		os.Exit(verify(os.Args[2:], os.Stdout, os.Stderr))
 	case len(os.Args) >= 2 && os.Args[1] == "update":
 		os.Exit(update(os.Args[2:], os.Stdout, os.Stderr))
 	case len(os.Args) >= 2 && os.Args[1] == "bench":

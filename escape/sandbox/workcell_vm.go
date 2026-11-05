@@ -20,6 +20,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"sync"
 	"syscall"
@@ -60,6 +61,7 @@ type workcell struct {
 	mu      sync.Mutex
 	run     *exec.Cmd // the product, while one run of it is in flight
 	ns      *holder   // the session's own network namespace, when isolated
+	seen    []string  // the product's sessions of this one, oldest first, as sessions found them
 }
 
 // prepareWorkcell fetches, builds and assembles under dir what `workcell run`
@@ -353,6 +355,126 @@ func (w *workcell) cli(ctx context.Context, in io.Reader, args ...string) (Outpu
 		return out, fmt.Errorf("workcell %s: %w", args[0], err)
 	}
 	return out, nil
+}
+
+// A session of the suite, Start to Stop, is several of the product's: one
+// per `workcell run` (SPEC A2), each with a directory of its own under the
+// data directory's sessions/, holding its record as audit.log, one JSON
+// line per record. The record of the suite's session is theirs, in order.
+// The judges edit the file at the path Audit returns and have the guest
+// go for it, so the path is the product's own file, never a copy.
+
+// sessions lists the product's sessions of this one, oldest first: those
+// seen before keep their order, and any new one, found under the data
+// directory on the host, comes after them by the age of its record. Only a
+// session with a record counts.
+func (w *workcell) sessions() ([]string, error) {
+	dir := filepath.Join(prepared.xdg, "workcell", "sessions")
+	entries, err := os.ReadDir(dir)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return nil, fmt.Errorf("workcell: sessions: %w", err)
+	}
+	type found struct {
+		id   string
+		when time.Time
+	}
+	var fresh []found
+	for _, e := range entries {
+		if !e.IsDir() || slices.Contains(w.seen, e.Name()) {
+			continue
+		}
+		fi, err := os.Stat(filepath.Join(dir, e.Name(), "audit.log"))
+		if err != nil {
+			continue
+		}
+		fresh = append(fresh, found{e.Name(), fi.ModTime()})
+	}
+	slices.SortFunc(fresh, func(a, b found) int { return cmp.Or(a.when.Compare(b.when), strings.Compare(a.id, b.id)) })
+	for _, f := range fresh {
+		w.seen = append(w.seen, f.id)
+	}
+	return w.seen, nil
+}
+
+// record is the host path of the product's record of the session id.
+func record(id string) string {
+	return filepath.Join(prepared.xdg, "workcell", "sessions", id, "audit.log")
+}
+
+// Audit reads every record of the product's sessions of this one, oldest
+// first, from the files the product keeps, and returns the newest file's
+// path, as `workcell log` with no id would take it. A record begins with a
+// run, so with no session yet Audit runs one that does nothing in the
+// guest, under the session's own policy and caps: its start and end are
+// the record's first lines, as the control sandbox's are.
+func (w *workcell) Audit(ctx context.Context) (string, []string, error) {
+	if w.dir == "" {
+		return "", nil, errors.New("workcell: Audit before Start")
+	}
+	ids, err := w.sessions()
+	if err != nil {
+		return "", nil, err
+	}
+	if len(ids) == 0 {
+		out, err := w.cli(ctx, nil, runArgs(w.cfg, "exit 0")...)
+		if err != nil {
+			return "", nil, err
+		}
+		if out.Exit != 0 {
+			return "", nil, fmt.Errorf("workcell run (for the record's start): exit %d: %s", out.Exit, bytes.TrimSpace(out.Stderr))
+		}
+		if ids, err = w.sessions(); err != nil {
+			return "", nil, err
+		}
+		if len(ids) == 0 {
+			return "", nil, errors.New("workcell: the run left no session with a record")
+		}
+	}
+	var path string
+	var records []string
+	for _, id := range ids {
+		path = record(id)
+		b, err := os.ReadFile(path)
+		if err != nil {
+			return path, nil, fmt.Errorf("workcell: record of session %s: %w", id, err)
+		}
+		if len(b) == 0 {
+			continue
+		}
+		for line := range strings.SplitSeq(strings.TrimSuffix(string(b), "\n"), "\n") {
+			records = append(records, line)
+		}
+	}
+	return path, records, nil
+}
+
+// Verify runs `workcell verify <id>` for every session of this one and
+// returns nil only when the product accepts each: its exit 0. Any other
+// exit is the product's refusal, with its one line of stderr. A session
+// whose record was never read is verified all the same; none at all is an
+// error, since nothing is not intact.
+func (w *workcell) Verify(ctx context.Context) error {
+	if w.dir == "" {
+		return errors.New("workcell: Verify before Start")
+	}
+	ids, err := w.sessions()
+	if err != nil {
+		return err
+	}
+	if len(ids) == 0 {
+		return errors.New("workcell: no session to verify")
+	}
+	for _, id := range ids {
+		out, err := w.cli(ctx, nil, "verify", id)
+		if err != nil {
+			return err
+		}
+		if out.Exit != 0 {
+			line, _, _ := strings.Cut(strings.TrimSpace(string(out.Stderr)), "\n")
+			return fmt.Errorf("workcell verify %s: exit %d: %s", id, out.Exit, line)
+		}
+	}
+	return nil
 }
 
 // Bind opens a socket where the product reaches the test host: in the

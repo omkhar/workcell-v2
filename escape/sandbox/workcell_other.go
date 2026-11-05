@@ -36,4 +36,8 @@ func (*workcell) Bind(context.Context, string, string) (net.Listener, net.Packet
 
 func (*workcell) Install(context.Context, Layer) (string, error) { return "", ErrNotImplemented }
 
+func (*workcell) Audit(context.Context) (string, []string, error) { return "", nil, ErrNotImplemented }
+
+func (*workcell) Verify(context.Context) error { return ErrNotImplemented }
+
 func (*workcell) Stop() error { return nil }

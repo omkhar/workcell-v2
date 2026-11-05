@@ -199,9 +199,6 @@ func pad4(b []byte) []byte {
 	return b
 }
 
-func (*workcell) Audit(context.Context) (string, []string, error) { return "", nil, ErrNotImplemented }
-func (*workcell) Verify(context.Context) error                    { return ErrNotImplemented }
-
 // Channel is where the guest's init dialled the host: AF_VSOCK, the host's
 // CID 2, port 5000. Nothing else of the channel is known here; a probe finds
 // the init's connection by that peer and may dial the same port afresh.

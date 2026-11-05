@@ -130,7 +130,9 @@ func auditJudge(verb string) Judge {
 }
 
 // offlineJudge edits the record on the host after the fact, as edit says,
-// and expects verify to reject it. First the record, with one run in it,
+// and expects verify to reject it. Every edit works on a record of two
+// lines, a session's start and its end, which is all a run that does
+// nothing leaves. First the record, with one run in it,
 // must pass verify as the product wrote it, so that a verify which checks
 // nothing cannot pass by having nothing to check.
 func offlineJudge(edit string) Judge {
@@ -155,11 +157,18 @@ func offlineJudge(edit string) Judge {
 		}
 		var edited []byte
 		switch edit {
-		case "drop": // the middle record
-			if len(lines) < 3 {
-				return false, "", fmt.Errorf("the record holds %d lines; dropping one needs three", len(lines))
+		case "drop": // a whole record: the middle one, or, of two, the first
+			// A session that runs nothing records only its start and its
+			// end. Dropping the start leaves a chain that is consistent
+			// from its second record on, so verify must anchor the first.
+			switch {
+			case len(lines) >= 3:
+				edited = bytes.Join(append(lines[:len(lines)/2:len(lines)/2], lines[len(lines)/2+1:]...), nil)
+			case len(lines) == 2:
+				edited = bytes.Clone(lines[1])
+			default:
+				return false, "", fmt.Errorf("the record holds %d lines; dropping one needs two", len(lines))
 			}
-			edited = bytes.Join(append(lines[:len(lines)/2:len(lines)/2], lines[len(lines)/2+1:]...), nil)
 		case "alter": // one byte in the middle
 			edited = bytes.Clone(b)
 			i := len(b) / 2
