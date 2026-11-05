@@ -297,6 +297,10 @@ func splice(client, upstream net.Conn) {
 	<-done
 }
 
+// Deny records a refusal that happens outside the proxy (the resolver's, the relay's) through
+// the same writer, so that the log keeps one numbering, one count per key and one bound.
+func (p *Proxy) Deny(host string, port uint16, reason string) { p.deny(host, port, reason) }
+
 // deny writes one bounded JSONL line with the running count for this
 // (host, port, reason) and the log-wide line number. New keys past maxDenyKeys share one overflow key, so
 // the log holds at most maxDenyKeys+1 keys whatever ports the allowlist holds.

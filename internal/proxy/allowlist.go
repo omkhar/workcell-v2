@@ -116,6 +116,12 @@ func (a *Allowlist) Hosts() []string {
 // TLSHosts lists the hosts allowed on port 443, in ascending order: the names the proxy terminates.
 func (a *Allowlist) TLSHosts() []string { return slices.Sorted(maps.Keys(a.sni)) }
 
+// Forward is the host that a non-443 port forwards to, if the allowlist forwards it.
+func (a *Allowlist) Forward(port uint16) (string, bool) {
+	host, ok := a.forward[port]
+	return host, ok
+}
+
 // Ports lists the ports the proxy must listen on, in ascending order.
 func (a *Allowlist) Ports() []uint16 {
 	var ports []uint16

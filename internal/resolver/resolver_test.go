@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"net"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -76,7 +77,7 @@ func read(t *testing.T, q, b []byte) reading {
 
 func TestAnswer(t *testing.T) {
 	t.Parallel()
-	r := New([]string{"allowed.example", "db.example"})
+	r := New([]string{"allowed.example", "db.example"}, nil)
 	long := strings.Repeat("a", 63) + "." + strings.Repeat("b", 63) + "." + strings.Repeat("c", 63) + "." + strings.Repeat("d", 61)
 	address, nodata := reading{0, 1, "127.0.0.1"}, reading{0, 1, ""}
 	refuse, formerr := reading{refused, 1, ""}, reading{formErr, 0, ""}
@@ -128,6 +129,37 @@ func TestAnswer(t *testing.T) {
 	}
 }
 
+// TestAnswerReportsRefusedNames: refused is told the name of an IN question the policy refuses,
+// lower-cased, and of nothing else: not an allowed name, whatever its type, not a malformed
+// question, not a response, and not a class or opcode that is refused whatever the name.
+func TestAnswerReportsRefusedNames(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		in   []byte
+		want []string
+	}{
+		{"a name no policy allows", query(0, 1, "Registry.NPMJS.org", typeA, classIN), []string{"registry.npmjs.org"}},
+		{"AAAA for it", query(0, 1, "denied.example.", 28, classIN), []string{"denied.example"}},
+		{"a name with a byte no host name has", query(0, 1, "a b.example", typeA, classIN), []string{""}},
+		{"an allowed name", query(0, 1, "allowed.example", typeA, classIN), nil},
+		{"AAAA for an allowed name", query(0, 1, "allowed.example", 28, classIN), nil},
+		{"FORMERR", query(0, 2, "denied.example", typeA, classIN), nil},
+		{"a response", append([]byte{0x12, 0x34, 0x81}, query(0, 1, "denied.example", typeA, classIN)[3:]...), nil},
+		{"class CH", query(0, 1, "denied.example", typeA, 3), nil},
+		{"opcode UPDATE", query(5, 1, "denied.example", typeA, classIN), nil},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var got []string
+			New([]string{"allowed.example"}, func(name string) { got = append(got, name) }).Answer(tc.in)
+			if !slices.Equal(got, tc.want) {
+				t.Errorf("refused names = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
 // TestAnswerSaysNothing: a message shorter than a header, or one that is itself a response,
 // gets no reply, so no answer is reflected; and an empty policy refuses the allowed name too.
 func TestAnswerSaysNothing(t *testing.T) {
@@ -141,11 +173,11 @@ func TestAnswerSaysNothing(t *testing.T) {
 		in   []byte
 		want []byte
 	}{
-		{"one byte", New([]string{"allowed.example"}), []byte{0x55}, nil},
-		{"eleven bytes", New([]string{"allowed.example"}), make([]byte, 11), nil},
-		{"nothing", New([]string{"allowed.example"}), nil, nil},
-		{"a response", New([]string{"allowed.example"}), response, nil},
-		{"an empty policy", New(nil), allowed, reply(allowed, refused, nil)},
+		{"one byte", New([]string{"allowed.example"}, nil), []byte{0x55}, nil},
+		{"eleven bytes", New([]string{"allowed.example"}, nil), make([]byte, 11), nil},
+		{"nothing", New([]string{"allowed.example"}, nil), nil, nil},
+		{"a response", New([]string{"allowed.example"}, nil), response, nil},
+		{"an empty policy", New(nil, nil), allowed, reply(allowed, refused, nil)},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -162,7 +194,7 @@ func TestAnswerSaysNothing(t *testing.T) {
 // and is a response to the query's id with at most one question and one answer, and an answer
 // comes only for a plain A question on the allowed name.
 func FuzzAnswer(f *testing.F) {
-	r := New([]string{"allowed.example"})
+	r := New([]string{"allowed.example"}, nil)
 	f.Add(query(0, 1, "allowed.example", typeA, classIN))
 	f.Add(withOPT(query(0, 1, "ALLOWED.example.", typeA, classIN)))
 	f.Add(query(0, 1, "denied.example", 28, classIN))

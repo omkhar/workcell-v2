@@ -6,6 +6,7 @@ package main
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"net/netip"
@@ -119,28 +120,34 @@ func acceptOne(t *testing.T, l *adapter) (net.Conn, error) {
 	}
 }
 
+// nopDeny is the deny function of a relay whose test reads no deny log.
+func nopDeny(string, uint16, string) {}
+
 func TestStreamDemultiplexes(t *testing.T) {
 	tests := []struct {
 		name   string
 		header []byte
 		local  string // the LocalAddr the adapter's conn reports; "" when the stream must close
+		denied string // the deny the closed stream leaves, "" for none
 	}{
-		{"a served port", header(1, 6, "203.0.113.5:8443"), "203.0.113.5:8443"},
-		{"a served port over IPv6", header(1, 6, "[2001:db8::1]:8443"), "[2001:db8::1]:8443"},
-		{"an unserved port", header(1, 6, "203.0.113.5:80"), ""},
-		{"port 443, not served by this policy", header(1, 6, "203.0.113.5:443"), ""},
-		{"UDP on a served port", header(1, 17, "203.0.113.5:8443"), ""},
-		{"UDP on an unserved port", header(1, 17, "203.0.113.5:5353"), ""},
-		{"version 2", header(2, 6, "203.0.113.5:8443"), ""},
-		{"version 0", header(0, 6, "203.0.113.5:8443"), ""},
-		{"proto 0", header(1, 0, "203.0.113.5:8443"), ""},
-		{"proto 1", header(1, 1, "203.0.113.5:8443"), ""},
+		{"a served port", header(1, 6, "203.0.113.5:8443"), "203.0.113.5:8443", ""},
+		{"a served port over IPv6", header(1, 6, "[2001:db8::1]:8443"), "[2001:db8::1]:8443", ""},
+		{"an unserved port", header(1, 6, "203.0.113.5:80"), "", ":80 port_not_allowed"},
+		{"port 443, not served by this policy", header(1, 6, "203.0.113.5:443"), "", ":443 port_not_allowed"},
+		{"UDP on a served port", header(1, 17, "203.0.113.5:8443"), "", ""},
+		{"UDP on an unserved port", header(1, 17, "203.0.113.5:5353"), "", ""},
+		{"version 2", header(2, 6, "203.0.113.5:8443"), "", ""},
+		{"version 0", header(0, 6, "203.0.113.5:8443"), "", ""},
+		{"proto 0", header(1, 0, "203.0.113.5:8443"), "", ""},
+		{"proto 1", header(1, 1, "203.0.113.5:8443"), "", ""},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			ln := newPipeListener()
 			served := newAdapters([]uint16{8443})
-			go serveRelay(ln, served, resolver.New(nil), time.Second)
+			denied := make(chan string, 2)
+			deny := func(host string, port uint16, reason string) { denied <- fmt.Sprintf("%s:%d %s", host, port, reason) }
+			go serveRelay(ln, served, resolver.New(nil, nil), deny, time.Second)
 			defer ln.Close()
 			guest := ln.dial(t)
 			defer guest.Close()
@@ -149,6 +156,14 @@ func TestStreamDemultiplexes(t *testing.T) {
 				// The host closed the stream without delivering it: a delivered stream is held
 				// open by the proxy, not closed, so the EOF alone proves it went nowhere.
 				readEOF(t, guest, "the guest's end")
+				got := ""
+				select {
+				case got = <-denied:
+				default:
+				}
+				if got != tc.denied {
+					t.Errorf("the closed stream recorded %q, want %q", got, tc.denied)
+				}
 				return
 			}
 			c, err := acceptOne(t, served[8443])
@@ -204,7 +219,7 @@ func TestStreamAnswersDNS(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			ln := newPipeListener()
 			served := newAdapters([]uint16{443})
-			go serveRelay(ln, served, resolver.New([]string{"allowed.example"}), time.Second)
+			go serveRelay(ln, served, resolver.New([]string{"allowed.example"}, nil), nopDeny, time.Second)
 			defer ln.Close()
 			guest := ln.dial(t)
 			defer guest.Close()
@@ -238,7 +253,7 @@ func TestStreamAnswersDNS(t *testing.T) {
 func TestRelayHoldsAtMostMaxStreams(t *testing.T) {
 	ln := newPipeListener()
 	served := newAdapters([]uint16{8443})
-	go serveRelay(ln, served, resolver.New(nil), 30*time.Second)
+	go serveRelay(ln, served, resolver.New(nil, nil), nopDeny, 30*time.Second)
 	defer ln.Close()
 	var guests []net.Conn
 	defer func() {
@@ -280,7 +295,7 @@ func TestRelayHoldsAtMostMaxStreams(t *testing.T) {
 
 func TestRelayDropsAnIncompleteHeader(t *testing.T) {
 	ln := newPipeListener()
-	go serveRelay(ln, newAdapters(nil), resolver.New(nil), 100*time.Millisecond)
+	go serveRelay(ln, newAdapters(nil), resolver.New(nil, nil), nopDeny, 100*time.Millisecond)
 	defer ln.Close()
 	guest := ln.dial(t)
 	defer guest.Close()
@@ -300,7 +315,7 @@ func TestRelayCloseEndsAdapters(t *testing.T) {
 	before := runtime.NumGoroutine()
 	ln := newPipeListener()
 	served := newAdapters([]uint16{443, 8443})
-	go serveRelay(ln, served, resolver.New(nil), 200*time.Millisecond)
+	go serveRelay(ln, served, resolver.New(nil, nil), nopDeny, 200*time.Millisecond)
 	delivered := ln.dial(t)
 	go func() { _, _ = delivered.Write(header(1, 6, "203.0.113.5:8443")) }()
 	c, err := acceptOne(t, served[8443])
@@ -343,7 +358,7 @@ func TestStreamAfterAdaptersClosed(t *testing.T) {
 			served.closeAll()
 			g, h := net.Pipe()
 			defer g.Close()
-			go stream(&relayConn{Conn: h, release: func() {}}, served, resolver.New(nil), time.Second)
+			go stream(&relayConn{Conn: h, release: func() {}}, served, resolver.New(nil, nil), nopDeny, time.Second)
 			go func() { _, _ = g.Write(header(1, 6, tc.dst)) }()
 			readEOF(t, g, "a stream delivered after the adapters closed")
 		})

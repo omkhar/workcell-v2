@@ -144,10 +144,14 @@ func (l *boundedLog) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
+// denyFunc records one refused attempt: the proxy's Deny.
+type denyFunc func(host string, port uint16, reason string)
+
 // serveRelay takes the guest's relayed streams until the listener closes with the session, then
 // closes every adapter, so that the proxy's Serve loops end with it (A9). Each stream has wait
-// to complete its header; dns answers the UDP 53 streams.
-func serveRelay(ln net.Listener, served adapters, dns *resolver.Resolver, wait time.Duration) {
+// to complete its header; dns answers the UDP 53 streams, and deny records a TCP stream to a
+// port the policy does not serve (I9).
+func serveRelay(ln net.Listener, served adapters, dns *resolver.Resolver, deny denyFunc, wait time.Duration) {
 	defer served.closeAll()
 	slots := make(chan struct{}, maxStreams)
 	for {
@@ -161,15 +165,16 @@ func serveRelay(ln net.Listener, served adapters, dns *resolver.Resolver, wait t
 			_ = c.Close()
 			continue
 		}
-		go stream(&relayConn{Conn: c, release: func() { <-slots }}, served, dns, wait)
+		go stream(&relayConn{Conn: c, release: func() { <-slots }}, served, dns, deny, wait)
 	}
 }
 
 // stream reads one header: 20 bytes within wait, or the stream is dropped. Version 1, TCP and a
 // served port hand the rest of the stream to that port's adapter, the header consumed and the
 // deadline lifted. Version 1, UDP and port 53 is one DNS exchange under the same deadline, and
-// the stream closes after it. Any other header closes the stream with nothing dialled.
-func stream(c *relayConn, served adapters, dns *resolver.Resolver, wait time.Duration) {
+// the stream closes after it. Any other header closes the stream with nothing dialled; a TCP
+// header for a port that is not served is recorded first, as the connection attempt it is.
+func stream(c *relayConn, served adapters, dns *resolver.Resolver, deny denyFunc, wait time.Duration) {
 	_ = c.SetDeadline(time.Now().Add(wait))
 	var b [relay.HeaderLen]byte
 	if _, err := io.ReadFull(c, b[:]); err != nil {
@@ -185,6 +190,9 @@ func stream(c *relayConn, served adapters, dns *resolver.Resolver, wait time.Dur
 		return
 	}
 	l, ok := served[h.Dst.Port()]
+	if err == nil && h.Proto == relay.TCP && !ok {
+		deny("", h.Dst.Port(), "port_not_allowed")
+	}
 	if err != nil || h.Proto != relay.TCP || !ok || c.SetDeadline(time.Time{}) != nil {
 		_ = c.Close()
 		return

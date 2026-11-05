@@ -74,7 +74,7 @@ func TestParseRun(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			caps, mount, argv, ok := parseRun(tc.args, io.Discard)
+			caps, mount, _, argv, ok := parseRun(tc.args, io.Discard)
 			if ok != (tc.argv != nil) || !slices.Equal(argv, tc.argv) || (ok && (caps != tc.caps || mount != tc.mount)) {
 				t.Errorf("parseRun(%q) = %+v, %v, %q, %v; want %+v, %v, %q", tc.args, caps, mount, argv, ok, tc.caps, tc.mount, tc.argv)
 			}
@@ -94,5 +94,27 @@ func TestCmdline(t *testing.T) {
 		if got := tc.l.cmdline(); got != tc.want {
 			t.Errorf("%+v.cmdline() = %q, want %q", tc.l, got, tc.want)
 		}
+	}
+}
+
+func TestParseRunAllow(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+		want []string
+		ok   bool
+	}{
+		{"none", []string{"x"}, nil, true},
+		{"repeated, in order", []string{"--allow", "a.example", "--allow=b.example:80", "x"}, []string{"a.example", "b.example:80"}, true},
+		{"after the command belongs to it", []string{"x", "--allow", "a.example"}, nil, true},
+		{"without a value", []string{"--allow"}, nil, false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			_, _, allow, _, ok := parseRun(tc.args, io.Discard)
+			if ok != tc.ok || !slices.Equal(allow, tc.want) {
+				t.Errorf("parseRun(%q) allow = %q, %v; want %q, %v", tc.args, allow, ok, tc.want, tc.ok)
+			}
+		})
 	}
 }

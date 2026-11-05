@@ -38,17 +38,17 @@ const (
 	path       = "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 )
 
-// run is `workcell run [--mount] [--cpus N] [--memory SIZE] [--disk SIZE] [--] <cmd> [args...]`: it boots a guest
+// run is `workcell run [--mount] [--cpus N] [--memory SIZE] [--disk SIZE] [--allow HOST]... [--] <cmd> [args...]`: it boots a guest
 // with a copy of the current directory in it, or with the directory itself served live (`--mount`, A5), runs the
 // command there and exits as the command did. This process is the session's supervisor (A9): it owns the VM,
 // the channel and the proxy, and the VM dies with it. The policy (SPEC section 5) is read first: a file it
 // cannot take is refused like a bad argument, before anything boots.
 func run(args []string, stderr io.Writer) int {
-	caps, mount, args, ok := parseRun(args, stderr)
+	caps, mount, extra, args, ok := parseRun(args, stderr)
 	if !ok {
 		return 2
 	}
-	allow, err := loadAllowlist()
+	allow, err := loadAllowlist(extra)
 	if err != nil {
 		fmt.Fprintln(stderr, "workcell run:", err)
 		return 2
@@ -268,8 +268,8 @@ func boot(a artifacts, caps limits, sigs <-chan os.Signal, session, image, mount
 	// The relay runs until Close closes its listener, and closes the adapters then, which ends Serve.
 	listeners := newAdapters(ports)
 	var ca []byte
+	p := proxy.New(allow, denyLog) // with no allowlist it serves nothing, and still records what the relay and the resolver refuse
 	if allow != nil {
-		p := proxy.New(allow, denyLog)
 		if hosts := allow.TLSHosts(); len(hosts) > 0 {
 			sessionCA, err := proxy.NewSessionCA(hosts, time.Now().Add(proxy.MaxCALifetime))
 			if err == nil {
@@ -285,7 +285,7 @@ func boot(a artifacts, caps limits, sigs <-chan os.Signal, session, image, mount
 			go func() { _ = p.Serve(l, port) }()
 		}
 	}
-	go serveRelay(streams, listeners, resolver.New(names), headerWait)
+	go serveRelay(streams, listeners, resolver.New(names, func(name string) { p.Deny(name, dnsPort, "name_not_allowed") }), p.Deny, headerWait)
 	if mount != "" {
 		files, err := m.Listen(fileserve.Port)
 		if err == nil {

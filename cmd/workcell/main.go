@@ -29,6 +29,8 @@ func main() {
 		os.Exit(pull(os.Args[2:], os.Stderr))
 	case len(os.Args) >= 2 && os.Args[1] == "explain":
 		os.Exit(explain(os.Args[2:], os.Stderr))
+	case len(os.Args) >= 2 && os.Args[1] == "log":
+		os.Exit(logs(os.Args[2:], os.Stdout, os.Stderr))
 	case len(os.Args) >= 2 && os.Args[1] == "bench":
 		os.Exit(bench(os.Args[2:], os.Stderr))
 	default:

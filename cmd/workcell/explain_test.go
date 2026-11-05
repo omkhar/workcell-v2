@@ -6,6 +6,8 @@ package main
 import (
 	"strings"
 	"testing"
+
+	"github.com/omkhar/workcell/v2/internal/policy"
 )
 
 func TestExplanation(t *testing.T) {
@@ -35,6 +37,42 @@ func TestExplanation(t *testing.T) {
 				if strings.Contains(got, n) {
 					t.Errorf("explanation(%v, %q) = %q: holds %q", tc.mount, tc.dir, got, n)
 				}
+			}
+		})
+	}
+}
+
+// TestReach: the network text names where the policy came from, each name once with how it is
+// reached, and says that all else is refused; an empty policy says there is no network.
+func TestReach(t *testing.T) {
+	list := func(texts ...string) policy.Policy {
+		var p policy.Policy
+		for _, s := range texts {
+			p.Allow = append(p.Allow, policy.Entry{Text: s})
+		}
+		return p
+	}
+	tests := []struct {
+		name          string
+		exists, flags bool
+		allow         policy.Policy
+		want          string
+	}{
+		{"no file, no flag", false, false, list(), "network: no config file at /c/config.toml\n  The guest has no network.\n"},
+		{"names from the file", true, false, list("b.example", "a.example", "z.example:8443", "m.example:22"),
+			"network: from /c/config.toml\n  https://a.example  (443, terminated by the session proxy)\n  https://b.example  (443, terminated by the session proxy)\n" +
+				"  m.example:22  (tcp, forwarded as is)\n  z.example:8443  (tcp, forwarded as is)\n  Everything else is refused, and DNS answers only these names.\n"},
+		{"a flag and no file", false, true, list("npm.example"),
+			"network: no config file at /c/config.toml and --allow\n  https://npm.example  (443, terminated by the session proxy)\n  Everything else is refused, and DNS answers only these names.\n"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			a, err := allowlist(tc.allow, "/c/config.toml")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := reach("/c/config.toml", tc.exists, tc.flags, a); got != tc.want {
+				t.Errorf("reach = %q, want %q", got, tc.want)
 			}
 		})
 	}

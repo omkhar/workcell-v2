@@ -30,11 +30,16 @@ const (
 var addressA = []byte{0xC0, headerLen, 0, typeA, 0, classIN, 0, 0, 0, 60, 0, 4, 127, 0, 0, 1}
 
 // Resolver holds the allowed names: lower-case, no trailing dot, as the proxy holds them.
-type Resolver struct{ names map[string]bool }
+type Resolver struct {
+	names   map[string]bool
+	refused func(name string)
+}
 
-// New makes a resolver that answers names and refuses every other name.
-func New(names []string) *Resolver {
-	r := &Resolver{names: make(map[string]bool, len(names))}
+// New makes a resolver that answers names and refuses every other name. A refused is told the
+// name of each IN question it refuses, as parsed and lower-cased ("" when it holds a byte no host
+// name has), so that its owner can record it; nil says nothing.
+func New(names []string, refused func(name string)) *Resolver {
+	r := &Resolver{names: make(map[string]bool, len(names)), refused: refused}
 	for _, n := range names {
 		r.names[n] = true
 	}
@@ -52,7 +57,13 @@ func (r *Resolver) Answer(q []byte) []byte {
 	if !ok {
 		return reply(q[:headerLen], formErr, nil)
 	}
-	if q[2]&0x78 != 0 || class != classIN || !r.names[name] {
+	if q[2]&0x78 != 0 || class != classIN {
+		return reply(q[:end], refused, nil)
+	}
+	if !r.names[name] {
+		if r.refused != nil {
+			r.refused(name)
+		}
 		return reply(q[:end], refused, nil)
 	}
 	if typ != typeA {
