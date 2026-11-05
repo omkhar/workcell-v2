@@ -6,22 +6,16 @@ package suite
 import (
 	"bytes"
 	"context"
-	"crypto/ecdsa"
 	"crypto/ed25519"
-	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/tls"
-	"crypto/x509"
-	"crypto/x509/pkix"
 	"encoding/hex"
 	"encoding/json"
-	"encoding/pem"
 	"errors"
 	"fmt"
 	"io"
 	"log"
-	"math/big"
 	"net"
 	"net/http"
 	"runtime"
@@ -112,38 +106,6 @@ func pins(version, url string, artifact []byte, released int64) map[string]map[s
 // their label, long enough that a download can stop short of them.
 func artifact(label string) []byte {
 	return bytes.Repeat([]byte("escape artifact "+label+"\n"), 256)
-}
-
-// authority makes a certificate authority and a certificate it signed for the
-// loopback address, for the judge's servers. The client gets the authority.
-func authority() (caPEM []byte, cfg *tls.Config, err error) {
-	caKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	if err != nil {
-		return nil, nil, err
-	}
-	now := time.Now()
-	caTmpl := &x509.Certificate{SerialNumber: big.NewInt(1), Subject: pkix.Name{CommonName: "escape channel authority"},
-		NotBefore: now.Add(-time.Hour), NotAfter: now.Add(time.Hour), IsCA: true, BasicConstraintsValid: true, KeyUsage: x509.KeyUsageCertSign}
-	caDER, err := x509.CreateCertificate(rand.Reader, caTmpl, caTmpl, &caKey.PublicKey, caKey)
-	if err != nil {
-		return nil, nil, err
-	}
-	ca, err := x509.ParseCertificate(caDER)
-	if err != nil {
-		return nil, nil, err
-	}
-	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	if err != nil {
-		return nil, nil, err
-	}
-	tmpl := &x509.Certificate{SerialNumber: big.NewInt(2), NotBefore: now.Add(-time.Hour), NotAfter: now.Add(time.Hour),
-		IPAddresses: []net.IP{net.IPv4(127, 0, 0, 1)}, KeyUsage: x509.KeyUsageDigitalSignature, ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}}
-	der, err := x509.CreateCertificate(rand.Reader, tmpl, ca, &key.PublicKey, caKey)
-	if err != nil {
-		return nil, nil, err
-	}
-	caPEM = pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: caDER})
-	return caPEM, &tls.Config{Certificates: []tls.Certificate{{Certificate: [][]byte{der}, PrivateKey: key}}, MinVersion: tls.VersionTLS12}, nil
 }
 
 // upstream is one server on the test host's loopback, HTTPS under cfg or
@@ -239,10 +201,11 @@ func idleProbe([]string) Result {
 // a client that installs once and never fetches again proves nothing.
 func updateJudge(variant string) Judge {
 	return func(ctx context.Context, s Session) (bool, string, error) {
-		caPEM, cfg, err := authority()
+		cfg, err := certificate("127.0.0.1") // the judge's servers, under the suite's authority, which the client gets
 		if err != nil {
 			return false, "", err
 		}
+		caPEM := authority.pem
 		pub, key, err := ed25519.GenerateKey(rand.Reader)
 		if err != nil {
 			return false, "", err

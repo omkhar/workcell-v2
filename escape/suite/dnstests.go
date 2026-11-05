@@ -6,18 +6,13 @@ package suite
 import (
 	"bytes"
 	"context"
-	"crypto/ecdsa"
-	"crypto/elliptic"
-	"crypto/rand"
 	"crypto/tls"
-	"crypto/x509"
 	"encoding/base64"
 	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
 	"log"
-	"math/big"
 	"net"
 	"net/http"
 	"strings"
@@ -248,7 +243,7 @@ func dnsOverUDP(addr string, got func(dnsQuestion)) (string, func(), error) {
 }
 
 // dnsOverTCP captures one length-prefixed query per connection, bare or
-// inside TLS with a certificate made for this run.
+// inside TLS with a certificate nothing verifies.
 func dnsOverTCP(withTLS bool) dnsListener {
 	return func(addr string, got func(dnsQuestion)) (string, func(), error) {
 		ln, err := net.Listen("tcp4", addr)
@@ -256,7 +251,7 @@ func dnsOverTCP(withTLS bool) dnsListener {
 			return "", nil, err
 		}
 		if withTLS {
-			cfg, err := selfSigned()
+			cfg, err := certificate()
 			if err != nil {
 				ln.Close()
 				return "", nil, err
@@ -300,13 +295,13 @@ func readFramed(r io.Reader) (dnsQuestion, bool) {
 }
 
 // dnsOverHTTPS captures RFC 8484 requests to any path, POST body or GET dns
-// parameter, on a TLS server with a certificate made for this run.
+// parameter, on a TLS server with a certificate nothing verifies.
 func dnsOverHTTPS(addr string, got func(dnsQuestion)) (string, func(), error) {
 	ln, err := net.Listen("tcp4", addr)
 	if err != nil {
 		return "", nil, err
 	}
-	cfg, err := selfSigned()
+	cfg, err := certificate()
 	if err != nil {
 		ln.Close()
 		return "", nil, err
@@ -340,19 +335,4 @@ func dnsOverHTTPS(addr string, got func(dnsQuestion)) (string, func(), error) {
 		srv.Close()
 		wg.Wait()
 	}, nil
-}
-
-// selfSigned makes a fresh certificate for a canary's TLS server. Nothing
-// verifies it: the guest is told the address and the probe trusts anything.
-func selfSigned() (*tls.Config, error) {
-	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	if err != nil {
-		return nil, err
-	}
-	tmpl := &x509.Certificate{SerialNumber: big.NewInt(1), NotBefore: time.Now().Add(-time.Hour), NotAfter: time.Now().Add(time.Hour)}
-	der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &key.PublicKey, key)
-	if err != nil {
-		return nil, err
-	}
-	return &tls.Config{Certificates: []tls.Certificate{{Certificate: [][]byte{der}, PrivateKey: key}}, MinVersion: tls.VersionTLS12}, nil
 }

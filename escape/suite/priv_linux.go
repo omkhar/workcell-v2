@@ -4,16 +4,12 @@
 package suite
 
 import (
-	"bufio"
-	"bytes"
 	"fmt"
+	"io"
 	"net"
 	"os"
-	"os/exec"
-	"path/filepath"
 	"strings"
 	"syscall"
-	"time"
 
 	"golang.org/x/sys/unix"
 )
@@ -21,61 +17,9 @@ import (
 // A canary or a resolver on a port below 1024 needs root on the test host,
 // which the suite does not have on a hosted runner, where sudo answers
 // without a password. So the payload binds it as root and hands the
-// descriptor over: the judge stays what it is, and root ran one bind.
-
-// privileged binds network/addr as root, through sudo, and returns the
-// listener (tcp) or packet conn (udp) for it.
-func privileged(network, addr, payload string) (net.Listener, net.PacketConn, error) {
-	dir, err := os.MkdirTemp("", "escape-bind-")
-	if err != nil {
-		return nil, nil, err
-	}
-	defer os.RemoveAll(dir)
-	path := filepath.Join(dir, "fd")
-	ln, err := net.ListenUnix("unix", &net.UnixAddr{Name: path, Net: "unix"})
-	if err != nil {
-		return nil, nil, err
-	}
-	defer ln.Close()
-	cmd := exec.Command("sudo", "-n", payload, "bind", network, addr, path)
-	if out, err := cmd.CombinedOutput(); err != nil {
-		return nil, nil, fmt.Errorf("bind %s %s needs root, and sudo -n failed: %v: %s", network, addr, err, bytes.TrimSpace(out))
-	}
-	ln.SetDeadline(time.Now().Add(2 * time.Second))
-	c, err := ln.AcceptUnix()
-	if err != nil {
-		return nil, nil, fmt.Errorf("bind %s %s as root: no descriptor came back: %w", network, addr, err)
-	}
-	defer c.Close()
-	c.SetDeadline(time.Now().Add(2 * time.Second))
-	oob := make([]byte, 64)
-	_, oobn, _, _, err := c.ReadMsgUnix(make([]byte, 1), oob)
-	if err != nil {
-		return nil, nil, fmt.Errorf("bind %s %s as root: read the descriptor: %w", network, addr, err)
-	}
-	msgs, err := syscall.ParseSocketControlMessage(oob[:oobn])
-	if err == nil && len(msgs) != 1 {
-		err = fmt.Errorf("%d control messages", len(msgs))
-	}
-	var fds []int
-	if err == nil {
-		fds, err = syscall.ParseUnixRights(&msgs[0])
-	}
-	if err == nil && len(fds) != 1 {
-		err = fmt.Errorf("%d descriptors", len(fds))
-	}
-	if err != nil {
-		return nil, nil, fmt.Errorf("bind %s %s as root: the descriptor: %w", network, addr, err)
-	}
-	f := os.NewFile(uintptr(fds[0]), network)
-	defer f.Close()
-	if strings.HasPrefix(network, "udp") {
-		pc, err := net.FilePacketConn(f)
-		return nil, pc, err
-	}
-	l, err := net.FileListener(f)
-	return l, nil, err
-}
+// descriptor over (sandbox.RootBind): the judge stays what it is, and root
+// ran one bind. The same payload, entered as root into a session's own
+// network namespace, binds the judge's canaries there.
 
 // Bind is the payload as root on the test host: it binds network/addr,
 // sends the descriptor to the judge waiting at the unix socket path, and
@@ -116,11 +60,10 @@ func bindFile(network, addr string) (*os.File, error) {
 
 // Hold is the payload as the holder of a session's own network namespace,
 // started in a fresh one (`unshare -n`) as root: it brings the loopback
-// device up with addr, dials the judge at path, says its pid, and binds
-// whatever the judge asks for, one "network address" line at a time, each
-// answered with "ok" and the socket over SCM_RIGHTS, or with a line saying
-// why not, until the judge hangs up. The product runs in /proc/<pid>/ns/net
-// meanwhile.
+// device up with addr, dials the judge at path, says its pid, and stays
+// until the judge hangs up. The product runs in /proc/<pid>/ns/net
+// meanwhile, and the judge's canaries are bound there through the same
+// payload (sandbox.RootBind).
 func Hold(path, addr string) int {
 	ip4 := net.ParseIP(addr).To4()
 	lo, err := net.InterfaceByName("lo")
@@ -141,19 +84,8 @@ func Hold(path, addr string) int {
 		return 1
 	}
 	defer c.Close()
-	uc := c.(*net.UnixConn)
-	fmt.Fprintf(uc, "pid %d\n", os.Getpid())
-	sc := bufio.NewScanner(uc)
-	for sc.Scan() {
-		network, a, _ := strings.Cut(sc.Text(), " ")
-		f, err := bindFile(network, a)
-		if err != nil {
-			fmt.Fprintf(uc, "%v\n", err)
-			continue
-		}
-		uc.WriteMsgUnix([]byte("ok\n"), syscall.UnixRights(int(f.Fd())), nil)
-		f.Close()
-	}
+	fmt.Fprintf(c, "pid %d\n", os.Getpid())
+	io.Copy(io.Discard, c)
 	return 0
 }
 

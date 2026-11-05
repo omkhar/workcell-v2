@@ -73,6 +73,12 @@ type Config struct {
 	// test host (SPEC T8, S12). It needs Resolver. The control adapter has
 	// one network, the host's, and ignores it.
 	Isolated bool
+	// Roots is the host path of a PEM bundle holding the authorities the
+	// host side of the session is to trust in an upstream server, as an
+	// operator's trust store (SSL_CERT_FILE) would: the suite's own, which
+	// signed every canary's certificate. "" leaves the host's own. The
+	// control adapter has no host side and ignores it.
+	Roots string
 	// Secret is a credential bound to one allowed name; nil for none.
 	Secret *Secret
 }

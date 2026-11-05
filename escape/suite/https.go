@@ -25,11 +25,12 @@ import (
 
 // The I6 probes and the placeholder replay drive HTTPS requests from the
 // guest to canaries the judge runs under the session's two allowed names:
-// the one the secret is bound to and another. A request names a host three
-// ways, in the TLS SNI, in the HTTP Host or :authority, and in the URL; the
-// probes make them disagree, hide the SNI with ECH, or let a redirect carry
-// the credential from the bound name to the other. What a canary received is
-// the evidence; the guest's word is not.
+// the bound one (the one a secret is bound to, when there is one) and
+// another. A request names a host three ways, in the TLS SNI, in the HTTP
+// Host or :authority, and in the URL; the probes make them disagree, hide
+// the SNI with ECH, or let a redirect carry the credential from the bound
+// name to the other. What a canary received is the evidence; the guest's
+// word is not.
 
 // request is one HTTP request a canary received.
 type request struct {
@@ -38,9 +39,10 @@ type request struct {
 	headers                       http.Header
 }
 
-// canary is one HTTPS server the judge runs on the host's own address, for
-// one allowed name. ech, when set, is the config list under which it accepts
-// a hidden name.
+// canary is one HTTPS server the judge runs for one allowed name: what it
+// received. ech, when set, is the config list under which it accepts a
+// hidden name. Several canaries may share one listener (serveCanaries),
+// told apart by the name the connection's SNI carried.
 type canary struct {
 	name, addr string
 	ech        []byte
@@ -53,14 +55,7 @@ type canary struct {
 // if set, writes the response after the request is recorded; else the canary
 // answers 200. keys, if set, make the canary accept ECH.
 func listen(name string, keys []tls.EncryptedClientHelloKey, respond http.HandlerFunc) (*canary, error) {
-	return listenAt(name, hostAddr+":0", keys, respond)
-}
-
-// listenAt is listen at addr, an address of the test host with hostAddr
-// standing for its own, so that a canary can sit at the one port a forward
-// entry opens.
-func listenAt(name, addr string, keys []tls.EncryptedClientHelloKey, respond http.HandlerFunc) (*canary, error) {
-	addr, err := resolve(addr)
+	addr, err := resolve(hostAddr + ":0")
 	if err != nil {
 		return nil, err
 	}
@@ -73,7 +68,21 @@ func listenAt(name, addr string, keys []tls.EncryptedClientHelloKey, respond htt
 
 // serveCanary serves a canary for name on ln, which is its from here.
 func serveCanary(name string, ln net.Listener, keys []tls.EncryptedClientHelloKey, respond http.HandlerFunc) (*canary, error) {
-	cfg, err := selfSigned()
+	c := &canary{name: name}
+	var err error
+	c.stop, err = serveCanaries(ln, keys, respond, c)
+	return c, err
+}
+
+// serveCanaries serves the canaries on ln, which is theirs from here, under
+// one certificate of the suite's authority for all their names. A request
+// is the canary's whose name the SNI gave, the first's when none did.
+func serveCanaries(ln net.Listener, keys []tls.EncryptedClientHelloKey, respond http.HandlerFunc, cs ...*canary) (func(), error) {
+	names := make([]string, len(cs))
+	for i, c := range cs {
+		names[i], c.addr = c.name, ln.Addr().String()
+	}
+	cfg, err := certificate(names...)
 	if err != nil {
 		ln.Close()
 		return nil, err
@@ -81,12 +90,17 @@ func serveCanary(name string, ln net.Listener, keys []tls.EncryptedClientHelloKe
 	if keys != nil {
 		cfg.EncryptedClientHelloKeys, cfg.MinVersion = keys, tls.VersionTLS13
 	}
-	c := &canary{name: name, addr: ln.Addr().String()}
 	srv := &http.Server{
 		TLSConfig:   cfg,
 		ReadTimeout: 3 * time.Second,
 		ErrorLog:    log.New(io.Discard, "", 0),
 		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			c := cs[0]
+			for _, k := range cs {
+				if k.name == r.TLS.ServerName {
+					c = k
+				}
+			}
 			c.mu.Lock()
 			c.seen = append(c.seen, request{sni: r.TLS.ServerName, host: r.Host, proto: r.Proto, method: r.Method,
 				url: r.URL.String(), ech: r.TLS.ECHAccepted, headers: r.Header.Clone()})
@@ -98,14 +112,13 @@ func serveCanary(name string, ln net.Listener, keys []tls.EncryptedClientHelloKe
 	}
 	var wg sync.WaitGroup
 	wg.Go(func() { srv.ServeTLS(ln, "", "") })
-	c.stop = func() {
+	return func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 		defer cancel()
 		srv.Shutdown(ctx)
 		srv.Close()
 		wg.Wait()
-	}
-	return c, nil
+	}, nil
 }
 
 // requests is a copy of what the canary has received, taken under its lock,
@@ -185,7 +198,8 @@ func echKeys(publicName string) ([]byte, []tls.EncryptedClientHelloKey, error) {
 
 // targets is what every HTTPS probe is given: the bound name and the other,
 // each with the address of the judge's canary for it, the variable holding
-// the credential as the guest sees it, and whatever else the test adds.
+// the credential as the guest sees it ("-" for none), and whatever else the
+// test adds.
 type targets struct {
 	bound, other string
 	addrs        map[string]string
@@ -198,12 +212,14 @@ func parseTargets(args []string) (targets, Result) {
 	if len(args) < 5 {
 		return targets{}, Result{Status: "error", Detail: "want two names with addresses and the credential variable"}
 	}
-	v := os.Getenv(args[4])
-	if v == "" {
-		return targets{}, Result{Status: "no-credential", Detail: args[4] + " is empty"}
+	t := targets{bound: args[0], other: args[2], addrs: map[string]string{args[0]: args[1], args[2]: args[3]}, header: http.Header{}, extra: args[5:]}
+	if args[4] != "-" {
+		if t.value = os.Getenv(args[4]); t.value == "" {
+			return targets{}, Result{Status: "no-credential", Detail: args[4] + " is empty"}
+		}
+		t.header = http.Header{"X-Api-Key": {t.value}, "Authorization": {"Bearer " + t.value}}
 	}
-	return targets{bound: args[0], other: args[2], addrs: map[string]string{args[0]: args[1], args[2]: args[3]}, value: v,
-		header: http.Header{"X-Api-Key": {v}, "Authorization": {"Bearer " + v}}, extra: args[5:]}, Result{}
+	return t, Result{}
 }
 
 func (t targets) url(name, path string) string {
@@ -392,21 +408,26 @@ func twoCanaries(ech bool, respondBound func(other *canary) http.HandlerFunc, ju
 	}
 }
 
-// run gives the probe its targets and, for a canary that accepts ECH, the
-// config list.
-func run(s Session, bound, other *canary) (Result, error) {
-	args := []string{bound.name, bound.addr, other.name, other.addr, s.Secret.Env}
+// run gives the probe its targets, for a canary that accepts ECH the
+// config list, and whatever else the judge adds.
+func run(s Session, bound, other *canary, extra ...string) (Result, error) {
+	credential := s.Secret.Env
+	if credential == "" {
+		credential = "-"
+	}
+	args := []string{bound.name, bound.addr, other.name, other.addr, credential}
 	if bound.ech != nil {
 		args = append(args, base64.StdEncoding.EncodeToString(bound.ech))
 	}
-	return s.Run(args...)
+	return s.Run(append(args, extra...)...)
 }
 
-// strictJudge expects the bound name to serve exactly the one well-formed
-// request the probe sends first, and the other name nothing. A request that
-// named another host, hid its name, or reached the other name was a mismatch
-// served; no request at all means the product reached nothing, which proves
-// nothing.
+// strictJudge expects every request at the bound name to name it in the
+// open, in the SNI and the Host alike, and the other name to see nothing. A
+// request that named another host, hid its name, or reached the other name
+// was a mismatch served; one the product rewrote to the name it terminated
+// for is as a client's own. No request at all means the product reached
+// nothing, which proves nothing.
 func strictJudge(s Session, bound, other *canary) (bool, string, error) {
 	r, err := run(s, bound, other)
 	if err != nil {
@@ -421,13 +442,11 @@ func strictJudge(s Session, bound, other *canary) (bool, string, error) {
 	if len(other.requests()) > 0 {
 		return false, fmt.Sprintf("%s (the connection named %s; guest says %s: %s)", other.served(), bound.name, r.Status, r.Detail), nil
 	}
-	switch {
-	case r.Status == "ech-accepted":
+	if r.Status == "ech-accepted" {
 		return false, "the guest completed an ECH handshake: " + r.Detail, nil
-	case len(rs) == 0:
+	}
+	if len(rs) == 0 {
 		return false, "", fmt.Errorf("%s saw nothing, not even the well-formed request a correct product serves (guest says %s: %s)", bound.name, r.Status, r.Detail)
-	case len(rs) > 1:
-		return false, fmt.Sprintf("%s served %d requests where the well-formed one alone was due: the mismatch was served with its names rewritten (guest says %s: %s)", bound.name, len(rs), r.Status, r.Detail), nil
 	}
 	return true, fmt.Sprintf("%s (guest says %s: %s)", bound.served(), r.Status, r.Detail), nil
 }

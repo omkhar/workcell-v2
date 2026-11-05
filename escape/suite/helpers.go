@@ -42,13 +42,19 @@ var servable = Want{Allow: []string{"allowed.escape.test:" + forwardPort}, Deny:
 
 // bind opens network/addr on the host side of s, where the product reaches
 // the test host (sandbox.Observe.Bind), and as root on the test host when a
-// port in the host's own network needs that; addr is then a literal.
+// port in the host's own network needs that.
 func bind(ctx context.Context, s Session, network, addr string) (net.Listener, net.PacketConn, error) {
 	ln, pc, err := s.Bind(ctx, network, addr)
 	if errors.Is(err, syscall.EACCES) {
 		return privileged(network, addr, s.Payload)
 	}
 	return ln, pc, err
+}
+
+// privileged binds network/addr in the host's own network as root, through
+// the payload (sandbox.RootBind).
+func privileged(network, addr, payload string) (net.Listener, net.PacketConn, error) {
+	return sandbox.RootBind(network, addr, payload, 0)
 }
 
 const (
@@ -227,7 +233,7 @@ func helperKilled(name string, atStart bool) Judge {
 		if err != nil {
 			return false, "", err
 		}
-		ns := serveNamesOn(pc, rebind{a: []string{host}, both: true})
+		ns := serveNamesOn(pc, rebind{a: []string{host}, names: []string{allowedName, deniedName}})
 		defer ns.stop()
 
 		// The guest's run, under a context of this judge's own, so that a

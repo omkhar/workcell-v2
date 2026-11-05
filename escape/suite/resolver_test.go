@@ -91,7 +91,10 @@ func TestLookupJudge(t *testing.T) {
 func TestResolverJudges(t *testing.T) {
 	session := func(detail string) Session {
 		return Session{Run: func(args ...string) (Result, error) {
-			for _, a := range args[2:] {
+			if len(args) < 3 || (args[2] != "plain" && args[2] != "garbage" && args[2] != "burst") {
+				t.Errorf("probe arguments %q: want target, token, plain|garbage|burst, label=spec...", args)
+			}
+			for _, a := range args[3:] {
 				if !strings.Contains(a, "=") {
 					t.Errorf("probe argument %q is not label=spec", a)
 				}
@@ -105,16 +108,17 @@ func TestResolverJudges(t *testing.T) {
 		detail string
 		pass   bool
 	}{
-		{"both right", resolverJudge(resolvConf, bothLookups), "127.0.0.1:53 a=addr:127.0.0.1/1ms d=refused/1ms i=nxdomain/1ms", true},
-		{"nothing answered", resolverJudge(resolvConf, bothLookups), "127.0.0.1:53 a=timeout/2500ms d=timeout/2500ms i=timeout/2500ms", false},
-		{"everything resolved", resolverJudge(resolvConf, bothLookups), "127.0.0.1:53 a=addr:1.2.3.4/1ms d=addr:1.2.3.4/1ms i=addr:1.2.3.4/1ms", false},
-		{"a label missing", resolverJudge(resolvConf, bothLookups), "127.0.0.1:53 a=addr:127.0.0.1/1ms d=refused/1ms", false},
-		{"burst all refused", burstJudge(bothLookups), "burst sent=200 got=200 refused:200 in 9ms; then a=addr:127.0.0.1/1ms d=refused/1ms i=refused/1ms", true},
-		{"burst mixed refusals", burstJudge(bothLookups), "burst sent=200 got=200 nxdomain:150,refused:50 in 9ms; then a=addr:127.0.0.1/1ms d=refused/1ms i=refused/1ms", true},
-		{"burst one lost", burstJudge(bothLookups), "burst sent=200 got=199 refused:199 in 2500ms; then a=addr:127.0.0.1/1ms d=refused/1ms i=refused/1ms", false},
-		{"burst resolved", burstJudge(bothLookups), "burst sent=200 got=200 addr:1.2.3.4:200 in 9ms; then a=addr:127.0.0.1/1ms d=refused/1ms i=refused/1ms", false},
-		{"burst short", burstJudge(bothLookups), "burst sent=10 got=10 refused:10 in 9ms; then a=addr:127.0.0.1/1ms d=refused/1ms i=refused/1ms", false},
-		{"burst then dead", burstJudge(bothLookups), "burst sent=200 got=200 refused:200 in 9ms; then a=timeout/2500ms d=timeout/2500ms i=timeout/2500ms", false},
+		{"both right", resolverJudge(resolvConf, "plain", bothLookups), "127.0.0.1:53 a=addr:127.0.0.1/1ms d=refused/1ms i=nxdomain/1ms", true},
+		{"nothing answered", resolverJudge(resolvConf, "plain", bothLookups), "127.0.0.1:53 a=timeout/2500ms d=timeout/2500ms i=timeout/2500ms", false},
+		{"everything resolved", resolverJudge(resolvConf, "plain", bothLookups), "127.0.0.1:53 a=addr:1.2.3.4/1ms d=addr:1.2.3.4/1ms i=addr:1.2.3.4/1ms", false},
+		{"a label missing", resolverJudge(resolvConf, "plain", bothLookups), "127.0.0.1:53 a=addr:127.0.0.1/1ms d=refused/1ms", false},
+		{"after garbage", resolverJudge(resolvConf, "garbage", bothLookups), "127.0.0.1:53 garbage=2/7 a=addr:127.0.0.1/1ms d=refused/1ms i=refused/1ms", true},
+		{"burst all refused", resolverJudge(resolvConf, "burst", bothLookups), "127.0.0.1:53 burst=200/200/200/9ms a=addr:127.0.0.1/1ms d=refused/1ms i=refused/1ms", true},
+		{"burst one lost", resolverJudge(resolvConf, "burst", bothLookups), "127.0.0.1:53 burst=200/199/199/2500ms a=addr:127.0.0.1/1ms d=refused/1ms i=refused/1ms", false},
+		{"burst resolved", resolverJudge(resolvConf, "burst", bothLookups), "127.0.0.1:53 burst=200/200/0/9ms a=addr:127.0.0.1/1ms d=refused/1ms i=refused/1ms", false},
+		{"burst short", resolverJudge(resolvConf, "burst", bothLookups), "127.0.0.1:53 burst=10/10/10/9ms a=addr:127.0.0.1/1ms d=refused/1ms i=refused/1ms", false},
+		{"burst missing", resolverJudge(resolvConf, "burst", bothLookups), "127.0.0.1:53 a=addr:127.0.0.1/1ms d=refused/1ms i=refused/1ms", false},
+		{"burst then dead", resolverJudge(resolvConf, "burst", bothLookups), "127.0.0.1:53 burst=200/200/200/9ms a=timeout/2500ms d=timeout/2500ms i=timeout/2500ms", false},
 	}
 	for _, c := range cases {
 		pass, detail, err := c.judge(context.Background(), session(c.detail))

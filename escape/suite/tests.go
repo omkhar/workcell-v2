@@ -94,13 +94,13 @@ var All = []Test{
 	// DNS answer that carries no address. The same at any address on port
 	// 53, under a policy that allows nothing, after hostile datagrams (I12)
 	// and after a burst (I10).
-	{ID: "I3", Name: "resolver-answers-allowed", Probe: lookupProbe, Host: resolverJudge(resolvConf, allowedLookups), Want: reachable},
-	{ID: "I3", Name: "resolver-refuses-others", Probe: lookupProbe, Host: resolverJudge(resolvConf, deniedLookups), Want: reachable},
-	{ID: "I3", Name: "resolver-at-host-address", Probe: lookupProbe, Host: resolverJudge(hostAddr+":53", bothLookups), Want: reachable},
-	{ID: "I3", Name: "resolver-at-lan-address", Probe: lookupProbe, Host: onLoopback("10.255.255.254", resolverJudge("10.255.255.254:53", bothLookups)), Want: reachable},
-	{ID: "I3", Name: "resolver-empty-policy", Probe: lookupProbe, Host: resolverJudge(resolvConf, nothingLookups)},
-	{ID: "I3", Name: "resolver-after-garbage", Probe: garbageProbe, Host: resolverJudge(resolvConf, bothLookups), Want: reachable},
-	{ID: "I3", Name: "resolver-after-burst", Probe: burstProbe, Host: burstJudge(bothLookups), Want: reachable},
+	{ID: "I3", Name: "resolver-answers-allowed", Probe: lookupProbe, Host: resolverJudge(resolvConf, "plain", allowedLookups), Want: reachable},
+	{ID: "I3", Name: "resolver-refuses-others", Probe: lookupProbe, Host: resolverJudge(resolvConf, "plain", deniedLookups), Want: reachable},
+	{ID: "I3", Name: "resolver-at-host-address", Probe: lookupProbe, Host: resolverJudge(hostAddr+":53", "plain", bothLookups), Want: reachable},
+	{ID: "I3", Name: "resolver-at-lan-address", Probe: lookupProbe, Host: onLoopback("10.255.255.254", resolverJudge("10.255.255.254:53", "plain", bothLookups)), Want: reachable},
+	{ID: "I3", Name: "resolver-empty-policy", Probe: lookupProbe, Host: resolverJudge(resolvConf, "plain", nothingLookups)},
+	{ID: "I3", Name: "resolver-after-garbage", Probe: lookupProbe, Host: resolverJudge(resolvConf, "garbage", bothLookups), Want: reachable},
+	{ID: "I3", Name: "resolver-after-burst", Probe: lookupProbe, Host: resolverJudge(resolvConf, "burst", bothLookups), Want: reachable},
 	// A secret lies beside the export on the host. The guest goes for it, and
 	// for the directory holding it, by path, by link, by mount and by file
 	// handle, and for the host's disks by device node.
@@ -138,13 +138,19 @@ var All = []Test{
 	// was given at the other allowed name.
 	{ID: "I5", Name: "secret-in-guest", Probe: secretProbe, Host: secretJudge, Want: withSecret},
 	{ID: "I5", Name: "placeholder-replay", Probe: replayProbe, Host: twoCanaries(false, nil, leakJudge), Want: withSecret},
-	// On a connection whose TLS names the bound host, the request names the
-	// other, in the Host header, in :authority, or hidden from the SNI by
-	// ECH; and a redirect from the bound host carries the credential on.
-	{ID: "I6", Name: "sni-host-mismatch-h1", Probe: mismatchProbe(false), Host: twoCanaries(false, nil, strictJudge), Want: withSecret},
-	{ID: "I6", Name: "sni-authority-mismatch-h2", Probe: mismatchProbe(true), Host: twoCanaries(false, nil, strictJudge), Want: withSecret},
-	{ID: "I6", Name: "ech-hidden-sni", Probe: echProbe, Host: twoCanaries(true, nil, strictJudge), Want: withSecret},
-	{ID: "I6", Name: "redirect-carries-secret", Probe: redirectProbe, Host: twoCanaries(false, redirectTo, leakJudge), Want: withSecret},
+	// A redirect from the bound host carries the credential on to the other.
+	{ID: "I5", Name: "redirect-carries-secret", Probe: redirectProbe, Host: twoCanaries(false, redirectTo, leakJudge), Want: withSecret},
+	// Two allowed names, both terminated on the host. On a connection whose
+	// TLS names one, the request names the other, in the Host header, in
+	// :authority, or hidden from the SNI by ECH: the canary under the SNI's
+	// name must see no request for the other, and the other must see none at
+	// all. And a plain client in the guest must meet the host's own leaf for
+	// the name, trusted through the environment the product set, never the
+	// canary's: the connection was terminated, not spliced.
+	{ID: "I6", Name: "sni-host-mismatch-h1", Probe: mismatchProbe(false), Host: twoNames(false, strictJudge), Want: terminating},
+	{ID: "I6", Name: "sni-authority-mismatch-h2", Probe: mismatchProbe(true), Host: twoNames(false, strictJudge), Want: terminating},
+	{ID: "I6", Name: "ech-hidden-sni", Probe: echProbe, Host: twoNames(true, strictJudge), Want: terminating},
+	{ID: "I6", Name: "terminated-session-leaf", Probe: terminatedProbe, Host: twoNames(false, terminationJudge), Want: terminating},
 	// The repository the guest hands back is hostile: its hooks, config,
 	// attributes and submodule URL aim at the host, and its tree names paths
 	// through "..", through a symlink an earlier pull brought, twice in

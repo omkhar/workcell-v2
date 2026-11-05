@@ -274,15 +274,18 @@ func (w *workcell) Bench(ctx context.Context) (Output, error) {
 	return w.cli(ctx, nil, "bench", "start")
 }
 
-// cli runs the product once with the prepared artifacts and the session's
-// policy, in the session's export when it has one, stdin from in, both
-// streams bounded, and, when the session names a resolver, under a
-// /etc/resolv.conf of the session's own (steered). An exit status is
+// cli runs the product once with the prepared artifacts, the session's
+// policy and its trust store, in the session's export when it has one,
+// stdin from in, both streams bounded, and, when the session names a
+// resolver, under a /etc/resolv.conf of the session's own (steered). An exit status is
 // reported in Output, not as an error. On cancel the product gets SIGTERM,
 // which it forwards, and a little while to take its VM down; then its
 // process group is killed.
 func (w *workcell) cli(ctx context.Context, in io.Reader, args ...string) (Output, error) {
 	env := append(os.Environ(), "XDG_DATA_HOME="+prepared.xdg, "XDG_CONFIG_HOME="+filepath.Join(w.dir, "config"))
+	if w.cfg.Roots != "" {
+		env = append(env, "SSL_CERT_FILE="+w.cfg.Roots) // the operator's trust store, which Go reads for the system roots
+	}
 	argv := append([]string{prepared.bin}, args...)
 	if w.cfg.Resolver != "" {
 		var err error

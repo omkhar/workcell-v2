@@ -93,3 +93,8 @@ func sign(ctx context.Context, dir, bin string) error {
 	}
 	return nil
 }
+
+// RootBind binds through sudo and the payload on Linux only.
+func RootBind(string, string, string, int) (net.Listener, net.PacketConn, error) {
+	return nil, nil, ErrNotImplemented
+}

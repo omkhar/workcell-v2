@@ -56,10 +56,11 @@ type rebind struct {
 	cname   string
 	canary  string
 	sni     bool
-	// both gives the denied name the same records as the allowed one, so
-	// that a session whose policy the guest widened would reach a canary
-	// under it (sandbox.Config.Deny).
-	both bool
+	// names are the names answered with the records, as the resolver hears
+	// them, with the trailing dot; allowedName alone when empty. A denied
+	// name among them lets a session whose policy the guest widened reach
+	// a canary under it (sandbox.Config.Deny).
+	names []string
 }
 
 // answers says what the resolver tells about the allowed name.
@@ -227,11 +228,15 @@ func (ns *nameServer) questions() []string {
 // typeNames names the types a resolver is asked, for the record of it.
 var typeNames = map[uint16]string{dnsTypeA: "A", dnsTypeAAAA: "AAAA", dnsTypeCNAME: "CNAME", dnsTypeTXT: "TXT", dnsTypePTR: "PTR", dnsTypeANY: "ANY"}
 
-// answer is the response to q: for the allowed name, the CNAME when the row
-// has one and then the row's records of the type asked, NOERROR with no
+// answer is the response to q: for a name of the row's, the CNAME when the
+// row has one and then the row's records of the type asked, NOERROR with no
 // record when it has none of that type; REFUSED for every other name.
 func (r rebind) answer(q dnsQuestion) []byte {
-	if !strings.EqualFold(q.Name, allowedName) && !(r.both && strings.EqualFold(q.Name, deniedName)) {
+	names := r.names
+	if len(names) == 0 {
+		names = []string{allowedName}
+	}
+	if !slices.ContainsFunc(names, func(n string) bool { return strings.EqualFold(q.Name, n) }) {
 		return dnsResponse(q, dnsRcodeRefused, nil)
 	}
 	owner := q.Name

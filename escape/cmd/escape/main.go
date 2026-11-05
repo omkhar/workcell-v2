@@ -83,6 +83,10 @@ func app() int {
 	}
 	defer os.RemoveAll(dir)
 	payload, err := sandbox.BuildPayload(ctx, dir)
+	var roots string
+	if err == nil {
+		roots, err = suite.Roots(dir) // the suite's authority, which every session's host side trusts upstream
+	}
 	if err == nil {
 		err = sandbox.Prepare(ctx, *name, dir) // once, outside any test's time
 	}
@@ -90,7 +94,7 @@ func app() int {
 		fmt.Fprintln(os.Stderr, "escape:", err)
 		return 2
 	}
-	rep := run(ctx, *name, func() (sandbox.Sandbox, error) { return sandbox.New(*name) }, payload, tests)
+	rep := run(ctx, *name, func() (sandbox.Sandbox, error) { return sandbox.New(*name) }, payload, roots, tests)
 	enc := json.NewEncoder(os.Stdout)
 	enc.SetIndent("", "  ")
 	enc.Encode(rep)
@@ -101,10 +105,10 @@ func app() int {
 }
 
 // run gives every test a fresh sandbox and judges it.
-func run(ctx context.Context, name string, fresh func() (sandbox.Sandbox, error), payload string, tests []suite.Test) Report {
+func run(ctx context.Context, name string, fresh func() (sandbox.Sandbox, error), payload, roots string, tests []suite.Test) Report {
 	rep := Report{Sandbox: name, Results: []Result{}}
 	for _, t := range tests {
-		outcome, detail := runOne(ctx, fresh, payload, t)
+		outcome, detail := runOne(ctx, fresh, payload, roots, t)
 		fmt.Fprintf(os.Stderr, "escape: %s: %s %s: %s %s\n", name, t.ID, t.Name, outcome, detail) // as it goes, so that a log shows where a hang was
 		rep.Results = append(rep.Results, Result{Invariant: t.ID, Name: t.Name, Outcome: outcome, Detail: detail})
 		switch outcome {
@@ -123,7 +127,7 @@ func run(ctx context.Context, name string, fresh func() (sandbox.Sandbox, error)
 
 // runOne starts the test's first session, lets the judge open more, and stops
 // them all, last first, when the judge is done.
-func runOne(ctx context.Context, fresh func() (sandbox.Sandbox, error), payload string, t suite.Test) (string, string) {
+func runOne(ctx context.Context, fresh func() (sandbox.Sandbox, error), payload, roots string, t suite.Test) (string, string) {
 	bound := perTest
 	if t.Bound > 0 {
 		bound = t.Bound
@@ -144,7 +148,7 @@ func runOne(ctx context.Context, fresh func() (sandbox.Sandbox, error), payload 
 		}
 		s := session{sb: sb}
 		sessions = append(sessions, s)
-		cfg := sandbox.Config{Payload: payload, Mount: t.Want.Mount, CPUs: t.Want.CPUs, MemoryMiB: t.Want.MemoryMiB, DiskMiB: t.Want.DiskMiB, Allow: t.Want.Allow, Deny: t.Want.Deny, Resolver: t.Want.Resolver, Isolated: t.Want.Isolated}
+		cfg := sandbox.Config{Payload: payload, Mount: t.Want.Mount, CPUs: t.Want.CPUs, MemoryMiB: t.Want.MemoryMiB, DiskMiB: t.Want.DiskMiB, Allow: t.Want.Allow, Deny: t.Want.Deny, Resolver: t.Want.Resolver, Isolated: t.Want.Isolated, Roots: roots}
 		if t.Want.Secret {
 			sec := suite.NewSecret(t.Want.Allow[0])
 			cfg.Secret = &sec
