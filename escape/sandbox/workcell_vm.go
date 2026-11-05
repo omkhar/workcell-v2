@@ -347,18 +347,15 @@ func (w *workcell) Bind(_ context.Context, network, addr string) (net.Listener, 
 }
 
 // Helper names the process whose death I11 is about. The product has no
-// helper process of its own: the proxy and the resolver are parts of the one
-// `workcell run` that owns the session's VM (SPEC A9), so both names, and
-// "supervisor", are that process; no broker exists yet (U-401), so that name
-// is ErrNotImplemented rather than a pass that proves nothing. The process
-// lives only as long as a run, so a judge asks during one, and the adapter
-// finds the product below the run it started (productProcess), giving it a
-// moment to appear.
+// helper process of its own: the proxy, the resolver and the broker are one
+// supervisor process, the `workcell run` that owns the session's VM (SPEC
+// A9), so each name resolves to it, and any of them dying is that process
+// dying. The process lives only as long as a run, so a judge asks during
+// one, and the adapter finds the product below the run it started
+// (productProcess), giving it a moment to appear.
 func (w *workcell) Helper(ctx context.Context, name string) (int, error) {
 	switch name {
-	case "proxy", "resolver", "supervisor":
-	case "broker":
-		return 0, fmt.Errorf("workcell: no broker exists yet: %w", ErrNotImplemented)
+	case "proxy", "resolver", "broker", "supervisor":
 	default:
 		return 0, fmt.Errorf("workcell: no helper %q", name)
 	}
