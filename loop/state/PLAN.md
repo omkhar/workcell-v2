@@ -152,7 +152,7 @@ with ADR-003 and ADR-004, they build on the proposal, and you can accept it at a
       accept: no socket, no `aptbroker` import; secrets are zeroed after use where Go allows
 - [x] U-401 | flow:boundary | model:fable | env:kvm | deps:U-307,U-400,H-011 | tries:0 | Mint placeholders and inject at the proxy, bound to host, and optionally to method and path
       accept: I5 added to `enforced.txt` and green
-- [ ] U-402 | flow:build | model:sonnet | env:any | deps:U-401 | tries:0 | Adapter data model in TOML: hosts, header shape, placeholder files and variables, install command. Mine `_legacy/adapters/*/adapter.toml` for facts only
+- [x] U-402 | flow:build | model:sonnet | env:any | deps:U-401 | tries:0 | Adapter data model in TOML: hosts, header shape, placeholder files and variables, install command. Mine `_legacy/adapters/*/adapter.toml` for facts only
       accept: adding a provider is one data file and no Go code
 - [ ] U-403 | flow:boundary | model:fable | env:kvm | deps:U-402 | tries:0 | Sign-in flows at the proxy: swap real tokens for placeholders in token-endpoint responses, and refresh on the host
       accept: a fake provider in `escape/` proves that access and refresh tokens never reach the guest
