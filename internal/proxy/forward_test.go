@@ -32,10 +32,7 @@ func TestForwardStaysSplicedBesideTermination(t *testing.T) {
 		t.Run(tc.allow, func(t *testing.T) {
 			https := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { _, _ = io.WriteString(w, r.Host) }))
 			defer https.Close()
-			echo, err := net.Listen("tcp", "127.0.0.1:0")
-			if err != nil {
-				t.Fatal(err)
-			}
+			echo := must(net.Listen("tcp", "127.0.0.1:0"))
 			defer echo.Close()
 			go func() {
 				for {
@@ -69,10 +66,7 @@ func TestForwardStaysSplicedBesideTermination(t *testing.T) {
 				t.Errorf("443: got (%q, %v), want %s", body, err, tc.tls)
 			}
 			hello := clientHello(t, "example.com")
-			c, err := net.Dial("tcp", fwdAddr)
-			if err != nil {
-				t.Fatal(err)
-			}
+			c := must(net.Dial("tcp", fwdAddr))
 			defer c.Close()
 			c.SetDeadline(time.Now().Add(5 * time.Second))
 			_, _ = c.Write(hello)

@@ -149,6 +149,11 @@ var All = []Test{
 	{ID: "I5", Name: "placeholder-misplaced", Probe: exchangeProbe, Host: twoNames(canaries{}, swapJudge("GET,bound,/check,header", "GET,other,/replay,header", "GET,bound,/auth,auth", "GET,bound,/path,path", "GET,bound,/query,query")), Want: withSecret},
 	{ID: "I5", Name: "placeholder-narrowed", Probe: exchangeProbe, Host: twoNames(canaries{}, swapJudge("POST,bound,/v1/ok,header", "GET,bound,/v1/ok,header", "POST,bound,/v2/no,header", "GET,bound,/check,header")), Want: narrowed},
 	{ID: "I5", Name: "redirect-carries-secret", Probe: exchangeProbe, Host: twoNames(canaries{respond: redirectTo}, swapJudge("GET,bound,/check,header", "GET,bound,/start,header")), Want: withSecret},
+	// A git token scoped to one repository: a clone's and a push's smart-HTTP
+	// requests there carry the real token as git sends it (Basic); the same
+	// placeholder on any other path of the host reaches nothing.
+	{ID: "I5", Name: "repo-token-swapped", Probe: exchangeProbe, Host: twoNames(canaries{}, swapJudge("GET,bound,/octo/allowed.git/info/refs?service=git-upload-pack,basic", "POST,bound,/octo/allowed.git/git-upload-pack,basic", "POST,bound,/octo/allowed.git/git-receive-pack,basic", "GET,bound,/octo/allowed,basic", "GET,bound,/octo/allowed.git/info/refs?service=git-receive-pack,auth")), Want: scoped},
+	{ID: "I5", Name: "repo-token-elsewhere", Probe: exchangeProbe, Host: twoNames(canaries{}, swapJudge("GET,bound,/octo/allowed.git/info/refs?service=git-upload-pack,basic", "GET,bound,/octo/other.git/info/refs?service=git-upload-pack,basic", "POST,bound,/octo/other.git/git-receive-pack,basic", "GET,bound,/other/allowed.git/info/refs,basic", "GET,bound,/octo/allowed-x.git/info/refs,basic", "GET,bound,/octo/allowed.git-x/info/refs,basic", "GET,bound,/Octo/Allowed.git/info/refs,basic", "GET,bound,/octo/allowed.git/../other.git/info/refs,basic", "GET,bound,/octo/allowed.git%2F..%2Fother.git/info/refs,basic", "GET,bound,//octo/allowed.git/info/refs,basic", "GET,bound,/octo/other.git/git-upload-pack,auth", "GET,other,/octo/allowed.git/info/refs,basic")), Want: scoped},
 	// A secret whose source is a sign-in flow: the token endpoint on one
 	// allowed name issues an access and a refresh token, the access one
 	// bound to the API on the other (signin.go). The guest signs in and

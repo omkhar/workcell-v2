@@ -12,12 +12,14 @@ import (
 	"crypto/rand"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/base64"
 	"errors"
 	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -58,8 +60,9 @@ func (b *fakeBroker) callCount() int {
 
 // terminateFixture runs an upstream that echoes the x-api-key and Authorization
 // it received and a proxy that terminates example.com, with a rule for each of
-// those headers, a.example.com, with none, and n.example.com, with an x-api-key
-// rule narrowed to POST under /v1/.
+// those headers, a.example.com, with none, n.example.com, with an x-api-key
+// rule narrowed to POST under /v1/, and r.example.com, with an Authorization
+// rule scoped to the repository octo/allowed.
 func terminateFixture(t *testing.T, broker Broker) (proxyAddr string, ca *SessionCA, upstreamRoots *x509.CertPool, p *Proxy, log *bytes.Buffer) {
 	t.Helper()
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -71,22 +74,23 @@ func terminateFixture(t *testing.T, broker Broker) (proxyAddr string, ca *Sessio
 	t.Cleanup(server.Close)
 	upstreamRoots = x509.NewCertPool()
 	upstreamRoots.AddCert(server.Certificate())
-	p, buf, _ := testProxy(t, "example.com:443 a.example.com:443 n.example.com:443", []netip.Addr{netip.MustParseAddr("8.8.8.8")}, server.Listener.Addr().String())
+	p, buf, _ := testProxy(t, "example.com:443 a.example.com:443 n.example.com:443 r.example.com:443", []netip.Addr{netip.MustParseAddr("8.8.8.8")}, server.Listener.Addr().String())
 	p.upstreamRoots = upstreamRoots
-	ca, err := NewSessionCA([]string{"example.com", "a.example.com", "n.example.com"}, time.Now().Add(time.Hour))
-	if err != nil {
-		t.Fatal(err)
-	}
+	ca = must(NewSessionCA([]string{"example.com", "a.example.com", "n.example.com", "r.example.com"}, time.Now().Add(time.Hour)))
 	// Mixed-case header names: the broker must still get the lowercase form
 	// its grants use (TestTerminateSwapsOnlyExactPlaceholder checks the call).
-	if err := p.Terminate(ca, broker, []TerminateRule{
+	must(0, p.Terminate(ca, broker, []TerminateRule{
 		{Host: "example.com", Header: "X-Api-Key", Placeholder: testPlaceholder},
 		{Host: "example.com", Header: "Authorization", Placeholder: testAuthPlaceholder},
 		{Host: "n.example.com", Header: "X-Api-Key", Placeholder: testPlaceholder, Method: "POST", Path: "/v1/"},
-	}); err != nil {
-		t.Fatal(err)
-	}
+		{Host: "r.example.com", Header: "Authorization", Placeholder: testAuthPlaceholder, Repos: []string{"octo/allowed"}},
+	}))
 	return listen(t, p, 443), ca, upstreamRoots, p, buf
+}
+
+// basic is password as git sends a token: a Basic value of base64("x-access-token:" + password).
+func basic(password string) string {
+	return "Basic " + base64.StdEncoding.EncodeToString([]byte("x-access-token:"+password))
 }
 
 func caPool(t *testing.T, ca *SessionCA) *x509.CertPool {
@@ -113,10 +117,7 @@ func clientVia(proxyAddr string, roots *x509.CertPool) *http.Client {
 
 func get(t *testing.T, c *http.Client, url, key string) (int, string) {
 	t.Helper()
-	req, err := http.NewRequest(http.MethodGet, url, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	req := must(http.NewRequest(http.MethodGet, url, nil))
 	if key != "" {
 		req.Header.Set("X-Api-Key", key)
 	}
@@ -190,9 +191,13 @@ func TestSameHost(t *testing.T) {
 		{"example.com\u212a", false}, {"exam\u212ale.com", false}, {"example.com evil", false},
 	}
 	for _, tc := range cases {
-		if got := sameHost(tc.host, "example.com"); got != tc.want {
+		if got := sameHost(tc.host, "example.com", "443"); got != tc.want {
 			t.Errorf("sameHost(%q) = %t, want %t", tc.host, got, tc.want)
 		}
+	}
+	// A test's listener has a port of its own, which a Host may then name; :443 still may.
+	if !sameHost("example.com:8443", "example.com", "8443") || !sameHost("Example.com.:443", "example.com", "8443") || sameHost("example.com:8443.", "example.com", "8443") {
+		t.Error("sameHost does not take the connection's own port alone beside 443")
 	}
 }
 
@@ -236,12 +241,14 @@ func TestTerminateRefusesUnswappedPlaceholder(t *testing.T) {
 		"two values":            {"/", map[string][]string{"X-Api-Key": {testPlaceholder, "user-key"}}},
 		"wrong header for rule": {"/", map[string][]string{"Authorization": {"Bearer " + testPlaceholder}}},
 		"one of two swapped":    {"/", map[string][]string{"X-Api-Key": {testPlaceholder}, "X-Other": {testAuthPlaceholder}}},
+		"basic in other header": {"/", map[string][]string{"X-Goog-Api-Key": {basic(testPlaceholder)}}},
+		"basic of other rule":   {"/", map[string][]string{"Authorization": {basic(testPlaceholder)}}},
+		"basic upper-case":      {"/", map[string][]string{"Authorization": {basic(strings.ToUpper(testAuthPlaceholder))}}},
+		"basic as the user":     {"/", map[string][]string{"Authorization": {"Basic " + base64.StdEncoding.EncodeToString([]byte(testAuthPlaceholder+":x"))}}},
+		"basic with no colon":   {"/", map[string][]string{"Authorization": {"Basic " + base64.StdEncoding.EncodeToString([]byte(testAuthPlaceholder))}}},
 	}
 	for name, tc := range cases {
-		req, err := http.NewRequest(http.MethodGet, "https://example.com"+tc.target, nil)
-		if err != nil {
-			t.Fatal(err)
-		}
+		req, _ := http.NewRequest(http.MethodGet, "https://example.com"+tc.target, nil)
 		for k, v := range tc.header {
 			req.Header[k] = v
 		}
@@ -253,10 +260,7 @@ func TestTerminateRefusesUnswappedPlaceholder(t *testing.T) {
 	// proxy refuses every request trailer, placeholder-named or benign.
 	trailers := []string{"X-" + testPlaceholder, "X-Checksum"}
 	for _, name := range trailers {
-		req, err := http.NewRequest(http.MethodPost, "https://example.com/v1", strings.NewReader("body"))
-		if err != nil {
-			t.Fatal(err)
-		}
+		req, _ := http.NewRequest(http.MethodPost, "https://example.com/v1", strings.NewReader("body"))
 		req.ContentLength = -1
 		req.Header.Set("X-Api-Key", testPlaceholder)
 		req.Trailer = http.Header{name: {"v"}}
@@ -308,10 +312,7 @@ func TestTerminateOffersHTTP11Only(t *testing.T) {
 
 func TestSessionCANameConstraints(t *testing.T) {
 	t.Parallel()
-	ca, err := NewSessionCA([]string{"api.example.com"}, time.Now().Add(time.Hour))
-	if err != nil {
-		t.Fatal(err)
-	}
+	ca := must(NewSessionCA([]string{"api.example.com"}, time.Now().Add(time.Hour)))
 	if !ca.cert.IsCA || ca.cert.MaxPathLen != 0 || !ca.cert.MaxPathLenZero || !ca.cert.PermittedDNSDomainsCritical {
 		t.Fatalf("CA = IsCA %v MaxPathLen %d zero %v critical %v", ca.cert.IsCA, ca.cert.MaxPathLen, ca.cert.MaxPathLenZero, ca.cert.PermittedDNSDomainsCritical)
 	}
@@ -324,10 +325,7 @@ func TestSessionCANameConstraints(t *testing.T) {
 		_, err := leaf.Verify(x509.VerifyOptions{DNSName: name, Roots: roots})
 		return err
 	}
-	own, err := ca.leaf("api.example.com")
-	if err != nil {
-		t.Fatal(err)
-	}
+	own := must(ca.leaf("api.example.com"))
 	if err := verify("api.example.com", own.Leaf); err != nil {
 		t.Fatalf("on-list leaf: %v", err)
 	}
@@ -336,20 +334,14 @@ func TestSessionCANameConstraints(t *testing.T) {
 	}
 	key, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	for _, name := range []string{"evil.example", "example.com"} {
-		off, err := ca.issue(name, key)
-		if err != nil {
-			t.Fatal(err)
-		}
+		off := must(ca.issue(name, key))
 		var invalid x509.CertificateInvalidError
 		if err := verify(name, off); !errors.As(err, &invalid) || invalid.Reason != x509.CANotAuthorizedForThisName {
 			t.Errorf("off-list leaf %s: verify error = %v, want CANotAuthorizedForThisName", name, err)
 		}
 	}
 	ipLeaf := &x509.Certificate{IPAddresses: []net.IP{net.ParseIP("8.8.8.8")}, NotBefore: ca.cert.NotBefore, NotAfter: ca.cert.NotAfter, ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}}
-	signed, err := sign(ipLeaf, ca.cert, &key.PublicKey, ca.key)
-	if err != nil {
-		t.Fatal(err)
-	}
+	signed := must(sign(ipLeaf, ca.cert, &key.PublicKey, ca.key))
 	if err := verify("8.8.8.8", signed); err == nil {
 		t.Error("IP leaf verified, want refusal by the excluded IP ranges")
 	}
@@ -374,85 +366,140 @@ func TestNewSessionCARefusesBadInput(t *testing.T) {
 }
 
 // TestNewTerminateRule: the host comes back canonical and the header lowercase,
-// each rule gets a placeholder of its own, and a bad host, header, method or
-// path is refused.
+// each rule gets a placeholder of its own, and a bad host, header, method,
+// path or repository is refused, as are repositories beside a method or path.
 func TestNewTerminateRule(t *testing.T) {
 	t.Parallel()
+	repo := func(repos ...string) []string { return repos }
 	cases := []struct {
 		host, header, method, path string
+		repos                      []string
 		ok                         bool
 	}{
-		{"API.example.com", "X-Api-Key", "", "", true}, {"api.example.com.", "x-api-key", "POST", "/v1/", true}, {"api.example.com", "x-api-key", "GET", "/", true},
-		{"192.0.2.1", "x-api-key", "", "", false}, {"", "x-api-key", "", "", false}, {"example.com", "x api key", "", "", false}, {"example.com", "", "", "", false},
-		{"example.com", "x-api-key", "post", "", false}, {"example.com", "x-api-key", "P O", "", false},
-		{"example.com", "x-api-key", "", "v1/", false}, {"example.com", "x-api-key", "", "/v1?x", false}, {"example.com", "x-api-key", "", "/v1#f", false},
-		{"example.com", "x-api-key", "", "/v 1", false}, {"example.com", "x-api-key", "", "/caf\u00e9", false},
+		{"API.example.com", "X-Api-Key", "", "", nil, true}, {"api.example.com.", "x-api-key", "POST", "/v1/", nil, true}, {"api.example.com", "x-api-key", "GET", "/", nil, true},
+		{"api.example.com", "authorization", "", "", repo("octo/allowed", "octo-org/my.repo_1", "0/0"), true},
+		{"192.0.2.1", "x-api-key", "", "", nil, false}, {"", "x-api-key", "", "", nil, false}, {"example.com", "x api key", "", "", nil, false}, {"example.com", "", "", "", nil, false},
+		{"example.com", "x-api-key", "post", "", nil, false}, {"example.com", "x-api-key", "P O", "", nil, false},
+		{"example.com", "x-api-key", "", "v1/", nil, false}, {"example.com", "x-api-key", "", "/v1?x", nil, false}, {"example.com", "x-api-key", "", "/v1#f", nil, false},
+		{"example.com", "x-api-key", "", "/v 1", nil, false}, {"example.com", "x-api-key", "", "/caf\u00e9", nil, false},
+		{"example.com", "authorization", "POST", "", repo("octo/allowed"), false}, {"example.com", "authorization", "", "/octo/", repo("octo/allowed"), false},
+		{"example.com", "authorization", "", "", repo("octo"), false}, {"example.com", "authorization", "", "", repo("octo/allowed/x"), false},
+		{"example.com", "authorization", "", "", repo("Octo/allowed"), false}, {"example.com", "authorization", "", "", repo("octo/allowed.git"), false},
+		{"example.com", "authorization", "", "", repo("octo/"), false}, {"example.com", "authorization", "", "", repo("/allowed"), false},
+		{"example.com", "authorization", "", "", repo("octo/.."), false}, {"example.com", "authorization", "", "", repo("./allowed"), false},
+		{"example.com", "authorization", "", "", repo("octo/a b"), false}, {"example.com", "authorization", "", "", repo("octo/allowed", ""), false},
 	}
 	seen := map[string]bool{}
 	for _, tc := range cases {
-		got, err := NewTerminateRule(tc.host, tc.header, tc.method, tc.path)
+		got, err := NewTerminateRule(tc.host, tc.header, tc.method, tc.path, tc.repos)
 		if (err == nil) != tc.ok {
-			t.Errorf("NewTerminateRule(%q, %q, %q, %q) = %v, want ok %t", tc.host, tc.header, tc.method, tc.path, err, tc.ok)
+			t.Errorf("NewTerminateRule(%q, %q, %q, %q, %q) = %v, want ok %t", tc.host, tc.header, tc.method, tc.path, tc.repos, err, tc.ok)
 		}
 		if err != nil {
 			continue
 		}
-		if got.Host != "api.example.com" || got.Header != "x-api-key" || got.Method != tc.method || got.Path != tc.path || !IsPlaceholder(got.Placeholder) || seen[got.Placeholder] {
-			t.Errorf("NewTerminateRule(%q, %q, %q, %q) = %+v", tc.host, tc.header, tc.method, tc.path, got)
+		if got.Host != "api.example.com" || got.Header != strings.ToLower(tc.header) || got.Method != tc.method || got.Path != tc.path || !slices.Equal(got.Repos, tc.repos) || !IsPlaceholder(got.Placeholder) || seen[got.Placeholder] {
+			t.Errorf("NewTerminateRule(%q, %q, %q, %q, %q) = %+v", tc.host, tc.header, tc.method, tc.path, tc.repos, got)
 		}
 		seen[got.Placeholder] = true
 	}
 }
 
 // TestTerminateNarrowedRule: a rule naming a method and a path prefix swaps a
-// placeholder only on a request of that method under that prefix, judged on
-// the path as sent and as decoded; any other request carrying the placeholder
-// in the bound header is refused before the broker hears of it, with nothing
-// forwarded, and a request carrying no placeholder passes as is. The bytes
-// the broker gave are wiped once the request carries them. Drop the check →
-// the broker is asked and the upstream sees the value → FAIL.
+// placeholder only on a request of that method under that prefix, and one
+// naming repositories only on a request to /owner/name or /owner/name.git or
+// under either, the placeholder bare, as a bearer or as a Basic password (as
+// git sends a token), judged on the path as sent and as decoded; any other
+// request carrying the placeholder in the bound header is refused before the
+// broker hears of it, with nothing forwarded, and a request carrying no
+// placeholder passes as is. The bytes the broker gave are wiped once the
+// request carries them. Drop the check → the broker is asked and the upstream
+// sees the value → FAIL.
 func TestTerminateNarrowedRule(t *testing.T) {
 	t.Parallel()
 	broker := &fakeBroker{value: "real-secret"}
 	addr, ca, _, p, log := terminateFixture(t, broker)
 	c := clientVia(addr, caPool(t, ca))
+	const n, r, auth = "n.example.com", "r.example.com", "Authorization"
+	swapped := r + "  auth=" + basic("real-secret")
 	cases := []struct {
-		name, method, target, key string
-		code                      int
-		body                      string
+		name, host, method, target, header, key string
+		code                                    int
+		body                                    string
 	}{
-		{"method and path match", "POST", "/v1/messages", testPlaceholder, 200, "n.example.com real-secret"},
-		{"the prefix itself", "POST", "/v1/", testPlaceholder, 200, "n.example.com real-secret"},
-		{"bearer under the prefix with a query", "POST", "/v1/x?q=1", "Bearer " + testPlaceholder, 200, "n.example.com Bearer real-secret"},
-		{"other method", "GET", "/v1/messages", testPlaceholder, 403, ""},
-		{"method in another case", "post", "/v1/messages", testPlaceholder, 403, ""},
-		{"other path", "POST", "/v2/no", testPlaceholder, 403, ""},
-		{"the prefix without its slash", "POST", "/v1", testPlaceholder, 403, ""},
-		{"dot segments leading out", "POST", "/v1/../v2/no", testPlaceholder, 403, ""},
-		{"encoded dot segments", "POST", "/v1/%2e%2e/v2/no", testPlaceholder, 403, ""},
-		{"encoded slash", "POST", "/v1%2Fx", testPlaceholder, 403, ""},
-		{"no placeholder", "GET", "/v2/no", "user-key", 200, "n.example.com user-key"},
+		{"method and path match", n, "POST", "/v1/messages", "X-Api-Key", testPlaceholder, 200, "n.example.com real-secret"},
+		{"the prefix itself", n, "POST", "/v1/", "X-Api-Key", testPlaceholder, 200, "n.example.com real-secret"},
+		{"bearer under the prefix with a query", n, "POST", "/v1/x?q=1", "X-Api-Key", "Bearer " + testPlaceholder, 200, "n.example.com Bearer real-secret"},
+		{"other method", n, "GET", "/v1/messages", "X-Api-Key", testPlaceholder, 403, ""},
+		{"method in another case", n, "post", "/v1/messages", "X-Api-Key", testPlaceholder, 403, ""},
+		{"other path", n, "POST", "/v2/no", "X-Api-Key", testPlaceholder, 403, ""},
+		{"the prefix without its slash", n, "POST", "/v1", "X-Api-Key", testPlaceholder, 403, ""},
+		{"dot segments leading out", n, "POST", "/v1/../v2/no", "X-Api-Key", testPlaceholder, 403, ""},
+		{"encoded dot segments", n, "POST", "/v1/%2e%2e/v2/no", "X-Api-Key", testPlaceholder, 403, ""},
+		{"encoded slash", n, "POST", "/v1%2Fx", "X-Api-Key", testPlaceholder, 403, ""},
+		{"no placeholder", n, "GET", "/v2/no", "X-Api-Key", "user-key", 200, "n.example.com user-key"},
+		{"a clone's refs within the repository", r, "GET", "/octo/allowed.git/info/refs?service=git-upload-pack", auth, basic(testAuthPlaceholder), 200, swapped},
+		{"a fetch", r, "POST", "/octo/allowed.git/git-upload-pack", auth, basic(testAuthPlaceholder), 200, swapped},
+		{"a push", r, "POST", "/octo/allowed.git/git-receive-pack", auth, basic(testAuthPlaceholder), 200, swapped},
+		{"the repository itself, without .git", r, "GET", "/octo/allowed", auth, basic(testAuthPlaceholder), 200, swapped},
+		{"a bearer within the repository", r, "GET", "/octo/allowed.git/info/refs?service=git-receive-pack", auth, "Bearer " + testAuthPlaceholder, 200, r + "  auth=Bearer real-secret"},
+		{"a user's own token within the repository", r, "GET", "/octo/allowed.git/info/refs", auth, basic("user-key"), 200, r + "  auth=" + basic("user-key")},
+		{"another repository", r, "GET", "/octo/other.git/info/refs", auth, basic(testAuthPlaceholder), 403, ""},
+		{"a push to another repository", r, "POST", "/octo/other.git/git-receive-pack", auth, basic(testAuthPlaceholder), 403, ""},
+		{"another owner", r, "GET", "/other/allowed.git/info/refs", auth, basic(testAuthPlaceholder), 403, ""},
+		{"a longer name", r, "GET", "/octo/allowed-x.git/info/refs", auth, basic(testAuthPlaceholder), 403, ""},
+		{"a longer suffix", r, "GET", "/octo/allowed.git-x/info/refs", auth, basic(testAuthPlaceholder), 403, ""},
+		{"another letter case", r, "GET", "/Octo/Allowed.git/info/refs", auth, basic(testAuthPlaceholder), 403, ""},
+		{"dot segments leading out of the repository", r, "GET", "/octo/allowed.git/../other.git/info/refs", auth, basic(testAuthPlaceholder), 403, ""},
+		{"an encoded slash out of the repository", r, "GET", "/octo/allowed.git%2F..%2Fother.git/info/refs", auth, basic(testAuthPlaceholder), 403, ""},
+		{"a doubled slash", r, "GET", "//octo/allowed.git/info/refs", auth, basic(testAuthPlaceholder), 403, ""},
+		{"a bearer to another repository", r, "GET", "/octo/other.git/git-upload-pack", auth, "Bearer " + testAuthPlaceholder, 403, ""},
 	}
-	refused := 0
+	refused, swaps := map[string]uint64{}, 0
 	for _, tc := range cases {
-		req, err := http.NewRequest(tc.method, "https://n.example.com"+tc.target, nil)
-		if err != nil {
-			t.Fatal(err)
-		}
-		req.Header.Set("X-Api-Key", tc.key)
+		req, _ := http.NewRequest(tc.method, "https://"+tc.host+tc.target, nil)
+		req.Header.Set(tc.header, tc.key)
 		if code, body := do(t, c, req); code != tc.code || tc.body != "" && body != tc.body || code != 200 && strings.Contains(body, "real-secret") {
 			t.Errorf("%s: got (%d, %q), want (%d, %q)", tc.name, code, body, tc.code, tc.body)
 		}
 		if tc.code == 403 {
-			refused++
+			refused[tc.host]++
+		} else if strings.Contains(tc.body, "real-secret") || tc.body == swapped {
+			swaps++
 		}
 	}
-	if n := broker.callCount(); n != 3 || !bytes.Equal(broker.last, make([]byte, len("real-secret"))) {
-		t.Errorf("broker calls = %d, want 3 (matching requests only); last value wiped = %t", n, n == 3)
+	if got := broker.callCount(); got != swaps || !bytes.Equal(broker.last, make([]byte, len("real-secret"))) {
+		t.Errorf("broker calls = %d, want %d (matching requests only); last value wiped = %t", got, swaps, got == swaps)
 	}
-	want := denyLine{Host: "n.example.com", Port: 443, Reason: "binding_mismatch", Count: uint64(refused), Seq: uint64(refused)}
-	if d := denies(t, p, log); len(d) != refused || d[len(d)-1] != want {
-		t.Errorf("deny lines = %+v, want %d ending in %+v", d, refused, want)
+	total := refused[n] + refused[r]
+	want := denyLine{Host: r, Port: 443, Reason: "binding_mismatch", Count: refused[r], Seq: total}
+	if d := denies(t, p, log); uint64(len(d)) != total || d[len(d)-1] != want {
+		t.Errorf("deny lines = %+v, want %d ending in %+v", d, total, want)
+	}
+}
+
+// TestPlaceholderForm: the three forms a placeholder is swapped in rebuild
+// around the real value; a Basic value is a pair, the placeholder its whole
+// password, strictly encoded and bounded; anything else is not swapped.
+func TestPlaceholderForm(t *testing.T) {
+	t.Parallel()
+	b64 := base64.StdEncoding.EncodeToString
+	cases := []struct {
+		values []string
+		want   string // "" for no swap
+	}{
+		{[]string{testPlaceholder}, "real"}, {[]string{"Bearer " + testPlaceholder}, "Bearer real"}, {[]string{basic(testPlaceholder)}, basic("real")},
+		{[]string{"Basic " + b64([]byte(":"+testPlaceholder))}, "Basic " + b64([]byte(":real"))},
+		{[]string{testPlaceholder, testPlaceholder}, ""}, {nil, ""}, {[]string{"bearer " + testPlaceholder}, ""}, {[]string{"basic " + b64([]byte("x:"+testPlaceholder))}, ""},
+		{[]string{"Basic " + b64([]byte(testPlaceholder))}, ""}, {[]string{"Basic " + b64([]byte(testPlaceholder+":x"))}, ""}, {[]string{"Basic " + b64([]byte("x:"+testPlaceholder+":y"))}, ""},
+		{[]string{"Basic " + b64([]byte("x:" + testPlaceholder))[:10]}, ""}, {[]string{"Basic " + b64([]byte("x:"+testPlaceholder)) + "\n"}, ""}, {[]string{"Basic " + strings.Repeat("A", maxBasic+4)}, ""},
+		{[]string{basic(testAuthPlaceholder)}, ""}, {[]string{"Basic  " + b64([]byte("x:"+testPlaceholder))}, ""},
+	}
+	for _, tc := range cases {
+		form, ok := placeholderForm(tc.values, testPlaceholder)
+		if got := ""; ok != (tc.want != "") || ok && func() string { got = form([]byte("real")); return got }() != tc.want {
+			t.Errorf("placeholderForm(%q) = %q, %t; want %q", tc.values, got, ok, tc.want)
+		}
 	}
 }
 
@@ -495,10 +542,7 @@ func TestTerminateRefusesTraceAndConnect(t *testing.T) {
 	addr, ca, _, p, log := terminateFixture(t, broker)
 	c := clientVia(addr, caPool(t, ca))
 	for _, method := range []string{http.MethodTrace, http.MethodConnect} {
-		req, err := http.NewRequest(method, "https://example.com/v1", nil)
-		if err != nil {
-			t.Fatal(err)
-		}
+		req := must(http.NewRequest(method, "https://example.com/v1", nil))
 		req.Header.Set("X-Api-Key", testPlaceholder)
 		if code, body := do(t, c, req); code != http.StatusMethodNotAllowed || !strings.Contains(body, "method not allowed") {
 			t.Errorf("%s: got (%d, %q), want 405 from the proxy", method, code, body)
@@ -509,10 +553,7 @@ func TestTerminateRefusesTraceAndConnect(t *testing.T) {
 	if len(d) != 2 || d[1] != want {
 		t.Fatalf("deny lines = %+v, want 2 ending in %+v", d, want)
 	}
-	req, err := http.NewRequest(http.MethodGet, "https://example.com/v1", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	req := must(http.NewRequest(http.MethodGet, "https://example.com/v1", nil))
 	req.Header.Set("X-Api-Key", testPlaceholder)
 	if code, _ := do(t, c, req); code == http.StatusMethodNotAllowed {
 		t.Fatalf("GET got 405, want it forwarded")
@@ -520,21 +561,24 @@ func TestTerminateRefusesTraceAndConnect(t *testing.T) {
 }
 
 // FuzzCarriesPlaceholder: a placeholder in any case in a header name, a
-// header value or the raw target must be caught, and a swap prefix must
-// rebuild the exact value it matched.
+// header value, a Basic value decoded or the raw target must be caught, and
+// a swap form must rebuild the exact value it matched.
 func FuzzCarriesPlaceholder(f *testing.F) {
 	f.Add("X-Api-Key", "Bearer "+testPlaceholder, "/v1?key=%77cph-0123456789abcdef0123456789abcdef")
 	f.Add("X-"+strings.ToUpper(testPlaceholder), "v", "/")
+	f.Add("Authorization", basic(testPlaceholder), "/octo/allowed.git/info/refs")
+	f.Add("Authorization", "Basic "+base64.StdEncoding.EncodeToString([]byte(strings.ToUpper(testPlaceholder))), "/")
 	f.Fuzz(func(t *testing.T, name, value, target string) {
 		r := &http.Request{RequestURI: target, Header: http.Header{name: {value}}}
 		hit := carriesPlaceholder(r)
-		for _, s := range []string{name, value, target} {
+		pair, _ := basicDecode(value)
+		for _, s := range []string{name, value, target, string(pair)} {
 			if strings.Contains(strings.ToLower(s), testPlaceholder) && !hit {
 				t.Fatalf("carriesPlaceholder missed %q in (%q, %q, %q)", testPlaceholder, name, value, target)
 			}
 		}
-		if prefix, ok := placeholderPrefix([]string{value}, testPlaceholder); ok && prefix+testPlaceholder != value {
-			t.Fatalf("placeholderPrefix(%q) = %q, does not rebuild the value", value, prefix)
+		if form, ok := placeholderForm([]string{value}, testPlaceholder); ok && form([]byte(testPlaceholder)) != value {
+			t.Fatalf("placeholderForm(%q) does not rebuild the value: %q", value, form([]byte(testPlaceholder)))
 		}
 	})
 }

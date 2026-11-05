@@ -97,7 +97,8 @@ type Want struct {
 	Isolated  bool // the host side in a network of its own (sandbox.Config.Isolated)
 	Secret    bool
 	Narrow    bool
-	Source    string // the secret's source in the product's words, such as a sign-in flow (sandbox.Secret.Source)
+	Source    string   // the secret's source in the product's words, such as a sign-in flow (sandbox.Secret.Source)
+	Repos     []string // the repositories a git token is scoped to (sandbox.Secret.Repos)
 	Policy    string
 }
 

@@ -49,12 +49,8 @@ func TestValidID(t *testing.T) {
 func mkSession(t *testing.T, sessions, id, repo string) string {
 	t.Helper()
 	dir := filepath.Join(sessions, id)
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(dir, "repo"), []byte(repo+"\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
+	must(0, os.MkdirAll(dir, 0o700))
+	must(0, os.WriteFile(filepath.Join(dir, "repo"), []byte(repo+"\n"), 0o600))
 	return dir
 }
 
@@ -62,19 +58,13 @@ func TestListStateAndOrder(t *testing.T) {
 	sessions := t.TempDir()
 	mkSession(t, sessions, idNew, "/r/new")
 	held := mkSession(t, sessions, idOld, "/r/old")
-	lock, err := holdSession(held)
-	if err != nil {
-		t.Fatal(err)
-	}
+	lock := must(holdSession(held))
 	defer lock.Close()
 	os.Mkdir(filepath.Join(sessions, "stray"), 0o700)
 	os.WriteFile(filepath.Join(sessions, idNew[:5]), nil, 0o600)
 
 	want := []listing{{idOld, "running", "/r/old"}, {idNew, "exited", "/r/new"}}
-	got, err := list(sessions)
-	if err != nil {
-		t.Fatal(err)
-	}
+	got := must(list(sessions))
 	if len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
 		t.Fatalf("list = %v, want %v", got, want)
 	}
@@ -82,7 +72,7 @@ func TestListStateAndOrder(t *testing.T) {
 	if got, _ = list(sessions); got[0].state != "exited" {
 		t.Errorf("after the lock is released: %v", got)
 	}
-	if got, err = list(filepath.Join(sessions, "none")); err != nil || len(got) != 0 {
+	if got, err := list(filepath.Join(sessions, "none")); err != nil || len(got) != 0 {
 		t.Errorf("no sessions directory: %v, %v", got, err)
 	}
 }
@@ -99,13 +89,8 @@ func TestLockDiesWithProcess(t *testing.T) {
 	dir := mkSession(t, t.TempDir(), idOld, "/r")
 	cmd := exec.Command(os.Args[0], "-test.run=^TestLockDiesWithProcess$")
 	cmd.Env = append(os.Environ(), "HOLD_LOCK_DIR="+dir)
-	out, err := cmd.StdoutPipe()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := cmd.Start(); err != nil {
-		t.Fatal(err)
-	}
+	out := must(cmd.StdoutPipe())
+	must(0, cmd.Start())
 	defer cmd.Process.Kill()
 	if line, _ := bufio.NewReader(out).ReadString('\n'); line != "held\n" {
 		t.Fatalf("child said %q", line)
@@ -143,28 +128,18 @@ func TestRemoveSession(t *testing.T) {
 			return ""
 		}, false},
 		{"symlink in the session is not followed", idOld, func(t *testing.T, sessions, outside string) string {
-			if err := os.Symlink(outside, filepath.Join(sessions, idOld, "link")); err != nil {
-				t.Fatal(err)
-			}
+			must(0, os.Symlink(outside, filepath.Join(sessions, idOld, "link")))
 			return ""
 		}, false},
 		{"recorded VMM directory goes too", idOld, func(t *testing.T, sessions, _ string) string {
-			tmp, err := os.MkdirTemp("", "wc")
-			if err != nil {
-				t.Fatal(err)
-			}
+			tmp := must(os.MkdirTemp("", "wc"))
 			os.WriteFile(filepath.Join(tmp, "vsock_1"), nil, 0o600)
 			return tmp
 		}, false},
 		{"recorded VMM directory whose path holds a space goes too", idOld, func(t *testing.T, sessions, _ string) string {
 			parent := filepath.Join(t.TempDir(), "a b")
-			if err := os.Mkdir(parent, 0o700); err != nil {
-				t.Fatal(err)
-			}
-			tmp, err := os.MkdirTemp(parent, "wc")
-			if err != nil {
-				t.Fatal(err)
-			}
+			must(0, os.Mkdir(parent, 0o700))
+			tmp := must(os.MkdirTemp(parent, "wc"))
 			os.WriteFile(filepath.Join(tmp, "vsock_1"), nil, 0o600)
 			return tmp
 		}, false},
@@ -173,9 +148,7 @@ func TestRemoveSession(t *testing.T) {
 		}, false},
 		{"recorded path that is a link is refused", idOld, func(t *testing.T, sessions, outside string) string {
 			link := filepath.Join(t.TempDir(), "wclink")
-			if err := os.Symlink(outside, link); err != nil {
-				t.Fatal(err)
-			}
+			must(0, os.Symlink(outside, link))
 			return link
 		}, true},
 		{"recorded path of another name is refused", idOld, func(t *testing.T, sessions, outside string) string {
@@ -191,9 +164,7 @@ func TestRemoveSession(t *testing.T) {
 			if tc.setup != nil {
 				mkSession(t, sessions, idOld, "/r")
 				if tmp = tc.setup(t, sessions, outside); tmp != "" {
-					if err := recordBoot(filepath.Join(sessions, idOld), tmp); err != nil {
-						t.Fatal(err)
-					}
+					must(0, recordBoot(filepath.Join(sessions, idOld), tmp))
 					defer os.RemoveAll(tmp)
 				}
 			}

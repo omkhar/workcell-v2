@@ -14,6 +14,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/pem"
 	"errors"
@@ -27,6 +28,7 @@ import (
 	"net/url"
 	"path"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -79,24 +81,32 @@ type Broker interface {
 // TerminateRule names a host whose TLS the proxy terminates and the header
 // whose placeholder value it swaps for the brokered value. Method, when set,
 // narrows the swap to requests of that method, and Path to requests under
-// that path prefix: a placeholder sent any other way to the host is refused.
-// SignIn, when set, is the flow that issues the value (signin.go).
+// that path prefix; Repos, instead of those, to the git repositories
+// "owner/name" it lists, at /owner/name or /owner/name.git and under either:
+// a placeholder sent any other way to the host is refused. SignIn, when set,
+// is the flow that issues the value (signin.go).
 type TerminateRule struct {
 	Host        string
 	Header      string
 	Placeholder string
 	Method      string
 	Path        string
+	Repos       []string
 	SignIn      *SignIn
 }
 
+// repoSegment is one segment of a repository name: lower-case letters, digits, ".", "_" and "-".
+var repoSegment = regexp.MustCompile(`^[a-z0-9._-]+$`)
+
 // NewTerminateRule mints a placeholder for the rule binding header on host,
-// narrowed to method and path when either is not "". The host comes back
-// canonical and the header lowercase, the forms the broker's grants use; the
-// method is capital letters and the path begins with "/" and holds printable
-// ASCII with no query or fragment, as a request target carries it.
-func NewTerminateRule(host, header, method, path string) (TerminateRule, error) {
-	r := TerminateRule{Host: canonicalHost(host), Header: strings.ToLower(header), Placeholder: NewPlaceholder(), Method: method, Path: path}
+// narrowed to method and path when either is not "", or to repos when it
+// has entries. The host comes back canonical and the header lowercase, the
+// forms the broker's grants use; the method is capital letters and the path
+// begins with "/" and holds printable ASCII with no query or fragment, as a
+// request target carries it; a repository is exactly two segments, neither
+// "." or ".." nor ending in ".git", which the path matcher adds itself.
+func NewTerminateRule(host, header, method, path string, repos []string) (TerminateRule, error) {
+	r := TerminateRule{Host: canonicalHost(host), Header: strings.ToLower(header), Placeholder: NewPlaceholder(), Method: method, Path: path, Repos: repos}
 	if _, err := ParseAllowlist(r.Host+":443", "terminate rule"); err != nil {
 		return TerminateRule{}, err
 	}
@@ -107,24 +117,43 @@ func NewTerminateRule(host, header, method, path string) (TerminateRule, error) 
 		return TerminateRule{}, fmt.Errorf("terminate rule method must be capital letters: %q", method)
 	case path != "" && !validPath(path):
 		return TerminateRule{}, fmt.Errorf("terminate rule path must begin with / and hold printable ASCII without ? or #: %q", path)
+	case len(repos) > 0 && (method != "" || path != ""):
+		return TerminateRule{}, errors.New("terminate rule repos cannot go with a method or a path: one narrows a row")
+	}
+	for _, repo := range repos {
+		if segs := strings.Split(repo, "/"); len(segs) != 2 || slices.ContainsFunc(segs, func(s string) bool {
+			return !repoSegment.MatchString(s) || s == "." || s == ".." || strings.HasSuffix(s, ".git")
+		}) {
+			return TerminateRule{}, fmt.Errorf("terminate rule repository must be owner/name in lower-case letters, digits, '.', '_' and '-', without .git: %q", repo)
+		}
 	}
 	return r, nil
 }
 
 // admits reports whether the rule swaps on a request of method to u: the
-// rule's method when it names one, and a path under its prefix when it names
-// one. The path is judged as sent and as decoded with its dot segments
-// resolved, so that neither an encoded slash nor ".." leads out from under
-// the prefix on either reading.
+// rule's method when it names one, and a path under its prefix, or within
+// one of its repositories, when it names either. The path is judged as sent
+// and as decoded with its dot segments resolved, so that neither an encoded
+// slash nor ".." leads out from under the prefix on either reading.
 func (r TerminateRule) admits(method string, u *url.URL) bool {
 	if r.Method != "" && method != r.Method {
 		return false
 	}
-	if r.Path == "" {
-		return true
+	sent, clean := u.EscapedPath(), path.Clean(u.Path)
+	if r.Path != "" {
+		return strings.HasPrefix(sent, r.Path) && (strings.HasPrefix(clean, r.Path) || clean+"/" == r.Path)
 	}
-	clean := path.Clean(u.Path)
-	return strings.HasPrefix(u.EscapedPath(), r.Path) && (strings.HasPrefix(clean, r.Path) || clean+"/" == r.Path)
+	return len(r.Repos) == 0 || slices.ContainsFunc(r.Repos, func(repo string) bool { return within(sent, repo) && within(clean, repo) })
+}
+
+// within reports whether p is /repo or /repo.git, or lies under either.
+func within(p, repo string) bool {
+	for _, root := range []string{"/" + repo, "/" + repo + ".git"} {
+		if p == root || strings.HasPrefix(p, root+"/") {
+			return true
+		}
+	}
+	return false
 }
 
 // SessionCA issues leaf certificates for the terminated hosts only. Its key
@@ -340,14 +369,16 @@ func (c *closeNotifyConn) Close() error {
 }
 
 // sameHost reports whether an HTTP Host or :authority names sni, which is
-// canonical: the same name in any letter case, with or without the :443 port
-// and a trailing dot. As in route, a non-ASCII fold is no match.
-func sameHost(host, sni string) bool {
+// canonical: the same name in any letter case, with or without a trailing
+// dot and the port, :443 or the one the connection came in on, which is 443
+// too except on a test's listener. As in route, a non-ASCII fold is no match.
+func sameHost(host, sni, port string) bool {
 	lower := strings.ToLower(host)
 	if len(lower) != len(host) {
 		return false
 	}
-	return strings.TrimSuffix(strings.TrimSuffix(lower, ":443"), ".") == sni
+	name, p, hasPort := strings.Cut(lower, ":")
+	return (!hasPort || p == "443" || p == port) && strings.TrimSuffix(name, ".") == sni
 }
 
 // serveTerminated terminates TLS for host with a session leaf and proxies
@@ -366,6 +397,7 @@ func (p *Proxy) serveTerminated(client net.Conn, host string, replay []byte) {
 	})
 	ln := &oneConnListener{conn: make(chan net.Conn, 1), done: make(chan struct{}), addr: client.LocalAddr()}
 	ln.conn <- &closeNotifyConn{Conn: tlsConn, ln: ln}
+	_, port, _ := net.SplitHostPort(ln.addr.String())
 	proxy := &httputil.ReverseProxy{
 		FlushInterval:  -1,
 		ErrorLog:       discardLog,
@@ -389,19 +421,23 @@ func (p *Proxy) serveTerminated(client net.Conn, host string, replay []byte) {
 				http.Error(w, "method not allowed through the credential broker", http.StatusMethodNotAllowed)
 				return
 			}
-			if !sameHost(r.Host, host) {
+			if !sameHost(r.Host, host, port) {
 				p.deny(host, tlsPort, "host_mismatch")
 				http.Error(w, fmt.Sprintf("the request names %q on a connection whose TLS names %s", r.Host, host), http.StatusMisdirectedRequest)
 				return
 			}
 			for _, rule := range rules {
-				prefix, ok := placeholderPrefix(r.Header.Values(rule.Header), rule.Placeholder)
+				form, ok := placeholderForm(r.Header.Values(rule.Header), rule.Placeholder)
 				if !ok {
 					continue
 				}
 				if !rule.admits(r.Method, r.URL) {
+					scope := fmt.Sprintf("method %s under path %s", cmp.Or(rule.Method, "*"), cmp.Or(rule.Path, "/"))
+					if len(rule.Repos) > 0 {
+						scope = "repositories " + strings.Join(rule.Repos, ", ")
+					}
 					p.deny(host, tlsPort, "binding_mismatch")
-					http.Error(w, fmt.Sprintf("the credential in %s is bound to method %s under path %s", rule.Header, cmp.Or(rule.Method, "*"), cmp.Or(rule.Path, "/")), http.StatusForbidden)
+					http.Error(w, "the credential in "+rule.Header+" is bound to "+scope, http.StatusForbidden)
 					return
 				}
 				value, err := p.broker.Lookup(r.Context(), host, rule.Header)
@@ -410,7 +446,7 @@ func (p *Proxy) serveTerminated(client net.Conn, host string, replay []byte) {
 					http.Error(w, "credential broker denied the request", http.StatusBadGateway)
 					return
 				}
-				r.Header.Set(rule.Header, prefix+string(value)) // the one copy the request carries
+				r.Header.Set(rule.Header, form(value)) // the one copy the request carries
 				clear(value)
 			}
 			// At a token endpoint the body is read whole, its refresh
@@ -436,26 +472,54 @@ func (p *Proxy) serveTerminated(client net.Conn, host string, replay []byte) {
 	_ = srv.Serve(ln)
 }
 
-// placeholderPrefix reports whether values is exactly one value equal to
-// placeholder or "Bearer " + placeholder, and returns the prefix to keep.
-func placeholderPrefix(values []string, placeholder string) (string, bool) {
+// placeholderForm reports whether values is exactly one value carrying
+// placeholder in a form the proxy swaps: the placeholder alone, "Bearer "
+// before it, or as the password of a Basic value, which git sends as
+// base64(user:token). It returns the function that puts the real value in
+// the same form; the Basic one wipes the pair it encoded.
+func placeholderForm(values []string, placeholder string) (func([]byte) string, bool) {
 	if len(values) != 1 {
-		return "", false
+		return nil, false
 	}
-	switch values[0] {
+	switch v := values[0]; v {
 	case placeholder:
-		return "", true
+		return func(b []byte) string { return string(b) }, true
 	case "Bearer " + placeholder:
-		return "Bearer ", true
+		return func(b []byte) string { return "Bearer " + string(b) }, true
+	default:
+		pair, ok := basicDecode(v)
+		if user, password, cut := strings.Cut(string(pair), ":"); ok && cut && password == placeholder {
+			return func(b []byte) string {
+				pair := append([]byte(user+":"), b...)
+				defer clear(pair)
+				return "Basic " + base64.StdEncoding.EncodeToString(pair)
+			}, true
+		}
 	}
-	return "", false
+	return nil, false
 }
 
-// carriesPlaceholder reports whether any header name or value, or the request
-// target raw or percent-decoded, holds a placeholder in any letter case. A
-// target that does not decode counts as a hit, so an escape cannot hide one.
-// A declared request trailer counts as a hit too: its values arrive after the
-// body has already streamed upstream, so they can never be checked here.
+// maxBasic bounds the Basic value the proxy decodes: the bytes are the guest's.
+const maxBasic = 4096
+
+// basicDecode is what a Basic authorization value encodes: strict standard
+// base64 of at most maxBasic bytes after the scheme, so that what the proxy
+// re-encodes is the value it matched. Anything else is no Basic value.
+func basicDecode(value string) ([]byte, bool) {
+	raw, ok := strings.CutPrefix(value, "Basic ")
+	if !ok || len(raw) > maxBasic || strings.ContainsAny(raw, "\r\n") {
+		return nil, false
+	}
+	pair, err := base64.StdEncoding.Strict().DecodeString(raw)
+	return pair, err == nil
+}
+
+// carriesPlaceholder reports whether any header name or value, a Basic value
+// decoded, or the request target raw or percent-decoded, holds a placeholder
+// in any letter case. A target that does not decode counts as a hit, so an
+// escape cannot hide one. A declared request trailer counts as a hit too: its
+// values arrive after the body has already streamed upstream, so they can
+// never be checked here.
 func carriesPlaceholder(r *http.Request) bool {
 	has := func(text string) bool { return placeholderAnywhere.MatchString(strings.ToLower(text)) }
 	decoded, err := url.PathUnescape(r.RequestURI)
@@ -467,7 +531,7 @@ func carriesPlaceholder(r *http.Request) bool {
 			return true
 		}
 		for _, v := range values {
-			if has(v) {
+			if pair, _ := basicDecode(v); has(v) || has(string(pair)) {
 				return true
 			}
 		}

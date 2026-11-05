@@ -17,7 +17,9 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
+	"path"
 	"slices"
 	"strings"
 	"sync"
@@ -115,14 +117,14 @@ func (c *canary) requests() []request {
 }
 
 // carried says whether a request's URL or headers held the secret, the
-// bound header not counted.
-func (c *canary) carried(secret string) (string, bool) {
+// header it is bound to not counted.
+func (c *canary) carried(secret, bound string) (string, bool) {
 	for _, r := range c.requests() {
 		if strings.Contains(r.url, secret) {
 			return fmt.Sprintf("the URL of %s %s (Host %s) at %s", r.method, r.url, r.host, c.name), true
 		}
 		for k, vs := range r.headers {
-			if k != boundHeaderKey && strings.Contains(strings.Join(vs, " "), secret) {
+			if k != http.CanonicalHeaderKey(bound) && strings.Contains(strings.Join(vs, " "), secret) {
 				return fmt.Sprintf("the %s header of %s %s (Host %s) at %s", k, r.method, r.url, r.host, c.name), true
 			}
 		}
@@ -203,7 +205,7 @@ func parseTargets(args []string) (targets, Result) {
 		if t.value = os.Getenv(args[4]); t.value == "" {
 			return targets{}, Result{Status: "no-credential", Detail: args[4] + " is empty"}
 		}
-		t.header = http.Header{boundHeaderKey: {t.value}}
+		t.header.Set(boundHeader, t.value)
 	}
 	return t, Result{}
 }
@@ -388,32 +390,50 @@ func redirectTo(other *canary) http.HandlerFunc {
 
 // The placeholder rows have the guest send a table of requests, each
 // carrying the credential it holds somewhere, and hold the canaries to the
-// swap rule: the credential alone, or behind "Bearer ", in the bound header
-// of a request to the bound name, of the method and under the path the
-// binding names when it names them, reaches the canary as the real value;
-// anything else reaches no canary. An exchange is "method,name,path,where":
-// name is bound or other, and where says where the credential goes: header
-// (the bound header), bearer (the bound header, behind "Bearer "), auth
-// (the Authorization header), path (a last element of the path), query
-// (?key=), or none.
+// swap rule: the credential alone, behind "Bearer ", or as the password of
+// a Basic value, in the bound header of a request to the bound name, of the
+// method, under the path and within a repository the binding names when it
+// names them, reaches the canary as the real value; anything else reaches
+// no canary. An exchange is "method,name,path,where": name is bound or
+// other, and where says where the credential goes: header (x-api-key),
+// bearer (x-api-key, "Bearer "), auth (Authorization, "Bearer "), basic
+// (Authorization, as git sends a token: Basic base64("x-access-token:" +
+// credential)), path (a last element of the path), query (?key=), or none.
 type exchange struct{ method, name, path, where string }
 
-// boundHeaderKey is boundHeader as net/http keeps it.
-var boundHeaderKey = http.CanonicalHeaderKey(boundHeader)
+// headerOf is the header each where kind puts the credential in; none for the rest.
+var headerOf = map[string]string{"header": boundHeader, "bearer": boundHeader, "auth": "authorization", "basic": "authorization"}
+
+// credential is the value of the exchange's header for the credential v.
+func (e exchange) credential(v string) string {
+	basic := "Basic " + base64.StdEncoding.EncodeToString([]byte("x-access-token:"+v))
+	return cmp.Or(map[string]string{"bearer": "Bearer " + v, "auth": "Bearer " + v, "basic": basic}[e.where], v)
+}
 
 func parseExchange(spec string) (exchange, bool) {
 	f := strings.Split(spec, ",")
 	if len(f) != 4 || f[0] == "" || f[1] != "bound" && f[1] != "other" || !strings.HasPrefix(f[2], "/") ||
-		!slices.Contains([]string{"header", "bearer", "auth", "path", "query", "none"}, f[3]) {
+		!slices.Contains([]string{"header", "bearer", "auth", "basic", "path", "query", "none"}, f[3]) {
 		return exchange{}, false
 	}
 	return exchange{f[0], f[1], f[2], f[3]}, true
 }
 
-// admitted says whether the binding swaps the exchange's credential.
+// admitted says whether the binding swaps the exchange's credential: it is
+// in the bound header, to the bound name, of the bound method, under the
+// bound path, and, when the binding names repositories, the path as sent
+// and the path decoded and cleaned both lie within one of them (SPEC I5: a
+// placeholder is useless anywhere else).
 func (e exchange) admitted(sec sandbox.Secret) bool {
-	return e.name == "bound" && (e.where == "header" || e.where == "bearer") &&
-		(sec.Method == "" || sec.Method == e.method) && (sec.Path == "" || strings.HasPrefix(e.path, sec.Path))
+	raw, _, _ := strings.Cut(e.path, "?")
+	decoded, _ := url.PathUnescape(raw)
+	return e.name == "bound" && strings.EqualFold(headerOf[e.where], sec.Header) && (sec.Method == "" || sec.Method == e.method) && strings.HasPrefix(e.path, sec.Path) &&
+		(len(sec.Repos) == 0 || slices.ContainsFunc(sec.Repos, func(repo string) bool { return within(raw, repo) && within(path.Clean(decoded), repo) }))
+}
+
+// within says whether p is /repo or /repo.git, or lies under either.
+func within(p, repo string) bool {
+	return slices.ContainsFunc([]string{"/" + repo, "/" + repo + ".git"}, func(root string) bool { return p == root || strings.HasPrefix(p, root+"/") })
 }
 
 // request is the exchange as the guest sends it, with its credential.
@@ -429,13 +449,8 @@ func (e exchange) request(t targets) *http.Request {
 		path += "?key=" + t.value
 	}
 	req, _ := http.NewRequest(e.method, t.url(name, path), nil)
-	switch e.where {
-	case "header":
-		req.Header.Set(boundHeader, t.value)
-	case "bearer":
-		req.Header.Set(boundHeader, "Bearer "+t.value)
-	case "auth":
-		req.Header.Set("Authorization", "Bearer "+t.value)
+	if h := headerOf[e.where]; h != "" {
+		req.Header.Set(h, e.credential(t.value))
 	}
 	return req
 }
@@ -472,9 +487,10 @@ func exchangeProbe(args []string) Result {
 // swapJudge has the guest send the exchanges and holds the canaries to the
 // swap rule: an exchange the binding admits must have reached the bound
 // canary with the real value in the bound header, no other may have
-// reached either canary, and the other name sees nothing at all. The real
-// value anywhere else, or in the guest's own hands, is a leak. Canaries
-// that saw nothing proved nothing.
+// reached either canary, nor anything the admitted ones did not send (a
+// path rewritten on the way), and the other name sees nothing at all. The
+// real value anywhere else, or in the guest's own hands, is a leak.
+// Canaries that saw nothing proved nothing.
 func swapJudge(specs ...string) func(s Session, bound, other *canary) (bool, string, error) {
 	return func(s Session, bound, other *canary) (bool, string, error) {
 		r, err := run(s, bound, other, specs...)
@@ -485,6 +501,7 @@ func swapJudge(specs ...string) func(s Session, bound, other *canary) (bool, str
 		if len(bound.requests())+len(other.requests()) == 0 {
 			return false, "", fmt.Errorf("no canary saw the guest, not even %s, which a correct product serves%s", bound.name, say)
 		}
+		expected := 0
 		for i, spec := range specs {
 			e, ok := parseExchange(spec)
 			if !ok {
@@ -495,20 +512,21 @@ func swapJudge(specs ...string) func(s Session, bound, other *canary) (bool, str
 				c = other
 			}
 			got, admitted := e.at(c), e.admitted(s.Secret)
-			want := s.Secret.Value
-			if e.where == "bearer" {
-				want = "Bearer " + want
-			}
+			want := e.credential(s.Secret.Value)
 			switch {
 			case !admitted && len(got) > 0:
 				return false, fmt.Sprintf("exchange %d (%s), which the binding does not admit, reached %s %d times%s", i, spec, c.name, len(got), say), nil
 			case admitted && len(got) == 0:
 				return false, fmt.Sprintf("exchange %d (%s), which the binding admits, reached no canary%s", i, spec, say), nil
-			case admitted && got[0].headers.Get(boundHeader) != want:
-				return false, fmt.Sprintf("exchange %d (%s) reached %s with the bound header holding %q, not the real value%s", i, spec, c.name, got[0].headers.Get(boundHeader), say), nil
+			case admitted && got[0].headers.Get(s.Secret.Header) != want:
+				return false, fmt.Sprintf("exchange %d (%s) reached %s with the bound header holding %q, not the real value%s", i, spec, c.name, got[0].headers.Get(s.Secret.Header), say), nil
 			}
+			expected += len(got)
 		}
-		if what, ok := bound.carried(s.Secret.Value); ok {
+		if n := len(bound.requests()); n > expected {
+			return false, fmt.Sprintf("%s, %d requests, of which the admitted exchanges account for %d%s", bound.served(), n, expected, say), nil
+		}
+		if what, ok := bound.carried(s.Secret.Value, s.Secret.Header); ok {
 			return false, "the real secret reached " + what + say, nil
 		}
 		if len(other.requests()) > 0 {

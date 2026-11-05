@@ -168,10 +168,7 @@ func FuzzPeekSNI(f *testing.F) {
 // dialer sends every dial to target, recording the address it was asked for.
 func testProxy(t *testing.T, allow string, addrs []netip.Addr, target string) (*Proxy, *bytes.Buffer, *[]netip.AddrPort) {
 	t.Helper()
-	a, err := ParseAllowlist(allow, "allowlist")
-	if err != nil {
-		t.Fatal(err)
-	}
+	a := must(ParseAllowlist(allow, "allowlist"))
 	var log bytes.Buffer
 	p := New(a, &log)
 	var dialed []netip.AddrPort
@@ -189,10 +186,7 @@ func testProxy(t *testing.T, allow string, addrs []netip.Addr, target string) (*
 // listen serves p on a loopback listener for port and returns its address.
 func listen(t *testing.T, p *Proxy, port uint16) string {
 	t.Helper()
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
+	ln := must(net.Listen("tcp", "127.0.0.1:0"))
 	t.Cleanup(func() { _ = ln.Close() })
 	go func() { _ = p.Serve(ln, port) }()
 	return ln.Addr().String()
@@ -305,10 +299,7 @@ func TestProxyRefusesBlockedResolution(t *testing.T) {
 
 func TestProxyTCPForward(t *testing.T) {
 	t.Parallel()
-	echo, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
+	echo := must(net.Listen("tcp", "127.0.0.1:0"))
 	defer echo.Close()
 	go func() {
 		for {
@@ -321,10 +312,7 @@ func TestProxyTCPForward(t *testing.T) {
 	}()
 	p, log, _ := testProxy(t, "db.example:5432", []netip.Addr{netip.MustParseAddr("8.8.8.8")}, echo.Addr().String())
 
-	conn, err := net.Dial("tcp", listen(t, p, 5432))
-	if err != nil {
-		t.Fatal(err)
-	}
+	conn := must(net.Dial("tcp", listen(t, p, 5432)))
 	defer conn.Close()
 	if _, err := io.WriteString(conn, "ping\n"); err != nil {
 		t.Fatal(err)
@@ -334,10 +322,7 @@ func TestProxyTCPForward(t *testing.T) {
 		t.Fatalf("echo through proxy = (%q, %v), want ping", line, err)
 	}
 
-	other, err := net.Dial("tcp", listen(t, p, 5433))
-	if err != nil {
-		t.Fatal(err)
-	}
+	other := must(net.Dial("tcp", listen(t, p, 5433)))
 	defer other.Close()
 	_ = other.SetReadDeadline(time.Now().Add(5 * time.Second))
 	if n, err := other.Read(make([]byte, 1)); n != 0 || !errors.Is(err, io.EOF) {
@@ -450,20 +435,14 @@ func TestServeShedsConnectionsOverTheLimit(t *testing.T) {
 	p, log, _ := testProxy(t, "example.com:443", []netip.Addr{netip.MustParseAddr("8.8.8.8")}, "127.0.0.1:1")
 	p.slots = make(chan struct{}, 1)
 	addr := listen(t, p, 443)
-	stalled, err := net.Dial("tcp", addr) // holds the only slot while the proxy waits for a hello
-	if err != nil {
-		t.Fatal(err)
-	}
+	stalled := must(net.Dial("tcp", addr)) // holds the only slot while the proxy waits for a hello
 	defer stalled.Close()
 	for deadline := time.Now().Add(5 * time.Second); len(p.slots) == 0; time.Sleep(5 * time.Millisecond) {
 		if time.Now().After(deadline) {
 			t.Fatal("proxy never took a slot for the stalled connection")
 		}
 	}
-	extra, err := net.Dial("tcp", addr)
-	if err != nil {
-		t.Fatal(err)
-	}
+	extra := must(net.Dial("tcp", addr))
 	defer extra.Close()
 	_ = extra.SetReadDeadline(time.Now().Add(5 * time.Second))
 	if _, err := extra.Read(make([]byte, 1)); err != io.EOF && !errors.Is(err, syscall.ECONNRESET) {
@@ -509,10 +488,7 @@ func TestConnectVetsEveryAnswerOnEveryConnection(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			upstream, err := net.Listen("tcp", "127.0.0.1:0")
-			if err != nil {
-				t.Fatal(err)
-			}
+			upstream := must(net.Listen("tcp", "127.0.0.1:0"))
 			defer upstream.Close()
 			p, _, dialed := testProxy(t, "example.com:443", nil, upstream.Addr().String())
 			var lookups int

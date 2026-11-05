@@ -42,38 +42,27 @@ func judged(t *testing.T, entries []guest.Entry) *manifest {
 	t.Helper()
 	m := &manifest{limit: bounds{entries: 100, names: 1000, bytes: 1000}}
 	for _, e := range entries {
-		if err := m.add(e); err != nil {
-			t.Fatal(err)
-		}
+		must(0, m.add(e))
 	}
 	return m
 }
 
 func openDir(t *testing.T, p string) int {
 	t.Helper()
-	fd, err := unix.Open(p, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_CLOEXEC, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
+	fd := must(unix.Open(p, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_CLOEXEC, 0))
 	t.Cleanup(func() { unix.Close(fd) })
 	return fd
 }
 
 func mode(t *testing.T, p string) os.FileMode {
 	t.Helper()
-	st, err := os.Lstat(p)
-	if err != nil {
-		t.Fatal(err)
-	}
+	st := must(os.Lstat(p))
 	return st.Mode()
 }
 
 func content(t *testing.T, p string) string {
 	t.Helper()
-	b, err := os.ReadFile(p)
-	if err != nil {
-		t.Fatal(err)
-	}
+	b := must(os.ReadFile(p))
 	return string(b)
 }
 
@@ -81,17 +70,11 @@ func content(t *testing.T, p string) string {
 // stay untouched: the symlink cases bring updir -> .. there, as the I8 suite does.
 func TestWrite(t *testing.T) {
 	link := func(t *testing.T, dest string) { // what a first pull of the link shape leaves behind
-		if err := os.Symlink("..", filepath.Join(dest, "updir")); err != nil {
-			t.Fatal(err)
-		}
+		must(0, os.Symlink("..", filepath.Join(dest, "updir")))
 	}
 	full := func(t *testing.T, dest string) {
-		if err := os.MkdirAll(filepath.Join(dest, "d"), 0o755); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(filepath.Join(dest, "d", "keep"), []byte("keep"), 0o600); err != nil {
-			t.Fatal(err)
-		}
+		must(0, os.MkdirAll(filepath.Join(dest, "d"), 0o755))
+		must(0, os.WriteFile(filepath.Join(dest, "d", "keep"), []byte("keep"), 0o600))
 	}
 	tests := []struct {
 		name    string
@@ -138,9 +121,7 @@ func TestWrite(t *testing.T) {
 				}
 			}},
 		{"an existing file is replaced", func(t *testing.T, dest string) {
-			if err := os.WriteFile(filepath.Join(dest, "f"), []byte("old and longer"), 0o600); err != nil {
-				t.Fatal(err)
-			}
+			must(0, os.WriteFile(filepath.Join(dest, "f"), []byte("old and longer"), 0o600))
 		}, []guest.Entry{fileEntry("f", 3, false)}, "new", "",
 			func(t *testing.T, parent, dest string) {
 				if got, m := content(t, filepath.Join(dest, "f")), mode(t, filepath.Join(dest, "f")); got != "new" || m.Perm() != 0o644 {
@@ -160,9 +141,7 @@ func TestWrite(t *testing.T) {
 				}
 			}},
 		{"an empty directory is replaced by a file", func(t *testing.T, dest string) {
-			if err := os.Mkdir(filepath.Join(dest, "d"), 0o755); err != nil {
-				t.Fatal(err)
-			}
+			must(0, os.Mkdir(filepath.Join(dest, "d"), 0o755))
 		}, []guest.Entry{fileEntry("d", 1, false)}, "n", "",
 			func(t *testing.T, parent, dest string) {
 				if m := mode(t, filepath.Join(dest, "d")); !m.IsRegular() {
@@ -176,9 +155,7 @@ func TestWrite(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			parent := t.TempDir()
 			dest := filepath.Join(parent, "dest")
-			if err := os.Mkdir(dest, 0o755); err != nil {
-				t.Fatal(err)
-			}
+			must(0, os.Mkdir(dest, 0o755))
 			if tc.prepare != nil {
 				tc.prepare(t, dest)
 			}
@@ -219,27 +196,14 @@ func TestCompare(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			host := t.TempDir()
 			for p, b := range map[string]string{"d/same": "same", "d/gone": "gone", "changed": "old", ".git/hooks/pre-commit": "#!/bin/sh\n"} {
-				if err := os.MkdirAll(filepath.Dir(filepath.Join(host, p)), 0o755); err != nil {
-					t.Fatal(err)
-				}
-				if err := os.WriteFile(filepath.Join(host, p), []byte(b), 0o644); err != nil {
-					t.Fatal(err)
-				}
+				must(0, os.MkdirAll(filepath.Dir(filepath.Join(host, p)), 0o755))
+				must(0, os.WriteFile(filepath.Join(host, p), []byte(b), 0o644))
 			}
-			if err := os.WriteFile(filepath.Join(host, "script"), []byte("ok"), 0o755); err != nil {
-				t.Fatal(err)
-			}
-			if err := os.Symlink("old", filepath.Join(host, "l")); err != nil {
-				t.Fatal(err)
-			}
-			if err := unix.Mkfifo(filepath.Join(host, "fifo"), 0o600); err != nil {
-				t.Fatal(err)
-			}
+			must(0, os.WriteFile(filepath.Join(host, "script"), []byte("ok"), 0o755))
+			must(0, os.Symlink("old", filepath.Join(host, "l")))
+			must(0, unix.Mkfifo(filepath.Join(host, "fifo"), 0o600))
 			var out bytes.Buffer
-			differs, err := compare(openDir(t, host), judged(t, tc.entries), from([]byte(tc.data)), &out)
-			if err != nil {
-				t.Fatal(err)
-			}
+			differs := must(compare(openDir(t, host), judged(t, tc.entries), from([]byte(tc.data)), &out))
 			if out.String() != tc.want || differs != (tc.want != "") {
 				t.Errorf("compare printed %q, differs=%t; want %q", out.String(), differs, tc.want)
 			}

@@ -166,10 +166,7 @@ func TestStreamDemultiplexes(t *testing.T) {
 				}
 				return
 			}
-			c, err := acceptOne(t, served[8443])
-			if err != nil {
-				t.Fatal(err)
-			}
+			c := must(acceptOne(t, served[8443]))
 			defer c.Close()
 			got := make([]byte, 7)
 			if _, err := io.ReadFull(c, got); err != nil || string(got) != "payload" {
@@ -284,10 +281,7 @@ func TestRelayHoldsAtMostMaxStreams(t *testing.T) {
 	guests = append(guests, dialHeld("after the guest closed a stream"))
 
 	go func() { _, _ = guests[1].Write(header(1, 6, "203.0.113.5:8443")) }()
-	c, err := acceptOne(t, served[8443]) // delivered: the proxy holds the stream and its slot
-	if err != nil {
-		t.Fatal(err)
-	}
+	c := must(acceptOne(t, served[8443])) // delivered: the proxy holds the stream and its slot
 	readEOF(t, ln.dial(t), "a stream while the proxy holds the 1024th")
 	_ = c.Close() // the proxy is done with it
 	guests = append(guests, dialHeld("after the proxy closed a stream"))
@@ -318,10 +312,7 @@ func TestRelayCloseEndsAdapters(t *testing.T) {
 	go serveRelay(ln, served, resolver.New(nil, nil), nopDeny, 200*time.Millisecond)
 	delivered := ln.dial(t)
 	go func() { _, _ = delivered.Write(header(1, 6, "203.0.113.5:8443")) }()
-	c, err := acceptOne(t, served[8443])
-	if err != nil {
-		t.Fatal(err)
-	}
+	c := must(acceptOne(t, served[8443]))
 	headless := ln.dial(t) // held for its header when the session ends
 	_ = ln.Close()
 	for port, l := range served {
