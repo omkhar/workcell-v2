@@ -36,6 +36,13 @@ type Machine interface {
 // Layer is one provider's current layer: the agent's name and its ext4 image on the host.
 type Layer struct{ Name, Image string }
 
+// Cache is a named dependency cache: an ext4 image on the host that the guest gets as a drive,
+// read-only on the host's side unless Writable (A1).
+type Cache struct {
+	Name, Image string
+	Writable    bool
+}
+
 // Config is everything a backend needs. The command line is built on the host and
 // holds no secret (I5). Resource caps go here, not into a seventh method.
 type Config struct {
@@ -45,6 +52,7 @@ type Config struct {
 	Image     string  // read-only root drive, optional
 	Workspace string  // read-write drive, optional
 	Layers    []Layer // provider layers, one read-only drive each, attached after the two above in this order
+	Caches    []Cache // dependency caches, one drive each, attached after the layers in this order
 	Cmdline   string  // appended to the backend's own boot arguments
 	CPUs      int
 	MemoryMiB int

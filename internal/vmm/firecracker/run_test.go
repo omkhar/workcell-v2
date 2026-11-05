@@ -8,10 +8,13 @@ package firecracker
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"errors"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -48,7 +51,7 @@ func TestRun(t *testing.T) {
 		t.Fatal(err)
 	}
 	workcell := func(dir string, stdin *os.File, args ...string) *exec.Cmd {
-		ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute) // a cold Go build is the longest run
 		t.Cleanup(cancel)
 		cmd := exec.CommandContext(ctx, filepath.Join(bin, "workcell"), append(append([]string{"run"}, append(flags, "--")...), args...)...)
 		cmd.Dir = dir
@@ -191,6 +194,81 @@ dd if=/dev/zero of=/var/tmp/b bs=1M count=80 2>&1 | grep -o 'No space left on de
 		stdout, _, _ := pipes(t, nil, "sh", "-c", "dd if=/dev/zero of=/workspace/big bs=1M count=100 2>&1 | grep -o 'No space left on device'")
 		if strings.TrimSpace(stdout) != "No space left on device" {
 			t.Errorf("a 100 MiB write to /workspace with --disk 64MiB: %q, want ENOSPC", stdout)
+		}
+	})
+
+	// A dependency cache (U-504). The runner's own Go toolchain goes into the guest in the export, the
+	// guest image having none. The first session builds into go:rw, a cold build that compiles the
+	// standard library; the next two read go and compile nothing, as `go build -x` shows, which
+	// prints no compile command for a package it takes from the cache. What the second session
+	// writes to its read-only cache is gone for the third, and the image is what it was (I7).
+	t.Run("dependency-cache", func(t *testing.T) {
+		goroot := runtime.GOROOT()
+		if _, err := os.Stat(filepath.Join(goroot, "bin", "go")); err != nil {
+			t.Skipf("no Go toolchain at %s to take into the guest", goroot)
+		}
+		own := t.TempDir()
+		for _, name := range []string{"bin", "pkg/tool", "pkg/include", "src"} {
+			if _, err := os.Stat(filepath.Join(goroot, name)); err == nil {
+				if err := os.CopyFS(filepath.Join(own, "go", name), os.DirFS(filepath.Join(goroot, name))); err != nil {
+					t.Fatal(err)
+				}
+			}
+		}
+		for _, name := range []string{"VERSION", "go.env"} {
+			if b, err := os.ReadFile(filepath.Join(goroot, name)); err == nil {
+				if err := os.WriteFile(filepath.Join(own, "go", name), b, 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+		}
+		hello := map[string]string{
+			"go.mod":  "module hello\n\ngo " + strings.TrimPrefix(runtime.Version(), "go") + "\n",
+			"main.go": "package main\n\nimport \"fmt\"\n\nfunc main() { fmt.Println(\"hello\") }\n",
+		}
+		if err := os.Mkdir(filepath.Join(own, "hello"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		for name, body := range hello {
+			if err := os.WriteFile(filepath.Join(own, "hello", name), []byte(body), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+		const build = `cd hello && out=$(GOTOOLCHAIN=local GOPROXY=off CGO_ENABLED=0 ../go/bin/go build -x -o /tmp/h . 2>&1); rc=$?
+echo exit=$rc; echo compiles=$(printf '%s\n' "$out" | grep -c '/compile '); [ $rc = 0 ] || printf '%s\n' "$out"; `
+		image := filepath.Join(data, "caches", "go.ext4")
+		sum := func() string {
+			f, err := os.Open(image)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer f.Close()
+			h := sha256.New()
+			if _, err := io.Copy(h, f); err != nil {
+				t.Fatal(err)
+			}
+			return string(h.Sum(nil))
+		}
+		t.Cleanup(func() { flags = nil })
+
+		flags = []string{"--memory", "2GiB", "--cache", "go:rw"}
+		stdout, _, _ := pipesIn(t, own, nil, "sh", "-c", build)
+		if strings.Contains(stdout, "compiles=0") || !strings.HasPrefix(stdout, "exit=0\ncompiles=") {
+			t.Fatalf("the first build printed %q, want exit=0 and some compiles", stdout)
+		}
+		cold := sum() // the image exists, or sum has failed the test
+
+		flags = []string{"--memory", "2GiB", "--cache", "go"}
+		stdout, _, _ = pipesIn(t, own, nil, "sh", "-c", build+"echo x > /cache/go/mark && echo marked")
+		if want := "exit=0\ncompiles=0\nmarked\n"; stdout != want {
+			t.Errorf("the second build printed %q, want %q: warm, and the read-only cache writable to the guest", stdout, want)
+		}
+		stdout, _, _ = pipesIn(t, own, nil, "sh", "-c", build+"test -e /cache/go/mark && echo present || echo absent")
+		if want := "exit=0\ncompiles=0\nabsent\n"; stdout != want {
+			t.Errorf("the third build printed %q, want %q: warm, and no mark", stdout, want)
+		}
+		if sum() != cold {
+			t.Error("the image of a read-only cache changed")
 		}
 	})
 

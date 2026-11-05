@@ -67,3 +67,26 @@ func TestFindLayers(t *testing.T) {
 		})
 	}
 }
+
+func TestCacheArgsAndEnv(t *testing.T) {
+	tests := []struct {
+		name   string
+		caches []vmm.Cache
+		args   string
+		env    []string
+	}{
+		{"none", nil, "", nil},
+		{"go, read-only", []vmm.Cache{{Name: "go"}}, " workcell.cache=go:/dev/vdd:ro", []string{"GOMODCACHE=/cache/go/mod", "GOCACHE=/cache/go/build"}},
+		{"npm and another, writable", []vmm.Cache{{Name: "npm", Writable: true}, {Name: "pip"}}, " workcell.cache=npm:/dev/vdd:rw workcell.cache=pip:/dev/vde:ro", []string{"npm_config_cache=/cache/npm"}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := cacheArgs(tc.caches, 'd'); got != tc.args {
+				t.Errorf("cacheArgs = %q, want %q", got, tc.args)
+			}
+			if got := cacheEnv(tc.caches); !slices.Equal(got, tc.env) {
+				t.Errorf("cacheEnv = %q, want %q", got, tc.env)
+			}
+		})
+	}
+}

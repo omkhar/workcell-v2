@@ -39,13 +39,13 @@ const (
 	frameLimit = 5 * time.Second  // one frame, once it has begun
 )
 
-// run is `workcell run [--mount] [--cpus N] [--memory SIZE] [--disk SIZE] [--allow HOST]... [--] <cmd> [args...]`: it boots a guest
+// run is `workcell run [--mount] [--cpus N] [--memory SIZE] [--disk SIZE] [--allow HOST]... [--cache NAME[:rw]]... [--] <cmd> [args...]`: it boots a guest
 // with a copy of the current directory in it, or with the directory itself served live (`--mount`, A5), runs the
 // command there and exits as the command did. This process is the session's supervisor (A9): it owns the VM,
 // the channel and the proxy, and the VM dies with it. The policy (SPEC section 5) is read first: a file it
 // cannot take is refused like a bad argument, before anything boots.
 func run(args []string, stderr io.Writer) int {
-	caps, mount, extra, args, ok := parseRun(args, stderr)
+	caps, mount, extra, caches, args, ok := parseRun(args, stderr)
 	if !ok {
 		return 2
 	}
@@ -61,6 +61,11 @@ func run(args []string, stderr io.Writer) int {
 	}
 	if err == nil {
 		a.layers, err = findLayers(dir)
+	}
+	if err == nil {
+		var release func()
+		a.caches, release, err = openCaches(dir, caches, caps.disk())
+		defer release() // the locks last as long as the session
 	}
 	code := 0
 	if err == nil {
@@ -110,6 +115,7 @@ func session(argv []string, caps limits, mount bool, a artifacts, allow *proxy.A
 	if b.ca != nil {
 		req.Env = append(req.Env, guest.TrustEnv(guest.TrustDir)...)
 	}
+	req.Env = append(req.Env, cacheEnv(a.caches)...)
 	req.Env = append(req.Env, placeholderEnv(secrets)...)
 	restore, tty := rawMode(unix.Stdin)
 	if tty {
@@ -244,14 +250,14 @@ func boot(a artifacts, caps limits, sigs <-chan os.Signal, session, image, mount
 		cmdline += " workcell.workspace=/dev/vdb"
 		first = 'c'
 	}
-	cmdline += layerArgs(a.layers, first)
+	cmdline += layerArgs(a.layers, first) + cacheArgs(a.caches, first+rune(len(a.layers)))
 	var ports []uint16 // the TCP ports the guest relays and the proxy serves; UDP 53 is relayed regardless
 	var names []string // the names the resolver answers: every host the proxy would admit (I3)
 	if allow != nil {
 		ports, names = allow.Ports(), allow.Hosts()
 	}
 	console := &tail{}
-	m := newMachine(a, vmm.Config{Kernel: a.kernel, Initrd: a.initrd, Image: a.image, Layers: a.layers,
+	m := newMachine(a, vmm.Config{Kernel: a.kernel, Initrd: a.initrd, Image: a.image, Layers: a.layers, Caches: a.caches,
 		Workspace: image, Cmdline: cmdline + " " + portsArg(ports), CPUs: caps.CPUs, MemoryMiB: caps.MemoryMiB, CID: 3, Console: console, Dir: dir})
 	var served mountService
 	closeAll := func() { // kills the VM on every path out; the export's descriptors go with it

@@ -11,26 +11,34 @@ import (
 	"strings"
 
 	"github.com/omkhar/workcell/v2/internal/proxy"
+	"github.com/omkhar/workcell/v2/internal/vmm"
 )
 
-// explain is `workcell explain [--mount] [--allow HOST]...`: it prints what a session started here by
+// explain is `workcell explain [--mount] [--allow HOST]... [--cache NAME[:rw]]...`: it prints what a session started here by
 // `workcell run`, with the same flags or without, can reach. The output is the whole assurance
-// story (SPEC section 5): the workspace, the network, then the secrets.
+// story (SPEC section 5): the workspace, the caches, the network, then the secrets.
 func explain(args []string, stderr io.Writer) int {
 	fs := flag.NewFlagSet("explain", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	mount := fs.Bool("mount", false, "")
 	var extra []string
 	allowFlag(fs, &extra)
+	var named []string
+	cacheFlag(fs, &named)
 	if fs.Parse(args) != nil || fs.NArg() != 0 {
-		fmt.Fprintln(stderr, "usage: workcell explain [--mount] [--allow HOST]...\n  says what a session run here with the same flags can reach")
+		fmt.Fprintln(stderr, "usage: workcell explain [--mount] [--allow HOST]... [--cache NAME[:rw]]...\n  says what a session run here with the same flags can reach")
 		return 2
 	}
-	cwd, err := os.Getwd()
-	var file string
+	caches, err := parseCaches(named)
+	var cwd, file, held, note string
 	var allow *proxy.Allowlist
 	var secrets []binding
-	var note string
+	if err == nil {
+		cwd, err = os.Getwd()
+	}
+	if err == nil {
+		held, err = cacheText(caches)
+	}
 	if err == nil {
 		if file, err = configFile(); err == nil {
 			allow, secrets, note, err = loadPolicy(extra, stderr)
@@ -41,8 +49,26 @@ func explain(args []string, stderr io.Writer) int {
 		return 2
 	}
 	_, statErr := os.Stat(file)
-	fmt.Print(explanation(*mount, cwd) + reach(file, statErr == nil, len(extra) > 0, allow) + note + bound(secrets))
+	fmt.Print(explanation(*mount, cwd) + held + reach(file, statErr == nil, len(extra) > 0, allow) + note + bound(secrets))
 	return 0
+}
+
+// cacheText is a line for each cache, from what the data directory holds now. It creates and locks nothing.
+func cacheText(caches []vmm.Cache) (string, error) {
+	if len(caches) == 0 {
+		return "", nil
+	}
+	dir, err := dataDir()
+	if err != nil {
+		return "", err
+	}
+	var b strings.Builder
+	for _, c := range caches {
+		image := cachePath(dir, c.Name)
+		_, err := os.Stat(image)
+		b.WriteString(cacheLine(c, image, err == nil) + "\n")
+	}
+	return b.String(), nil
 }
 
 // bound is the secrets part: each by name, with the host and header it goes out in, the method

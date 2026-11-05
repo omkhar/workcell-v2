@@ -80,6 +80,11 @@ func setup() (string, error) {
 			fmt.Fprintln(os.Stderr, "workcell-init: layer", l.name+":", err)
 		}
 	}
+	for _, c := range caches(string(cmdline)) {
+		if err := mountCache(c, disk); err != nil { // the cache is then absent: less, never more
+			fmt.Fprintln(os.Stderr, "workcell-init: cache", c.name+":", err)
+		}
+	}
 	var werr error
 	if mounted(string(cmdline)) {
 		werr = mountFUSE()

@@ -53,6 +53,28 @@ func layers(cmdline string) []layer {
 	return ls
 }
 
+// cache is one dependency cache the host attached: its name, the drive that holds its image
+// and whether the host attached the drive writable.
+type cache struct {
+	name, dev string
+	rw        bool
+}
+
+// caches is every workcell.cache=<name>:<device>:<ro|rw> on the kernel command line, in order. The
+// host wrote the line (A1); an entry that is not a plain name, a device and a mode is skipped.
+func caches(cmdline string) []cache {
+	var cs []cache
+	for _, f := range strings.Fields(cmdline) {
+		v, ok := strings.CutPrefix(f, "workcell.cache=")
+		parts := strings.Split(v, ":")
+		if ok && len(parts) == 3 && parts[0] != "" && !strings.ContainsAny(parts[0], "/.") &&
+			strings.HasPrefix(parts[1], "/dev/") && (parts[2] == "ro" || parts[2] == "rw") {
+			cs = append(cs, cache{parts[0], parts[1], parts[2] == "rw"})
+		}
+	}
+	return cs
+}
+
 func device(cmdline, key string) string {
 	dev := ""
 	for _, f := range strings.Fields(cmdline) {
@@ -130,6 +152,34 @@ func mountLayer(l layer) error {
 		return err
 	}
 	return unix.Mount(l.dev, dir, "ext4", unix.MS_RDONLY, "")
+}
+
+// mountCache puts the cache at /cache/<name>, in the root overlay. A writable drive is mounted as
+// it is, and what the session writes stays in the image. A read-only one is mounted read-only
+// under an overlay on a tmpfs: the session may write freely and none of it outlives the VM
+// (I7), while the image, which the host attached read-only, is never changed (A1).
+func mountCache(c cache, disk int) error {
+	dir, base := "/cache/"+c.name, "/cache-ro/"+c.name
+	for _, d := range []string{dir, base + "/lower", base + "/rw"} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			return err
+		}
+	}
+	if c.rw {
+		return unix.Mount(c.dev, dir, "ext4", 0, "")
+	}
+	if err := unix.Mount(c.dev, base+"/lower", "ext4", unix.MS_RDONLY, ""); err != nil {
+		return err
+	}
+	if err := unix.Mount("tmpfs", base+"/rw", "tmpfs", 0, tmpfsSize(disk)); err != nil {
+		return err
+	}
+	for _, d := range []string{"/upper", "/work"} {
+		if err := os.Mkdir(base+"/rw"+d, 0o755); err != nil {
+			return err
+		}
+	}
+	return unix.Mount("overlay", dir, "overlay", 0, "lowerdir="+base+"/lower,upperdir="+base+"/rw/upper,workdir="+base+"/rw/work")
 }
 
 // switchRoot makes the image on dev the root of everything that runs from here on. The
