@@ -5,6 +5,7 @@ package main
 
 import (
 	"cmp"
+	"io"
 	"os"
 	"path/filepath"
 	"slices"
@@ -229,7 +230,7 @@ func TestProviderPolicy(t *testing.T) {
 				t.Setenv("XDG_CONFIG_HOME", dir)
 				text := "[network]\nallow = " + strings.ReplaceAll(tc.allow, "HOST", pv.host) + "\n\n[[secret]]\nname = \"" + pv.secret + "\"\nsource = \"file:" + keyFile + "\"\n"
 				must(0, cmp.Or(os.MkdirAll(filepath.Join(dir, "workcell"), 0o700), os.WriteFile(filepath.Join(dir, "workcell", "config.toml"), []byte(text), 0o600), os.WriteFile(keyFile, []byte(key+"\n"), 0o600)))
-				_, got, err := loadPolicy(strings.Fields(strings.ReplaceAll(tc.flags, "HOST", pv.host)))
+				_, got, _, err := loadPolicy(strings.Fields(strings.ReplaceAll(tc.flags, "HOST", pv.host)), io.Discard)
 				if tc.deny {
 					want := `secret "` + pv.secret + `": host "` + pv.host + `" is not a bare name in [network] allow: add "` + pv.host + `" there, or pass --allow ` + pv.host
 					if err == nil || !strings.HasSuffix(err.Error(), want) || strings.Contains(err.Error(), "\n") {
@@ -249,6 +250,51 @@ func TestProviderPolicy(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+// TestRepoPolicy loads the user's grants and a workcell.toml in the current directory: the
+// repository can only narrow, and --allow typed on the host widens after it (I13).
+func TestRepoPolicy(t *testing.T) {
+	const user = "[network]\nallow = [\"bound.test\", \"other.test\"]\n"
+	tests := []struct {
+		name, repo string
+		flags      []string
+		hosts      []string
+		note       string
+	}{
+		{"no repo file", "", nil, []string{"bound.test", "other.test"}, ""},
+		{"repo widens", "[network]\nallow = [\"bound.test\", \"evil.test\"]\n", nil, []string{"bound.test"}, "workcell.toml asks for evil.test: not granted; allow it in "},
+		{"repo narrows", "[network]\nallow = [\"bound.test\"]\n", nil, []string{"bound.test"}, "workcell.toml narrows the policy of "},
+		{"--allow survives narrowing", "[network]\nallow = [\"bound.test\"]\n", []string{"other.test"}, []string{"bound.test", "other.test"}, "workcell.toml narrows the policy of "},
+		{"--allow grants what the repo asked", "[network]\nallow = [\"evil.test\"]\n", []string{"evil.test"}, []string{"evil.test"}, "workcell.toml narrows the policy of "},
+		{"repo with a bad line", "[network]\nallow = 1\n", nil, nil, "!"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			t.Setenv("XDG_CONFIG_HOME", dir)
+			must(0, cmp.Or(os.MkdirAll(filepath.Join(dir, "workcell"), 0o700), os.WriteFile(filepath.Join(dir, "workcell", "config.toml"), []byte(user), 0o600)))
+			work := t.TempDir()
+			t.Chdir(work)
+			if tc.repo != "" {
+				must(0, os.WriteFile(filepath.Join(work, "workcell.toml"), []byte(tc.repo), 0o600))
+			}
+			allow, _, note, err := loadPolicy(tc.flags, io.Discard)
+			if tc.note == "!" {
+				if err == nil || !strings.Contains(err.Error(), "workcell.toml:2:") {
+					t.Fatalf("loadPolicy = %v, want an error naming workcell.toml:2", err)
+				}
+				return
+			}
+			var hosts []string
+			if allow != nil {
+				hosts = allow.TLSHosts()
+			}
+			if err != nil || !slices.Equal(hosts, tc.hosts) || !strings.HasPrefix(note, tc.note) {
+				t.Errorf("loadPolicy = %q, note %q, %v; want %q, note %q", hosts, note, err, tc.hosts, tc.note)
+			}
+		})
 	}
 }
 

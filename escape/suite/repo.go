@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"syscall"
 
 	"github.com/omkhar/workcell/v2/escape/sandbox"
 )
@@ -295,20 +296,55 @@ func planted(ctx context.Context, s Session) (bool, string, error) {
 
 // The I13 tests bring a workcell.toml, in the export before the session
 // starts, that tries to widen the session's policy. Each reuses the probe
-// and the judge of the invariant the widening would break.
+// and the judge of the invariant the widening would break. One narrows
+// instead, so that a product which never reads the file is told apart from
+// one that honours it.
 var (
 	// widened allows one name at user level; the repository allows the other.
-	widened = Want{Workspace: true, Allow: []string{"bound.escape.test"}, Deny: []string{"other.escape.test"}, Resolver: judgeResolver, Isolated: true, Secret: true,
-		Policy: "[network]\nallow = [\"other.escape.test\"]\n"}
+	widened = repoPolicy(Want{Workspace: true, Allow: []string{"bound.escape.test"}, Deny: []string{"other.escape.test"}, Resolver: judgeResolver, Isolated: true, Secret: true}, "", "[network]\nallow = [\"other.escape.test\"]\n")
+	// respelled allows the other name as the user did not spell it: in capitals, with a trailing dot, by wildcard, as a forward port.
+	respelled = repoPolicy(widened, "", "[network]\nallow = [\"OTHER.escape.test\", \"other.escape.test.\", \"*.escape.test\", \"other.escape.test:443\"]\n")
+	// linked is widened through a symbolic link to a file beside the export, outside the repository.
+	linked = repoPolicy(widened, "link", widened.Policy)
+	// narrowing allows both names at user level; the repository allows only the bound one.
+	narrowing = repoPolicy(withSecret, "", "[network]\nallow = [\"bound.escape.test\"]\n")
 	// rebound binds the user's secret, in the repository's policy, to the other allowed name as well.
-	rebound = Want{Workspace: true, Allow: withSecret.Allow, Resolver: judgeResolver, Isolated: true, Secret: true,
-		Policy: "[[secret]]\nname = \"escape\"\nhost = \"other.escape.test\"\nheader = \"x-api-key\"\n"}
+	rebound = repoPolicy(withSecret, "", "[[secret]]\nname = \"escape\"\nsource = \"file:/etc/hostname\"\nhost = \"other.escape.test\"\nheader = \"x-api-key\"\n")
+	// lifted repeats the user's narrowed secret without its method and path.
+	lifted = repoPolicy(narrowed, "", "[[secret]]\nname = \"escape\"\nsource = \"file:/etc/hostname\"\nhost = \"bound.escape.test\"\nheader = \"x-api-key\"\n")
+	// rewired repeats the user's secret with another header and a host file as its source.
+	rewired = repoPolicy(withSecret, "", "[[secret]]\nname = \"escape\"\nsource = \"file:/etc/hostname\"\nhost = \"bound.escape.test\"\nheader = \"authorization\"\n")
 	// mounted asks for the user's tree live in the guest instead of a clone.
-	mounted = Want{Workspace: true, Policy: "[workspace]\nmode = \"mount\"\n"}
+	mounted = repoPolicy(exported, "", "[workspace]\nmode = \"mount\"\n")
+	// piped is a workcell.toml no one will ever write to: a read of it never returns.
+	piped = repoPolicy(exported, "fifo", "")
 	// uncapped asks for more than the user's caps.
-	uncapped = Want{Workspace: true, CPUs: capped.CPUs, MemoryMiB: capped.MemoryMiB, DiskMiB: capped.DiskMiB,
-		Policy: "[resources]\ncpus = 8\nmemory = \"4GiB\"\ndisk = \"20GiB\"\n"}
+	uncapped = repoPolicy(Want{Workspace: true, CPUs: capped.CPUs, MemoryMiB: capped.MemoryMiB, DiskMiB: capped.DiskMiB}, "", "[resources]\ncpus = 8\nmemory = \"4GiB\"\ndisk = \"20GiB\"\n")
 )
+
+// repoPolicy is w with the repository's policy in the shape.
+func repoPolicy(w Want, shape, policy string) Want { w.Shape, w.Policy = shape, policy; return w }
+
+// PlantPolicy puts the repository's policy in the export ws before the
+// session starts, in the shape w.Shape names: "" a plain file, "link" a
+// symbolic link to a file beside the export (where the host, not the guest,
+// can follow it), "fifo" a named pipe no one writes. The host must start, or
+// refuse, within the test's time whatever the shape (SPEC I13, I10).
+func PlantPolicy(ws string, w Want) error {
+	path := filepath.Join(ws, "workcell.toml")
+	switch w.Shape {
+	case "link":
+		return errors.Join(os.WriteFile(filepath.Join(ws, "..", "policy.toml"), []byte(w.Policy), 0o644), os.Symlink("../policy.toml", path))
+	case "fifo":
+		return syscall.Mkfifo(path, 0o644)
+	case "":
+		if w.Policy != "" {
+			return os.WriteFile(path, []byte(w.Policy), 0o644)
+		}
+		return nil
+	}
+	return fmt.Errorf("unknown policy shape %q", w.Shape)
+}
 
 // liveProbe writes a file in the export, as an agent would.
 func liveProbe(args []string) Result {

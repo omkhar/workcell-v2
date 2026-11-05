@@ -162,10 +162,8 @@ func runOne(ctx context.Context, fresh func() (sandbox.Sandbox, error), payload,
 			if err := os.Mkdir(cfg.Workspace, 0o755); err != nil {
 				return suite.Session{}, err
 			}
-			if t.Want.Policy != "" { // the hostile repository's own policy, there before the session starts
-				if err := os.WriteFile(filepath.Join(cfg.Workspace, "workcell.toml"), []byte(t.Want.Policy), 0o644); err != nil {
-					return suite.Session{}, err
-				}
+			if err := suite.PlantPolicy(cfg.Workspace, t.Want); err != nil { // the hostile repository's own policy, there before the session starts
+				return suite.Session{}, err
 			}
 		}
 		guest, err := sb.Start(ctx, cfg)

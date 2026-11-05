@@ -83,8 +83,8 @@ type Judge func(ctx context.Context, s Session) (pass bool, detail string, err e
 // session is to use (the judge's, see sandbox.Config.Resolver), whether a
 // fresh secret is bound to the first allowed name, and narrowed to one
 // method and path (NewSecret), and the repo-local policy (a workcell.toml
-// the runner plants in the export before the session starts) that the
-// hostile repository brings.
+// the runner plants in the export before the session starts, in the shape
+// PlantPolicy gives Shape) that the hostile repository brings.
 type Want struct {
 	Workspace bool
 	Mount     bool
@@ -100,6 +100,7 @@ type Want struct {
 	Source    string   // the secret's source in the product's words, such as a sign-in flow (sandbox.Secret.Source)
 	Repos     []string // the repositories a git token is scoped to (sandbox.Secret.Repos)
 	Policy    string
+	Shape     string
 }
 
 // Test is one escape test.

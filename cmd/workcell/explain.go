@@ -30,9 +30,10 @@ func explain(args []string, stderr io.Writer) int {
 	var file string
 	var allow *proxy.Allowlist
 	var secrets []binding
+	var note string
 	if err == nil {
 		if file, err = configFile(); err == nil {
-			allow, secrets, err = loadPolicy(extra)
+			allow, secrets, note, err = loadPolicy(extra, stderr)
 		}
 	}
 	if err != nil {
@@ -40,7 +41,7 @@ func explain(args []string, stderr io.Writer) int {
 		return 2
 	}
 	_, statErr := os.Stat(file)
-	fmt.Print(explanation(*mount, cwd) + reach(file, statErr == nil, len(extra) > 0, allow) + bound(secrets))
+	fmt.Print(explanation(*mount, cwd) + reach(file, statErr == nil, len(extra) > 0, allow) + note + bound(secrets))
 	return 0
 }
 

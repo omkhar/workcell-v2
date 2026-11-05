@@ -49,7 +49,7 @@ func run(args []string, stderr io.Writer) int {
 	if !ok {
 		return 2
 	}
-	allow, secrets, err := loadPolicy(extra)
+	allow, secrets, _, err := loadPolicy(extra, stderr)
 	if err != nil {
 		fmt.Fprintln(stderr, "workcell run:", err)
 		return 2

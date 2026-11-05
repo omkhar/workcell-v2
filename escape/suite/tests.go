@@ -202,12 +202,22 @@ var All = []Test{
 	{ID: "I8", Name: "pull-case-collision", Probe: repoProbe, Host: collided, Want: exported},
 	{ID: "I8", Name: "pull-writes-dotgit", Probe: repoProbe, Host: planted, Want: exported},
 	// A workcell.toml in the repository tries to widen the policy: the
-	// allowlist, the secret's binding, the workspace mode and the caps. For
-	// the first two the guest replays its credential at the other name,
-	// which only the repository allows, or binds; it must see nothing.
+	// allowlist, plainly, by another spelling of the name or through a
+	// symbolic link out of the repository; the secret's binding, to another
+	// host, header or source, or free of its method and path; the workspace
+	// mode; and the caps. For the names the guest replays its credential at
+	// the other name, which only the repository allows, or binds; it must
+	// see nothing. One file narrows the allowlist instead and the guest, with
+	// no credential, must not reach the name it dropped. One is a pipe.
 	{ID: "I13", Name: "repo-policy-widens-allowlist", Probe: exchangeProbe, Host: twoNames(canaries{}, swapJudge("GET,bound,/check,header", "GET,other,/replay,header")), Want: widened},
+	{ID: "I13", Name: "repo-policy-respells-name", Probe: exchangeProbe, Host: twoNames(canaries{}, swapJudge("GET,bound,/check,header", "GET,other,/replay,header", "GET,other,/plain,none")), Want: respelled},
+	{ID: "I13", Name: "repo-policy-through-symlink", Probe: exchangeProbe, Host: twoNames(canaries{}, swapJudge("GET,bound,/check,header", "GET,other,/plain,none")), Want: linked},
+	{ID: "I13", Name: "repo-policy-narrows-allowlist", Probe: exchangeProbe, Host: twoNames(canaries{}, swapJudge("GET,bound,/check,header", "GET,other,/plain,none")), Want: narrowing},
 	{ID: "I13", Name: "repo-policy-rebinds-secret", Probe: exchangeProbe, Host: twoNames(canaries{}, swapJudge("GET,bound,/check,header", "GET,other,/replay,header")), Want: rebound},
+	{ID: "I13", Name: "repo-policy-lifts-secret-binding", Probe: exchangeProbe, Host: twoNames(canaries{}, swapJudge("POST,bound,/v1/ok,header", "GET,bound,/check,header", "POST,bound,/v2/no,header")), Want: lifted},
+	{ID: "I13", Name: "repo-policy-rewires-secret", Probe: exchangeProbe, Host: twoNames(canaries{}, swapJudge("GET,bound,/check,header", "GET,bound,/auth,auth")), Want: rewired},
 	{ID: "I13", Name: "repo-policy-mounts-workspace", Probe: liveProbe, Host: liveJudge, Want: mounted},
+	{ID: "I13", Name: "repo-policy-is-a-pipe", Probe: liveProbe, Host: liveJudge, Want: piped},
 	{ID: "I13", Name: "repo-policy-lifts-memory-cap", Probe: memoryProbe, Host: memoryJudge, Want: uncapped},
 	// The guest, told where the host keeps the session's record, plants a
 	// record, sends the record's path to /dev/null, or empties it; and a user
