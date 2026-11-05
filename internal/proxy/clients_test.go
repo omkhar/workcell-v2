@@ -29,18 +29,13 @@ import (
 // PATH is skipped. When the host has Debian's bundle the test starts from a copy of it, so
 // the keystore and the bundle hold the public roots too, as they do in the guest.
 func TestClientsValidateSessionLeaf(t *testing.T) {
-	ca, err := NewSessionCA([]string{"localhost"}, time.Now().Add(time.Hour))
-	if err != nil {
-		t.Fatal(err)
-	}
+	ca := must(NewSessionCA([]string{"localhost"}, time.Now().Add(time.Hour)))
 	dir := filepath.Join(t.TempDir(), "certs")
 	if bundle, err := os.ReadFile("/etc/ssl/certs/ca-certificates.crt"); err == nil {
 		os.MkdirAll(dir, 0o755)
 		os.WriteFile(filepath.Join(dir, "ca-certificates.crt"), bundle, 0o644)
 	}
-	if err := guest.WriteTrust(dir, ca.CertPEM(), time.Now()); err != nil {
-		t.Fatal(err)
-	}
+	must(0, guest.WriteTrust(dir, ca.CertPEM(), time.Now()))
 	ln, err := tls.Listen("tcp", ":0", &tls.Config{MinVersion: tls.VersionTLS12,
 		GetCertificate: func(*tls.ClientHelloInfo) (*tls.Certificate, error) { return ca.leaf("localhost") }})
 	if err != nil {
@@ -88,10 +83,7 @@ func TestClientsValidateSessionLeaf(t *testing.T) {
 		if err != nil || !pool.AppendCertsFromPEM(pem) {
 			t.Fatalf("SSL_CERT_FILE is missing from env or names no certificate file: %v", err)
 		}
-		resp, err := (&http.Client{Timeout: 5 * time.Second, Transport: &http.Transport{TLSClientConfig: &tls.Config{RootCAs: pool}}}).Get(url)
-		if err != nil {
-			t.Fatal(err)
-		}
+		resp := must((&http.Client{Timeout: 5 * time.Second, Transport: &http.Transport{TLSClientConfig: &tls.Config{RootCAs: pool}}}).Get(url))
 		resp.Body.Close()
 	})
 }

@@ -47,13 +47,17 @@ const (
 // NewSecret makes a fresh secret bound to the first allowed name of w, in
 // the header boundHeader, for the runner to put in a session's Config when
 // a test wants one; Narrow binds it to narrowMethod requests under
-// narrowPath alone. With a Source of w's own, a sign-in flow, the row has
-// no value: the endpoint the source names issues the tokens, and the
-// access one goes in the Authorization header, as a bearer token does.
+// narrowPath alone; Repos scopes it, as a git token in the Authorization
+// header, to those repositories. With a Source of w's own, a sign-in flow,
+// the row has no value: the endpoint the source names issues the tokens,
+// and the access one goes in the Authorization header, as a bearer token does.
 func NewSecret(w Want) sandbox.Secret {
 	sec := sandbox.Secret{Name: "escape", Value: secretPrefix + newToken()[:secretHex], Host: w.Allow[0], Header: boundHeader, Env: "ESCAPE_API_KEY"}
 	if w.Narrow {
 		sec.Method, sec.Path = narrowMethod, narrowPath
+	}
+	if w.Repos != nil {
+		sec.Header, sec.Repos = "authorization", w.Repos
 	}
 	if w.Source != "" {
 		sec.Value, sec.Header, sec.Source = "", "authorization", w.Source
@@ -73,10 +77,11 @@ const (
 // holds the one address both names resolve to and serves a canary for
 // each at port 443 (twoNames). The guest's view of the names is given to
 // each probe as a literal address beside the name. narrowed binds the
-// secret to one method and path as well.
+// secret to one method and path as well; scoped, as a git token, to one repository.
 var (
 	withSecret = Want{Workspace: true, Allow: []string{"bound.escape.test", "other.escape.test"}, Resolver: judgeResolver, Isolated: true, Secret: true}
 	narrowed   = Want{Workspace: true, Allow: withSecret.Allow, Resolver: judgeResolver, Isolated: true, Secret: true, Narrow: true}
+	scoped     = Want{Workspace: true, Allow: withSecret.Allow, Resolver: judgeResolver, Isolated: true, Secret: true, Repos: []string{"octo/allowed"}}
 )
 
 // findSecrets returns every secret-shaped value in b, in order, once each.

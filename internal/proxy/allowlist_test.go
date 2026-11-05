@@ -74,9 +74,7 @@ func TestParseAllowlist(t *testing.T) {
 func TestLoadAllowlistAndPorts(t *testing.T) {
 	t.Parallel()
 	path := filepath.Join(t.TempDir(), "allowlist")
-	if err := os.WriteFile(path, []byte("db.example:5432\napi.example.com:443\nssh.example:22\nDB.example:443\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
+	must(0, os.WriteFile(path, []byte("db.example:5432\napi.example.com:443\nssh.example:22\nDB.example:443\n"), 0o600))
 	a, err := LoadAllowlist(path)
 	if err != nil {
 		t.Fatalf("LoadAllowlist: %v", err)
@@ -96,20 +94,14 @@ func TestLoadAllowlistRefusesSymlinkAndOversize(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	real := filepath.Join(dir, "real")
-	if err := os.WriteFile(real, []byte("api.example.com:443\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
+	must(0, os.WriteFile(real, []byte("api.example.com:443\n"), 0o600))
 	link := filepath.Join(dir, "link")
-	if err := os.Symlink(real, link); err != nil {
-		t.Fatal(err)
-	}
+	must(0, os.Symlink(real, link))
 	if _, err := LoadAllowlist(link); err == nil {
 		t.Error("LoadAllowlist(symlink) error = nil, want error")
 	}
 	linkDir := filepath.Join(t.TempDir(), "dirlink")
-	if err := os.Symlink(dir, linkDir); err != nil {
-		t.Fatal(err)
-	}
+	must(0, os.Symlink(dir, linkDir))
 	if _, err := LoadAllowlist(filepath.Join(linkDir, "real")); err == nil {
 		t.Error("LoadAllowlist(symlinked parent) error = nil, want error")
 	}
@@ -117,9 +109,7 @@ func TestLoadAllowlistRefusesSymlinkAndOversize(t *testing.T) {
 		t.Error("LoadAllowlist(directory) error = nil, want error")
 	}
 	big := filepath.Join(dir, "big")
-	if err := os.WriteFile(big, []byte("#"+strings.Repeat("x", int(maxAllowlistBytes))+"\napi.example.com:443\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
+	must(0, os.WriteFile(big, []byte("#"+strings.Repeat("x", int(maxAllowlistBytes))+"\napi.example.com:443\n"), 0o600))
 	if _, err := LoadAllowlist(big); err == nil {
 		t.Error("LoadAllowlist(oversize) error = nil, want error")
 	}

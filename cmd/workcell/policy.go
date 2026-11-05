@@ -4,6 +4,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -87,7 +88,7 @@ func placeholderEnv(secrets []binding) (env []string) {
 var envName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
 // bindings turns the policy's [[secret]] rows into the session's bindings, one fresh placeholder
-// each. The proxy judges host, header, method and path (A3); the host must then be a bare name
+// each. The proxy judges host, header, method, path and repos (A3); the host must then be a bare name
 // of the allow list, so that the proxy terminates it and swaps there (I6), as must the host of a
 // sign-in source; no two rows may bind one header on one host, or one token endpoint; and env
 // must be a variable name. A row that gives a name and source but no host and no header takes
@@ -112,9 +113,12 @@ func bindings(p policy.Policy, allow *proxy.Allowlist, file string) ([]binding, 
 		if s.Host == "" || s.Header == "" {
 			return nil, fmt.Errorf("%s: host and header are missing: name a provider's secret or give host and header", at)
 		}
-		rule, err := proxy.NewTerminateRule(s.Host, s.Header, s.Method, s.Path)
+		rule, err := proxy.NewTerminateRule(s.Host, s.Header, s.Method, s.Path, s.Repos)
 		if err == nil && strings.HasPrefix(s.Source, "signin:") {
 			rule.SignIn, err = proxy.NewSignIn(s.Source)
+			if err == nil && len(s.Repos) > 0 {
+				err = errors.New("repos cannot narrow a sign-in source")
+			}
 		}
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", at, err)

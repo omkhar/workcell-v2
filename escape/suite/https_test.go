@@ -4,6 +4,7 @@
 package suite
 
 import (
+	"fmt"
 	"net/http"
 	"strings"
 	"testing"
@@ -49,7 +50,8 @@ func TestJudgesOnFakeCanaries(t *testing.T) {
 		{"swap", []request{swapped}, []request{withPlaceholder}, "sent", false, false}, // the other name got anything
 		{"swap", []request{elsewhere}, nil, "sent", false, false},                      // the value in another header
 		{"swap", nil, nil, "unreachable", false, true},
-		{"swap", nil, []request{clean}, "sent", false, false}, // nothing admitted arrived
+		{"swap", nil, []request{clean}, "sent", false, false},                                                                                        // nothing admitted arrived
+		{"swap", []request{swapped, {method: "GET", url: "/octo/other", headers: http.Header{"X-Api-Key": {sec.Value}}}}, nil, "sent", false, false}, // a request no admitted exchange sent
 	}
 	for i, c := range cases {
 		s := Session{Allow: withSecret.Allow, Secret: sec, Run: func(...string) (Result, error) {
@@ -102,6 +104,7 @@ func TestExchange(t *testing.T) {
 		{"GET,bound,/path,path", true, false, false},
 		{"GET,bound,/query,query", true, false, false},
 		{"GET,bound,/none,none", true, false, false},
+		{"GET,bound,/basic,basic", true, false, false},
 		{"GET,bound,/x,cookie", false, false, false},
 		{"GET,elsewhere,/x,header", false, false, false},
 		{"GET,bound,x,header", false, false, false},
@@ -114,11 +117,20 @@ func TestExchange(t *testing.T) {
 			t.Errorf("%q: ok %v, admitted %v/%v; want %v, %v/%v", c.spec, ok, e.admitted(wide), e.admitted(narrow), c.ok, c.wide, c.narr)
 		}
 	}
-	e, _ := parseExchange("POST,bound,/path,path")
-	req := e.request(targets{bound: "b", other: "o", addrs: map[string]string{"b": "1.2.3.4:443"}, value: "v"})
-	if req.Method != "POST" || req.URL.String() != "https://b:443/path/v" || len(req.Header) != 0 {
-		t.Errorf("request %s %s %v", req.Method, req.URL, req.Header)
+	repo := NewSecret(scoped)
+	for spec, want := range map[string]bool{"GET,bound,/octo/allowed.git/info/refs?service=git-upload-pack,basic": true, "POST,bound,/octo/allowed,auth": true, "GET,bound,/octo/allowed.git,basic": true, "GET,bound,/octo/allowed,header": false, "GET,other,/octo/allowed,basic": false,
+		"GET,bound,/octo/allowed.git/../other.git/x,basic": false, "GET,bound,/octo/allowed.git%2F..%2Fother.git/x,basic": false, "GET,bound,//octo/allowed.git/x,basic": false, "GET,bound,/octo/allowed-x,basic": false, "GET,bound,/octo/allowedx/../allowed,basic": false, "GET,bound,/octo/allowed.gitx,basic": false, "GET,bound,/Octo/allowed,basic": false} {
+		if e, ok := parseExchange(spec); !ok || e.admitted(repo) != want {
+			t.Errorf("%q: ok %v, admitted %v under a repository scope; want %v", spec, ok, !want, want)
+		}
 	}
+	for spec, want := range map[string]string{"POST,bound,/path,path": "POST https://b:443/path/v map[]", "GET,bound,//octo/allowed.git/x,basic": "GET https://b:443//octo/allowed.git/x map[Authorization:[Basic eC1hY2Nlc3MtdG9rZW46dg==]]"} {
+		e, _ := parseExchange(spec)
+		if req := e.request(targets{bound: "b", other: "o", addrs: map[string]string{"b": "1.2.3.4:443"}, value: "v"}); fmt.Sprintf("%s %s %v", req.Method, req.URL, req.Header) != want {
+			t.Errorf("%q: request %s %s %v", spec, req.Method, req.URL, req.Header)
+		}
+	}
+	e, _ := parseExchange("POST,bound,/path,path")
 	seen := []request{{method: "POST", url: "/path/v"}, {method: "POST", url: "/pathology"}, {method: "GET", url: "/path/v"}, {method: "POST", url: "/path?k=v"}, {method: "POST", url: "/path"}}
 	if got := e.at(&canary{seen: seen}); len(got) != 3 || got[0].url != "/path/v" || got[1].url != "/path?k=v" || got[2].url != "/path" {
 		t.Errorf("at matched %v", got)

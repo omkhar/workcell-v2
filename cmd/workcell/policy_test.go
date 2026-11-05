@@ -90,10 +90,7 @@ func TestAllowlist(t *testing.T) {
 // TestBindings: a [[secret]] row becomes a grant and a rule with a fresh placeholder, and explain
 // names it without its source; a row the proxy or the allowlist refuses is refused with its line.
 func TestBindings(t *testing.T) {
-	allow, err := allowlist(policy.Policy{Allow: []policy.Entry{{Text: "a.example", Line: 2}, {Text: "db.example:5432", Line: 2}, {Text: "api.anthropic.com", Line: 3}}}, "config.toml")
-	if err != nil {
-		t.Fatal(err)
-	}
+	allow := must(allowlist(policy.Policy{Allow: []policy.Entry{{Text: "a.example", Line: 2}, {Text: "db.example:5432", Line: 2}, {Text: "api.anthropic.com", Line: 3}}}, "config.toml"))
 	row := policy.Secret{Name: "k", Source: "file:/s", Host: "A.example.", Header: "X-Api-Key", Line: 5}
 	with := func(f func(s *policy.Secret)) policy.Secret { s := row; f(&s); return s }
 	const swapped = "secrets: swapped in by the session proxy; the guest holds a placeholder\n"
@@ -125,6 +122,12 @@ func TestBindings(t *testing.T) {
 		{"a sign-in host not allowed", []policy.Secret{with(func(s *policy.Secret) { s.Source = "signin:b.example/oauth/token" })}, "", "config.toml:5: secret \"k\": sign-in host \"b.example\" is not a bare name"},
 		{"a bad sign-in source", []policy.Secret{with(func(s *policy.Secret) { s.Source = "signin:a.example" })}, "", "config.toml:5: secret \"k\": sign-in source must be signin:HOST/PATH"},
 		{"the token endpoint bound twice", []policy.Secret{with(func(s *policy.Secret) { s.Source = "signin:a.example/t" }), with(func(s *policy.Secret) { s.Source, s.Header, s.Line = "signin:a.example/t", "authorization", 9 })}, "", "config.toml:9: secret \"k\": token endpoint a.example/t is already bound on line 5"},
+		{"repos", []policy.Secret{with(func(s *policy.Secret) {
+			s.Header, s.Env, s.Repos = "authorization", "GITHUB_TOKEN", []string{"octo/allowed", "octo/docs"}
+		})}, swapped + "  k: in authorization to https://a.example, for octo/allowed, octo/docs, as $GITHUB_TOKEN\n", ""},
+		{"repos and a path", []policy.Secret{with(func(s *policy.Secret) { s.Path, s.Repos = "/octo/", []string{"octo/allowed"} })}, "", "config.toml:5: secret \"k\": terminate rule repos cannot go with a method or a path"},
+		{"a bad repo", []policy.Secret{with(func(s *policy.Secret) { s.Repos = []string{"octo/allowed.git"} })}, "", "config.toml:5: secret \"k\": terminate rule repository must be owner/name"},
+		{"repos and a sign-in source", []policy.Secret{with(func(s *policy.Secret) { s.Source, s.Repos = "signin:a.example/t", []string{"octo/allowed"} })}, "", "config.toml:5: secret \"k\": repos cannot narrow a sign-in source"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -225,9 +228,7 @@ func TestProviderPolicy(t *testing.T) {
 				keyFile := filepath.Join(dir, "key")
 				t.Setenv("XDG_CONFIG_HOME", dir)
 				text := "[network]\nallow = " + strings.ReplaceAll(tc.allow, "HOST", pv.host) + "\n\n[[secret]]\nname = \"" + pv.secret + "\"\nsource = \"file:" + keyFile + "\"\n"
-				if err := cmp.Or(os.MkdirAll(filepath.Join(dir, "workcell"), 0o700), os.WriteFile(filepath.Join(dir, "workcell", "config.toml"), []byte(text), 0o600), os.WriteFile(keyFile, []byte(key+"\n"), 0o600)); err != nil {
-					t.Fatal(err)
-				}
+				must(0, cmp.Or(os.MkdirAll(filepath.Join(dir, "workcell"), 0o700), os.WriteFile(filepath.Join(dir, "workcell", "config.toml"), []byte(text), 0o600), os.WriteFile(keyFile, []byte(key+"\n"), 0o600)))
 				_, got, err := loadPolicy(strings.Fields(strings.ReplaceAll(tc.flags, "HOST", pv.host)))
 				if tc.deny {
 					want := `secret "` + pv.secret + `": host "` + pv.host + `" is not a bare name in [network] allow: add "` + pv.host + `" there, or pass --allow ` + pv.host
@@ -249,4 +250,12 @@ func TestProviderPolicy(t *testing.T) {
 			})
 		}
 	}
+}
+
+// must is the value of a setup step that cannot fail in a working test; a failure panics.
+func must[T any](v T, err error) T {
+	if err != nil {
+		panic(err)
+	}
+	return v
 }

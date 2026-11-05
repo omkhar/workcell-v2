@@ -56,26 +56,14 @@ func TestTailIsBounded(t *testing.T) {
 // host with whatever the guest writes on it, and the first one goes on working.
 func TestOnceTakesOneConnection(t *testing.T) {
 	addr := filepath.Join(t.TempDir(), "vsock_5000")
-	raw, err := net.Listen("unix", addr)
-	if err != nil {
-		t.Fatal(err)
-	}
+	raw := must(net.Listen("unix", addr))
 	ln := once{raw}
 	defer ln.Close()
-	first, err := net.Dial("unix", addr)
-	if err != nil {
-		t.Fatal(err)
-	}
+	first := must(net.Dial("unix", addr))
 	defer first.Close()
-	queued, err := net.Dial("unix", addr) // in the backlog before the host accepts
-	if err != nil {
-		t.Fatal(err)
-	}
+	queued := must(net.Dial("unix", addr)) // in the backlog before the host accepts
 	defer queued.Close()
-	conn, err := ln.Accept()
-	if err != nil {
-		t.Fatal(err)
-	}
+	conn := must(ln.Accept())
 	defer conn.Close()
 
 	if c, err := net.Dial("unix", addr); !errors.Is(err, syscall.ENOENT) {
@@ -87,9 +75,7 @@ func TestOnceTakesOneConnection(t *testing.T) {
 	if _, err := os.Stat(addr); !errors.Is(err, os.ErrNotExist) {
 		t.Errorf("the socket %s after the first Accept: %v, want gone", addr, err)
 	}
-	if err := queued.SetReadDeadline(time.Now().Add(2 * time.Second)); err != nil {
-		t.Fatal(err)
-	}
+	must(0, queued.SetReadDeadline(time.Now().Add(2*time.Second)))
 	if _, err := queued.Read(make([]byte, 1)); err == nil || errors.Is(err, os.ErrDeadlineExceeded) {
 		t.Errorf("the connection queued before the first Accept still stands: %v", err)
 	}

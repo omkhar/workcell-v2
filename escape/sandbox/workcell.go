@@ -67,7 +67,8 @@ const policyFile = "workcell/config.toml"
 // and, for cfg.Secret, one [[secret]] table binding it to its host and
 // header, with its value in the file source (or the source the entry
 // names itself, such as a sign-in flow) and the guest's placeholder in
-// its variable, narrowed to a method and a path prefix when it names them.
+// its variable, narrowed to a method, a path prefix and an array of
+// repositories when it names them.
 // A bare name is port 443 by SNI; `name:port` is a forward entry for that
 // one port. Every entry comes from the test table, but a quote, a backslash
 // or a byte outside printable ASCII would change what the file says, so
@@ -81,20 +82,15 @@ const policyFile = "workcell/config.toml"
 // denied name resolve to the test host, for a positive path, is the host
 // resolver's (U-304, U-305), not this adapter's: it only writes the policy.
 func policyTOML(cfg Config, source string) ([]byte, error) {
-	b := []byte("[network]\nallow = [")
-	for i, name := range cfg.Allow {
+	for _, name := range cfg.Allow {
 		if slices.Contains(cfg.Deny, name) {
 			return nil, fmt.Errorf("policy: %q is both allowed and denied", name)
 		}
-		if i > 0 {
-			b = append(b, ", "...)
-		}
-		var err error
-		if b, err = quoted(b, "allowed name", name); err != nil {
-			return nil, err
-		}
 	}
-	b = append(b, "]\n"...)
+	b, err := array([]byte("[network]\nallow = ["), "allowed name", cfg.Allow)
+	if err != nil {
+		return nil, err
+	}
 	if sec := cfg.Secret; sec != nil {
 		if !slices.Contains(cfg.Allow, sec.Host) {
 			return nil, fmt.Errorf("policy: the secret's host %q is not an allowed name", sec.Host)
@@ -104,14 +100,32 @@ func policyTOML(cfg Config, source string) ([]byte, error) {
 			if kv.value == "" {
 				continue // an optional key, or one the product defaults
 			}
-			var err error
 			if b, err = quoted(append(b, kv.key+" = "...), "secret "+kv.key, kv.value); err != nil {
 				return nil, err
 			}
 			b = append(b, '\n')
 		}
+		if len(sec.Repos) > 0 {
+			if b, err = array(append(b, "repos = ["...), "secret repo", sec.Repos); err != nil {
+				return nil, err
+			}
+		}
 	}
 	return b, nil
+}
+
+// array appends names to b as the rest of a TOML array of basic strings.
+func array(b []byte, what string, names []string) ([]byte, error) {
+	for i, n := range names {
+		if i > 0 {
+			b = append(b, ", "...)
+		}
+		var err error
+		if b, err = quoted(b, what, n); err != nil {
+			return nil, err
+		}
+	}
+	return append(b, "]\n"...), nil
 }
 
 // quoted appends s to b as a TOML basic string, refusing a byte that would

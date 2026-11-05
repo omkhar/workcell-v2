@@ -6,6 +6,7 @@ package policy
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -71,7 +72,7 @@ func TestParse(t *testing.T) {
 }
 
 // TestParseSecret: each [[secret]] row comes back with its keys and its line, the optional
-// keys "" when left out; the Allow entries are TestParse's concern.
+// keys "" or nil when left out; the Allow entries are TestParse's concern.
 func TestParseSecret(t *testing.T) {
 	full := "[[secret]]\nname = \"a\"\nsource = \"file:/s\"\nhost = \"a.example\"\nheader = \"X-Api-Key\"\nenv = \"A_KEY\"\nmethod = \"POST\"\npath = \"/v1/\"\n"
 	tests := []struct {
@@ -80,16 +81,19 @@ func TestParseSecret(t *testing.T) {
 		want []Secret
 	}{
 		{"the SPEC example", specExample, []Secret{{Name: "anthropic", Source: "keychain:workcell/anthropic", Host: "api.anthropic.com", Header: "x-api-key", Line: 5}}},
-		{"every key", full, []Secret{{"a", "file:/s", "a.example", "X-Api-Key", "A_KEY", "POST", "/v1/", 1}}},
+		{"every key", full, []Secret{{"a", "file:/s", "a.example", "X-Api-Key", "A_KEY", "POST", "/v1/", nil, 1}}},
 		{"two rows, the second after another table", full + "[network]\n[[secret]]\nname = \"b\"\nsource = \"cmd:/bin/b\"\nhost = \"b.example\"\nheader = \"authorization\"\n",
-			[]Secret{{"a", "file:/s", "a.example", "X-Api-Key", "A_KEY", "POST", "/v1/", 1}, {Name: "b", Source: "cmd:/bin/b", Host: "b.example", Header: "authorization", Line: 10}}},
+			[]Secret{{"a", "file:/s", "a.example", "X-Api-Key", "A_KEY", "POST", "/v1/", nil, 1}, {Name: "b", Source: "cmd:/bin/b", Host: "b.example", Header: "authorization", Line: 10}}},
 		{"name and source alone", "[[secret]]\nname = \"anthropic\"\nsource = \"file:/s\"\n", []Secret{{Name: "anthropic", Source: "file:/s", Line: 1}}},
+		{"repos, over two lines", "[[secret]]\nname = \"git\"\nsource = \"file:/s\"\nhost = \"github.com\"\nheader = \"authorization\"\nrepos = [\"octo/allowed\",\n \"octo/docs\"]\n",
+			[]Secret{{Name: "git", Source: "file:/s", Host: "github.com", Header: "authorization", Repos: []string{"octo/allowed", "octo/docs"}, Line: 1}}},
+		{"an empty repos array is no key", "[[secret]]\nname = \"git\"\nsource = \"file:/s\"\nrepos = []\n", []Secret{{Name: "git", Source: "file:/s", Line: 1}}},
 		{"no secret", "[network]\nallow = []\n", nil},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			got, err := Parse(tc.text, "config.toml")
-			if err != nil || !slices.Equal(got.Secret, tc.want) {
+			if err != nil || !reflect.DeepEqual(got.Secret, tc.want) {
 				t.Errorf("Parse(%q).Secret = %+v, %v; want %+v", tc.text, got.Secret, err, tc.want)
 			}
 		})
@@ -130,6 +134,7 @@ func TestParseRefuses(t *testing.T) {
 		{"unknown key in network", "[network]\nallow = []\ndeny = []\n", "config.toml:3: unknown key \"deny\" in [network]"},
 		{"unknown key in secret", "[[secret]]\nname = \"a\"\nvalue = \"sk\"\n", "config.toml:3: unknown key \"value\" in [[secret]]"},
 		{"secret key not a string", "[[secret]]\nname = \"a\"\nsource = [\"file:/s\"]\n", "config.toml:3: source must be a string"},
+		{"secret repos not an array", "[[secret]]\nname = \"a\"\nrepos = \"octo/allowed\"\n", "config.toml:3: repos must be an array of strings"},
 		{"secret without a name", "\n[[secret]]\nsource = \"file:/s\"\nhost = \"h\"\nheader = \"k\"\n", "config.toml:2: [[secret]] needs a name"},
 		{"secret without a source", "[[secret]]\nname = \"a\"\nhost = \"h\"\nheader = \"k\"\n", "config.toml:1: [[secret]] needs a source"},
 		{"allow is a string", "[network]\nallow = \"a.example\"\n", "config.toml:2: allow must be an array of strings"},

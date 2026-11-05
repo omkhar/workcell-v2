@@ -37,10 +37,12 @@ type Policy struct {
 // Secret is one [[secret]] row: the secret Name, read on the host from Source, is sent only
 // in Header to Host (both "" when a provider's secret of that name is to fill them in). Env names
 // the guest variable that carries its placeholder, Method and Path narrow the swap to requests of
-// that method under that path prefix; each is "" when the row leaves it out. Line is the row's,
-// for an error that names it.
+// that method under that path prefix; each is "" when the row leaves it out. Repos is the repos
+// array, the git repositories "owner/name" the swap is narrowed to instead; nil when left out.
+// Line is the row's, for an error that names it.
 type Secret struct {
 	Name, Source, Host, Header, Env, Method, Path string
+	Repos                                         []string
 	Line                                          int
 }
 
@@ -152,15 +154,25 @@ func Tables(text, name string) ([]Table, error) {
 }
 
 // secretRow reads one [[secret]] table: name and source, each a string, with host, header, env,
-// method and path optional, and nothing else. An empty string is as good as no key. A row
-// without host and header names a provider's secret, which supplies them (cmd/workcell).
+// method and path optional, repos an optional array of strings, and nothing else. An empty string
+// or array is as good as no key. A row without host and header names a provider's secret, which
+// supplies them (cmd/workcell).
 func secretRow(t *table, name string) (Secret, error) {
 	s := Secret{Line: t.line}
 	fields := map[string]*string{"name": &s.Name, "source": &s.Source, "host": &s.Host, "header": &s.Header, "env": &s.Env, "method": &s.Method, "path": &s.Path}
 	for key, v := range t.keys {
+		if key == "repos" {
+			if v.kind != kStrings {
+				return Secret{}, fmt.Errorf("%s:%d: repos must be an array of strings", name, v.line)
+			}
+			for _, e := range v.strs {
+				s.Repos = append(s.Repos, e.Text)
+			}
+			continue
+		}
 		field, ok := fields[key]
 		if !ok {
-			return Secret{}, fmt.Errorf("%s:%d: unknown key %q in [[secret]]: name, source, host, header, env, method and path are the keys", name, v.line, key)
+			return Secret{}, fmt.Errorf("%s:%d: unknown key %q in [[secret]]: name, source, host, header, env, method, path and repos are the keys", name, v.line, key)
 		}
 		if v.kind != kString {
 			return Secret{}, fmt.Errorf("%s:%d: %s must be a string", name, v.line, key)

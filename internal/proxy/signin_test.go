@@ -140,10 +140,7 @@ func TestTokenEndpoint(t *testing.T) {
 		{"api.example.com", "/oauth/token", false},
 	}
 	for _, tc := range cases {
-		u, err := url.Parse("https://" + tc.host + tc.target)
-		if err != nil {
-			t.Fatal(err)
-		}
+		u := must(url.Parse("https://" + tc.host + tc.target))
 		if _, got := p.tokenEndpoint(tc.host, u); got != tc.want {
 			t.Errorf("tokenEndpoint(%q, %q) = %t, want %t", tc.host, tc.target, got, tc.want)
 		}
@@ -316,14 +313,9 @@ func signinFixture(t *testing.T, p *provider, broker Broker) (*http.Client, Term
 	roots.AddCert(server.Certificate())
 	px, log, _ := testProxy(t, "api.example.com:443 login.example.com:443", []netip.Addr{netip.MustParseAddr("8.8.8.8")}, server.Listener.Addr().String())
 	px.upstreamRoots = roots
-	ca, err := NewSessionCA([]string{"api.example.com", "login.example.com"}, time.Now().Add(time.Hour))
-	if err != nil {
-		t.Fatal(err)
-	}
+	ca := must(NewSessionCA([]string{"api.example.com", "login.example.com"}, time.Now().Add(time.Hour)))
 	rule := TerminateRule{Host: "api.example.com", Header: "authorization", Placeholder: testPlaceholder, SignIn: &SignIn{Host: "login.example.com", Path: tokenEndpointPath, Refresh: testRefreshPlaceholder}}
-	if err := px.Terminate(ca, broker, []TerminateRule{rule}); err != nil {
-		t.Fatal(err)
-	}
+	must(0, px.Terminate(ca, broker, []TerminateRule{rule}))
 	return clientVia(listen(t, px, 443), caPool(t, ca)), rule, px, log
 }
 
@@ -331,10 +323,7 @@ func signinFixture(t *testing.T, p *provider, broker Broker) (*http.Client, Term
 // body that carries a real token: the guest never reads one (I5).
 func send(t *testing.T, c *http.Client, method, target, ctype, body string, header ...string) (int, string) {
 	t.Helper()
-	req, err := http.NewRequest(method, target, strings.NewReader(body))
-	if err != nil {
-		t.Fatal(err)
-	}
+	req := must(http.NewRequest(method, target, strings.NewReader(body)))
 	if ctype != "" {
 		req.Header.Set("Content-Type", ctype)
 	}

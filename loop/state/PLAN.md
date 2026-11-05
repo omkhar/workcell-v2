@@ -162,7 +162,7 @@ with ADR-003 and ADR-004, they build on the proposal, and you can accept it at a
       accept: as U-404
 - [x] U-406 | flow:build | model:sonnet | env:kvm | deps:U-402 | tries:0 | Copilot CLI and Gemini CLI adapters
       accept: as U-404
-- [ ] U-407 | flow:boundary | model:fable | env:kvm | deps:U-401 | tries:0 | Git over HTTPS: inject a token scoped to named repositories by path
+- [x] U-407 | flow:boundary | model:fable | env:kvm | deps:U-401 | tries:0 | Git over HTTPS: inject a token scoped to named repositories by path
       accept: clone and push work for an allowed repository; the same placeholder fails for any other repository on the same host
 - [ ] U-408 | flow:boundary | model:fable | env:kvm | deps:U-402,B-821 | tries:0 | `workcell update [agent]`: fetch by pinned URL and digest on the host, build a per-agent layer, keep the previous one, record version and digest in the audit log (A10, B8)
       accept: provider versions appear only under `pins/`; a digest mismatch is refused; `--rollback` and `--to` work
