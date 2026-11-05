@@ -108,7 +108,7 @@ with ADR-003 and ADR-004, they build on the proposal, and you can accept it at a
       accept: `workcell run -- sh -c 'exit 7'` exits 7; an interactive shell works over a real terminal
 - [x] U-204b | flow:escape | model:fable | env:kvm | deps:U-204,U-004 | tries:0 | The real `workcell` adapter in `escape/`, driven only through the CLI. It replaces the stub from U-004
       accept: `go run ./escape/cmd/escape -sandbox workcell -list` works in hosted CI, and the log shows one test that runs in a real guest
-- [ ] U-205 | flow:build | model:sonnet | env:kvm | deps:U-204b,U-007,H-011 | tries:0 | Session directory and lifecycle: `ls`, `stop`, `rm`, crash cleanup. Port `_legacy/rootio` only where R6 applies (S14)
+- [x] U-205 | flow:build | model:sonnet | env:kvm | deps:U-204b,U-007,H-011 | tries:0 | Session directory and lifecycle: `ls`, `stop`, `rm`, crash cleanup. Port `_legacy/rootio` only where R6 applies (S14)
       accept: I7 added to `enforced.txt` and green
 - [x] U-206 | flow:build | model:sonnet | env:kvm | deps:U-204b,U-007 | tries:0 | Resource caps: CPU, memory, disk, processes, log volume
       accept: I10 added to `enforced.txt` and green

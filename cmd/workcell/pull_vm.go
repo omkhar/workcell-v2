@@ -118,7 +118,7 @@ func fetch(use func(*manifest, source) error) (int, error) {
 	sigs := make(chan os.Signal, 4)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
 	defer signal.Stop(sigs)
-	b, code, err := boot(a, defaults(), sigs, image, "")
+	b, code, err := boot(a, defaults(), sigs, session, image, "")
 	if b == nil {
 		return code, err
 	}
@@ -155,14 +155,13 @@ func fetch(use func(*manifest, source) error) (int, error) {
 // newest is the directory of the newest session whose repo file names dir: the session
 // directories sort by time.
 func newest(sessions, dir string) (string, error) {
-	ents, err := os.ReadDir(sessions)
-	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+	l, err := list(sessions)
+	if err != nil {
 		return "", err
 	}
-	for i := len(ents) - 1; i >= 0; i-- {
-		b, err := os.ReadFile(filepath.Join(sessions, ents[i].Name(), "repo"))
-		if err == nil && strings.TrimSuffix(string(b), "\n") == dir {
-			return filepath.Join(sessions, ents[i].Name()), nil
+	for i := len(l) - 1; i >= 0; i-- {
+		if l[i].repo == dir {
+			return filepath.Join(sessions, l[i].id), nil
 		}
 	}
 	return "", fmt.Errorf("no session has run in %s: workcell run one first", dir)
