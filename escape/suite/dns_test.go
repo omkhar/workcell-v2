@@ -5,6 +5,7 @@ package suite
 
 import (
 	"bytes"
+	"encoding/binary"
 	"strconv"
 	"strings"
 	"testing"
@@ -112,4 +113,77 @@ func TestTunnelled(t *testing.T) {
 			t.Errorf("%s: tunnelled = %q, %v; want leak %v with %q", c.name, what, leak, c.leak, c.n)
 		}
 	}
+}
+
+func TestParseDNSReply(t *testing.T) {
+	q := dnsQuery(dnsQuestion{ID: 0x1234, Name: "a.test.", Type: dnsTypeA})
+	reply := func(rcode byte, rrs ...[]byte) []byte {
+		b := append([]byte{}, q...)
+		b[2], b[3] = 0x81, 0x80|rcode
+		binary.BigEndian.PutUint16(b[6:], uint16(len(rrs)))
+		for _, rr := range rrs {
+			b = append(b, rr...)
+		}
+		return b
+	}
+	rr := func(typ uint16, data ...byte) []byte {
+		b := append([]byte{0xC0, 12}, byte(typ>>8), byte(typ), 0, 1, 0, 0, 0, 60)
+		return append(binary.BigEndian.AppendUint16(b, uint16(len(data))), data...)
+	}
+	a := reply(0, rr(dnsTypeA, 127, 0, 0, 1))
+	aaaa := reply(0, rr(dnsTypeAAAA, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1))
+	cname := reply(0, []byte{1, 'b', 4, 't', 'e', 's', 't', 0, 0, 5, 0, 1, 0, 0, 0, 60, 0, 2, 0xC0, 12}, rr(dnsTypeA, 10, 0, 0, 1))
+	txt := reply(0, rr(dnsTypeTXT, 1, 'x'))
+	cases := []struct {
+		name  string
+		in    []byte
+		rcode uint16
+		addrs []string
+		n     int
+		ok    bool
+	}{
+		{"A", a, 0, []string{"127.0.0.1"}, 1, true},
+		{"AAAA", aaaa, 0, []string{"::1"}, 1, true},
+		{"CNAME then A", cname, 0, []string{"10.0.0.1"}, 2, true},
+		{"TXT", txt, 0, nil, 1, true},
+		{"NODATA", reply(0), 0, nil, 0, true},
+		{"REFUSED", reply(5), 5, nil, 0, true},
+		{"NXDOMAIN", reply(3), 3, nil, 0, true},
+		{"a query", q, 0, nil, 0, false},
+		{"truncated record", a[:len(a)-1], 0, nil, 0, false},
+		{"truncated name", a[:14], 0, nil, 0, false},
+		{"bad label bits", append(reply(0)[:12:12], 0x80, 1, 0, 1, 0, 1), 0, nil, 0, false},
+		{"header only", a[:12], 0, nil, 0, false},
+		{"nothing", nil, 0, nil, 0, false},
+	}
+	for _, c := range cases {
+		r, ok := parseDNSReply(c.in)
+		if ok != c.ok || r.Rcode != c.rcode || len(r.Answers) != c.n || strings.Join(r.addresses(), ",") != strings.Join(c.addrs, ",") {
+			t.Errorf("%s: parseDNSReply = %+v, %v; want rcode %d, %d records, %v, %v", c.name, r, ok, c.rcode, c.n, c.addrs, c.ok)
+		}
+		if ok && r.ID != 0x1234 {
+			t.Errorf("%s: id %#x", c.name, r.ID)
+		}
+	}
+	e := withEDNS0(q)
+	if len(e) != len(q)+11 || e[11] != 1 || e[len(e)-9] != dnsTypeOPT || !bytes.Equal(e[:10], q[:10]) {
+		t.Errorf("withEDNS0 = % x", e)
+	}
+}
+
+func FuzzParseDNSReply(f *testing.F) {
+	q := dnsQuery(dnsQuestion{ID: 1, Name: "a.test.", Type: dnsTypeA})
+	f.Add(q)
+	f.Add(append(append([]byte{}, q...), 0xC0, 12, 0, 1, 0, 1, 0, 0, 0, 60, 0, 4, 127, 0, 0, 1))
+	f.Fuzz(func(t *testing.T, b []byte) {
+		r, ok := parseDNSReply(b)
+		if ok && (len(b) < 12 || b[2]&0x80 == 0) {
+			t.Fatalf("parseDNSReply(%x) = %+v: not a response", b, r)
+		}
+		for _, a := range r.addresses() {
+			if a == "" || a == "<nil>" {
+				t.Fatalf("parseDNSReply(%x): bad address %q", b, a)
+			}
+		}
+	})
 }

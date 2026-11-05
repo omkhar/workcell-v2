@@ -10,6 +10,7 @@ package proxy
 
 import (
 	"fmt"
+	"maps"
 	"net"
 	"net/netip"
 	"slices"
@@ -100,6 +101,16 @@ func ParseAllowlist(text, label string) (*Allowlist, error) {
 		return nil, fmt.Errorf("%s has no endpoints", label)
 	}
 	return a, nil
+}
+
+// Hosts lists every host the allowlist names, on any port, each once, in ascending order.
+func (a *Allowlist) Hosts() []string {
+	hosts := make(map[string]bool, len(a.sni)+len(a.forward))
+	maps.Copy(hosts, a.sni)
+	for _, host := range a.forward {
+		hosts[host] = true
+	}
+	return slices.Sorted(maps.Keys(hosts))
 }
 
 // Ports lists the ports the proxy must listen on, in ascending order.

@@ -25,6 +25,7 @@ import (
 	"github.com/omkhar/workcell/v2/internal/guest"
 	"github.com/omkhar/workcell/v2/internal/proxy"
 	"github.com/omkhar/workcell/v2/internal/relay"
+	"github.com/omkhar/workcell/v2/internal/resolver"
 	"github.com/omkhar/workcell/v2/internal/vmm"
 	"github.com/omkhar/workcell/v2/internal/wire"
 	"github.com/omkhar/workcell/v2/internal/workspace"
@@ -231,8 +232,9 @@ func boot(a artifacts, caps limits, sigs <-chan os.Signal, session, image, mount
 		cmdline += " workcell.workspace=/dev/vdb"
 	}
 	var ports []uint16 // the TCP ports the guest relays and the proxy serves; UDP 53 is relayed regardless
+	var names []string // the names the resolver answers: every host the proxy would admit (I3)
 	if allow != nil {
-		ports = allow.Ports()
+		ports, names = allow.Ports(), allow.Hosts()
 	}
 	console := &tail{}
 	m := newMachine(a, vmm.Config{Kernel: a.kernel, Initrd: a.initrd, Image: a.image,
@@ -266,7 +268,7 @@ func boot(a artifacts, caps limits, sigs <-chan os.Signal, session, image, mount
 			go func() { _ = p.Serve(l, port) }()
 		}
 	}
-	go serveRelay(streams, listeners, headerWait)
+	go serveRelay(streams, listeners, resolver.New(names), headerWait)
 	if mount != "" {
 		files, err := m.Listen(fileserve.Port)
 		if err == nil {

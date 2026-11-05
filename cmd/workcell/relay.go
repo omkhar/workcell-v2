@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/omkhar/workcell/v2/internal/relay"
+	"github.com/omkhar/workcell/v2/internal/resolver"
 )
 
 // The host end of the network path (ADR-003). The guest's init opens one vsock stream to
@@ -21,11 +22,14 @@ import (
 // for a port the policy serves hands the rest of the stream to that port's adapter, a
 // net.Listener the proxy's Serve(adapter, port) takes connections from as it would from any
 // listener: it routes by SNI or by the port's one host, resolves the name on the host and dials
-// the vetted address. The address in the header is never dialled (I4). Any other header, UDP
-// included until U-304 answers UDP 53, closes the stream with nothing dialled.
+// the vetted address. The address in the header is never dialled (I4). A UDP header for port 53,
+// whatever its address, carries one framed query, which the host resolver answers from the
+// policy alone with one framed reply (I3): no query leaves the host. Any other header closes the
+// stream with nothing dialled.
 const (
 	maxStreams = 1024            // streams held at once; the next one is closed at once
-	headerWait = 5 * time.Second // from accept to the last header byte
+	headerWait = 5 * time.Second // from accept to the last header byte, or to the end of a DNS exchange
+	dnsPort    = 53
 )
 
 // portsArg is the workcell.ports= argument of the guest's kernel command line: the TCP ports
@@ -142,8 +146,8 @@ func (l *boundedLog) Write(p []byte) (int, error) {
 
 // serveRelay takes the guest's relayed streams until the listener closes with the session, then
 // closes every adapter, so that the proxy's Serve loops end with it (A9). Each stream has wait
-// to complete its header.
-func serveRelay(ln net.Listener, served adapters, wait time.Duration) {
+// to complete its header; dns answers the UDP 53 streams.
+func serveRelay(ln net.Listener, served adapters, dns *resolver.Resolver, wait time.Duration) {
 	defer served.closeAll()
 	slots := make(chan struct{}, maxStreams)
 	for {
@@ -157,26 +161,46 @@ func serveRelay(ln net.Listener, served adapters, wait time.Duration) {
 			_ = c.Close()
 			continue
 		}
-		go stream(&relayConn{Conn: c, release: func() { <-slots }}, served, wait)
+		go stream(&relayConn{Conn: c, release: func() { <-slots }}, served, dns, wait)
 	}
 }
 
 // stream reads one header: 20 bytes within wait, or the stream is dropped. Version 1, TCP and a
 // served port hand the rest of the stream to that port's adapter, the header consumed and the
-// deadline lifted. Any other header closes the stream with nothing dialled.
-func stream(c *relayConn, served adapters, wait time.Duration) {
-	_ = c.SetReadDeadline(time.Now().Add(wait))
+// deadline lifted. Version 1, UDP and port 53 is one DNS exchange under the same deadline, and
+// the stream closes after it. Any other header closes the stream with nothing dialled.
+func stream(c *relayConn, served adapters, dns *resolver.Resolver, wait time.Duration) {
+	_ = c.SetDeadline(time.Now().Add(wait))
 	var b [relay.HeaderLen]byte
 	if _, err := io.ReadFull(c, b[:]); err != nil {
 		_ = c.Close()
 		return
 	}
 	h, err := relay.Decode(b[:])
+	if err == nil && h.Proto == relay.UDP {
+		if h.Dst.Port() == dnsPort {
+			exchange(c, dns)
+		}
+		_ = c.Close()
+		return
+	}
 	l, ok := served[h.Dst.Port()]
-	if err != nil || h.Proto != relay.TCP || !ok || c.SetReadDeadline(time.Time{}) != nil {
+	if err != nil || h.Proto != relay.TCP || !ok || c.SetDeadline(time.Time{}) != nil {
 		_ = c.Close()
 		return
 	}
 	c.dst = net.TCPAddrFromAddrPort(h.Dst)
 	l.deliver(c)
+}
+
+// exchange reads the one framed query of a DNS stream and writes the one framed reply, if the
+// resolver has one. The frame reader bounds the query; the resolver bounds the reply (I12).
+func exchange(c net.Conn, dns *resolver.Resolver) {
+	q, err := relay.ReadFrame(c)
+	if err != nil {
+		return
+	}
+	if a := dns.Answer(q); a != nil {
+		_, _ = c.Write(relay.Frame(a))
+	}
 }
