@@ -323,11 +323,17 @@ echo exit=$rc; echo compiles=$(printf '%s\n' "$out" | grep -c '/compile '); [ $r
 	const echo = `echo READY; while read l; do echo "got:$l"; [ "$l" = quit ] && exit 5; done`
 
 	// Closing the terminal detaches (A9): the supervisor stays the one process that owns the VM,
-	// `attach` brings a terminal back, and the end of the command is recorded (I9).
+	// `attach` brings a terminal back, and the end of the command is recorded (I9). The whole
+	// process group must get the hangup, not just the leader: a closing terminal window signals
+	// every job of the shell, so the VMM must be out of the supervisor's group or it dies of it.
 	t.Run("detach", func(t *testing.T) {
-		run := onTerminal(t, workcell(repo, nil, "sh", "-c", echo))
+		cmd := workcell(repo, nil, "sh", "-c", echo)
+		run := onTerminal(t, cmd)
 		run.out.wait(t, "READY")
-		run.master.Close() // the terminal goes away: SIGHUP, and EIO on its input
+		run.master.Close()                                                     // the terminal goes away: SIGHUP to the leader, and EIO on its input
+		if err := syscall.Kill(-cmd.Process.Pid, syscall.SIGHUP); err != nil { // and to the rest of its group
+			t.Fatal(err)
+		}
 		select {
 		case err := <-run.exited:
 			t.Fatalf("the session ended with its terminal: %v", err)
