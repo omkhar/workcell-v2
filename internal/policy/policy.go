@@ -107,7 +107,7 @@ func readAll(f *os.File, path string) (Policy, error) {
 }
 
 // Narrow is the user's policy as a repository's file leaves it (I13): that file can take grants away
-// and give none. With an allow array, only the user's entries it names, with exactly the same text, stay;
+// and give none. With an allow array, only the user's entries it names, with exactly the same text, stay, and a secret whose host that drops goes too;
 // with [[secret]] rows, only the user's rows whose name a row of it names stay, as the user wrote them. Of a
 // repository's row only the name is read. [workspace], [resources] and [update] are not read. What the
 // repository asked for that the user did not grant comes back as asked: a host as written, a secret as its name quoted.
@@ -138,6 +138,12 @@ func Narrow(user, repo Policy) (got Policy, asked []string) {
 				asked = append(asked, "secret "+strconv.Quote(r.Name))
 			}
 		}
+	}
+	if repo.AllowSet { // a secret goes with its host when the host is narrowed away
+		has := func(es []Entry, h string) bool {
+			return slices.ContainsFunc(es, func(e Entry) bool { return e.Text == h })
+		}
+		got.Secret = slices.DeleteFunc(slices.Clone(got.Secret), func(s Secret) bool { return has(user.Allow, s.Host) && !has(got.Allow, s.Host) })
 	}
 	return got, asked
 }

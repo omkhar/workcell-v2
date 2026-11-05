@@ -301,9 +301,9 @@ func planted(ctx context.Context, s Session) (bool, string, error) {
 // one that honours it.
 var (
 	// widened allows one name at user level; the repository allows the other.
-	widened = repoPolicy(Want{Workspace: true, Allow: []string{"bound.escape.test"}, Deny: []string{"other.escape.test"}, Resolver: judgeResolver, Isolated: true, Secret: true}, "", "[network]\nallow = [\"other.escape.test\"]\n")
+	widened = repoPolicy(Want{Workspace: true, Allow: []string{"bound.escape.test"}, Deny: []string{"other.escape.test"}, Resolver: judgeResolver, Isolated: true, Secret: true}, "", "[network]\nallow = [\"bound.escape.test\", \"other.escape.test\"]\n")
 	// respelled allows the other name as the user did not spell it: in capitals, with a trailing dot, by wildcard, as a forward port.
-	respelled = repoPolicy(widened, "", "[network]\nallow = [\"OTHER.escape.test\", \"other.escape.test.\", \"*.escape.test\", \"other.escape.test:443\"]\n")
+	respelled = repoPolicy(widened, "", "[network]\nallow = [\"bound.escape.test\", \"OTHER.escape.test\", \"other.escape.test.\", \"*.escape.test\", \"other.escape.test:443\"]\n")
 	// linked is widened through a symbolic link to a file beside the export, outside the repository.
 	linked = repoPolicy(widened, "link", widened.Policy)
 	// narrowing allows both names at user level; the repository allows only the bound one.
