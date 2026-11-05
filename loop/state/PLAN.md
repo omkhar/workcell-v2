@@ -156,7 +156,7 @@ with ADR-003 and ADR-004, they build on the proposal, and you can accept it at a
       accept: adding a provider is one data file and no Go code
 - [x] U-403 | flow:boundary | model:fable | env:kvm | deps:U-402 | tries:0 | Sign-in flows at the proxy: swap real tokens for placeholders in token-endpoint responses, and refresh on the host
       accept: a fake provider in `escape/` proves that access and refresh tokens never reach the guest
-- [ ] U-404 | flow:build | model:sonnet | env:kvm | deps:U-402 | tries:0 | Claude Code adapter, API key path
+- [x] U-404 | flow:build | model:sonnet | env:kvm | deps:U-402 | tries:0 | Claude Code adapter, API key path
       accept: scripted session against a local fake API
 - [ ] U-405 | flow:build | model:sonnet | env:kvm | deps:U-402 | tries:0 | Codex adapter, API key path
       accept: as U-404

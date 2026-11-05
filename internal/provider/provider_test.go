@@ -51,6 +51,11 @@ func TestEmbeddedProviders(t *testing.T) {
 	if _, ok := Lookup("nope"); ok {
 		t.Error("Lookup found a provider that is not there")
 	}
+	for name, want := range map[string]string{"anthropic": "claude", "openai": "codex", "github": "copilot", "gemini": "gemini", "nope": ""} {
+		if s, p, ok := FindSecret(name); ok != (want != "") || p.Name != want || ok && s.Name != name {
+			t.Errorf("FindSecret(%q) = %+v, %q, %v; want provider %q", name, s, p.Name, ok, want)
+		}
+	}
 }
 
 // TestAddProviderIsOneDataFile is the accept of U-402: a provider that no Go code knows loads

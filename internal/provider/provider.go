@@ -67,6 +67,18 @@ func Lookup(name string) (Provider, bool) {
 	return all[i], true
 }
 
+// FindSecret is the compiled-in credential of the name, with the provider that holds it, for a
+// [[secret]] row that names a provider's secret instead of spelling out its host and header.
+func FindSecret(name string) (Secret, Provider, bool) {
+	all, _ := All()
+	for _, p := range all {
+		if i := slices.IndexFunc(p.Secrets, func(s Secret) bool { return s.Name == name }); i >= 0 {
+			return p.Secrets[i], p, true
+		}
+	}
+	return Secret{}, Provider{}, false
+}
+
 // Load reads every *.toml of the root of fsys, in name order. A file is named for its provider.
 // Any fault refuses the whole set, as "file:line: what".
 func Load(fsys fs.FS) ([]Provider, error) {

@@ -35,9 +35,10 @@ type Policy struct {
 }
 
 // Secret is one [[secret]] row: the secret Name, read on the host from Source, is sent only
-// in Header to Host. Env names the guest variable that carries its placeholder, Method and
-// Path narrow the swap to requests of that method under that path prefix; each is "" when the
-// row leaves it out. Line is the row's, for an error that names it.
+// in Header to Host (both "" when a provider's secret of that name is to fill them in). Env names
+// the guest variable that carries its placeholder, Method and Path narrow the swap to requests of
+// that method under that path prefix; each is "" when the row leaves it out. Line is the row's,
+// for an error that names it.
 type Secret struct {
 	Name, Source, Host, Header, Env, Method, Path string
 	Line                                          int
@@ -150,8 +151,9 @@ func Tables(text, name string) ([]Table, error) {
 	return out, nil
 }
 
-// secretRow reads one [[secret]] table: name, source, host and header, each a string, with env,
-// method and path optional, and nothing else. An empty string is as good as no key.
+// secretRow reads one [[secret]] table: name and source, each a string, with host, header, env,
+// method and path optional, and nothing else. An empty string is as good as no key. A row
+// without host and header names a provider's secret, which supplies them (cmd/workcell).
 func secretRow(t *table, name string) (Secret, error) {
 	s := Secret{Line: t.line}
 	fields := map[string]*string{"name": &s.Name, "source": &s.Source, "host": &s.Host, "header": &s.Header, "env": &s.Env, "method": &s.Method, "path": &s.Path}
@@ -165,7 +167,7 @@ func secretRow(t *table, name string) (Secret, error) {
 		}
 		*field = v.str
 	}
-	for _, key := range []string{"name", "source", "host", "header"} {
+	for _, key := range []string{"name", "source"} {
 		if *fields[key] == "" {
 			return Secret{}, fmt.Errorf("%s:%d: [[secret]] needs a %s", name, t.line, key)
 		}
