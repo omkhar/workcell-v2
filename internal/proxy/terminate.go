@@ -202,12 +202,16 @@ func (ca *SessionCA) issue(host string, key *ecdsa.PrivateKey) (*x509.Certificat
 	}, ca.cert, &key.PublicKey, ca.key)
 }
 
-// Terminate makes p terminate TLS for each rule host, which must be on the
-// SNI allowlist, and swap each rule's placeholder header via broker. A host
-// can have one rule per header. Header names are stored lowercase, the form
-// the credential broker's grants use, since HTTP header names ignore case.
+// Terminate makes p terminate TLS for every host on the SNI allowlist, with a
+// leaf from ca, and swap each rule's placeholder header via broker. A rule's
+// host must be on the SNI allowlist; a host can have one rule per header.
+// Header names are stored lowercase, the form the credential broker's grants
+// use, since HTTP header names ignore case.
 func (p *Proxy) Terminate(ca *SessionCA, broker Broker, rules []TerminateRule) error {
-	terminate := map[string][]TerminateRule{}
+	terminate := make(map[string][]TerminateRule, len(p.allow.sni))
+	for host := range p.allow.sni {
+		terminate[host] = nil
+	}
 	seen := map[string]bool{}
 	for _, r := range rules {
 		if !p.allow.sni[r.Host] {
@@ -286,9 +290,21 @@ func (c *closeNotifyConn) Close() error {
 	return err
 }
 
+// sameHost reports whether an HTTP Host or :authority names sni, which is
+// canonical: the same name in any letter case, with or without the :443 port
+// and a trailing dot. As in route, a non-ASCII fold is no match.
+func sameHost(host, sni string) bool {
+	lower := strings.ToLower(host)
+	if len(lower) != len(host) {
+		return false
+	}
+	return strings.TrimSuffix(strings.TrimSuffix(lower, ":443"), ".") == sni
+}
+
 // serveTerminated terminates TLS for host with a session leaf and proxies
 // HTTP/1.1 requests to the real host, swapping the placeholder headers. It
-// refuses a request that still carries a placeholder after the swap.
+// refuses a request that names another host than the SNI did (I6), and one
+// that still carries a placeholder after the swap.
 func (p *Proxy) serveTerminated(client net.Conn, host string, replay []byte) {
 	rules := p.terminate[host]
 	tlsConn := tls.Server(&replayConn{Conn: client, r: io.MultiReader(bytes.NewReader(replay), client)}, &tls.Config{
@@ -320,6 +336,11 @@ func (p *Proxy) serveTerminated(client net.Conn, host string, replay []byte) {
 			if r.Method == http.MethodTrace || r.Method == http.MethodConnect {
 				p.deny(host, tlsPort, "method_refused")
 				http.Error(w, "method not allowed through the credential broker", http.StatusMethodNotAllowed)
+				return
+			}
+			if !sameHost(r.Host, host) {
+				p.deny(host, tlsPort, "host_mismatch")
+				http.Error(w, fmt.Sprintf("the request names %q on a connection whose TLS names %s", r.Host, host), http.StatusMisdirectedRequest)
 				return
 			}
 			for _, rule := range rules {
