@@ -200,8 +200,9 @@ func (w *workcell) Start(_ context.Context, cfg Config) (string, error) {
 	}
 	// The secret's value, where only the host reads it: a file of the
 	// session's own, mode 0600, beside the policy and outside any export.
+	// A row with a source of its own (a sign-in flow) has no value to write.
 	source := filepath.Join(dir, "secret")
-	if cfg.Secret != nil {
+	if cfg.Secret != nil && cfg.Secret.Source == "" {
 		if err := os.WriteFile(source, []byte(cfg.Secret.Value), 0o600); err != nil {
 			os.RemoveAll(dir)
 			return "", fmt.Errorf("workcell: write the secret: %w", err)

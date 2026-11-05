@@ -25,15 +25,31 @@ const maxLedgerLineBytes = 8 * maxLineBytes
 // summary stops and reports status=truncated.
 const maxLedgerRecords = 1_000_000
 
-// Ledger results: one grant, and each denial the broker records.
+// Ledger results: each grant, and each denial, the broker records. A grant
+// names its credential: a value released for its header, its refresh token
+// released for its token endpoint, or the tokens its sign-in flow issued,
+// at the sign-in and at each refresh.
 const (
-	resultGranted      = "granted"
-	resultBadToken     = "bad_token"
-	resultRateLimited  = "rate_limited"
-	resultNotGranted   = "not_granted"
-	resultPeerRejected = "peer_rejected"
-	resultMalformed    = "malformed"
+	resultGranted        = "granted"
+	resultRefreshGranted = "refresh_granted"
+	resultSignedIn       = "signed_in"
+	resultRefreshed      = "refreshed"
+	resultBadToken       = "bad_token"
+	resultRateLimited    = "rate_limited"
+	resultNotGranted     = "not_granted"
+	resultNotSignedIn    = "not_signed_in"
+	resultPeerRejected   = "peer_rejected"
+	resultMalformed      = "malformed"
 )
+
+// grant reports whether result is one of the grants.
+func grant(result string) bool {
+	switch result {
+	case resultGranted, resultRefreshGranted, resultSignedIn, resultRefreshed:
+		return true
+	}
+	return false
+}
 
 // ledgerRecord is one ledger line. The writer must emit these keys in this
 // order, so the reader reads back exactly what the broker writes.
@@ -78,7 +94,7 @@ func ledgerAuditRecords(log io.Reader, known func(credential, host, header strin
 		switch {
 		case !ok:
 			malformed++
-		case record.Result == resultGranted:
+		case grant(record.Result):
 			granted++
 		default:
 			denied++
@@ -114,12 +130,10 @@ func parseLedgerLine(line string, known func(credential, host, header string) bo
 		return record, false
 	}
 	switch record.Result {
-	case resultGranted:
-		return record, known(record.Credential, record.Host, record.Header)
-	case resultBadToken, resultRateLimited, resultNotGranted, resultPeerRejected, resultMalformed:
+	case resultBadToken, resultRateLimited, resultNotGranted, resultNotSignedIn, resultPeerRejected, resultMalformed:
 		return record, record.Credential == ""
 	}
-	return record, false
+	return record, grant(record.Result) && known(record.Credential, record.Host, record.Header)
 }
 
 // uniqueObjectKeys reports whether line is one JSON object whose keys are all

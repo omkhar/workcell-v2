@@ -4,6 +4,7 @@
 package sandbox
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"io"
@@ -64,7 +65,8 @@ const policyFile = "workcell/config.toml"
 // policyTOML is the session policy of SPEC section 5 for cfg: a [network]
 // table whose allow array holds each of cfg.Allow as a TOML basic string,
 // and, for cfg.Secret, one [[secret]] table binding it to its host and
-// header, with its value in the file source and the guest's placeholder in
+// header, with its value in the file source (or the source the entry
+// names itself, such as a sign-in flow) and the guest's placeholder in
 // its variable, narrowed to a method and a path prefix when it names them.
 // A bare name is port 443 by SNI; `name:port` is a forward entry for that
 // one port. Every entry comes from the test table, but a quote, a backslash
@@ -98,7 +100,7 @@ func policyTOML(cfg Config, source string) ([]byte, error) {
 			return nil, fmt.Errorf("policy: the secret's host %q is not an allowed name", sec.Host)
 		}
 		b = append(b, "\n[[secret]]\n"...)
-		for _, kv := range []struct{ key, value string }{{"name", sec.Name}, {"source", "file:" + source}, {"host", sec.Host}, {"header", sec.Header}, {"env", sec.Env}, {"method", sec.Method}, {"path", sec.Path}} {
+		for _, kv := range []struct{ key, value string }{{"name", sec.Name}, {"source", cmp.Or(sec.Source, "file:"+source)}, {"host", sec.Host}, {"header", sec.Header}, {"env", sec.Env}, {"method", sec.Method}, {"path", sec.Path}} {
 			if kv.value == "" {
 				continue // an optional key, or one the product defaults
 			}

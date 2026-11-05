@@ -92,9 +92,10 @@ func (c *control) Start(_ context.Context, cfg Config) (string, error) {
 	if err := os.WriteFile(filepath.Join(dir, "resolv.conf"), []byte("nameserver "+host+"\n"), 0o644); err != nil {
 		return "", fmt.Errorf("control: write resolv.conf: %w", err)
 	}
-	if sec := cfg.Secret; sec != nil {
+	if sec := cfg.Secret; sec != nil && sec.Value != "" {
 		// The naive way: the real value in the environment, and in a dotenv
-		// file in the workspace for tools that read one.
+		// file in the workspace for tools that read one. A row whose source
+		// is a sign-in flow has no value here: the guest signs in itself.
 		c.env = append(c.env, sec.Env+"="+sec.Value)
 		if cfg.Workspace != "" {
 			if err := os.WriteFile(filepath.Join(cfg.Workspace, ".env"), []byte(sec.Env+"="+sec.Value+"\n"), 0o600); err != nil {

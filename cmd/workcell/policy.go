@@ -74,27 +74,41 @@ var envName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
 // bindings turns the policy's [[secret]] rows into the session's bindings, one fresh placeholder
 // each. The proxy judges host, header, method and path (A3); the host must then be a bare name
-// of the allow list, so that the proxy terminates it and swaps there (I6); no two rows may bind
-// one header on one host; and env must be a variable name. A fault is reported with its line.
+// of the allow list, so that the proxy terminates it and swaps there (I6), as must the host of a
+// sign-in source; no two rows may bind one header on one host, or one token endpoint; and env
+// must be a variable name. A fault is reported with its line.
 func bindings(p policy.Policy, allow *proxy.Allowlist, file string) ([]binding, error) {
 	var out []binding
-	bound := map[string]int{} // the line that bound each host and header
+	bound := map[string]int{} // the line that bound each host and header, and each token endpoint
 	for _, s := range p.Secret {
 		at := fmt.Sprintf("%s:%d: secret %q", file, s.Line, s.Name)
 		rule, err := proxy.NewTerminateRule(s.Host, s.Header, s.Method, s.Path)
+		if err == nil && strings.HasPrefix(s.Source, "signin:") {
+			rule.SignIn, err = proxy.NewSignIn(s.Source)
+		}
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", at, err)
 		}
-		pair := rule.Host + " " + rule.Header
+		pair, endpoint := rule.Host+" "+rule.Header, ""
+		if rule.SignIn != nil {
+			endpoint = rule.SignIn.Host + rule.SignIn.Path
+		}
 		switch {
 		case allow == nil || !slices.Contains(allow.TLSHosts(), rule.Host):
 			return nil, fmt.Errorf("%s: host %q is not a bare name in [network] allow", at, s.Host)
 		case bound[pair] != 0:
 			return nil, fmt.Errorf("%s: header %s on %s is already bound on line %d", at, rule.Header, rule.Host, bound[pair])
+		case endpoint != "" && !slices.Contains(allow.TLSHosts(), rule.SignIn.Host):
+			return nil, fmt.Errorf("%s: sign-in host %q is not a bare name in [network] allow", at, rule.SignIn.Host)
+		case endpoint != "" && bound[endpoint] != 0:
+			return nil, fmt.Errorf("%s: token endpoint %s is already bound on line %d", at, endpoint, bound[endpoint])
 		case s.Env != "" && !envName.MatchString(s.Env):
 			return nil, fmt.Errorf("%s: env %q is not a variable name", at, s.Env)
 		}
 		bound[pair] = s.Line
+		if endpoint != "" {
+			bound[endpoint] = s.Line
+		}
 		out = append(out, binding{grant: secret.Grant{Name: s.Name, Source: s.Source, Host: rule.Host, Header: rule.Header}, rule: rule, env: s.Env})
 	}
 	return out, nil

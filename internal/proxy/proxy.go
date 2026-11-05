@@ -82,6 +82,7 @@ type Proxy struct {
 
 	// TLS termination; set by Terminate. upstreamRoots nil means system roots.
 	terminate     map[string][]TerminateRule
+	signin        map[string][]TerminateRule // by token host: the rules whose endpoint it serves
 	ca            *SessionCA
 	broker        Broker
 	transport     *http.Transport

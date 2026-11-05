@@ -44,13 +44,19 @@ const (
 	readChunk  = 1 << 20
 )
 
-// NewSecret makes a fresh secret bound to host, in the header boundHeader,
-// for the runner to put in a session's Config when a test wants one; narrow
-// binds it to narrowMethod requests under narrowPath alone.
-func NewSecret(host string, narrow bool) sandbox.Secret {
-	sec := sandbox.Secret{Name: "escape", Value: secretPrefix + newToken()[:secretHex], Host: host, Header: boundHeader, Env: "ESCAPE_API_KEY"}
-	if narrow {
+// NewSecret makes a fresh secret bound to the first allowed name of w, in
+// the header boundHeader, for the runner to put in a session's Config when
+// a test wants one; Narrow binds it to narrowMethod requests under
+// narrowPath alone. With a Source of w's own, a sign-in flow, the row has
+// no value: the endpoint the source names issues the tokens, and the
+// access one goes in the Authorization header, as a bearer token does.
+func NewSecret(w Want) sandbox.Secret {
+	sec := sandbox.Secret{Name: "escape", Value: secretPrefix + newToken()[:secretHex], Host: w.Allow[0], Header: boundHeader, Env: "ESCAPE_API_KEY"}
+	if w.Narrow {
 		sec.Method, sec.Path = narrowMethod, narrowPath
+	}
+	if w.Source != "" {
+		sec.Value, sec.Header, sec.Source = "", "authorization", w.Source
 	}
 	return sec
 }

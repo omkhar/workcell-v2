@@ -149,6 +149,26 @@ var All = []Test{
 	{ID: "I5", Name: "placeholder-misplaced", Probe: exchangeProbe, Host: twoNames(canaries{}, swapJudge("GET,bound,/check,header", "GET,other,/replay,header", "GET,bound,/auth,auth", "GET,bound,/path,path", "GET,bound,/query,query")), Want: withSecret},
 	{ID: "I5", Name: "placeholder-narrowed", Probe: exchangeProbe, Host: twoNames(canaries{}, swapJudge("POST,bound,/v1/ok,header", "GET,bound,/v1/ok,header", "POST,bound,/v2/no,header", "GET,bound,/check,header")), Want: narrowed},
 	{ID: "I5", Name: "redirect-carries-secret", Probe: exchangeProbe, Host: twoNames(canaries{respond: redirectTo}, swapJudge("GET,bound,/check,header", "GET,bound,/start,header")), Want: withSecret},
+	// A secret whose source is a sign-in flow: the token endpoint on one
+	// allowed name issues an access and a refresh token, the access one
+	// bound to the API on the other (signin.go). The guest signs in and
+	// reads the body it got; uses the access token it holds at the API,
+	// which must see the real one; refreshes with the refresh token it
+	// holds, as a form and as JSON, which must reach the endpoint real,
+	// and uses the new access token; hunts for the real tokens as
+	// secret-in-guest does, after a refresh; replays what it holds at the
+	// other name, in the wrong header, as a bearer, in a query and at the
+	// wrong host or path; and meets a token response in two chunks split
+	// inside a token, one gzipped, and a 4xx that echoes the refresh token
+	// the endpoint was given.
+	{ID: "I5", Name: "signin-exchange", Probe: signinProbe, Host: signedIn("", "signin", "api"), Want: signedInWant},
+	{ID: "I5", Name: "signin-refresh", Probe: signinProbe, Host: signedIn("", "signin", "api", "refresh", "api"), Want: signedInWant},
+	{ID: "I5", Name: "signin-refresh-json", Probe: signinProbe, Host: signedIn("", "signin", "refresh-json", "api"), Want: signedInWant},
+	{ID: "I5", Name: "signin-scan", Probe: signinProbe, Host: signedIn("", "signin", "api", "refresh", "scan"), Want: signedInWant},
+	{ID: "I5", Name: "signin-replay", Probe: signinProbe, Host: signedIn("", "signin", "replay", "api"), Want: signedInWant},
+	{ID: "I5", Name: "signin-chunked", Probe: signinProbe, Host: signedIn("chunked", "signin", "api", "refresh", "api"), Want: signedInWant},
+	{ID: "I5", Name: "signin-gzip", Probe: signinProbe, Host: signedIn("gzip", "signin", "api"), Want: signedInWant},
+	{ID: "I5", Name: "signin-error-echo", Probe: signinProbe, Host: signedIn("", "signin", "refresh-bad", "api"), Want: signedInWant},
 	// Two allowed names, both terminated on the host. On a connection whose
 	// TLS names one, the request names the other, in the Host header, in
 	// :authority, or hidden from the SNI by ECH: the canary under the SNI's
