@@ -1,0 +1,15 @@
+# Gemini CLI. See claude.toml for what each key means.
+[provider]
+name   = "gemini"
+binary = "gemini"
+hosts  = ["generativelanguage.googleapis.com", "ai.google.dev"]
+
+[install]
+method  = "npm"
+package = "@google/gemini-cli"
+
+[[secret]]
+name   = "gemini"
+host   = "generativelanguage.googleapis.com"
+header = "x-goog-api-key"
+env    = "GEMINI_API_KEY"
