@@ -4,6 +4,7 @@
 package suite
 
 import (
+	"bufio"
 	"bytes"
 	"fmt"
 	"net"
@@ -13,6 +14,8 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"golang.org/x/sys/unix"
 )
 
 // A canary or a resolver on a port below 1024 needs root on the test host,
@@ -78,19 +81,7 @@ func privileged(network, addr, payload string) (net.Listener, net.PacketConn, er
 // sends the descriptor to the judge waiting at the unix socket path, and
 // exits 0. Any failure is one line on stderr and exit 1.
 func Bind(network, addr, path string) int {
-	var f *os.File
-	var err error
-	if strings.HasPrefix(network, "udp") {
-		var pc net.PacketConn
-		if pc, err = net.ListenPacket(network, addr); err == nil {
-			f, err = pc.(*net.UDPConn).File()
-		}
-	} else {
-		var ln net.Listener
-		if ln, err = net.Listen(network, addr); err == nil {
-			f, err = ln.(*net.TCPListener).File()
-		}
-	}
+	f, err := bindFile(network, addr)
 	var c net.Conn
 	if err == nil {
 		if c, err = net.Dial("unix", path); err == nil {
@@ -103,4 +94,83 @@ func Bind(network, addr, path string) int {
 		return 1
 	}
 	return 0
+}
+
+// bindFile binds network/addr and returns the socket as a file.
+func bindFile(network, addr string) (*os.File, error) {
+	if strings.HasPrefix(network, "udp") {
+		pc, err := net.ListenPacket(network, addr)
+		if err != nil {
+			return nil, err
+		}
+		defer pc.Close()
+		return pc.(*net.UDPConn).File()
+	}
+	ln, err := net.Listen(network, addr)
+	if err != nil {
+		return nil, err
+	}
+	defer ln.Close()
+	return ln.(*net.TCPListener).File()
+}
+
+// Hold is the payload as the holder of a session's own network namespace,
+// started in a fresh one (`unshare -n`) as root: it brings the loopback
+// device up with addr, dials the judge at path, says its pid, and binds
+// whatever the judge asks for, one "network address" line at a time, each
+// answered with "ok" and the socket over SCM_RIGHTS, or with a line saying
+// why not, until the judge hangs up. The product runs in /proc/<pid>/ns/net
+// meanwhile.
+func Hold(path, addr string) int {
+	ip4 := net.ParseIP(addr).To4()
+	lo, err := net.InterfaceByName("lo")
+	switch {
+	case ip4 == nil:
+		err = fmt.Errorf("%q is not an IPv4 address", addr)
+	case err == nil:
+		if err = loopbackUp(lo.Name); err == nil {
+			err = addrRequest(syscall.RTM_NEWADDR, syscall.NLM_F_CREATE|syscall.NLM_F_EXCL, lo.Index, ip4)
+		}
+	}
+	var c net.Conn
+	if err == nil {
+		c, err = net.Dial("unix", path)
+	}
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "netns:", err)
+		return 1
+	}
+	defer c.Close()
+	uc := c.(*net.UnixConn)
+	fmt.Fprintf(uc, "pid %d\n", os.Getpid())
+	sc := bufio.NewScanner(uc)
+	for sc.Scan() {
+		network, a, _ := strings.Cut(sc.Text(), " ")
+		f, err := bindFile(network, a)
+		if err != nil {
+			fmt.Fprintf(uc, "%v\n", err)
+			continue
+		}
+		uc.WriteMsgUnix([]byte("ok\n"), syscall.UnixRights(int(f.Fd())), nil)
+		f.Close()
+	}
+	return 0
+}
+
+// loopbackUp brings the interface up, as `ip link set lo up` does.
+func loopbackUp(name string) error {
+	fd, err := unix.Socket(unix.AF_INET, unix.SOCK_DGRAM|unix.SOCK_CLOEXEC, 0)
+	if err != nil {
+		return err
+	}
+	defer unix.Close(fd)
+	ifr, err := unix.NewIfreq(name)
+	if err != nil {
+		return err
+	}
+	if err := unix.IoctlIfreq(fd, unix.SIOCGIFFLAGS, ifr); err != nil {
+		return err
+	}
+	ifr.SetUint16(ifr.Uint16() | unix.IFF_UP | unix.IFF_RUNNING)
+	return unix.IoctlIfreq(fd, unix.SIOCSIFFLAGS, ifr)
 }

@@ -49,11 +49,18 @@ type canary struct {
 	stop       func()
 }
 
-// listen starts a canary for name. respond, if set, writes the response after
-// the request is recorded; else the canary answers 200. keys, if set, make the
-// canary accept ECH.
+// listen starts a canary for name at a port of the host's choosing. respond,
+// if set, writes the response after the request is recorded; else the canary
+// answers 200. keys, if set, make the canary accept ECH.
 func listen(name string, keys []tls.EncryptedClientHelloKey, respond http.HandlerFunc) (*canary, error) {
-	addr, err := resolve(hostAddr + ":0")
+	return listenAt(name, hostAddr+":0", keys, respond)
+}
+
+// listenAt is listen at addr, an address of the test host with hostAddr
+// standing for its own, so that a canary can sit at the one port a forward
+// entry opens.
+func listenAt(name, addr string, keys []tls.EncryptedClientHelloKey, respond http.HandlerFunc) (*canary, error) {
+	addr, err := resolve(addr)
 	if err != nil {
 		return nil, err
 	}
@@ -61,6 +68,11 @@ func listen(name string, keys []tls.EncryptedClientHelloKey, respond http.Handle
 	if err != nil {
 		return nil, fmt.Errorf("canary listener: %w", err)
 	}
+	return serveCanary(name, ln, keys, respond)
+}
+
+// serveCanary serves a canary for name on ln, which is its from here.
+func serveCanary(name string, ln net.Listener, keys []tls.EncryptedClientHelloKey, respond http.HandlerFunc) (*canary, error) {
 	cfg, err := selfSigned()
 	if err != nil {
 		ln.Close()
@@ -222,6 +234,29 @@ func port(addr string) string {
 // environment names. The guest is the attacker: it verifies nothing, and it
 // forwards every header, credential included, wherever a redirect points.
 func fetch(req *http.Request, addrs map[string]string, cfg *tls.Config, h2 bool) (*http.Response, error) {
+	return fetchWithin(req, addrs, cfg, h2, 4*time.Second)
+}
+
+// fetchWithin is fetch with the whole exchange bounded by within.
+func fetchWithin(req *http.Request, addrs map[string]string, cfg *tls.Config, h2 bool, within time.Duration) (*http.Response, error) {
+	client := &http.Client{Timeout: within, Transport: transport(addrs, cfg, h2), CheckRedirect: func(r *http.Request, via []*http.Request) error {
+		if len(via) > 3 {
+			return errors.New("too many redirects")
+		}
+		r.Header = via[0].Header.Clone()
+		return nil
+	}}
+	resp, err := client.Do(req)
+	if err == nil {
+		io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
+		resp.Body.Close()
+	}
+	return resp, err
+}
+
+// transport is the guest's transport of fetch: dialling the judge's address
+// for a name, verifying nothing, HTTP/1.1 unless h2.
+func transport(addrs map[string]string, cfg *tls.Config, h2 bool) *http.Transport {
 	cfg.InsecureSkipVerify = true //nolint:gosec // the probe is the attacker
 	tr := &http.Transport{
 		Proxy:             http.ProxyFromEnvironment,
@@ -237,19 +272,7 @@ func fetch(req *http.Request, addrs map[string]string, cfg *tls.Config, h2 bool)
 	if !h2 {
 		tr.TLSNextProto = map[string]func(string, *tls.Conn) http.RoundTripper{} // HTTP/1.1 only
 	}
-	client := &http.Client{Timeout: 4 * time.Second, Transport: tr, CheckRedirect: func(r *http.Request, via []*http.Request) error {
-		if len(via) > 3 {
-			return errors.New("too many redirects")
-		}
-		r.Header = via[0].Header.Clone()
-		return nil
-	}}
-	resp, err := client.Do(req)
-	if err == nil {
-		io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
-		resp.Body.Close()
-	}
-	return resp, err
+	return tr
 }
 
 // report turns a response, or the error instead, into a result.

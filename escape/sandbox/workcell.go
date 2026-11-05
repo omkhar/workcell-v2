@@ -37,13 +37,16 @@ func Prepare(ctx context.Context, name, dir string) error {
 // unsupported says why the CLI cannot honour cfg today, "" when it can: it
 // takes an export, a network policy, a CPU count of 1 to 32, memory of at
 // least 128 MiB and any disk cap, a zero meaning the CLI's default, and on
-// Linux a resolver of the test's own, but no secret.
+// Linux a resolver of the test's own and, with one, a network of its own,
+// but no secret.
 func unsupported(cfg Config) string {
 	switch {
 	case cfg.Secret != nil:
 		return "a secret"
 	case cfg.Resolver != "" && !steersResolver:
 		return "a resolver of its own"
+	case cfg.Isolated && (cfg.Resolver == "" || !steersResolver):
+		return "a network of its own"
 	case cfg.CPUs < 0 || cfg.CPUs > 32:
 		return fmt.Sprintf("%d CPUs", cfg.CPUs)
 	case cfg.MemoryMiB < 0 || (cfg.MemoryMiB > 0 && cfg.MemoryMiB < 128):
@@ -148,7 +151,6 @@ func pad4(b []byte) []byte {
 
 func (*workcell) Audit(context.Context) (string, []string, error) { return "", nil, ErrNotImplemented }
 func (*workcell) Verify(context.Context) error                    { return ErrNotImplemented }
-func (*workcell) Helper(context.Context, string) (int, error)     { return 0, ErrNotImplemented }
 
 // Channel is where the guest's init dialled the host: AF_VSOCK, the host's
 // CID 2, port 5000. Nothing else of the channel is known here; a probe finds

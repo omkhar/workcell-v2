@@ -22,3 +22,8 @@ func Bind(network, addr, _ string) int {
 	fmt.Fprintf(os.Stderr, "bind %s %s: Linux only\n", network, addr)
 	return 1
 }
+
+func Hold(string, string) int {
+	fmt.Fprintln(os.Stderr, "netns: Linux only")
+	return 1
+}

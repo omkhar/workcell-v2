@@ -14,6 +14,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"net"
 	"net/http"
 	"runtime"
 	"strings"
@@ -48,6 +49,9 @@ func (noObserve) Relay(context.Context) (sandbox.Channel, error) {
 }
 func (noObserve) Bench(context.Context) (sandbox.Output, error) {
 	return sandbox.Output{}, sandbox.ErrNotImplemented
+}
+func (noObserve) Bind(context.Context, string, string) (net.Listener, net.PacketConn, error) {
+	return nil, nil, sandbox.ErrNotImplemented
 }
 
 type idle struct{ noObserve }

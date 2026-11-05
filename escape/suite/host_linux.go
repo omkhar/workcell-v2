@@ -125,6 +125,86 @@ func helperAlive(pid int) (bool, error) {
 	return b[i+2] != 'Z' && b[i+2] != 'X', nil
 }
 
+// processGroup is the process group of pid.
+func processGroup(pid int) (int, error) {
+	f, err := statFields(pid)
+	if err != nil {
+		return 0, err
+	}
+	return strconv.Atoi(f[2])
+}
+
+// descendants lists every process below pid, children first, as the tree
+// stands now.
+func descendants(pid int) ([]int, error) {
+	children := map[int][]int{}
+	if err := eachProcess(func(p, ppid, _ int) { children[ppid] = append(children[ppid], p) }); err != nil {
+		return nil, err
+	}
+	var out []int
+	queue := []int{pid}
+	for len(queue) > 0 {
+		p := queue[0]
+		queue = queue[1:]
+		out = append(out, children[p]...)
+		queue = append(queue, children[p]...)
+	}
+	return out, nil
+}
+
+// groupMembers lists the processes of the group pgid.
+func groupMembers(pgid int) ([]int, error) {
+	var out []int
+	err := eachProcess(func(p, _, g int) {
+		if g == pgid {
+			out = append(out, p)
+		}
+	})
+	return out, err
+}
+
+// eachProcess calls f with the pid, parent and group of every process.
+func eachProcess(f func(pid, ppid, pgid int)) error {
+	es, err := os.ReadDir("/proc")
+	if err != nil {
+		return err
+	}
+	for _, e := range es {
+		pid, err := strconv.Atoi(e.Name())
+		if err != nil {
+			continue
+		}
+		fields, err := statFields(pid)
+		if err != nil {
+			continue // gone between the listing and the read
+		}
+		ppid, err1 := strconv.Atoi(fields[1])
+		pgid, err2 := strconv.Atoi(fields[2])
+		if err1 == nil && err2 == nil {
+			f(pid, ppid, pgid)
+		}
+	}
+	return nil
+}
+
+// statFields is /proc/pid/stat after the comm, which may hold spaces: the
+// state, the parent, the group and the rest.
+func statFields(pid int) ([]string, error) {
+	b, err := os.ReadFile(fmt.Sprintf("/proc/%d/stat", pid))
+	if err != nil {
+		return nil, err
+	}
+	i := bytes.LastIndexByte(b, ')')
+	if i < 0 {
+		return nil, fmt.Errorf("/proc/%d/stat is malformed", pid)
+	}
+	f := strings.Fields(string(b[i+1:]))
+	if len(f) < 3 {
+		return nil, fmt.Errorf("/proc/%d/stat is malformed", pid)
+	}
+	return f, nil
+}
+
 // procField reads the first number after the label (or the first number of
 // the file, when label is "") and scales it.
 func procField(path, label string, scale int64) (int64, error) {

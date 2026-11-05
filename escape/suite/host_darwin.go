@@ -125,6 +125,52 @@ func container(dev string) string {
 // (sys/proc.h SZOMB).
 const szomb = 5
 
+// processGroup is the process group of pid.
+func processGroup(pid int) (int, error) {
+	kp, err := unix.SysctlKinfoProc("kern.proc.pid", pid)
+	if err != nil {
+		return 0, fmt.Errorf("kern.proc.pid %d: %w", pid, err)
+	}
+	return int(kp.Eproc.Pgid), nil
+}
+
+// descendants lists every process below pid, children first, as the tree
+// stands now.
+func descendants(pid int) ([]int, error) {
+	ps, err := unix.SysctlKinfoProcSlice("kern.proc.all")
+	if err != nil {
+		return nil, err
+	}
+	children := map[int][]int{}
+	for _, kp := range ps {
+		children[int(kp.Eproc.Ppid)] = append(children[int(kp.Eproc.Ppid)], int(kp.Proc.P_pid))
+	}
+	var out []int
+	queue := []int{pid}
+	for len(queue) > 0 {
+		p := queue[0]
+		queue = queue[1:]
+		out = append(out, children[p]...)
+		queue = append(queue, children[p]...)
+	}
+	return out, nil
+}
+
+// groupMembers lists the processes of the group pgid.
+func groupMembers(pgid int) ([]int, error) {
+	ps, err := unix.SysctlKinfoProcSlice("kern.proc.all")
+	if err != nil {
+		return nil, err
+	}
+	var out []int
+	for _, kp := range ps {
+		if int(kp.Eproc.Pgid) == pgid {
+			out = append(out, int(kp.Proc.P_pid))
+		}
+	}
+	return out, nil
+}
+
 // helperAlive says whether the process runs on the host: the kernel knows
 // it and it is not a zombie.
 func helperAlive(pid int) (bool, error) {

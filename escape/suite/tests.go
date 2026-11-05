@@ -18,6 +18,8 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/omkhar/workcell/v2/escape/sandbox"
 )
 
 // All is the suite. Add a test by adding an entry; no other plumbing exists.
@@ -170,11 +172,17 @@ var All = []Test{
 	{ID: "I9", Name: "verify-altered-byte", Probe: auditProbe, Host: offlineJudge("alter")},
 	{ID: "I9", Name: "verify-truncated-record", Probe: auditProbe, Host: offlineJudge("truncate")},
 	{ID: "I9", Name: "verify-appended-record", Probe: auditProbe, Host: offlineJudge("append")},
-	// Each host helper is killed with SIGKILL while the guest has reached an
-	// allowed name; after, the guest must reach neither it nor a denied one.
-	{ID: "I11", Name: "proxy-killed", Probe: reachProbe, Host: helperKilled("proxy"), Want: reachable},
-	{ID: "I11", Name: "resolver-killed", Probe: reachProbe, Host: helperKilled("resolver"), Want: reachable},
-	{ID: "I11", Name: "broker-killed", Probe: reachProbe, Host: helperKilled("broker"), Want: reachable},
+	// Each host helper is killed with SIGKILL while the guest holds a
+	// connection it was served through, and the proxy once more while the
+	// guest is still booting. After, nothing of the session may run, the
+	// held connection must close, and no canary and no resolver may hear
+	// from the guest. In the product the proxy and the resolver are one
+	// process with the supervisor (A9); the rows stand for the day they
+	// are not.
+	{ID: "I11", Name: "proxy-killed", Probe: holdProbe, Host: helperKilled("proxy", false), Want: servable},
+	{ID: "I11", Name: "resolver-killed", Probe: holdProbe, Host: helperKilled("resolver", false), Want: servable},
+	{ID: "I11", Name: "broker-killed", Probe: holdProbe, Host: helperKilled("broker", false), Want: servable},
+	{ID: "I11", Name: "proxy-killed-at-start", Probe: holdProbe, Host: helperKilled("proxy", true), Want: servable},
 	// Root in the guest writes on the init's own channel connection: frames
 	// no decoder can take, a forged Exit under a version the host never
 	// issued, an error text made of terminal escapes, a 4 GiB header then
@@ -301,22 +309,11 @@ func resolve(addr string) (string, error) {
 	if !strings.Contains(addr, hostAddr) {
 		return addr, nil
 	}
-	ifs, err := net.Interfaces()
+	host, err := sandbox.HostAddr()
 	if err != nil {
 		return "", err
 	}
-	for _, i := range ifs {
-		if i.Flags&net.FlagLoopback != 0 || i.Flags&net.FlagUp == 0 {
-			continue
-		}
-		addrs, _ := i.Addrs()
-		for _, a := range addrs {
-			if ipn, ok := a.(*net.IPNet); ok && ipn.IP.To4() != nil && !ipn.IP.IsLinkLocalUnicast() {
-				return strings.ReplaceAll(addr, hostAddr, ipn.IP.String()), nil
-			}
-		}
-	}
-	return "", errors.New("the host has no non-loopback IPv4 address for a canary")
+	return strings.ReplaceAll(addr, hostAddr, host), nil
 }
 
 // trap is a canary: a listener on the host that keeps what every connection

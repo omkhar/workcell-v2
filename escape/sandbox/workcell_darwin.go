@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -51,7 +52,24 @@ func hostReady() error {
 // is refused at Start.
 const steersResolver = false
 
-func steered(string, string, []string, []string) ([]string, error) { return nil, ErrNotImplemented }
+func steered(string, string, []string, []string, int) ([]string, error) {
+	return nil, ErrNotImplemented
+}
+
+// holder: a session has no network namespace of its own on macOS.
+type holder struct{ pid int }
+
+func isolate(string, string) (*holder, error) { return nil, ErrNotImplemented }
+func (*holder) bind(string, string) (net.Listener, net.PacketConn, error) {
+	return nil, nil, ErrNotImplemented
+}
+func (*holder) stop() {}
+
+// productProcess is the product's own process under root, the process the
+// adapter started for a run. Without steering that is root itself; a
+// product that forked a supervisor of its own is not looked for below it
+// here (U-701).
+func productProcess(root int, _ string) (int, bool) { return root, true }
 
 // hypervisor fetches nothing: Virtualization.framework is part of the OS.
 func hypervisor(context.Context, string) error { return nil }

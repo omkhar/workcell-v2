@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
@@ -50,6 +51,9 @@ type workcell struct {
 	dir     string
 	payload string
 	cfg     Config
+	mu      sync.Mutex
+	run     *exec.Cmd // the product, while one run of it is in flight
+	ns      *holder   // the session's own network namespace, when isolated
 }
 
 // prepareWorkcell fetches, builds and assembles under dir what `workcell run`
@@ -207,6 +211,12 @@ func (w *workcell) Start(_ context.Context, cfg Config) (string, error) {
 		return "", fmt.Errorf("workcell: write the policy: %w", err)
 	}
 	w.dir, w.payload, w.cfg = dir, cfg.Payload, cfg
+	if cfg.Isolated {
+		if w.ns, err = isolate(dir, cfg.Payload); err != nil {
+			os.RemoveAll(dir)
+			return "", fmt.Errorf("workcell: %w", err)
+		}
+	}
 	if cfg.Workspace != "" {
 		return "/workspace", nil // where `workcell run` shows a copy of its working directory
 	}
@@ -276,7 +286,11 @@ func (w *workcell) cli(ctx context.Context, in io.Reader, args ...string) (Outpu
 	argv := append([]string{prepared.bin}, args...)
 	if w.cfg.Resolver != "" {
 		var err error
-		if argv, err = steered(w.dir, w.cfg.Resolver, env, argv); err != nil {
+		ns := 0
+		if w.ns != nil {
+			ns = w.ns.pid
+		}
+		if argv, err = steered(w.dir, w.cfg.Resolver, env, argv, ns); err != nil {
 			return Output{}, fmt.Errorf("workcell %s: %w", args[0], err)
 		}
 	}
@@ -292,7 +306,16 @@ func (w *workcell) cli(ctx context.Context, in io.Reader, args ...string) (Outpu
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true} // the product and what it forks, in a group of their own
 	cmd.Cancel = func() error { return cmd.Process.Signal(syscall.SIGTERM) }
 	cmd.WaitDelay = 3 * time.Second
-	err := cmd.Run()
+	if err := cmd.Start(); err != nil {
+		return Output{}, fmt.Errorf("workcell %s: %w", args[0], err)
+	}
+	w.mu.Lock()
+	w.run = cmd
+	w.mu.Unlock()
+	err := cmd.Wait()
+	w.mu.Lock()
+	w.run = nil
+	w.mu.Unlock()
 	if ctx.Err() != nil && cmd.Process != nil {
 		// The kill Go sent after WaitDelay reached only cmd.Process, which
 		// under steering is sudo: what is left of the group, a product that
@@ -314,12 +337,55 @@ func (w *workcell) cli(ctx context.Context, in io.Reader, args ...string) (Outpu
 	return out, nil
 }
 
+// Bind opens a socket where the product reaches the test host: in the
+// session's own namespace when it has one, else in the host's network.
+func (w *workcell) Bind(_ context.Context, network, addr string) (net.Listener, net.PacketConn, error) {
+	if w.ns != nil {
+		return w.ns.bind(network, addr)
+	}
+	return bindHere(network, addr)
+}
+
+// Helper names the process whose death I11 is about. The product has no
+// helper process of its own: the proxy and the resolver are parts of the one
+// `workcell run` that owns the session's VM (SPEC A9), so both names, and
+// "supervisor", are that process; no broker exists yet (U-401), so that name
+// is ErrNotImplemented rather than a pass that proves nothing. The process
+// lives only as long as a run, so a judge asks during one, and the adapter
+// finds the product below the run it started (productProcess), giving it a
+// moment to appear.
+func (w *workcell) Helper(ctx context.Context, name string) (int, error) {
+	switch name {
+	case "proxy", "resolver", "supervisor":
+	case "broker":
+		return 0, fmt.Errorf("workcell: no broker exists yet: %w", ErrNotImplemented)
+	default:
+		return 0, fmt.Errorf("workcell: no helper %q", name)
+	}
+	for deadline := time.Now().Add(3 * time.Second); ; time.Sleep(20 * time.Millisecond) {
+		w.mu.Lock()
+		run := w.run
+		w.mu.Unlock()
+		if run != nil {
+			if pid, ok := productProcess(run.Process.Pid, prepared.bin); ok {
+				return pid, nil
+			}
+		}
+		if time.Now().After(deadline) || ctx.Err() != nil {
+			return 0, errors.New("workcell: no run of the product is in flight: a helper lives only as long as one")
+		}
+	}
+}
+
 // Stop removes the session's directory and every session image the product
 // kept, since no `workcell rm` exists yet and tests run one at a time: the
 // next test's pull must find only its own runs.
 func (w *workcell) Stop() error {
 	if w.dir == "" {
 		return nil
+	}
+	if w.ns != nil {
+		w.ns.stop()
 	}
 	return errors.Join(os.RemoveAll(w.dir), os.RemoveAll(filepath.Join(prepared.xdg, "workcell", "sessions")))
 }
