@@ -189,7 +189,7 @@ with ADR-003 and ADR-004, they build on the proposal, and you can accept it at a
       accept: I1 added to `enforced.txt` and green in both modes; `explain` states in plain words that the agent writes directly to the real tree
 - [x] U-503 | flow:boundary | model:sonnet | env:kvm | deps:U-402,U-009 | tries:0 | Policy loading and merge, where repo-local policy can only narrow
       accept: I13 added to `enforced.txt` and green
-- [ ] U-504 | flow:build | model:sonnet | env:kvm | deps:U-500,U-205 | tries:0 | Optional named dependency caches, read-only by default
+- [x] U-504 | flow:build | model:sonnet | env:kvm | deps:U-500,U-205 | tries:0 | Optional named dependency caches, read-only by default
       accept: a second `go build` or `npm ci` in a fresh session is warm; I7 still green
 
 ## Phase 6: audit and sessions
