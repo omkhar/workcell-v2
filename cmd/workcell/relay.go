@@ -8,6 +8,7 @@ import (
 	"net"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/omkhar/workcell/v2/internal/relay"
@@ -16,9 +17,12 @@ import (
 // The host end of the network path (ADR-003). The guest's init opens one vsock stream to
 // relay.Port for each connection it accepted and names the destination in a 20-byte header.
 // The bytes are the guest's (A1): the host reads exactly the header, under a deadline, before
-// it allocates anything else, and holds a bounded number of streams (I10, I12). The address in
-// the header is never dialled (I4): the proxy resolves names on the host. No port is served yet
-// (U-303 brings the proxy's adapters), so every stream ends once its header is in, whatever it says.
+// it allocates anything else, and holds a bounded number of streams (I10, I12). A TCP header
+// for a port the policy serves hands the rest of the stream to that port's adapter, a
+// net.Listener the proxy's Serve(adapter, port) takes connections from as it would from any
+// listener: it routes by SNI or by the port's one host, resolves the name on the host and dials
+// the vetted address. The address in the header is never dialled (I4). Any other header, UDP
+// included until U-304 answers UDP 53, closes the stream with nothing dialled.
 const (
 	maxStreams = 1024            // streams held at once; the next one is closed at once
 	headerWait = 5 * time.Second // from accept to the last header byte
@@ -34,8 +38,113 @@ func portsArg(ports []uint16) string {
 	return "workcell.ports=" + strings.Join(s, ",")
 }
 
-// serveRelay takes the guest's relayed streams until the listener closes with the session.
-func serveRelay(ln net.Listener) {
+// adapters are the served ports' listeners, one per port the allowlist names.
+type adapters map[uint16]*adapter
+
+func newAdapters(ports []uint16) adapters {
+	served := adapters{}
+	for _, p := range ports {
+		served[p] = &adapter{port: p, conns: make(chan net.Conn), done: make(chan struct{})}
+	}
+	return served
+}
+
+func (a adapters) closeAll() {
+	for _, l := range a {
+		_ = l.Close()
+	}
+}
+
+// adapter is the net.Listener of one served port: Accept takes the streams the demultiplexer
+// delivers, and returns net.ErrClosed once the adapter is closed, which ends the proxy's Serve.
+type adapter struct {
+	port  uint16
+	conns chan net.Conn
+	done  chan struct{}
+	once  sync.Once
+}
+
+func (l *adapter) Accept() (net.Conn, error) {
+	select {
+	case c := <-l.conns:
+		return c, nil
+	case <-l.done:
+		return nil, net.ErrClosed
+	}
+}
+
+func (l *adapter) Close() error   { l.once.Do(func() { close(l.done) }); return nil }
+func (l *adapter) Addr() net.Addr { return &net.TCPAddr{Port: int(l.port)} }
+
+// deliver hands c to Accept, or closes it when the adapter is closed: the session has ended.
+func (l *adapter) deliver(c net.Conn) {
+	select {
+	case l.conns <- c:
+	case <-l.done:
+		_ = c.Close()
+	}
+}
+
+// relayConn is one relayed stream as the proxy sees it: the bytes after the header. Its local
+// address is the destination the guest's program dialled, which is where the guest's kernel
+// accepted the connection: a hint for the deny line (U-308), never dialled (I4). Its remote
+// address is the stream's own, the backend's end of the vsock. Closing it releases the
+// stream's slot, so a conn the proxy holds is counted until the proxy lets go of it.
+type relayConn struct {
+	net.Conn
+	dst     *net.TCPAddr
+	release func()
+	once    sync.Once
+}
+
+func (c *relayConn) LocalAddr() net.Addr { return c.dst }
+
+func (c *relayConn) Close() error {
+	err := c.Conn.Close()
+	c.once.Do(c.release)
+	return err
+}
+
+// maxDenyLogBytes bounds what one session's deny.log may put on the host disk (I10): the guest
+// can attempt connections for as long as the session lives, and each refusal is one line.
+const maxDenyLogBytes = 8 << 20
+
+// denyLogFull is the one line written when the cap is reached. It is no deny line: it has no
+// host, port, count or seq, so a reader of the log can tell it apart, and the seq of the deny
+// lines says how many were written before it.
+const denyLogFull = "{\"reason\":\"deny_log_full\"}\n"
+
+// boundedLog writes whole lines to w while the total stays within limit bytes, then writes
+// denyLogFull once and drops everything after it. Every write reports success, so that the
+// proxy never stalls on its log. The file may exceed limit by the marker alone.
+type boundedLog struct {
+	w     io.Writer
+	limit int
+	mu    sync.Mutex
+	n     int
+	full  bool
+}
+
+func (l *boundedLog) Write(p []byte) (int, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	switch {
+	case l.full:
+	case l.n+len(p) <= l.limit:
+		_, _ = l.w.Write(p)
+		l.n += len(p)
+	default:
+		l.full = true
+		_, _ = l.w.Write([]byte(denyLogFull))
+	}
+	return len(p), nil
+}
+
+// serveRelay takes the guest's relayed streams until the listener closes with the session, then
+// closes every adapter, so that the proxy's Serve loops end with it (A9). Each stream has wait
+// to complete its header.
+func serveRelay(ln net.Listener, served adapters, wait time.Duration) {
+	defer served.closeAll()
 	slots := make(chan struct{}, maxStreams)
 	for {
 		c, err := ln.Accept()
@@ -48,20 +157,26 @@ func serveRelay(ln net.Listener) {
 			_ = c.Close()
 			continue
 		}
-		go func() {
-			defer func() { _ = c.Close(); <-slots }()
-			stream(c)
-		}()
+		go stream(&relayConn{Conn: c, release: func() { <-slots }}, served, wait)
 	}
 }
 
-// stream reads one header: 20 bytes within headerWait, or the stream is dropped. A valid header
-// names a port the host does not serve yet, so the stream ends here either way.
-func stream(c net.Conn) {
-	_ = c.SetReadDeadline(time.Now().Add(headerWait))
+// stream reads one header: 20 bytes within wait, or the stream is dropped. Version 1, TCP and a
+// served port hand the rest of the stream to that port's adapter, the header consumed and the
+// deadline lifted. Any other header closes the stream with nothing dialled.
+func stream(c *relayConn, served adapters, wait time.Duration) {
+	_ = c.SetReadDeadline(time.Now().Add(wait))
 	var b [relay.HeaderLen]byte
 	if _, err := io.ReadFull(c, b[:]); err != nil {
+		_ = c.Close()
 		return
 	}
-	_, _ = relay.Decode(b[:])
+	h, err := relay.Decode(b[:])
+	l, ok := served[h.Dst.Port()]
+	if err != nil || h.Proto != relay.TCP || !ok || c.SetReadDeadline(time.Time{}) != nil {
+		_ = c.Close()
+		return
+	}
+	c.dst = net.TCPAddrFromAddrPort(h.Dst)
+	l.deliver(c)
 }

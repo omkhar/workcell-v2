@@ -188,9 +188,23 @@ func (w *workcell) Start(_ context.Context, cfg Config) (string, error) {
 	if _, err := os.Stat(cfg.Payload); err != nil {
 		return "", fmt.Errorf("workcell: payload: %w", err)
 	}
+	policy, err := policyTOML(cfg)
+	if err != nil {
+		return "", fmt.Errorf("workcell: %w", err)
+	}
 	dir, err := os.MkdirTemp("", "escape-workcell-")
 	if err != nil {
 		return "", err
+	}
+	// The session's policy, where `workcell run` reads it with XDG_CONFIG_HOME
+	// at the session's config directory: <dir>/config/workcell/config.toml.
+	file := filepath.Join(dir, "config", policyFile)
+	if err := os.MkdirAll(filepath.Dir(file), 0o755); err == nil {
+		err = os.WriteFile(file, policy, 0o644)
+	}
+	if err != nil {
+		os.RemoveAll(dir)
+		return "", fmt.Errorf("workcell: write the policy: %w", err)
 	}
 	w.dir, w.payload, w.cfg = dir, cfg.Payload, cfg
 	if cfg.Workspace != "" {
@@ -250,8 +264,9 @@ func (w *workcell) Bench(ctx context.Context) (Output, error) {
 	return w.cli(ctx, nil, "bench", "start")
 }
 
-// cli runs the product once with the prepared artifacts, in the session's
-// export when it has one, stdin from in, both streams bounded. An exit
+// cli runs the product once with the prepared artifacts and the session's
+// policy, in the session's export when it has one, stdin from in, both
+// streams bounded. An exit
 // status is reported in Output, not as an error. On cancel the product gets
 // SIGTERM, which it forwards, and a little while to take its VM down.
 func (w *workcell) cli(ctx context.Context, in io.Reader, args ...string) (Output, error) {
@@ -260,7 +275,7 @@ func (w *workcell) cli(ctx context.Context, in io.Reader, args ...string) (Outpu
 	if w.cfg.Workspace != "" {
 		cmd.Dir = w.cfg.Workspace
 	}
-	cmd.Env = append(os.Environ(), "XDG_DATA_HOME="+prepared.xdg)
+	cmd.Env = append(os.Environ(), "XDG_DATA_HOME="+prepared.xdg, "XDG_CONFIG_HOME="+filepath.Join(w.dir, "config"))
 	cmd.Stdin = in
 	stdout, stderr := &bounded{limit: MaxStdout}, &bounded{limit: MaxStderr}
 	cmd.Stdout, cmd.Stderr = stdout, stderr

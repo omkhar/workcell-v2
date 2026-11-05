@@ -1,0 +1,478 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Omkhar Arasaratnam
+
+// Package policy reads the session policy of SPEC section 5, ~/.config/workcell/config.toml.
+// The file is TOML, but only the subset the specification shows: tables [name] and [[name]],
+// bare keys, basic double-quoted strings, integers, arrays of strings and # comments. The
+// reader is the package's own, so that no module sits on the trust path: U-503 reads a
+// repository-controlled workcell.toml with it (I13), which is why it is fuzzed (T5). Anything
+// outside the subset is refused with the line it stands on.
+package policy
+
+import (
+	"errors"
+	"fmt"
+	"io"
+	"io/fs"
+	"os"
+	"strconv"
+	"strings"
+	"unicode/utf8"
+)
+
+// maxBytes bounds a policy file; the standard allowlist limit, far above any real policy.
+const maxBytes = 1 << 20
+
+// Policy is what the file grants, as far as this build reads it.
+type Policy struct {
+	// Allow is the allow array of the [network] table: each entry a bare DNS name, which means
+	// port 443 by SNI, or "name:port", with the line it stands on. The entries are checked by
+	// the proxy's allowlist, not here. Nothing allowed means no TCP port is relayed.
+	Allow []Entry
+}
+
+// Entry is one string of an array and the line it stands on, for an error that names it.
+type Entry struct {
+	Text string
+	Line int
+}
+
+// Read reads the policy file at path. A file that does not exist grants nothing.
+func Read(path string) (Policy, error) {
+	f, err := os.Open(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		return Policy{}, nil
+	}
+	if err != nil {
+		return Policy{}, err
+	}
+	defer f.Close()
+	b, err := io.ReadAll(io.LimitReader(f, maxBytes+1))
+	if err != nil {
+		return Policy{}, fmt.Errorf("%s: %w", path, err)
+	}
+	if len(b) > maxBytes {
+		return Policy{}, fmt.Errorf("%s: larger than %d bytes", path, maxBytes)
+	}
+	return Parse(string(b), path)
+}
+
+// tables are the tables SPEC section 5 names, and whether each is an array of tables. Only
+// [network] is read today; the others are read past, since reading them costs nothing.
+var tables = map[string]bool{"network": false, "secret": true, "workspace": false, "resources": false, "update": false}
+
+// Parse reads the policy in text; name labels the file in errors, as "name:line: what".
+func Parse(text, name string) (Policy, error) {
+	doc, err := parse(text)
+	if err != nil {
+		return Policy{}, fmt.Errorf("%s:%d: %s", name, err.line, err.msg)
+	}
+	var p Policy
+	first := map[string]int{} // the line of each single table seen
+	for _, t := range doc {
+		array, known := tables[t.name]
+		switch {
+		case !known:
+			return Policy{}, fmt.Errorf("%s:%d: table [%s] is not one of network, secret, workspace, resources, update", name, t.line, t.name)
+		case array && !t.array:
+			return Policy{}, fmt.Errorf("%s:%d: [%s] is an array of tables: write [[%s]]", name, t.line, t.name, t.name)
+		case !array && t.array:
+			return Policy{}, fmt.Errorf("%s:%d: [[%s]] is a table: write [%s]", name, t.line, t.name, t.name)
+		case !array && first[t.name] != 0:
+			return Policy{}, fmt.Errorf("%s:%d: table [%s] is defined twice, first on line %d", name, t.line, t.name, first[t.name])
+		}
+		first[t.name] = t.line
+		if t.name != "network" {
+			continue
+		}
+		for key, v := range t.keys {
+			if key != "allow" {
+				return Policy{}, fmt.Errorf("%s:%d: unknown key %q in [network]: allow is the only one", name, v.line, key)
+			}
+			if v.kind != kStrings {
+				return Policy{}, fmt.Errorf("%s:%d: allow must be an array of strings", name, v.line)
+			}
+			p.Allow = v.strs
+		}
+	}
+	return p, nil
+}
+
+// A parsed document: tables in file order, each with its keys. The subset has three value kinds.
+type kind int
+
+const (
+	kString kind = iota
+	kInteger
+	kStrings
+)
+
+type value struct {
+	kind kind
+	line int
+	str  string
+	int  int64
+	strs []Entry
+}
+
+type table struct {
+	name  string
+	line  int
+	array bool // [[name]]
+	keys  map[string]value
+}
+
+// A parse error carries the line it was found on.
+type parseError struct {
+	line int
+	msg  string
+}
+
+// Tokens of the subset. A bare token is a key or an integer; the parser decides which.
+type tokKind int
+
+const (
+	tEOF tokKind = iota
+	tNewline
+	tLBracket  // [
+	tRBracket  // ]
+	tLLBracket // [[
+	tRRBracket // ]]
+	tEqual
+	tComma
+	tString // text is the decoded string
+	tBare   // text is the bare characters
+)
+
+type token struct {
+	kind tokKind
+	text string
+	line int
+}
+
+func (t token) String() string {
+	switch t.kind {
+	case tEOF:
+		return "end of file"
+	case tNewline:
+		return "end of line"
+	case tString:
+		return "a string"
+	case tBare:
+		return strconv.Quote(t.text)
+	}
+	return strconv.Quote([...]string{tLBracket: "[", tRBracket: "]", tLLBracket: "[[", tRRBracket: "]]", tEqual: "=", tComma: ","}[t.kind])
+}
+
+// scanner yields tokens from text, one at a time, with the line each begins on.
+type scanner struct {
+	s    string
+	pos  int
+	line int
+}
+
+func (sc *scanner) fail(format string, args ...any) *parseError {
+	return &parseError{sc.line, fmt.Sprintf(format, args...)}
+}
+
+// next is the next token. Whitespace and comments are skipped; a newline is a token.
+func (sc *scanner) next() (token, *parseError) {
+	for sc.pos < len(sc.s) {
+		c := sc.s[sc.pos]
+		switch {
+		case c == ' ' || c == '\t':
+			sc.pos++
+		case c == '\r' && sc.pos+1 < len(sc.s) && sc.s[sc.pos+1] == '\n':
+			sc.pos++
+		case c == '#':
+			for sc.pos < len(sc.s) && sc.s[sc.pos] != '\n' {
+				if b := sc.s[sc.pos]; b < ' ' && b != '\t' || b == 0x7f {
+					return token{}, sc.fail("control character %#x in a comment", b)
+				}
+				sc.pos++
+			}
+		default:
+			return sc.token()
+		}
+	}
+	return token{tEOF, "", sc.line}, nil
+}
+
+func (sc *scanner) token() (token, *parseError) {
+	t := token{line: sc.line}
+	c := sc.s[sc.pos]
+	switch {
+	case c == '\n':
+		sc.pos++
+		sc.line++
+		t.kind = tNewline
+	case c == '[' || c == ']':
+		t.kind = tLBracket
+		if c == ']' {
+			t.kind = tRBracket
+		}
+		sc.pos++
+		if sc.pos < len(sc.s) && sc.s[sc.pos] == c {
+			sc.pos++
+			t.kind += 2 // the double bracket
+		}
+	case c == '=':
+		sc.pos++
+		t.kind = tEqual
+	case c == ',':
+		sc.pos++
+		t.kind = tComma
+	case c == '"':
+		s, err := sc.basicString()
+		if err != nil {
+			return token{}, err
+		}
+		t.kind, t.text = tString, s
+	case c == '\'':
+		return token{}, sc.fail("literal strings ('...') are not supported: use double quotes")
+	case bareChar(c):
+		start := sc.pos
+		for sc.pos < len(sc.s) && bareChar(sc.s[sc.pos]) {
+			sc.pos++
+		}
+		t.kind, t.text = tBare, sc.s[start:sc.pos]
+	case c < ' ' || c == 0x7f:
+		return token{}, sc.fail("control character %#x", c)
+	case c == '.':
+		return token{}, sc.fail("unexpected '.': dotted keys and decimals are not supported")
+	case c == '{':
+		return token{}, sc.fail("unexpected '{': inline tables are not supported")
+	case c >= 0x80:
+		return token{}, sc.fail("a non-ASCII character outside a string")
+	default:
+		return token{}, sc.fail("unexpected %q", c)
+	}
+	return t, nil
+}
+
+// bareChar is a character of a bare key or an integer.
+func bareChar(c byte) bool {
+	return c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '_' || c == '-' || c == '+'
+}
+
+// basicString decodes one "..." string at sc.pos, with the standard escapes.
+func (sc *scanner) basicString() (string, *parseError) {
+	if strings.HasPrefix(sc.s[sc.pos:], `"""`) {
+		return "", sc.fail(`multi-line strings ("""...""") are not supported`)
+	}
+	sc.pos++ // the opening quote
+	var b strings.Builder
+	for sc.pos < len(sc.s) {
+		c := sc.s[sc.pos]
+		sc.pos++
+		switch {
+		case c == '"':
+			if !utf8.ValidString(b.String()) {
+				return "", sc.fail("a string holds invalid UTF-8")
+			}
+			return b.String(), nil
+		case c == '\n':
+			return "", sc.fail("unterminated string")
+		case c < ' ' && c != '\t' || c == 0x7f:
+			return "", sc.fail("control character %#x in a string", c)
+		case c != '\\':
+			b.WriteByte(c)
+			continue
+		}
+		if sc.pos >= len(sc.s) {
+			return "", sc.fail("unterminated string")
+		}
+		e := sc.s[sc.pos]
+		sc.pos++
+		switch e {
+		case '"', '\\':
+			b.WriteByte(e)
+		case 'b', 't', 'n', 'f', 'r':
+			b.WriteByte("\b\t\n\f\r"[strings.IndexByte("btnfr", e)])
+		case 'u', 'U':
+			n := 4
+			if e == 'U' {
+				n = 8
+			}
+			if sc.pos+n > len(sc.s) {
+				return "", sc.fail("unterminated string")
+			}
+			r, err := strconv.ParseUint(sc.s[sc.pos:sc.pos+n], 16, 32)
+			if err != nil || !utf8.ValidRune(rune(r)) {
+				return "", sc.fail(`\%c wants %d hex digits of a Unicode scalar value, got %s`, e, n, strconv.Quote(sc.s[sc.pos:sc.pos+n]))
+			}
+			b.WriteRune(rune(r))
+			sc.pos += n
+		default:
+			if e <= ' ' || e >= 0x7f {
+				return "", sc.fail("a backslash before byte %#x in a string", e)
+			}
+			return "", sc.fail(`unknown escape \%c in a string`, e)
+		}
+	}
+	return "", sc.fail("unterminated string")
+}
+
+// parser reads a document from its scanner.
+type parser struct{ sc scanner }
+
+// parse reads the whole document.
+func parse(text string) ([]*table, *parseError) {
+	p := &parser{sc: scanner{s: text, line: 1}}
+	var doc []*table
+	var cur *table
+	for {
+		t, err := p.sc.next()
+		if err != nil {
+			return nil, err
+		}
+		switch t.kind {
+		case tEOF:
+			return doc, nil
+		case tNewline:
+		case tLBracket, tLLBracket:
+			cur, err = p.header(t)
+			if err != nil {
+				return nil, err
+			}
+			doc = append(doc, cur)
+		case tBare:
+			if cur == nil {
+				return nil, &parseError{t.line, fmt.Sprintf("key %s before any table", t)}
+			}
+			if err := p.keyValue(cur, t); err != nil {
+				return nil, err
+			}
+		default:
+			return nil, &parseError{t.line, fmt.Sprintf("unexpected %s at the start of a line", t)}
+		}
+	}
+}
+
+// header reads [name] or [[name]] after its opening bracket.
+func (p *parser) header(open token) (*table, *parseError) {
+	t, err := p.sc.next()
+	if err != nil {
+		return nil, err
+	}
+	if t.kind != tBare || !bareKey(t.text) {
+		return nil, &parseError{t.line, fmt.Sprintf("want a table name, got %s", t)}
+	}
+	closing := tRBracket
+	if open.kind == tLLBracket {
+		closing = tRRBracket
+	}
+	if err := p.expect(closing); err != nil {
+		return nil, err
+	}
+	if err := p.endOfLine(); err != nil {
+		return nil, err
+	}
+	return &table{name: t.text, line: open.line, array: open.kind == tLLBracket, keys: map[string]value{}}, nil
+}
+
+// keyValue reads "= value" after the key, to the end of the line, into t.
+func (p *parser) keyValue(t *table, key token) *parseError {
+	if !bareKey(key.text) {
+		return &parseError{key.line, fmt.Sprintf("%s is not a key", key)}
+	}
+	if _, dup := t.keys[key.text]; dup {
+		return &parseError{key.line, fmt.Sprintf("key %s is defined twice", key)}
+	}
+	if err := p.expect(tEqual); err != nil {
+		return err
+	}
+	v, err := p.value()
+	if err != nil {
+		return err
+	}
+	if err := p.endOfLine(); err != nil {
+		return err
+	}
+	t.keys[key.text] = v
+	return nil
+}
+
+// bareKey is a TOML bare key: letters, digits, '_' and '-'.
+func bareKey(s string) bool { return s != "" && !strings.ContainsAny(s, "+") }
+
+// value reads one value: a string, an integer or an array of strings, which may span lines.
+func (p *parser) value() (value, *parseError) {
+	t, err := p.sc.next()
+	if err != nil {
+		return value{}, err
+	}
+	switch t.kind {
+	case tString:
+		return value{kind: kString, line: t.line, str: t.text}, nil
+	case tBare:
+		n, err := strconv.ParseInt(t.text, 10, 64)
+		if err != nil {
+			return value{}, &parseError{t.line, fmt.Sprintf("%s is not a string, an integer or an array of strings", t)}
+		}
+		return value{kind: kInteger, line: t.line, int: n}, nil
+	case tLLBracket:
+		return value{}, &parseError{t.line, "nested arrays are not supported"}
+	case tLBracket:
+	default:
+		return value{}, &parseError{t.line, fmt.Sprintf("want a value, got %s", t)}
+	}
+	v := value{kind: kStrings, line: t.line}
+	for {
+		t, err := p.skipNewlines()
+		if err != nil {
+			return value{}, err
+		}
+		if t.kind == tRBracket {
+			return v, nil
+		}
+		if t.kind != tString {
+			return value{}, &parseError{t.line, fmt.Sprintf("an array may hold strings alone, got %s", t)}
+		}
+		v.strs = append(v.strs, Entry{t.text, t.line})
+		if t, err = p.skipNewlines(); err != nil {
+			return value{}, err
+		}
+		switch t.kind {
+		case tComma:
+		case tRBracket:
+			return v, nil
+		default:
+			return value{}, &parseError{t.line, fmt.Sprintf("want ',' or ']' in an array, got %s", t)}
+		}
+	}
+}
+
+// skipNewlines is the next token that is not a newline: an array may span lines.
+func (p *parser) skipNewlines() (token, *parseError) {
+	for {
+		t, err := p.sc.next()
+		if err != nil || t.kind != tNewline {
+			return t, err
+		}
+	}
+}
+
+// expect reads one token of the kind.
+func (p *parser) expect(k tokKind) *parseError {
+	t, err := p.sc.next()
+	if err != nil {
+		return err
+	}
+	if t.kind != k {
+		return &parseError{t.line, fmt.Sprintf("want %s, got %s", token{kind: k}, t)}
+	}
+	return nil
+}
+
+// endOfLine reads the newline, or the end of the file, that ends a header or a key.
+func (p *parser) endOfLine() *parseError {
+	t, err := p.sc.next()
+	if err != nil {
+		return err
+	}
+	if t.kind != tNewline && t.kind != tEOF {
+		return &parseError{t.line, fmt.Sprintf("unexpected %s after the value", t)}
+	}
+	return nil
+}

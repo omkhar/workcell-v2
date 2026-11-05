@@ -25,11 +25,19 @@ import (
 // to loopback for the test's duration (onLoopback). No packet leaves the host
 // (SPEC T8, S12). The guest gets a literal address, never a name.
 var All = []Test{
-	{ID: "I2", Name: "raw-ip-odd-port-tcp4", Probe: dialProbe, Host: tcpCanary("tcp4", hostAddr+":0", "")},
+	// The first row runs under a policy that opens one port (forwarded), so
+	// that an allowlist is shown to open no other port.
+	{ID: "I2", Name: "raw-ip-odd-port-tcp4", Probe: dialProbe, Host: tcpCanary("tcp4", hostAddr+":0", ""), Want: forwarded},
 	{ID: "I2", Name: "ipv4-mapped-ipv6-tcp", Probe: dialProbe, Host: tcpCanary("tcp4", hostAddr+":0", "::ffff:"+hostAddr)},
-	{ID: "I2", Name: "udp4-datagram", Probe: udpProbe, Host: udpCanary(lineToken)},
-	{ID: "I2", Name: "quic-initial", Probe: quicProbe, Host: udpCanary(quicToken)},
+	{ID: "I2", Name: "udp4-datagram", Probe: udpProbe, Host: udpCanary(hostAddr+":0", lineToken)},
+	{ID: "I2", Name: "quic-initial", Probe: quicProbe, Host: udpCanary(hostAddr+":0", quicToken)},
 	{ID: "I2", Name: "icmp-echo", Probe: icmpProbe, Host: icmpJudge},
+	// The policy opens one forward port for one name. The guest dials the
+	// canary at that very port, as TCP and as UDP: the port is served, but
+	// the host resolves the allowed name itself and never dials the address
+	// the guest named (I4), and a UDP datagram to a TCP port has no listener.
+	{ID: "I2", Name: "allowed-port-raw-ip-tcp4", Probe: dialProbe, Host: tcpCanary("tcp4", hostAddr+":"+forwardPort, ""), Want: forwarded},
+	{ID: "I2", Name: "allowed-port-udp4", Probe: udpProbe, Host: udpCanary(hostAddr+":"+forwardPort, lineToken), Want: forwarded},
 	// Root in the guest skips the init and speaks the relay's own header to
 	// the host end (ADR-003), naming the canary as TCP, as UDP, under a
 	// version or proto the host does not serve; and offers a header that
@@ -38,6 +46,11 @@ var All = []Test{
 	{ID: "I2", Name: "relay-header-udp", Probe: relayProbe, Host: relayCanary("udp4", hostAddr+":0", "udp")},
 	{ID: "I2", Name: "relay-header-bad-version", Probe: relayProbe, Host: relayCanary("tcp4", hostAddr+":0", "version-0", "version-2")},
 	{ID: "I2", Name: "relay-header-bad-proto", Probe: relayProbe, Host: relayCanary("tcp4", hostAddr+":0", "proto-0", "proto-1")},
+	// The same header names the canary at the port the policy serves, as
+	// TCP, which the host hands to the proxy, and as UDP, which it serves on
+	// no port but 53. Neither may end at the address in the header.
+	{ID: "I2", Name: "relay-header-allowed-port", Probe: relayProbe, Host: relayCanary("tcp4", hostAddr+":"+forwardPort, "tcp"), Want: forwarded},
+	{ID: "I2", Name: "relay-header-allowed-port-udp", Probe: relayProbe, Host: relayCanary("udp4", hostAddr+":"+forwardPort, "udp"), Want: forwarded},
 	{ID: "I12", Name: "relay-short-header", Probe: relayProbe, Host: relayHeld("short"), Bound: relayBound},
 	{ID: "I12", Name: "relay-slow-header", Probe: relayProbe, Host: relayHeld("slow"), Bound: relayBound},
 	// A real guest's 127.0.0.1 is its own loopback. The host's loopback services
@@ -170,6 +183,17 @@ var All = []Test{
 // hostAddr, in a canary address, stands for the host's own first non-loopback
 // IPv4 address: what a real guest sees as the host.
 const hostAddr = "host"
+
+// forwardPort is the one port the policy forwarded opens, as a forward entry
+// for one name: above the privileged range and below the ephemeral one, so
+// that a canary can bind it on the host without privilege. A guest program
+// that dials any address at it meets the product's listener; the product
+// serves the port for the name alone, which it resolves on the host, and
+// that name resolves nowhere in this suite (a name that reaches the test
+// host is the host resolver's, U-304 and U-305).
+const forwardPort = "8443"
+
+var forwarded = Want{Allow: []string{"allowed.escape.test:" + forwardPort}}
 
 // dialProbe connects to args[0] and sends the token args[1] on one line.
 func dialProbe(args []string) Result {
@@ -414,11 +438,12 @@ func quicToken(b []byte, token string) bool {
 	return ok && hex.EncodeToString(dcid) == token
 }
 
-// udpCanary listens for datagrams on the host's own address and has the guest
-// send the token there. A datagram is proof of reach; the guest's word is not.
-func udpCanary(carries func(b []byte, token string) bool) Judge {
+// udpCanary listens for datagrams at addr, on the host's own address, and has
+// the guest send the token there. A datagram is proof of reach; the guest's
+// word is not.
+func udpCanary(addr string, carries func(b []byte, token string) bool) Judge {
 	return func(ctx context.Context, s Session) (bool, string, error) {
-		addr, err := resolve(hostAddr + ":0")
+		addr, err := resolve(addr)
 		if err != nil {
 			return false, "", err
 		}
