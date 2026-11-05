@@ -133,7 +133,7 @@ with ADR-003 and ADR-004, they build on the proposal, and you can accept it at a
       accept: I2 added to `enforced.txt` and green
 - [x] U-304 | flow:boundary | model:fable | env:kvm | deps:U-303,U-006 | tries:0 | Host resolver: allowed names only, no recursion for anything else
       accept: I3 added to `enforced.txt` and green
-- [ ] U-305 | flow:boundary | model:sonnet | env:kvm | deps:U-304 | tries:0 | Resolve on the host, vet the address, dial that address. Rebinding guard
+- [x] U-305 | flow:boundary | model:sonnet | env:kvm | deps:U-304 | tries:0 | Resolve on the host, vet the address, dial that address. Rebinding guard
       accept: I4 added to `enforced.txt` and green
 - [ ] U-306 | flow:boundary | model:sonnet | env:kvm | deps:U-303,U-010 | tries:0 | Fail closed when any helper dies
       accept: I11 added to `enforced.txt` and green
