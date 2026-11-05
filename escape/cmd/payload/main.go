@@ -7,25 +7,33 @@
 // nothing and whose death changes nothing.
 //
 // And it is the judge's hand on the test host for what needs root there
-// (suite.Bind), run through sudo.
+// (suite.Bind), run through sudo, and the holder of a session's own network
+// namespace (suite.Hold).
 //
 //	payload <test name> [args...]
 //	payload helper <name>
 //	payload bind <network> <address> <unix socket>
+//	payload netns <unix socket> <address>
 package main
 
 import (
 	"os"
+	"time"
 
 	"github.com/omkhar/workcell/v2/escape/suite"
 )
 
 func main() {
 	if len(os.Args) == 3 && os.Args[1] == "helper" {
-		select {}
+		for { // not select {}: with no other goroutine the runtime calls that a deadlock and exits
+			time.Sleep(time.Hour)
+		}
 	}
 	if len(os.Args) == 5 && os.Args[1] == "bind" {
 		os.Exit(suite.Bind(os.Args[2], os.Args[3], os.Args[4]))
+	}
+	if len(os.Args) == 4 && os.Args[1] == "netns" {
+		os.Exit(suite.Hold(os.Args[2], os.Args[3]))
 	}
 	r := suite.Result{Status: "error", Detail: "usage: payload <test name> [args...]"}
 	if len(os.Args) >= 2 {

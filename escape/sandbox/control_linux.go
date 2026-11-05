@@ -275,6 +275,11 @@ func (c *control) Helper(_ context.Context, name string) (int, error) {
 	return h.Process.Pid, nil
 }
 
+// Bind is in the host's one network: a plain container has no other.
+func (c *control) Bind(_ context.Context, network, addr string) (net.Listener, net.PacketConn, error) {
+	return bindHere(network, addr)
+}
+
 func (c *control) Channel(context.Context) (Channel, error) {
 	return Channel{Addr: "unix:" + c.ln.Addr().String()}, nil
 }
@@ -291,6 +296,7 @@ func (c *control) startHelpers() error {
 	c.helpers = map[string]*exec.Cmd{}
 	for _, name := range helperNames {
 		h := exec.Command(c.payload, "helper", name)
+		h.SysProcAttr = &syscall.SysProcAttr{Setpgid: true} // in a group of its own, as the product's session is
 		if err := h.Start(); err != nil {
 			return fmt.Errorf("control: start %s: %w", name, err)
 		}

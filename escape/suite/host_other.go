@@ -17,3 +17,6 @@ func hostFiles() (int64, error)        { return 0, errLinuxHost }
 func hostBusy() (int64, error)         { return 0, errLinuxHost }
 func hostDiskFree() (int64, error)     { return 0, errLinuxHost }
 func helperAlive(int) (bool, error)    { return false, errLinuxHost }
+func processGroup(int) (int, error)    { return 0, errLinuxHost }
+func descendants(int) ([]int, error)   { return nil, errLinuxHost }
+func groupMembers(int) ([]int, error)  { return nil, errLinuxHost }

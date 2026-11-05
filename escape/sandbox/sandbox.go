@@ -10,10 +10,12 @@ import (
 	"crypto/ed25519"
 	"errors"
 	"fmt"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"sync"
 )
 
@@ -64,6 +66,13 @@ type Config struct {
 	// an allowed name resolves to (SPEC I4). In the control adapter the
 	// guest dials for itself, so there it is the guest's resolver.
 	Resolver string
+	// Isolated, on Linux, runs the host side of the session in a network
+	// namespace of its own, which holds one address the product's vetting
+	// accepts and no way out, so that a canary bound through Bind there is
+	// reached through the product's forward path and nothing can leave the
+	// test host (SPEC T8, S12). It needs Resolver. The control adapter has
+	// one network, the host's, and ignores it.
+	Isolated bool
 	// Secret is a credential bound to one allowed name; nil for none.
 	Secret *Secret
 }
@@ -128,10 +137,20 @@ type Observe interface {
 	Verify(ctx context.Context) error
 	// Helper returns the host pid of the session's named helper: "proxy",
 	// "resolver", "broker", or "supervisor" for the host end of the channel.
-	// Two names may share one process.
+	// Two names may share one process, and all may be the one process that
+	// owns the session (SPEC A9). A helper lives only as long as a run of
+	// the session does, so a judge asks while one of its Exec calls is in
+	// flight. A helper the product does not have yet is ErrNotImplemented.
 	Helper(ctx context.Context, name string) (pid int, err error)
 	// Channel describes the host-guest channel as the guest reaches it.
 	Channel(ctx context.Context) (Channel, error)
+	// Bind opens a listener ("tcp4") or a packet socket ("udp4") at addr on
+	// the host side of the session, where the product reaches the test
+	// host: in the host's own network, or in the session's own when it is
+	// isolated. "host" as the host of addr stands for the test host's
+	// address there. A port that needs root fails with EACCES in the host's
+	// own network, and the judge binds it as root itself.
+	Bind(ctx context.Context, network, addr string) (net.Listener, net.PacketConn, error)
 	// Relay describes the host end of the network relay as the guest reaches
 	// it: where the init opens one stream per relayed connection, behind the
 	// 20-byte header of ADR-003 (version, proto, port, 16-byte address). A
@@ -188,6 +207,49 @@ func BuildPayload(ctx context.Context, dir string) (string, error) {
 		return "", fmt.Errorf("build payload: %v: %s", err, b)
 	}
 	return out, nil
+}
+
+// HostAddr is the test host's own first non-loopback IPv4 address: what a
+// guest with a network of its own sees as the host.
+func HostAddr() (string, error) {
+	ifs, err := net.Interfaces()
+	if err != nil {
+		return "", err
+	}
+	for _, i := range ifs {
+		if i.Flags&net.FlagLoopback != 0 || i.Flags&net.FlagUp == 0 {
+			continue
+		}
+		addrs, _ := i.Addrs()
+		for _, a := range addrs {
+			if ipn, ok := a.(*net.IPNet); ok && ipn.IP.To4() != nil && !ipn.IP.IsLinkLocalUnicast() {
+				return ipn.IP.String(), nil
+			}
+		}
+	}
+	return "", errors.New("the host has no non-loopback IPv4 address for a canary")
+}
+
+// bindHere binds network/addr in this process's own network, "host" in
+// addr standing for HostAddr: what Bind does for a session that is not
+// isolated.
+func bindHere(network, addr string) (net.Listener, net.PacketConn, error) {
+	host, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		return nil, nil, err
+	}
+	if host == "host" {
+		if host, err = HostAddr(); err != nil {
+			return nil, nil, err
+		}
+		addr = net.JoinHostPort(host, port)
+	}
+	if strings.HasPrefix(network, "udp") {
+		pc, err := net.ListenPacket(network, addr)
+		return nil, pc, err
+	}
+	ln, err := net.Listen(network, addr)
+	return ln, nil, err
 }
 
 // bounded keeps the first limit bytes written and drops the rest. More than

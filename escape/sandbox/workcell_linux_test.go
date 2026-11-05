@@ -27,7 +27,7 @@ import (
 func TestSteered(t *testing.T) {
 	dir := t.TempDir()
 	env := []string{"PATH=/usr/bin:/bin", "X=a=b", "bogus", "EMPTY="}
-	got, err := steered(dir, "127.5.3.53", env, []string{"/x/workcell", "run", "--", "sh"})
+	got, err := steered(dir, "127.5.3.53", env, []string{"/x/workcell", "run", "--", "sh"}, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -70,7 +70,7 @@ func TestSteeredRuns(t *testing.T) {
 		t.Skip("no /etc/resolv.conf to bind over")
 	}
 	argv, err := steered(t.TempDir(), "127.9.8.7", []string{"PATH=/usr/bin:/bin", "ESCAPE_X=1", "bogus"},
-		[]string{"/bin/sh", "-c", `cat /etc/resolv.conf; id -u; id -g; echo "x=$ESCAPE_X"; env | grep -c . `})
+		[]string{"/bin/sh", "-c", `cat /etc/resolv.conf; id -u; id -g; echo "x=$ESCAPE_X"; env | grep -c . `}, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -144,5 +144,110 @@ func TestCLICancel(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestProductProcess starts a shell that forks a sleep, the shape of a run
+// under steering (a wrapper above the product), and asks for the process
+// whose executable is sleep's: the child, not the shell; the shell itself
+// when its own executable is asked for; nothing for one that is not there.
+func TestProductProcess(t *testing.T) {
+	sleep, err := exec.LookPath("sleep")
+	if err != nil {
+		t.Skip(err)
+	}
+	cmd := exec.Command("/bin/sh", "-c", "sleep 20; true") // the trailing command keeps the shell from exec'ing sleep
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { cmd.Process.Kill(); cmd.Wait() }()
+	root := cmd.Process.Pid
+	var pid int
+	var ok bool
+	for deadline := time.Now().Add(3 * time.Second); !ok && time.Now().Before(deadline); time.Sleep(10 * time.Millisecond) {
+		pid, ok = productProcess(root, sleep)
+	}
+	if !ok || pid == root {
+		t.Fatalf("productProcess(%d, %s) = %d, %v; want the shell's child", root, sleep, pid, ok)
+	}
+	defer syscall.Kill(pid, syscall.SIGKILL)
+	b, err := os.ReadFile(fmt.Sprintf("/proc/%d/stat", pid))
+	if err != nil || !strings.Contains(string(b), " "+strconv.Itoa(root)+" ") {
+		t.Fatalf("pid %d is not a child of %d: %q, %v", pid, root, b, err)
+	}
+	if sh, err := os.Readlink(fmt.Sprintf("/proc/%d/exe", root)); err == nil {
+		if got, ok := productProcess(root, sh); !ok || got != root {
+			t.Fatalf("productProcess(%d, %s) = %d, %v; want the shell itself", root, sh, got, ok)
+		}
+	}
+	if got, ok := productProcess(root, "/nonexistent/workcell"); ok {
+		t.Fatalf("productProcess found %d for a binary that is not there", got)
+	}
+}
+
+// TestIsolate holds a network namespace, binds the forward port in it, and
+// has the payload's own dial probe, entered into the namespace as the
+// product is, deliver a token to the listener. Nothing here dials the
+// address from the host's own network: a packet to it from there could
+// leave the host (SPEC T8). Root, or sudo without a password, and util-linux
+// are needed, as the escape suite needs them.
+func TestIsolate(t *testing.T) {
+	if os.Geteuid() != 0 && exec.Command("sudo", "-n", "true").Run() != nil {
+		t.Skip("needs root or sudo -n")
+	}
+	if _, err := exec.LookPath("nsenter"); err != nil {
+		t.Skip(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	dir := t.TempDir()
+	payload, err := BuildPayload(ctx, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h, err := isolate(dir, payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer h.stop()
+	ln, _, err := h.bind("tcp4", "host:8443")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+	if got := ln.Addr().String(); got != isolatedAddr+":8443" {
+		t.Fatalf("bound %s, want %s:8443", got, isolatedAddr)
+	}
+	if _, _, err := h.bind("tcp4", "host:8443"); err == nil || !strings.Contains(err.Error(), "in use") {
+		t.Fatalf("a second bind of the port: %v; want address in use", err)
+	}
+	got := make(chan string, 1)
+	go func() {
+		c, err := ln.Accept()
+		if err != nil {
+			got <- err.Error()
+			return
+		}
+		defer c.Close()
+		c.SetDeadline(time.Now().Add(5 * time.Second))
+		b := make([]byte, 64)
+		n, _ := c.Read(b)
+		got <- string(b[:n])
+	}()
+	argv, err := steered(dir, "127.5.3.53", []string{"PATH=/usr/bin:/bin"}, []string{payload, "raw-ip-odd-port-tcp4", ln.Addr().String(), "token"}, h.pid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, err := exec.CommandContext(ctx, argv[0], argv[1:]...).CombinedOutput()
+	if err != nil {
+		t.Fatalf("in the namespace: %v: %s", err, out)
+	}
+	select {
+	case line := <-got:
+		if line != "token\n" {
+			t.Fatalf("the listener got %q (probe said %s)", line, bytes.TrimSpace(out))
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatalf("nothing reached the listener in the namespace (probe said %s)", bytes.TrimSpace(out))
 	}
 }

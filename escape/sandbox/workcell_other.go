@@ -5,7 +5,10 @@
 
 package sandbox
 
-import "context"
+import (
+	"context"
+	"net"
+)
 
 // workcell on another OS: the product has no hypervisor there, so nothing
 // here is implemented.
@@ -24,5 +27,11 @@ func (*workcell) Exec(context.Context, ...string) (Output, error) {
 func (*workcell) Bench(context.Context) (Output, error) { return Output{}, ErrNotImplemented }
 
 func (*workcell) Pull(context.Context, string) error { return ErrNotImplemented }
+
+func (*workcell) Helper(context.Context, string) (int, error) { return 0, ErrNotImplemented }
+
+func (*workcell) Bind(context.Context, string, string) (net.Listener, net.PacketConn, error) {
+	return nil, nil, ErrNotImplemented
+}
 
 func (*workcell) Stop() error { return nil }

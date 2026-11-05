@@ -86,6 +86,10 @@ var (
 	nothingLookups = []lookup{{"a", "A:" + allowedName, "refused"}, {"d", "A:" + deniedName, "refused"}}
 )
 
+// reachable is the sandbox the resolver rows want: one allowed name and one
+// denied, both of which the host resolver is to know of.
+var reachable = Want{Allow: []string{"allowed.escape.test"}, Deny: []string{"denied.escape.test"}}
+
 var queryTypes = map[string]uint16{"A": dnsTypeA, "AAAA": dnsTypeAAAA, "TXT": dnsTypeTXT, "PTR": dnsTypePTR, "ANY": dnsTypeANY}
 
 // resolverAddr turns the target the judge named into an address: the first

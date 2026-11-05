@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"slices"
 	"strings"
 	"sync"
 	"syscall"
@@ -55,6 +56,10 @@ type rebind struct {
 	cname   string
 	canary  string
 	sni     bool
+	// both gives the denied name the same records as the allowed one, so
+	// that a session whose policy the guest widened would reach a canary
+	// under it (sandbox.Config.Deny).
+	both bool
 }
 
 // answers says what the resolver tells about the allowed name.
@@ -171,9 +176,14 @@ func serveNames(addr, helper string, r rebind) (*nameServer, error) {
 	if err != nil {
 		return nil, fmt.Errorf("the judge's resolver at %s: %w", addr, err)
 	}
+	return serveNamesOn(pc, r), nil
+}
+
+// serveNamesOn is the judge's resolver on pc, which is its from here.
+func serveNamesOn(pc net.PacketConn, r rebind) *nameServer {
 	ns := &nameServer{pc: pc, r: r}
 	ns.wg.Go(ns.serve)
-	return ns, nil
+	return ns
 }
 
 func (ns *nameServer) serve() {
@@ -207,6 +217,13 @@ func (ns *nameServer) stop() []string {
 	return ns.asked
 }
 
+// questions is a copy of what the resolver has been asked so far.
+func (ns *nameServer) questions() []string {
+	ns.mu.Lock()
+	defer ns.mu.Unlock()
+	return slices.Clone(ns.asked)
+}
+
 // typeNames names the types a resolver is asked, for the record of it.
 var typeNames = map[uint16]string{dnsTypeA: "A", dnsTypeAAAA: "AAAA", dnsTypeCNAME: "CNAME", dnsTypeTXT: "TXT", dnsTypePTR: "PTR", dnsTypeANY: "ANY"}
 
@@ -214,7 +231,7 @@ var typeNames = map[uint16]string{dnsTypeA: "A", dnsTypeAAAA: "AAAA", dnsTypeCNA
 // has one and then the row's records of the type asked, NOERROR with no
 // record when it has none of that type; REFUSED for every other name.
 func (r rebind) answer(q dnsQuestion) []byte {
-	if !strings.EqualFold(q.Name, allowedName) {
+	if !strings.EqualFold(q.Name, allowedName) && !(r.both && strings.EqualFold(q.Name, deniedName)) {
 		return dnsResponse(q, dnsRcodeRefused, nil)
 	}
 	owner := q.Name

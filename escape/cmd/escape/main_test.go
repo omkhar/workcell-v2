@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net"
 	"os"
 	"path/filepath"
 	"testing"
@@ -46,6 +47,9 @@ func (f *fake) Channel(context.Context) (sandbox.Channel, error) {
 }
 func (f *fake) Update(context.Context, sandbox.UpdateConfig) ([]byte, error) {
 	return nil, sandbox.ErrNotImplemented
+}
+func (f *fake) Bind(context.Context, string, string) (net.Listener, net.PacketConn, error) {
+	return nil, nil, sandbox.ErrNotImplemented
 }
 func (f *fake) Bench(context.Context) (sandbox.Output, error) {
 	return sandbox.Output{}, sandbox.ErrNotImplemented

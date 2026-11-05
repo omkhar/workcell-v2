@@ -93,6 +93,7 @@ type Want struct {
 	Allow     []string
 	Deny      []string
 	Resolver  string
+	Isolated  bool // the host side in a network of its own (sandbox.Config.Isolated)
 	Secret    bool
 	Policy    string
 }

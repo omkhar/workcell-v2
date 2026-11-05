@@ -75,6 +75,8 @@ func TestUnsupported(t *testing.T) {
 		{Config{Deny: []string{"a"}}, false},
 		{Config{Allow: []string{"a"}, Deny: []string{"b"}}, false},
 		{Config{Secret: &Secret{}}, true},
+		{Config{Isolated: true}, true},
+		{Config{Isolated: true, Resolver: "127.0.0.1"}, !steersResolver},
 		{Config{CPUs: 33}, true},
 		{Config{CPUs: -1}, true},
 		{Config{MemoryMiB: 127}, true},
