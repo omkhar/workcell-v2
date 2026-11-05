@@ -117,6 +117,21 @@ func DenyAuditRecords(log []byte) []string {
 	return append(records, fmt.Sprintf("egress_summary status=%s deny_keys=%d deny_total=%d malformed_lines=%d", status, len(keys), total, malformed))
 }
 
+// DenyLine is one deny line as a reader of the log sees it.
+type DenyLine = denyLine
+
+// ParseDenyLine is the strict reader of one deny line (no trailing newline), for the verbs that show the log.
+func ParseDenyLine(line string) (DenyLine, bool) { return parseDenyLine(line) }
+
+// SafeHost lower-cases a logged host, and gives (invalid) for one outside the DNS name
+// characters: a host is guest-chosen bytes (an SNI), and a reader must be able to copy what it prints.
+func SafeHost(host string) string {
+	if host = strings.ToLower(host); host != "" && host != overflowHost && !auditHost.MatchString(host) {
+		return invalidHost
+	}
+	return host
+}
+
 // parseDenyLine accepts one JSON object with only the deny fields, a port,
 // count and seq above zero, a bounded host and a lower-case reason, and nothing after it.
 func parseDenyLine(line string) (denyLine, bool) {

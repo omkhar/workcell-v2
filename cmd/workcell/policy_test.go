@@ -82,3 +82,41 @@ func TestAllowlist(t *testing.T) {
 		})
 	}
 }
+
+// TestAllowlistFlags: each --allow value is judged as a config entry is, and joins the file's.
+func TestAllowlistFlags(t *testing.T) {
+	file := []policy.Entry{{Text: "a.example", Line: 3}}
+	tests := []struct {
+		name  string
+		file  []policy.Entry
+		flags []string
+		ports []uint16
+		hosts []string
+		err   string
+	}{
+		{"a bare name", nil, []string{"npm.example"}, []uint16{443}, []string{"npm.example"}, ""},
+		{"name:port", nil, []string{"db.example:5432"}, []uint16{5432}, []string{"db.example"}, ""},
+		{"the file and the flag", file, []string{"b.example", "b.example:80"}, []uint16{80, 443}, []string{"a.example", "b.example"}, ""},
+		{"a bad value", file, []string{"a b"}, nil, nil, "--allow has an invalid endpoint"},
+		{"an IP", nil, []string{"10.0.0.1"}, nil, nil, "--allow has an IP literal endpoint"},
+		{"a port the file gave to another name", []policy.Entry{{Text: "a.example:80", Line: 2}}, []string{"b.example:80"}, nil, nil, "--allow maps port 80 to more than one host"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			p := policy.Policy{Allow: tc.file}
+			for _, f := range tc.flags {
+				p.Allow = append(p.Allow, policy.Entry{Text: f})
+			}
+			got, err := allowlist(p, "config.toml")
+			if tc.err != "" {
+				if err == nil || !strings.HasPrefix(err.Error(), tc.err) {
+					t.Fatalf("allowlist = %v, want an error starting %q", err, tc.err)
+				}
+				return
+			}
+			if err != nil || !slices.Equal(got.Ports(), tc.ports) || !slices.Equal(got.Hosts(), tc.hosts) {
+				t.Errorf("allowlist = %v, %v; want ports %v hosts %v", got, err, tc.ports, tc.hosts)
+			}
+		})
+	}
+}

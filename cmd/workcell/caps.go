@@ -65,31 +65,32 @@ func (l limits) cmdline() string {
 
 // defaults are run's caps when no flag is given, for the verbs that take none.
 func defaults() limits {
-	l, _, _, _ := parseRun([]string{"true"}, io.Discard)
+	l, _, _, _, _ := parseRun([]string{"true"}, io.Discard)
 	return l
 }
 
 // parseRun splits the arguments of `workcell run` into caps, the workspace mode and the
 // command. Flags come before the command, and -- ends them. mount is true for `--mount`: the
 // guest's /workspace is the current directory itself, live, instead of a copy (A5, ADR-005).
-// A bad invocation is reported on stderr, and ok is false.
-func parseRun(args []string, stderr io.Writer) (l limits, mount bool, argv []string, ok bool) {
+// allow holds each `--allow` value, unjudged. A bad invocation is reported on stderr, and ok is false.
+func parseRun(args []string, stderr io.Writer) (l limits, mount bool, allow []string, argv []string, ok bool) {
 	fs := flag.NewFlagSet("run", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	usage := func() {
-		fmt.Fprintln(stderr, "usage: workcell run [--mount] [--cpus N] [--memory SIZE] [--disk SIZE] [--] <cmd> [args...]")
+		fmt.Fprintln(stderr, "usage: workcell run [--mount] [--cpus N] [--memory SIZE] [--disk SIZE] [--allow HOST]... [--] <cmd> [args...]")
 	}
 	fs.Usage = func() { usage(); fs.PrintDefaults() }
 	live := fs.Bool("mount", false, "serve the current directory itself into the guest, live, instead of a copy")
 	cpus := fs.Int("cpus", 2, "virtual CPUs for the guest")
 	memory := fs.String("memory", "1GiB", "guest memory, such as 512MiB or 4GiB")
 	disk := fs.String("disk", "", "cap on what the guest may write, such as 20GiB (default: 1GiB)")
+	allowFlag(fs, &allow)
 	if err := fs.Parse(args); err != nil {
-		return l, false, nil, false
+		return l, false, nil, nil, false
 	}
-	fail := func(err error) (limits, bool, []string, bool) {
+	fail := func(err error) (limits, bool, []string, []string, bool) {
 		fmt.Fprintln(stderr, "workcell run:", err)
-		return l, false, nil, false
+		return l, false, nil, nil, false
 	}
 	if *cpus < 1 || *cpus > maxCPUs {
 		return fail(fmt.Errorf("--cpus must be between 1 and %d", maxCPUs))
@@ -109,7 +110,16 @@ func parseRun(args []string, stderr io.Writer) (l limits, mount bool, argv []str
 	}
 	if fs.NArg() == 0 {
 		usage()
-		return l, false, nil, false
+		return l, false, nil, nil, false
 	}
-	return l, *live, fs.Args(), true
+	return l, *live, allow, fs.Args(), true
+}
+
+// allowFlag adds the repeatable --allow to fs: one more host, widening this session only, in the
+// spelling of a [network] allow entry. The values are judged where the policy is (loadAllowlist).
+func allowFlag(fs *flag.FlagSet, into *[]string) {
+	fs.Func("allow", "also allow HOST, or HOST:PORT, in this session only; repeatable", func(s string) error {
+		*into = append(*into, s)
+		return nil
+	})
 }

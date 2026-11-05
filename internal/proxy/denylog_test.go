@@ -206,3 +206,25 @@ func FuzzDenyAuditRecords(f *testing.F) {
 		}
 	})
 }
+
+// TestParseDenyLineAndSafeHost: the exported reader is the strict one, and a host is printed
+// only in a form that is safe to copy.
+func TestParseDenyLineAndSafeHost(t *testing.T) {
+	var log bytes.Buffer
+	p := New(nil, &log)
+	p.Deny("A.Example", 53, "name_not_allowed")
+	d, ok := ParseDenyLine(strings.TrimSuffix(log.String(), "\n"))
+	if !ok || d != (DenyLine{Host: "A.Example", Port: 53, Reason: "name_not_allowed", Count: 1, Seq: 1}) {
+		t.Errorf("ParseDenyLine(the proxy's own line) = %+v, %v", d, ok)
+	}
+	for _, bad := range []string{"", "{}", `{"host":"a","port":0,"reason":"x","count":1,"seq":1}`, `{"host":"a","port":1,"reason":"x","count":1,"seq":1,"more":1}`} {
+		if _, ok := ParseDenyLine(bad); ok {
+			t.Errorf("ParseDenyLine(%q) accepted a bad line", bad)
+		}
+	}
+	for in, want := range map[string]string{"A.Example": "a.example", "": "", "a b": "(invalid)", "a\n.example": "(invalid)", "é.example": "(invalid)", "(overflow)": "(overflow)", strings.Repeat("a", 254): "(invalid)"} {
+		if got := SafeHost(in); got != want {
+			t.Errorf("SafeHost(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
