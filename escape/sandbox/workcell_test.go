@@ -71,9 +71,10 @@ func TestUnsupported(t *testing.T) {
 		{Config{DiskMiB: 100}, false},
 		{Config{CPUs: 1, MemoryMiB: 256, DiskMiB: 64}, false},
 		{Config{Workspace: "/w"}, false},
+		{Config{Allow: []string{"a"}}, false},
+		{Config{Deny: []string{"a"}}, false},
+		{Config{Allow: []string{"a"}, Deny: []string{"b"}}, false},
 		{Config{Secret: &Secret{}}, true},
-		{Config{Allow: []string{"a"}}, true},
-		{Config{Deny: []string{"a"}}, true},
 		{Config{CPUs: 33}, true},
 		{Config{CPUs: -1}, true},
 		{Config{MemoryMiB: 127}, true},
@@ -83,6 +84,35 @@ func TestUnsupported(t *testing.T) {
 	for _, c := range cases {
 		if got := unsupported(c.cfg) != ""; got != c.want {
 			t.Errorf("%+v: refused %v, want %v", c.cfg, got, c.want)
+		}
+	}
+}
+
+// TestPolicyTOML checks the one file the adapter writes for a session: each
+// allowed name quoted, nothing for a denied one, and a refusal of a name that
+// would change what the file says.
+func TestPolicyTOML(t *testing.T) {
+	cases := []struct {
+		cfg  Config
+		want string // the file, or "" for a refusal
+	}{
+		{Config{}, "[network]\nallow = []\n"},
+		{Config{Deny: []string{"denied.escape.test"}}, "[network]\nallow = []\n"},
+		{Config{Allow: []string{"allowed.escape.test:8443"}}, "[network]\nallow = [\"allowed.escape.test:8443\"]\n"},
+		{Config{Allow: []string{"a.escape.test", "b.escape.test:80"}, Deny: []string{"c.escape.test"}}, "[network]\nallow = [\"a.escape.test\", \"b.escape.test:80\"]\n"},
+		{Config{Allow: []string{"a.escape.test"}, Deny: []string{"a.escape.test"}}, ""},
+		{Config{Allow: []string{`a"b`}}, ""},
+		{Config{Allow: []string{`a\b`}}, ""},
+		{Config{Allow: []string{"a\nb"}}, ""},
+		{Config{Allow: []string{"a\x00b"}}, ""},
+		{Config{Allow: []string{"a\x7fb"}}, ""},
+		{Config{Allow: []string{"a\xffb"}}, ""},
+		{Config{Allow: []string{"ok", "a\tb"}}, ""},
+	}
+	for _, c := range cases {
+		got, err := policyTOML(c.cfg)
+		if (err != nil) != (c.want == "") || string(got) != c.want {
+			t.Errorf("%+v: %q, %v; want %q", c.cfg, got, err, c.want)
 		}
 	}
 }

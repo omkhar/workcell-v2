@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"slices"
 	"strconv"
 )
 
@@ -16,9 +17,11 @@ import (
 // working directory, and one `workcell pull` per Pull, which brings the
 // newest session's work tree back. It runs on Linux and on macOS, the two
 // hosts with a hypervisor the product drives; elsewhere every operation
-// reports ErrNotImplemented. What the CLI cannot honour yet, a
-// policy, a secret, a cap outside its range, is refused at Start with
-// ErrNotImplemented, so that such a test is never a false pass.
+// reports ErrNotImplemented. The session policy goes in as the product's
+// own file (SPEC section 5): the adapter writes config.toml under a
+// directory of the session's own and points XDG_CONFIG_HOME at it. What the
+// CLI cannot honour yet, a secret, a cap outside its range, is refused at
+// Start with ErrNotImplemented, so that such a test is never a false pass.
 
 // Prepare does the one-time setup the named adapter needs, under dir, which
 // the caller removes when the process ends. For workcell that is the four
@@ -32,14 +35,13 @@ func Prepare(ctx context.Context, name, dir string) error {
 }
 
 // unsupported says why the CLI cannot honour cfg today, "" when it can: it
-// takes an export, a CPU count of 1 to 32, memory of at least 128 MiB and
-// any disk cap, a zero meaning the CLI's default, but no policy, no secret.
+// takes an export, a network policy, a CPU count of 1 to 32, memory of at
+// least 128 MiB and any disk cap, a zero meaning the CLI's default, but no
+// secret.
 func unsupported(cfg Config) string {
 	switch {
 	case cfg.Secret != nil:
 		return "a secret"
-	case len(cfg.Allow) > 0 || len(cfg.Deny) > 0:
-		return "a network policy"
 	case cfg.CPUs < 0 || cfg.CPUs > 32:
 		return fmt.Sprintf("%d CPUs", cfg.CPUs)
 	case cfg.MemoryMiB < 0 || (cfg.MemoryMiB > 0 && cfg.MemoryMiB < 128):
@@ -48,6 +50,43 @@ func unsupported(cfg Config) string {
 		return fmt.Sprintf("%d MiB of disk", cfg.DiskMiB)
 	}
 	return ""
+}
+
+// policyFile is where, under the session's config directory, the product
+// reads its policy: `$XDG_CONFIG_HOME/workcell/config.toml`.
+const policyFile = "workcell/config.toml"
+
+// policyTOML is the session policy of SPEC section 5 for cfg: a [network]
+// table whose allow array holds each of cfg.Allow as a TOML basic string. A
+// bare name is port 443 by SNI; `name:port` is a forward entry for that one
+// port. Every entry comes from the test table, but a quote, a backslash or a
+// byte outside printable ASCII would change what the file says, so such an
+// entry is refused. With no entry the file says so, which relays no port, as
+// no file would; it is written all the same so that nothing the runner's
+// user keeps under ~/.config reaches a session.
+//
+// cfg.Deny names hosts the policy must not allow. A file that does not name
+// them is all the product needs, so Deny writes nothing; a name in both
+// lists is a mistake in the table and is refused. Making an allowed or a
+// denied name resolve to the test host, for a positive path, is the host
+// resolver's (U-304, U-305), not this adapter's: it only writes the policy.
+func policyTOML(cfg Config) ([]byte, error) {
+	b := []byte("[network]\nallow = [")
+	for i, name := range cfg.Allow {
+		if slices.Contains(cfg.Deny, name) {
+			return nil, fmt.Errorf("policy: %q is both allowed and denied", name)
+		}
+		for j := 0; j < len(name); j++ {
+			if c := name[j]; c < ' ' || c > '~' || c == '"' || c == '\\' {
+				return nil, fmt.Errorf("policy: allowed name %q has a byte %#x that cannot go in the file", name, c)
+			}
+		}
+		if i > 0 {
+			b = append(b, ", "...)
+		}
+		b = append(append(append(b, '"'), name...), '"')
+	}
+	return append(b, "]\n"...), nil
 }
 
 // runArgs is the argv of one `workcell run` for a session with cfg's mode
