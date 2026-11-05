@@ -54,6 +54,7 @@ func TestConfig(t *testing.T) {
 	initrd.Initrd = "/i"
 	disks := base
 	disks.Image, disks.Workspace, disks.Cmdline = "/root.img", "/work.img", "init=/sbin/init"
+	disks.Layers = []vmm.Layer{{Name: "claude", Image: "/l/claude.ext4"}, {Name: "codex", Image: "/l/codex.ext4"}}
 	tests := []struct {
 		name string
 		cfg  vmm.Config
@@ -65,7 +66,9 @@ func TestConfig(t *testing.T) {
 		{"disks and cmdline", disks, `{"boot-source":{"kernel_image_path":"/k",` +
 			`"boot_args":"console=ttyS0 reboot=k panic=-1 pci=off quiet init=/sbin/init"},"drives":[` +
 			`{"drive_id":"root","path_on_host":"/root.img","is_root_device":true,"is_read_only":true},` +
-			`{"drive_id":"workspace","path_on_host":"/work.img","is_root_device":false,"is_read_only":false}],` +
+			`{"drive_id":"workspace","path_on_host":"/work.img","is_root_device":false,"is_read_only":false},` +
+			`{"drive_id":"claude","path_on_host":"/l/claude.ext4","is_root_device":false,"is_read_only":true},` +
+			`{"drive_id":"codex","path_on_host":"/l/codex.ext4","is_root_device":false,"is_read_only":true}],` +
 			`"machine-config":{"vcpu_count":2,"mem_size_mib":512,"smt":false},"vsock":{"guest_cid":3,"uds_path":"/d/vsock"}}`},
 	}
 	for _, tc := range tests {

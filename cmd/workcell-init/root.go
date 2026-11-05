@@ -35,6 +35,24 @@ func mounted(cmdline string) bool {
 	return on
 }
 
+// layer is one provider layer the host attached: the agent's name and the read-only drive
+// that holds its image, mounted read-only at /opt/<name> so that no session changes it (I7).
+type layer struct{ name, dev string }
+
+// layers is every workcell.layer=<agent>:<device> on the kernel command line, in order. The
+// host wrote the line (A1); an entry that is not a plain name and a device is skipped.
+func layers(cmdline string) []layer {
+	var ls []layer
+	for _, f := range strings.Fields(cmdline) {
+		v, ok := strings.CutPrefix(f, "workcell.layer=")
+		name, dev, cut := strings.Cut(v, ":")
+		if ok && cut && name != "" && !strings.ContainsAny(name, "/.") && strings.HasPrefix(dev, "/dev/") {
+			ls = append(ls, layer{name, dev})
+		}
+	}
+	return ls
+}
+
 func device(cmdline, key string) string {
 	dev := ""
 	for _, f := range strings.Fields(cmdline) {
@@ -102,6 +120,16 @@ func mountWorkspace(dev string) error {
 		return fmt.Errorf("mount %s: %w", dev, err)
 	}
 	return nil
+}
+
+// mountLayer mounts the layer read-only at /opt/<name>, in the root overlay. The drive is
+// read-only on the host, which is what holds (A1); the flag here only says so to the guest.
+func mountLayer(l layer) error {
+	dir := "/opt/" + l.name
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	return unix.Mount(l.dev, dir, "ext4", unix.MS_RDONLY, "")
 }
 
 // switchRoot makes the image on dev the root of everything that runs from here on. The

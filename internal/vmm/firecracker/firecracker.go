@@ -236,5 +236,8 @@ func encode(cfg vmm.Config) ([]byte, error) {
 	if cfg.Workspace != "" {
 		c.Drives = append(c.Drives, drive{ID: "workspace", Path: cfg.Workspace})
 	}
+	for _, l := range cfg.Layers {
+		c.Drives = append(c.Drives, drive{ID: l.Name, Path: l.Image, ReadOnly: true})
+	}
 	return json.Marshal(c)
 }

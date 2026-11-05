@@ -33,15 +33,19 @@ type Machine interface {
 	Close() error
 }
 
+// Layer is one provider's current layer: the agent's name and its ext4 image on the host.
+type Layer struct{ Name, Image string }
+
 // Config is everything a backend needs. The command line is built on the host and
 // holds no secret (I5). Resource caps go here, not into a seventh method.
 type Config struct {
 	Binary    string // the pinned VMM binary
 	Kernel    string
-	Initrd    string // optional initramfs
-	Image     string // read-only root drive, optional
-	Workspace string // read-write drive, optional
-	Cmdline   string // appended to the backend's own boot arguments
+	Initrd    string  // optional initramfs
+	Image     string  // read-only root drive, optional
+	Workspace string  // read-write drive, optional
+	Layers    []Layer // provider layers, one read-only drive each, attached after the two above in this order
+	Cmdline   string  // appended to the backend's own boot arguments
 	CPUs      int
 	MemoryMiB int
 	CID       uint32
