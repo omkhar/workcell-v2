@@ -1,0 +1,16 @@
+# Claude Code. A provider is this one file and no Go code (B15). Versions live in pins/, never here (A10).
+[provider]
+name   = "claude"
+binary = "claude"
+hosts  = ["api.anthropic.com", "claude.ai", "console.anthropic.com"]
+
+[install]
+method = "binary"        # binary: the pin of that name in pins/ | npm: the package, whose pin is found by it
+pin    = "claude-code"
+
+# One row per API-key credential, the shape of a [[secret]] row of the policy without its source.
+[[secret]]
+name   = "anthropic"
+host   = "api.anthropic.com"
+header = "x-api-key"     # lower case, as the proxy keys it
+env    = "ANTHROPIC_API_KEY"

@@ -95,6 +95,26 @@ func TestParseSecret(t *testing.T) {
 	}
 }
 
+// TestParseTables holds the generic reader to the same subset and errors as Parse, whatever the table names.
+func TestParseTables(t *testing.T) {
+	tabs, err := Tables("[a]\nx = \"s\"\nn = 3\n[[b]]\nl = [\"p\",\n\"q\"]\n", "f")
+	if err != nil {
+		t.Fatal(err)
+	}
+	a, b := tabs[0], tabs[1]
+	if len(tabs) != 2 || a.Name != "a" || a.Array || !b.Array || b.Line != 4 {
+		t.Fatalf("tables = %+v", tabs)
+	}
+	if x, n, l := a.Keys["x"], a.Keys["n"], b.Keys["l"]; x.Str != "s" || x.List || !n.Int || !l.List || len(l.Strs) != 2 || l.Strs[1].Line != 6 {
+		t.Errorf("fields = %+v %+v %+v", x, n, l)
+	}
+	for text, want := range map[string]string{"x = 1": "f:1: key \"x\" before any table", "[a]\nx = 'y'": "f:2: literal strings"} {
+		if _, err := Tables(text, "f"); err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("Tables(%q) error = %v, want %q", text, err, want)
+		}
+	}
+}
+
 func TestParseRefuses(t *testing.T) {
 	tests := []struct {
 		name string

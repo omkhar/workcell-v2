@@ -116,6 +116,40 @@ func Parse(text, name string) (Policy, error) {
 	return p, nil
 }
 
+// Table is one [name] or [[name]] of a document that Tables reads, with its keys. U-402 reads
+// the provider data files with it, so that the product has the one reader (I13).
+type Table struct {
+	Name  string
+	Line  int
+	Array bool // [[name]]
+	Keys  map[string]Field
+}
+
+// Field is a value of the subset: a string in Str, an array of strings in Strs (List), or an
+// integer (Int), which the caller usually refuses.
+type Field struct {
+	Line      int
+	Str       string
+	Strs      []Entry
+	List, Int bool
+}
+
+// Tables reads text as a document of any table names; name labels the file in errors.
+func Tables(text, name string) ([]Table, error) {
+	doc, err := parse(text)
+	if err != nil {
+		return nil, fmt.Errorf("%s:%d: %s", name, err.line, err.msg)
+	}
+	out := make([]Table, len(doc))
+	for i, t := range doc {
+		out[i] = Table{Name: t.name, Line: t.line, Array: t.array, Keys: map[string]Field{}}
+		for k, v := range t.keys {
+			out[i].Keys[k] = Field{Line: v.line, Str: v.str, Strs: v.strs, List: v.kind == kStrings, Int: v.kind == kInteger}
+		}
+	}
+	return out, nil
+}
+
 // secretRow reads one [[secret]] table: name, source, host and header, each a string, with env,
 // method and path optional, and nothing else. An empty string is as good as no key.
 func secretRow(t *table, name string) (Secret, error) {
