@@ -74,17 +74,18 @@ func session(argv []string, caps limits, mount bool, a artifacts) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	image, live := "", ""
-	if mount {
-		_, err = newSession(a, cwd) // the record alone: the work lands in cwd itself
-		live = cwd
-	} else {
-		image, err = export(a, caps, cwd)
-	}
+	dir, lock, err := newSession(a, cwd) // the lock is held until the session ends
 	if err != nil {
 		return 0, err
 	}
-	b, code, err := boot(a, caps, sigs, image, live)
+	defer lock.Close()
+	image, live := "", ""
+	if mount {
+		live = cwd // the record alone: the work lands in cwd itself
+	} else if image, err = export(dir, caps, cwd); err != nil {
+		return 0, err
+	}
+	b, code, err := boot(a, caps, sigs, dir, image, live)
 	if b == nil {
 		return code, err
 	}
@@ -147,40 +148,38 @@ type booted struct {
 	close func()
 }
 
-// sessionTime names a session directory by when it began, so that the names sort by time;
-// a random suffix keeps two that began in the same instant apart.
-const sessionTime = "20060102T150405.000000000Z"
-
 // newSession records a session of the directory repo: <data>/sessions/<id>/ holding a file repo
 // that names the directory, so that diff and pull find the newest session of a directory
 // later. A mount session leaves this record alone, so that pull and diff know the work went
-// into the directory itself; a clone session adds its image. rm removes it (I7).
-func newSession(a artifacts, repo string) (string, error) {
+// into the directory itself; a clone session adds its image. rm removes it (I7). The returned
+// file holds the session's lock until it is closed, which ls and stop read as "running".
+func newSession(a artifacts, repo string) (string, *os.File, error) {
 	var r [4]byte
 	if _, err := rand.Read(r[:]); err != nil {
-		return "", err
+		return "", nil, err
 	}
 	dir := filepath.Join(a.dir, "sessions", time.Now().UTC().Format(sessionTime)+"-"+hex.EncodeToString(r[:]))
 	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return "", err
+		return "", nil, err
 	}
-	if err := os.WriteFile(filepath.Join(dir, "repo"), []byte(repo+"\n"), 0o600); err != nil {
+	lock, err := holdSession(dir)
+	if err == nil {
+		err = os.WriteFile(filepath.Join(dir, "repo"), []byte(repo+"\n"), 0o600)
+	}
+	if err != nil {
+		lock.Close()
 		os.RemoveAll(dir)
-		return "", err
+		return "", nil, err
 	}
-	return dir, nil
+	return dir, lock, nil
 }
 
-// export copies the directory repo into a new session: the image the guest gets as /workspace.
+// export copies the directory repo into the new session directory dir: the image the guest gets as /workspace.
 // The image lives in the data directory, not under TMPDIR, because a reflink only works
 // within one filesystem and the data directory shares the home filesystem with most
 // repositories. It is as big as the repository plus the room the guest may write, which is
 // --disk or 1 GiB (I10). It stays when the session ends, for diff and pull.
-func export(a artifacts, caps limits, repo string) (string, error) {
-	dir, err := newSession(a, repo)
-	if err != nil {
-		return "", err
-	}
+func export(dir string, caps limits, repo string) (string, error) {
 	image := filepath.Join(dir, "workspace.ext4")
 	if _, err := workspace.Export(context.Background(), repo, image, caps.disk()); err != nil {
 		os.RemoveAll(dir)
@@ -194,10 +193,19 @@ func export(a artifacts, caps limits, repo string) (string, error) {
 // mode, ADR-005), or empty when both are "". close ends the VM and removes its files; the
 // image stays, and the mounted directory is never anything but the user's own tree. A nil
 // result means the session goes no further: code and err say how it ended (see accept).
-func boot(a artifacts, caps limits, sigs <-chan os.Signal, image, mount string) (*booted, int, error) {
-	dir, err := os.MkdirTemp("", "wc") // short: a unix socket path has 108 bytes
+// The VMM's sockets and config live in a directory under TMPDIR, since a unix socket path has
+// 108 bytes and the data directory may be deep. The path is recorded in session, a session
+// directory ("" for none), so that rm removes it even after the supervisor was killed (I7).
+func boot(a artifacts, caps limits, sigs <-chan os.Signal, session, image, mount string) (*booted, int, error) {
+	dir, err := os.MkdirTemp("", "wc") // short names: see above
 	if err != nil {
 		return nil, 0, err
+	}
+	if session != "" {
+		if err := recordBoot(session, dir); err != nil {
+			os.RemoveAll(dir)
+			return nil, 0, err
+		}
 	}
 	cmdline := caps.cmdline()
 	switch {
