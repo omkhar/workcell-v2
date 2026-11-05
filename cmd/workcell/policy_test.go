@@ -264,7 +264,7 @@ func TestRepoPolicy(t *testing.T) {
 		note       string
 	}{
 		{"no repo file", "", nil, []string{"bound.test", "other.test"}, ""},
-		{"repo widens", "[network]\nallow = [\"bound.test\", \"evil.test\"]\n", nil, []string{"bound.test"}, "workcell.toml asks for evil.test: not granted; allow it in "},
+		{"repo widens", "[network]\nallow = [\"bound.test\", \"evil.test\"]\n", nil, []string{"bound.test"}, "workcell.toml asks for \"evil.test\": not granted; allow it in "},
 		{"repo narrows", "[network]\nallow = [\"bound.test\"]\n", nil, []string{"bound.test"}, "workcell.toml narrows the policy of "},
 		{"--allow survives narrowing", "[network]\nallow = [\"bound.test\"]\n", []string{"other.test"}, []string{"bound.test", "other.test"}, "workcell.toml narrows the policy of "},
 		{"--allow grants what the repo asked", "[network]\nallow = [\"evil.test\"]\n", []string{"evil.test"}, []string{"evil.test"}, "workcell.toml narrows the policy of "},

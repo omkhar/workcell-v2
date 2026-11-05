@@ -110,7 +110,7 @@ func readAll(f *os.File, path string) (Policy, error) {
 // and give none. With an allow array, only the user's entries it names, with exactly the same text, stay, and a secret whose host that drops goes too;
 // with [[secret]] rows, only the user's rows whose name a row of it names stay, as the user wrote them. Of a
 // repository's row only the name is read. [workspace], [resources] and [update] are not read. What the
-// repository asked for that the user did not grant comes back as asked: a host as written, a secret as its name quoted.
+// repository asked for that the user did not grant comes back as asked: a host or a secret's name, each quoted.
 func Narrow(user, repo Policy) (got Policy, asked []string) {
 	got = user
 	if repo.AllowSet {
@@ -122,7 +122,7 @@ func Narrow(user, repo Policy) (got Policy, asked []string) {
 		}
 		for _, r := range repo.Allow {
 			if !slices.ContainsFunc(user.Allow, func(e Entry) bool { return e.Text == r.Text }) {
-				asked = append(asked, r.Text)
+				asked = append(asked, strconv.Quote(r.Text))
 			}
 		}
 	}

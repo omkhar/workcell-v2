@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/omkhar/workcell/v2/internal/policy"
@@ -70,7 +71,9 @@ func loadPolicy(extra []string, stderr io.Writer) (allow *proxy.Allowlist, secre
 		return nil, nil, "", err
 	}
 	narrowed, asked := policy.Narrow(p, repo)
-	asked = slices.DeleteFunc(asked, func(s string) bool { return slices.Contains(extra, s) })
+	asked = slices.DeleteFunc(asked, func(s string) bool {
+		return slices.ContainsFunc(extra, func(x string) bool { return strconv.Quote(x) == s })
+	})
 	note = repoNote(asked, len(narrowed.Allow) < len(p.Allow) || len(narrowed.Secret) < len(p.Secret), file)
 	p = narrowed
 	for _, text := range extra {

@@ -250,8 +250,9 @@ func TestNarrow(t *testing.T) {
 	}{
 		{"empty repo policy", Policy{}, []string{"bound.test", "other.test"}, []string{"a", "b"}, nil},
 		{"no network table, no rows", Policy{Secret: nil}, []string{"bound.test", "other.test"}, []string{"a", "b"}, nil},
-		{"widens a host", Policy{AllowSet: true, Allow: allow("bound.test", "evil.test")}, []string{"bound.test"}, []string{"a"}, []string{"evil.test"}},
-		{"respells a host", Policy{AllowSet: true, Allow: allow("BOUND.test", "bound.test.", "*.test", "bound.test:443")}, nil, nil, []string{"BOUND.test", "bound.test.", "*.test", "bound.test:443"}},
+		{"widens a host", Policy{AllowSet: true, Allow: allow("bound.test", "evil.test")}, []string{"bound.test"}, []string{"a"}, []string{`"evil.test"`}},
+		{"respells a host", Policy{AllowSet: true, Allow: allow("BOUND.test", "bound.test.", "*.test", "bound.test:443")}, nil, nil, []string{`"BOUND.test"`, `"bound.test."`, `"*.test"`, `"bound.test:443"`}},
+		{"a host with a newline and an escape", Policy{AllowSet: true, Allow: allow("x.test\n  https://evil.test  (443)\x1b[0m")}, nil, nil, []string{`"x.test\n  https://evil.test  (443)\x1b[0m"`}},
 		{"narrows to a subset", Policy{AllowSet: true, Allow: allow("bound.test")}, []string{"bound.test"}, []string{"a"}, nil},
 		{"an empty allow array allows nothing", Policy{AllowSet: true}, nil, nil, nil},
 		{"a secret goes with its narrowed host", Policy{AllowSet: true, Allow: allow("other.test")}, []string{"other.test"}, []string{"b"}, nil},
