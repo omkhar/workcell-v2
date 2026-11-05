@@ -5,6 +5,7 @@ package main
 
 import (
 	"bytes"
+	"crypto/ed25519"
 	"errors"
 	"flag"
 	"fmt"
@@ -12,6 +13,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/omkhar/workcell/v2/internal/audit"
@@ -20,15 +22,17 @@ import (
 // logPoll is how often `log -f` looks for new bytes: a plain read from the last offset (A9).
 const logPoll = 250 * time.Millisecond
 
-// logs is `workcell log [-f] [id]`: it shows the session's record, one line each, and for a refused
-// connection the host to allow. The session is id, or the newest run in this directory. With -f it
-// keeps showing the record as it is written, until the session is no longer running.
+// logs is `workcell log [-f] [--format ocsf] [id]`: it shows the session's record, one line each, and
+// for a refused connection the host to allow. The session is id, or the newest run in this directory.
+// With -f it keeps showing the record as it is written, until the session is no longer running.
+// With --format ocsf every record is one OCSF event instead.
 func logs(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("log", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	follow := fs.Bool("f", false, "")
-	if fs.Parse(args) != nil || fs.NArg() > 1 {
-		fmt.Fprintln(stderr, "usage: workcell log [-f] [id]")
+	format := fs.String("format", "", "")
+	if fs.Parse(args) != nil || fs.NArg() > 1 || (*format != "" && *format != "ocsf") {
+		fmt.Fprintln(stderr, "usage: workcell log [-f] [--format ocsf] [id]")
 		return 2
 	}
 	dir, err := logSession(fs.Arg(0))
@@ -40,7 +44,7 @@ func logs(args []string, stdout, stderr io.Writer) int {
 	if err != nil {
 		cfg = "config.toml"
 	}
-	if err := showDenies(dir, cfg, *follow, stdout); err != nil {
+	if err := showDenies(dir, cfg, *follow, *format == "ocsf", stdout, stderr); err != nil {
 		fmt.Fprintln(stderr, "workcell log:", err)
 		return 1
 	}
@@ -69,9 +73,9 @@ func logSession(id string) (string, error) {
 
 // showDenies prints what the session's audit.log holds and, with follow, what is added to it until
 // the session is not running and the file has no more bytes. A session with no audit.log has none yet.
-func showDenies(dir, cfg string, follow bool, out io.Writer) error {
+func showDenies(dir, cfg string, follow, ocsf bool, out, errs io.Writer) error {
 	var off int64
-	r := denyReader{cfg: cfg}
+	r := denyReader{cfg: cfg, ocsf: ocsf}
 	for {
 		up, err := running(dir) // asked before the read, so that a stopped session is read to its end
 		if err != nil {
@@ -98,7 +102,7 @@ func showDenies(dir, cfg string, follow bool, out io.Writer) error {
 		time.Sleep(logPoll)
 	}
 	if r.malformed > 0 {
-		fmt.Fprintf(out, "%d malformed line(s) in audit.log were not shown\n", r.malformed)
+		fmt.Fprintf(errs, "%d malformed line(s) in audit.log were not shown\n", r.malformed)
 	}
 	return nil
 }
@@ -108,6 +112,7 @@ func showDenies(dir, cfg string, follow bool, out io.Writer) error {
 // reader refuses is counted, never printed: it is host-written, but its fields came from the guest.
 type denyReader struct {
 	cfg       string
+	ocsf      bool   // every record is an OCSF event
 	pending   []byte // the start of a line whose end has not arrived
 	malformed int
 }
@@ -124,6 +129,8 @@ func (r *denyReader) feed(data []byte, out io.Writer) {
 		switch d, ok := audit.ParseLine(line); {
 		case !ok:
 			r.malformed++
+		case r.ocsf:
+			out.Write(append(ocsfLine(d), '\n'))
 		case d.Event == audit.Connect && d.Result != audit.Allowed:
 			fmt.Fprintln(out, denyMessage(d, r.cfg))
 		case d.Event == audit.LogFull:
@@ -165,4 +172,36 @@ func hostText(host string) string {
 		return "(invalid)"
 	}
 	return host
+}
+
+// verify is `workcell verify [id]`: it says whether the session's audit.log is exactly what this
+// host wrote (I9), by the seal that only this host's key signs. The session is as for log, and may
+// be running.
+func verify(args []string, stdout, stderr io.Writer) int {
+	if len(args) > 1 || (len(args) == 1 && strings.HasPrefix(args[0], "-")) {
+		fmt.Fprintln(stderr, "usage: workcell verify [id]")
+		return 2
+	}
+	id := ""
+	if len(args) == 1 {
+		id = args[0]
+	}
+	dir, err := logSession(id)
+	if err != nil {
+		fmt.Fprintln(stderr, "workcell verify:", err)
+		return 2
+	}
+	data, err := dataDir()
+	if err == nil {
+		var key ed25519.PrivateKey
+		if key, err = audit.LoadKey(data); err == nil {
+			err = audit.Verify(dir, key.Public().(ed25519.PublicKey))
+		}
+	}
+	if err != nil {
+		fmt.Fprintln(stderr, "workcell verify:", err)
+		return 1
+	}
+	fmt.Fprintln(stdout, "intact:", filepath.Base(dir))
+	return 0
 }
