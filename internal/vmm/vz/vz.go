@@ -52,6 +52,9 @@ func (m *Machine) Check(context.Context) error {
 	if err != nil || hv != 1 {
 		return fmt.Errorf("cannot use Virtualization.framework: kern.hv_support is %d (%v): this Mac cannot start a VM", hv, err)
 	}
+	if m.cfg.Kernel == "" {
+		return nil
+	}
 	c := &console{}
 	defer c.close()
 	cfg, err := configure(m.cfg, c)

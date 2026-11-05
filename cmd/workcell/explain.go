@@ -73,7 +73,7 @@ func cacheText(caches []vmm.Cache) (string, error) {
 
 // bound is the secrets part: each by name, with the host and header it goes out in, the method
 // and path prefix or the repositories it is narrowed to, the token endpoint that issues it when its source is a
-// sign-in flow, and the guest variable that holds its placeholder, and the provider whose secret it is. Never its value (I5).
+// sign-in flow, and and the guest variable that holds its placeholder. Never its value (I5).
 func bound(secrets []binding) string {
 	if len(secrets) == 0 {
 		return "secrets: none\n"
@@ -96,9 +96,6 @@ func bound(secrets []binding) string {
 		}
 		if s.env != "" {
 			fmt.Fprintf(&b, ", as $%s", s.env)
-		}
-		if s.serves != "" {
-			fmt.Fprintf(&b, ", for %s", s.serves)
 		}
 		b.WriteString("\n")
 	}

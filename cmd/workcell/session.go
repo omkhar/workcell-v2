@@ -44,12 +44,7 @@ func holdSession(dir string) (*os.File, error) {
 	if err != nil {
 		return nil, err
 	}
-	for { // a probe by ls may hold the lock for an instant
-		err = unix.Flock(int(f.Fd()), unix.LOCK_EX)
-		if err != unix.EINTR {
-			break
-		}
-	}
+	err = unix.Flock(int(f.Fd()), unix.LOCK_EX) // a probe by ls may hold the lock for an instant
 	if err == nil {
 		_, err = f.WriteString(strconv.Itoa(os.Getpid()) + "\n")
 	}

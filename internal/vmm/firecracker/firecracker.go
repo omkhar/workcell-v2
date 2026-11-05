@@ -47,13 +47,16 @@ func New(cfg vmm.Config) *Machine {
 func (m *Machine) configPath() string { return filepath.Join(m.cfg.Dir, "firecracker.json") }
 func (m *Machine) vsockPath() string  { return filepath.Join(m.cfg.Dir, "vsock") }
 
-// Check opens /dev/kvm for writing and looks at the pinned binary.
+// Check opens /dev/kvm for writing and looks at the pinned binary, if the Config names one.
 func (m *Machine) Check(context.Context) error {
 	f, err := os.OpenFile("/dev/kvm", os.O_RDWR, 0)
 	if err != nil {
 		return fmt.Errorf("cannot use KVM: %w (this user needs read and write access to /dev/kvm)", err)
 	}
 	_ = f.Close()
+	if m.cfg.Binary == "" {
+		return nil
+	}
 	fi, err := os.Stat(m.cfg.Binary)
 	if err != nil {
 		return fmt.Errorf("firecracker binary: %w", err)

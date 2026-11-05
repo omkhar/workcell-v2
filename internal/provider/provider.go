@@ -39,11 +39,10 @@ type Install struct{ Method, Pin, Package string }
 
 // Secret is an API-key credential, shaped like a [[secret]] row of the policy without its
 // source, which the user chooses. The CLI sends it in Header to Host, after Prefix ("" or
-// "Bearer "). It reads the placeholder from the variable Env, or from File, a path under the
-// guest home, in which JSON key Field holds it. Line is the row's.
+// "Bearer "). It reads the placeholder from the variable Env. Line is the row's.
 type Secret struct {
-	Name, Host, Header, Prefix, Env, File, Field string
-	Line                                         int
+	Name, Host, Header, Prefix, Env string
+	Line                            int
 }
 
 var (
@@ -161,7 +160,7 @@ func parse(text, file string) (Provider, error) {
 				bad = "method must be binary or npm"
 			}
 		case "secret":
-			s := Secret{k("name"), k("host"), k("header"), k("prefix"), k("env"), k("file"), k("field"), t.Line}
+			s := Secret{k("name"), k("host"), k("header"), k("prefix"), k("env"), t.Line}
 			pair := s.Host + " " + s.Header
 			switch {
 			case bareHost(s.Host) != nil:
@@ -174,12 +173,8 @@ func parse(text, file string) (Provider, error) {
 				bad = `prefix must be "" or "Bearer "`
 			case s.Env != "" && !envRE.MatchString(s.Env):
 				bad = fmt.Sprintf("env %q is not a variable name", s.Env)
-			case s.Env == "" && s.File == "":
-				bad = "needs an env or a file to carry the placeholder"
-			case (s.File == "") != (s.Field == ""):
-				bad = "file and field go together"
-			case s.File != "" && (!fs.ValidPath(s.File) || s.File == "."):
-				bad = fmt.Sprintf("file %q must be a clean path under the guest home, with no .. and not absolute", s.File)
+			case s.Env == "":
+				bad = "needs an env to carry the placeholder"
 			}
 			bound[pair] = t.Line
 			p.Secrets = append(p.Secrets, s)

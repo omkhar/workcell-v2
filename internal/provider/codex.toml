@@ -14,5 +14,3 @@ host   = "api.openai.com"
 header = "authorization"
 prefix = "Bearer "       # what the CLI sends before the value: "" or "Bearer "
 env    = "OPENAI_API_KEY"
-file   = ".codex/auth.json"   # the placeholder file, under the guest home
-field  = "OPENAI_API_KEY"     # the JSON key of that file that holds the placeholder

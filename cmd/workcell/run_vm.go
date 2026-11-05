@@ -683,3 +683,45 @@ func lastLines(b []byte, n int) string {
 	lines := strings.Split(strings.TrimRight(s, "\n"), "\n")
 	return strings.Join(lines[max(0, len(lines)-n):], "\n")
 }
+
+// minFree is the room doctor asks of the data directory's volume: its images, and a session's clone at the default 1GiB cap.
+const minFree = 4 << 30
+
+// doctor is `workcell doctor`: "ok" or "FAIL" and a fix line for the hypervisor, the artifacts and the
+// disk space a session needs. It exits 1 if any fails, and only reports: `workcell update` fills the data directory.
+func doctor(args []string, stdout, stderr io.Writer) int {
+	dir, err := dataDir()
+	if err != nil || len(args) != 0 {
+		fmt.Fprintln(stderr, "usage: workcell doctor\n  says whether this host can run a session, and how to fix what it cannot")
+		return 2
+	}
+	a, imageErr := findArtifacts(dir)
+	cfg := vmm.Config{Kernel: a.kernel, Initrd: a.initrd, CPUs: 1, MemoryMiB: 512} // proves the entitlement too
+	if imageErr != nil {
+		a, cfg = artifacts{}, vmm.Config{}
+	}
+	var st unix.Statfs_t
+	var diskErr error
+	for p := dir; ; p = filepath.Dir(p) { // the data directory does not exist before the first update
+		if diskErr = unix.Statfs(p, &st); diskErr != unix.ENOENT {
+			break
+		}
+	}
+	free := int64(st.Bavail) * int64(st.Bsize)
+	if diskErr == nil && free < minFree {
+		diskErr = errors.New("too little room")
+	}
+	rc := 0
+	row := func(name, fix string, err error) {
+		if err == nil {
+			fmt.Fprintln(stdout, "ok  ", name)
+			return
+		}
+		rc = 1
+		fmt.Fprintf(stdout, "FAIL %s: %v\n     fix: %s\n", name, err, fix)
+	}
+	row("hypervisor", "Linux: add your user to the kvm group (sudo usermod -aG kvm $USER) and log in again; Mac: use Apple silicon and a binary signed for virtualization", newMachine(a, cfg).Check(context.Background()))
+	row("image", "the pinned artifacts arrive in "+dir+" with workcell update", imageErr)
+	row(fmt.Sprintf("disk (%d MiB free in %s, %d MiB needed)", free>>20, dir, minFree>>20), "free space on the volume that holds "+dir, diskErr)
+	return rc
+}
