@@ -4,8 +4,11 @@
 package pins
 
 import (
+	"slices"
 	"testing"
 	"testing/fstest"
+
+	internalpins "github.com/omkhar/workcell/v2/internal/pins"
 )
 
 // TestLoad: a row is named for its file and decodes to a Pin; a misnamed row, a row that
@@ -44,7 +47,7 @@ func TestLoad(t *testing.T) {
 			}
 		})
 	}
-	if _, ok := Lookup("debian"); !ok {
-		t.Error("the compiled-in rows lack debian")
+	if all, err := All(); err != nil || !slices.ContainsFunc(all, func(p internalpins.Pin) bool { return p.Name == "debian" }) {
+		t.Errorf("the compiled-in rows lack debian: %v", err)
 	}
 }

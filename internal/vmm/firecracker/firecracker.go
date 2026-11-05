@@ -102,7 +102,7 @@ func (m *Machine) Start(ctx context.Context) error {
 	if m.cfg.Console != nil {
 		cmd.Stdout, cmd.Stderr = m.cfg.Console, m.cfg.Console
 	}
-	cmd.SysProcAttr = &syscall.SysProcAttr{Pdeathsig: syscall.SIGKILL}
+	cmd.SysProcAttr = &syscall.SysProcAttr{Pdeathsig: syscall.SIGKILL, Setpgid: true} // its own group: a hangup of the supervisor's terminal does not reach it
 	started := make(chan error, 1)
 	go func() {
 		// Pdeathsig fires when the thread that forked the child exits, so that thread

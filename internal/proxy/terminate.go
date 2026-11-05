@@ -172,15 +172,6 @@ func ValidCAExpiry(notAfter, now time.Time) bool {
 	return notAfter.After(now) && notAfter.Sub(now) <= MaxCALifetime
 }
 
-// ValidCALifetime reports whether a CA's own validity period, NotAfter minus
-// NotBefore, is positive and at most MaxCALifetime plus CABackdate. Unlike
-// ValidCAExpiry it needs no clock, so a host can check a CA that another
-// clock (the VM's) issued without skew between the two.
-func ValidCALifetime(notBefore, notAfter time.Time) bool {
-	d := notAfter.Sub(notBefore)
-	return d > 0 && d <= MaxCALifetime+CABackdate
-}
-
 // NewSessionCA returns a CA whose critical name constraints permit only hosts
 // and no IP address. notAfter must be in the future and within MaxCALifetime.
 func NewSessionCA(hosts []string, notAfter time.Time) (*SessionCA, error) {

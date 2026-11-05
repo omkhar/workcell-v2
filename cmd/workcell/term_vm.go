@@ -8,11 +8,11 @@ package main
 import "golang.org/x/sys/unix"
 
 // rawMode puts the terminal on fd in raw mode, so the guest's terminal sees every key, and
-// returns the function that restores it. ok is false when fd is not a terminal.
+// returns the function that restores it. ok is false when fd is not a terminal, and restore then does nothing.
 func rawMode(fd int) (restore func(), ok bool) {
 	old, err := unix.IoctlGetTermios(fd, termiosGet)
 	if err != nil {
-		return nil, false
+		return func() {}, false
 	}
 	t := *old
 	t.Iflag &^= unix.IGNBRK | unix.BRKINT | unix.PARMRK | unix.ISTRIP | unix.INLCR | unix.IGNCR | unix.ICRNL | unix.IXON
@@ -22,7 +22,7 @@ func rawMode(fd int) (restore func(), ok bool) {
 	t.Cflag |= unix.CS8
 	t.Cc[unix.VMIN], t.Cc[unix.VTIME] = 1, 0
 	if unix.IoctlSetTermios(fd, termiosSet, &t) != nil {
-		return nil, false
+		return func() {}, false
 	}
 	return func() { _ = unix.IoctlSetTermios(fd, termiosSet, old) }, true
 }

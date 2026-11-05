@@ -18,25 +18,12 @@ import (
 	"strings"
 )
 
-const (
-	tlsPort                 = 443
-	maxAllowlistBytes int64 = 1 << 20
-)
+const tlsPort = 443
 
 // Allowlist is the exact (host, port) set the proxy admits.
 type Allowlist struct {
 	sni     map[string]bool   // hosts allowed as SNI on port 443
 	forward map[uint16]string // each non-443 port to its single host
-}
-
-// LoadAllowlist reads an allowlist file with one host:port entry per line.
-// Blank lines and text after '#' are ignored.
-func LoadAllowlist(path string) (*Allowlist, error) {
-	data, err := readFileNoFollow(path, "egress allowlist", maxAllowlistBytes)
-	if err != nil {
-		return nil, err
-	}
-	return ParseAllowlist(string(data), path)
 }
 
 // maxLogHost is the longest DNS name.

@@ -89,8 +89,9 @@ func run(args []string, stderr io.Writer) int {
 // run; an error alone means the session failed.
 func session(argv []string, caps limits, mount bool, a artifacts, allow *proxy.Allowlist, secrets []binding) (code int, err error) {
 	sigs := make(chan os.Signal, 4)
-	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM, syscall.SIGWINCH)
+	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
 	defer signal.Stop(sigs)
+	signal.Ignore(syscall.SIGHUP) // a closed terminal detaches the session; it does not end it
 	cwd, err := os.Getwd()
 	if err != nil {
 		return 0, err
@@ -133,8 +134,8 @@ func session(argv []string, caps limits, mount bool, a artifacts, allow *proxy.A
 	req.Env = append(req.Env, cacheEnv(a.caches)...)
 	req.Env = append(req.Env, placeholderEnv(secrets)...)
 	restore, tty := rawMode(unix.Stdin)
+	defer restore()
 	if tty {
-		defer restore()
 		req.PTY = true
 		req.Rows, req.Cols = windowSize(unix.Stdin)
 		if term := os.Getenv("TERM"); term != "" {
@@ -142,35 +143,46 @@ func session(argv []string, caps limits, mount bool, a artifacts, allow *proxy.A
 		}
 	}
 	c := wire.New(raw, frameLimit)
+	ln, err := net.Listen("unix", filepath.Join(b.dir, "attach")) // closeAll removes it with the directory
+	if err != nil {
+		return 0, err
+	}
+	defer ln.Close()
 	if err := c.WriteFrame(wire.Frame{Type: guest.TypeExec, Payload: guest.EncodeExec(req)}); err != nil {
 		return 0, err
 	}
-	window := make(chan struct{}, guest.StdinWindow) // one token per Stdin frame the init has not acknowledged
+	s := &seat{window: make(chan struct{}, guest.StdinWindow), in: make(chan wire.Frame)}
+	go func() {
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			s.sit(conn)
+		}
+	}()
+	ours, theirs := net.Pipe() // this terminal is the first client; attach brings others
+	s.sit(ours)
+	shown := make(chan struct{})
+	go func() { client(theirs, restore, tty); close(shown) }()
 	done := make(chan result, 1)
-	go output(c, window, done)
-	chunks := make(chan []byte)
-	go readStdin(window, chunks, tty)
+	go output(c, s, done)
 
 	signalled := false
 	for {
 		var err error
 		select {
-		case b := <-chunks:
-			err = c.WriteFrame(wire.Frame{Type: guest.TypeStdin, Payload: b})
-		case s := <-sigs:
-			switch {
-			case s == syscall.SIGWINCH:
-				if tty {
-					rows, cols := windowSize(unix.Stdin)
-					err = c.WriteFrame(wire.Frame{Type: guest.TypeResize, Payload: guest.EncodeResize(guest.Resize{Rows: rows, Cols: cols})})
-				}
-			case signalled: // the command ignored the first one: stop waiting for it
-				return 128 + int(s.(syscall.Signal)), nil
-			default:
-				signalled = true
-				err = c.WriteFrame(wire.Frame{Type: guest.TypeSignal, Payload: guest.EncodeSignal(int(s.(syscall.Signal)))})
+		case f := <-s.in:
+			err = c.WriteFrame(f)
+		case sig := <-sigs:
+			if signalled { // the command ignored the first one: stop waiting for it
+				return 128 + int(sig.(syscall.Signal)), nil
 			}
+			signalled = true
+			err = c.WriteFrame(wire.Frame{Type: guest.TypeSignal, Payload: guest.EncodeSignal(int(sig.(syscall.Signal)))})
 		case r := <-done:
+			theirs.Close() // when no Exit came, nothing else ends the client; after one it has read it already
+			<-shown        // the last output reaches the terminal first
 			return r.code, r.err
 		}
 		if err != nil {
@@ -183,6 +195,7 @@ func session(argv []string, caps limits, mount bool, a artifacts, allow *proxy.A
 // returns only once the VMM process is gone, so the next boot may reuse the CID.
 type booted struct {
 	conn  net.Conn
+	dir   string        // holds the VMM's sockets and the session's attach socket; close removes it
 	took  time.Duration // from just before the VMM started to the guest's connection
 	ca    []byte        // the session CA's certificate, PEM, when the proxy terminates TLS; its key stays in the proxy
 	close func()
@@ -345,7 +358,7 @@ func boot(a artifacts, caps limits, sigs <-chan os.Signal, session string, log *
 		closeAll()
 		return nil, code, err
 	}
-	return &booted{conn: raw, took: time.Since(start), ca: ca, close: func() { raw.Close(); closeAll() }}, 0, nil
+	return &booted{conn: raw, dir: dir, took: time.Since(start), ca: ca, close: func() { raw.Close(); closeAll() }}, 0, nil
 }
 
 // bind makes p terminate every allowed name with ca and swap each binding's placeholder for the
@@ -436,10 +449,10 @@ type result struct {
 	err  error
 }
 
-// output passes the guest's output to the host's stdout and stderr and gives back a window
-// slot for every Ack, until the command's Exit or an error ends the session. It decodes
-// bytes the guest chose, so every payload is checked.
-func output(c *wire.Conn, window chan struct{}, done chan<- result) {
+// output passes the guest's output to the seat and gives back a window slot for every Ack,
+// until the command's Exit or an error ends the session. It decodes bytes the guest chose,
+// so every payload is checked.
+func output(c *wire.Conn, s *seat, done chan<- result) {
 	for {
 		f, err := c.ReadFrame()
 		if err != nil {
@@ -447,31 +460,20 @@ func output(c *wire.Conn, window chan struct{}, done chan<- result) {
 			return
 		}
 		switch f.Type {
-		case guest.TypeStdout:
-			_, _ = os.Stdout.Write(f.Payload)
-		case guest.TypeStderr:
-			_, _ = os.Stderr.Write(f.Payload)
+		case guest.TypeStdout, guest.TypeStderr:
+			s.send(f)
 		case guest.TypeAck:
 			if _, err := guest.DecodeAck(f.Payload); err != nil {
 				done <- result{err: err}
 				return
 			}
 			select {
-			case <-window:
+			case <-s.window:
 			default: // an Ack nobody was waiting for: harmless
 			}
 		case guest.TypeExit:
-			e, err := guest.DecodeExit(f.Payload)
-			switch {
-			case err != nil:
-				done <- result{err: err}
-			case e.Err != "":
-				done <- result{code: 126, err: fmt.Errorf("the command could not run: %q", e.Err)}
-			case e.Signal != 0:
-				done <- result{code: 128 + e.Signal}
-			default:
-				done <- result{code: e.Code}
-			}
+			s.send(f)
+			done <- exitResult(f.Payload)
 			return
 		default:
 			done <- result{err: fmt.Errorf("frame type %d from the guest", f.Type)}
@@ -480,25 +482,167 @@ func output(c *wire.Conn, window chan struct{}, done chan<- result) {
 	}
 }
 
-// readStdin feeds host input to chunks, holding a window slot for each frame so that at most
-// guest.StdinWindow are unacknowledged. At the end of input a pipe gets one empty frame,
-// which closes the command's stdin; a terminal sends its end-of-file as a byte.
-func readStdin(window chan struct{}, chunks chan<- []byte, tty bool) {
-	buf := make([]byte, guest.MaxStdin)
-	for {
-		n, err := os.Stdin.Read(buf)
-		if n > 0 {
-			window <- struct{}{}
-			chunks <- slices.Clone(buf[:n])
-		}
-		if err != nil {
-			if !tty {
-				window <- struct{}{}
-				chunks <- nil
+// exitResult is how the command ended, from the payload of its Exit frame.
+func exitResult(payload []byte) result {
+	e, err := guest.DecodeExit(payload)
+	switch {
+	case err != nil:
+		return result{err: err}
+	case e.Err != "":
+		return result{code: 126, err: fmt.Errorf("the command could not run: %q", e.Err)}
+	case e.Signal != 0:
+		return result{code: 128 + e.Signal}
+	}
+	return result{code: e.Code}
+}
+
+// seat is the supervisor's end of the terminal: the one client that holds it, or nobody, in
+// which case the output is dropped and the command goes on. A client that sits down turns out
+// the one before. Clients speak the guest's frames (Stdin and Resize to the guest; Stdout,
+// Stderr and Exit from it), so the guest channel stays the supervisor's alone.
+type seat struct {
+	mu     sync.Mutex
+	raw    net.Conn
+	c      *wire.Conn
+	window chan struct{}   // one token per Stdin frame the init has not acknowledged
+	in     chan wire.Frame // what the client sends on to the guest
+}
+
+// sit seats the client on raw and relays its input until it leaves.
+func (s *seat) sit(raw net.Conn) {
+	c := wire.New(raw, frameLimit)
+	s.mu.Lock()
+	if s.raw != nil {
+		s.raw.Close()
+	}
+	s.raw, s.c = raw, c
+	s.mu.Unlock()
+	go func() {
+		defer raw.Close()
+		for {
+			f, err := c.ReadFrame()
+			if err != nil {
+				return
 			}
-			return
+			switch f.Type {
+			case guest.TypeStdin:
+				s.window <- struct{}{} // at most guest.StdinWindow frames are unacknowledged
+				fallthrough
+			case guest.TypeResize:
+				s.in <- f
+			}
+		}
+	}()
+}
+
+// send shows f to the client, or drops it. A client that cannot take it in frameLimit loses the seat.
+func (s *seat) send(f wire.Frame) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.c != nil && s.c.WriteFrame(f) != nil {
+		s.raw.Close()
+		s.raw, s.c = nil, nil
+	}
+}
+
+// attachLimit is how long a client may wait to hand over a frame: the supervisor takes none
+// while the command has not read the input it was sent.
+const attachLimit = time.Hour
+
+// client shows the session's terminal over raw until the command ends, the terminal goes away or
+// another client takes the seat. restore puts the terminal back; tty says there is one. Without a
+// terminal the end of input closes the command's stdin; with one it means the terminal is gone.
+func client(raw net.Conn, restore func(), tty bool) (int, error) {
+	defer raw.Close()
+	defer restore()
+	c := wire.New(raw, attachLimit)
+	var mu sync.Mutex
+	send := func(typ uint8, p []byte) error {
+		mu.Lock()
+		defer mu.Unlock()
+		return c.WriteFrame(wire.Frame{Type: typ, Payload: p})
+	}
+	if tty {
+		winch := make(chan os.Signal, 1)
+		signal.Notify(winch, syscall.SIGWINCH)
+		defer signal.Stop(winch)
+		winch <- syscall.SIGWINCH // the size of this terminal, which may not be that of the one before
+		go func() {
+			for range winch {
+				rows, cols := windowSize(unix.Stdin)
+				_ = send(guest.TypeResize, guest.EncodeResize(guest.Resize{Rows: rows, Cols: cols}))
+			}
+		}()
+	}
+	go func() {
+		buf := make([]byte, guest.MaxStdin)
+		for {
+			n, err := os.Stdin.Read(buf)
+			if n > 0 && send(guest.TypeStdin, buf[:n]) != nil {
+				return
+			}
+			if err != nil {
+				if tty {
+					raw.Close()
+				} else {
+					_ = send(guest.TypeStdin, nil)
+				}
+				return
+			}
+		}
+	}()
+	for {
+		f, err := c.ReadFrame()
+		if err == nil {
+			switch f.Type {
+			case guest.TypeStdout:
+				_, err = os.Stdout.Write(f.Payload)
+			case guest.TypeStderr:
+				_, err = os.Stderr.Write(f.Payload)
+			case guest.TypeExit:
+				r := exitResult(f.Payload)
+				return r.code, r.err
+			}
+		}
+		if err != nil { // the seat went to another client, or the session ended, or the terminal is gone
+			restore()
+			fmt.Fprintln(os.Stderr, "workcell: detached")
+			return 0, nil
 		}
 	}
+}
+
+// attach is `workcell attach [id]`: it takes the terminal of a running session, by default the newest run
+// in this directory, from whoever has it. Closing the terminal detaches; the session goes on.
+func attach(args []string, stderr io.Writer) int {
+	dir, err := logSession(strings.Join(args, " ")) // two words name no session
+	var listed []byte
+	if err == nil {
+		listed, err = os.ReadFile(filepath.Join(dir, "vmm")) // the first directory it names holds the socket
+	}
+	var raw net.Conn
+	if err == nil {
+		tmp, _, _ := strings.Cut(string(listed), "\n")
+		raw, err = net.Dial("unix", filepath.Join(tmp, "attach"))
+	}
+	if err != nil {
+		fmt.Fprintln(stderr, "workcell attach:", err)
+		return 1
+	}
+	restore, tty := rawMode(unix.Stdin)
+	if !tty {
+		raw.Close()
+		fmt.Fprintln(stderr, "workcell attach: stdin is not a terminal")
+		return 1
+	}
+	sigs := make(chan os.Signal, 1)
+	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
+	go func() { <-sigs; raw.Close() }() // so that the terminal is restored
+	code, err := client(raw, restore, true)
+	if err != nil {
+		fmt.Fprintln(stderr, "workcell attach:", err)
+	}
+	return code
 }
 
 // tail keeps the end of the guest's console: enough to say why a boot failed, and bounded

@@ -198,7 +198,7 @@ with ADR-003 and ADR-004, they build on the proposal, and you can accept it at a
       accept: no import of `applecontainer`, `hoststate` or `sessions`
 - [x] U-601 | flow:boundary | model:sonnet | env:kvm | deps:U-600,U-010,H-011 | tries:0 | `workcell verify` and `workcell log --format ocsf`
       accept: I9 added to `enforced.txt` and green
-- [ ] U-602 | flow:build | model:sonnet | env:kvm | deps:U-205 | tries:0 | Detach and `attach`
+- [x] U-602 | flow:build | model:sonnet | env:kvm | deps:U-205 | tries:0 | Detach and `attach`
       accept: a session survives terminal close; a second attach takes over cleanly
 - [ ] U-603 | flow:build | model:sonnet | env:kvm | deps:U-602 | tries:0 | `workcell doctor`: hypervisor access, image present, disk space, each with a one-line fix
       accept: P3 checked on a clean container image
