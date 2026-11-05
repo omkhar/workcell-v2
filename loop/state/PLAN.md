@@ -158,7 +158,7 @@ with ADR-003 and ADR-004, they build on the proposal, and you can accept it at a
       accept: a fake provider in `escape/` proves that access and refresh tokens never reach the guest
 - [x] U-404 | flow:build | model:sonnet | env:kvm | deps:U-402 | tries:0 | Claude Code adapter, API key path
       accept: scripted session against a local fake API
-- [ ] U-405 | flow:build | model:sonnet | env:kvm | deps:U-402 | tries:0 | Codex adapter, API key path
+- [x] U-405 | flow:build | model:sonnet | env:kvm | deps:U-402 | tries:0 | Codex adapter, API key path
       accept: as U-404
 - [ ] U-406 | flow:build | model:sonnet | env:kvm | deps:U-402 | tries:0 | Copilot CLI and Gemini CLI adapters
       accept: as U-404
