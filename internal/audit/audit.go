@@ -133,7 +133,9 @@ func (l *Log) append(r Record, durable bool) error {
 	if !durable {
 		limit = l.soft
 	}
-	if l.size+int64(len(line)) > limit {
+	// The host writes each lifecycle event once per session (I10 holds), and the guest cannot
+	// make a session end without its record (I9).
+	if lifecycle := r.Event == SessionStart || r.Event == SessionEnd; !lifecycle && l.size+int64(len(line)) > limit {
 		if l.full {
 			return ErrFull
 		}

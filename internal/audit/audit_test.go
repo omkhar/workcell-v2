@@ -183,6 +183,34 @@ func TestVolumeIsBounded(t *testing.T) {
 	}
 }
 
+func TestLifecycleRecordsIgnoreTheLimit(t *testing.T) {
+	for _, event := range []string{SessionStart, SessionEnd} {
+		t.Run(event, func(t *testing.T) {
+			dir := t.TempDir()
+			key, _ := LoadKey(dir)
+			l, _ := Create(dir, key, clock)
+			l.soft, l.hard = 600, 1000
+			for l.Note(Record{Event: Connect, Host: "a.example", Port: 443, Result: Allowed}) == nil {
+			}
+			for l.Record(Record{Event: Secret, Name: "k"}) == nil {
+			}
+			if err := l.Record(Record{Event: Secret, Name: "k"}); !errors.Is(err, ErrFull) {
+				t.Fatalf("log not full: %v", err)
+			}
+			if err := l.Record(Record{Event: event}); err != nil {
+				t.Fatalf("%s refused: %v", event, err)
+			}
+			b, _ := os.ReadFile(filepath.Join(dir, LogName))
+			if !strings.Contains(string(b), `"event":"`+event+`"`) {
+				t.Errorf("no %s line in the log", event)
+			}
+			if err := Verify(dir, key.Public().(ed25519.PublicKey)); err != nil {
+				t.Error(err)
+			}
+		})
+	}
+}
+
 func TestAClosedOrNilLogRecordsNothing(t *testing.T) {
 	dir := t.TempDir()
 	key, _ := LoadKey(dir)
