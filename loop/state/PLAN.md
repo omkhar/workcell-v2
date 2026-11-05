@@ -72,7 +72,7 @@ with ADR-003 and ADR-004, they build on the proposal, and you can accept it at a
       accept: log forge, suppress and truncate attempts; `kill -9` of each host helper; malformed, oversized and slow-drip channel frames
 - [x] U-010b | flow:escape | model:fable | env:any | deps:U-004 | tries:0 | Escape tests for I14, with a local fake channel server and fake upstream
       accept: bad signature, expired manifest, lower serial, digest mismatch, truncated download and redirected URL are each refused
-- [H] H-011 | env:macos | deps:U-005,U-006,U-007,U-008,U-009,U-010 | In the second account: optional, and private. Run the suite against Workcell v1.0.2, installed there, before hosted CI runs it against code ported from v1. It needs an adapter for v1, which stays off GitHub like those of H-806. `REFERENCE.md` section 6 says how
+- [x] H-011 | env:macos | deps:U-005,U-006,U-007,U-008,U-009,U-010 | In the second account: optional, and private. Run the suite against Workcell v1.0.2, installed there, before hosted CI runs it against code ported from v1. It needs an adapter for v1, which stays off GitHub like those of H-806. `REFERENCE.md` section 6 says how
       accept: the result stays outside the repository (S14). Only limits that v1's own documents already state may go into `docs/benchmarks.md`. Anything new follows `SECURITY.md`
 
 ## Phase 1: choose the VM layer
@@ -296,7 +296,7 @@ the loop has ended.
       accept: every v1 flag listed in `_legacy/flags.txt` has a row
 - [ ] U-904 | flow:build | model:sonnet | env:any | deps:W-801,W-802b | tries:0 | sign:you | Homebrew formula, a checksum-verifying install script, and the P2 install-timing job in `nightly.yml`
       accept: the script refuses a download with a wrong checksum, shown against a local server; it has at most 90 lines, because `gate.sh` joins the 300-line shell budget at cutover; `nightly.yml` stays within 80 lines
-- [ ] U-905a | flow:mech | model:sonnet | env:any | deps:U-903,U-600,U-400,U-402,U-302,U-205,U-701,U-702,B-823,B-826b,B-827,B-828 | tries:0 | Delete `_legacy/` and `spikes/`
+- [ ] U-905a | flow:mech | model:sonnet | env:any | deps:U-903,U-502a,U-600,U-400,U-402,U-302,U-205,U-701,U-702,B-823,B-826b,B-827,B-828 | tries:0 | Delete `_legacy/` and `spikes/`
       accept: gate green; budgets met
 - [ ] U-906 | flow:mech | model:sonnet | env:kvm | deps:above | tries:0 | wait:nightly.yml | Record P1 to P7 in `docs/benchmarks.md`, each with its number and the run it came from
       accept: P2 comes from `nightly.yml`. P7 cannot be met before cutover, because nothing merges a bump here. In its place stand the dry run that B-826b read, and the lag per pin that `nightly.yml` reports. P5 is the p50 over the last 10 pull requests, each counted by the slower of `gate` and `gate-macos`; P1 and P6 include H-703 and H-704. If another target is missed, mark this unit `[!]`
