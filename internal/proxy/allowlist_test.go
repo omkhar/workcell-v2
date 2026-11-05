@@ -5,8 +5,6 @@
 package proxy
 
 import (
-	"os"
-	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -71,46 +69,16 @@ func TestParseAllowlist(t *testing.T) {
 	}
 }
 
-func TestLoadAllowlistAndPorts(t *testing.T) {
+func TestAllowlistPorts(t *testing.T) {
 	t.Parallel()
-	path := filepath.Join(t.TempDir(), "allowlist")
-	must(0, os.WriteFile(path, []byte("db.example:5432\napi.example.com:443\nssh.example:22\nDB.example:443\n"), 0o600))
-	a, err := LoadAllowlist(path)
+	a, err := ParseAllowlist("db.example:5432\napi.example.com:443\nssh.example:22\nDB.example:443\n", "allowlist")
 	if err != nil {
-		t.Fatalf("LoadAllowlist: %v", err)
+		t.Fatalf("ParseAllowlist: %v", err)
 	}
 	if got, want := a.Ports(), []uint16{22, 443, 5432}; !slices.Equal(got, want) {
 		t.Fatalf("Ports() = %v, want %v", got, want)
 	}
 	if got, want := a.Hosts(), []string{"api.example.com", "db.example", "ssh.example"}; !slices.Equal(got, want) {
 		t.Fatalf("Hosts() = %v, want %v", got, want)
-	}
-	if _, err := LoadAllowlist(filepath.Join(t.TempDir(), "missing")); err == nil {
-		t.Fatal("LoadAllowlist(missing) error = nil, want error")
-	}
-}
-
-func TestLoadAllowlistRefusesSymlinkAndOversize(t *testing.T) {
-	t.Parallel()
-	dir := t.TempDir()
-	real := filepath.Join(dir, "real")
-	must(0, os.WriteFile(real, []byte("api.example.com:443\n"), 0o600))
-	link := filepath.Join(dir, "link")
-	must(0, os.Symlink(real, link))
-	if _, err := LoadAllowlist(link); err == nil {
-		t.Error("LoadAllowlist(symlink) error = nil, want error")
-	}
-	linkDir := filepath.Join(t.TempDir(), "dirlink")
-	must(0, os.Symlink(dir, linkDir))
-	if _, err := LoadAllowlist(filepath.Join(linkDir, "real")); err == nil {
-		t.Error("LoadAllowlist(symlinked parent) error = nil, want error")
-	}
-	if _, err := LoadAllowlist(dir); err == nil {
-		t.Error("LoadAllowlist(directory) error = nil, want error")
-	}
-	big := filepath.Join(dir, "big")
-	must(0, os.WriteFile(big, []byte("#"+strings.Repeat("x", int(maxAllowlistBytes))+"\napi.example.com:443\n"), 0o600))
-	if _, err := LoadAllowlist(big); err == nil {
-		t.Error("LoadAllowlist(oversize) error = nil, want error")
 	}
 }

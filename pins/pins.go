@@ -11,7 +11,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/fs"
-	"slices"
 	"strings"
 	"sync"
 
@@ -23,16 +22,6 @@ var files embed.FS
 
 // All is every row compiled into the binary, in file-name order.
 var All = sync.OnceValues(func() ([]internalpins.Pin, error) { return Load(files) })
-
-// Lookup is the compiled-in row of the name.
-func Lookup(name string) (internalpins.Pin, bool) {
-	all, _ := All()
-	i := slices.IndexFunc(all, func(p internalpins.Pin) bool { return p.Name == name })
-	if i < 0 {
-		return internalpins.Pin{}, false
-	}
-	return all[i], true
-}
 
 // Load reads every *.json of the root of fsys, in name order. A file is named for its
 // row. Any fault refuses the whole set.

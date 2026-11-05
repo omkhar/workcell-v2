@@ -14,6 +14,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strconv"
 	"strings"
@@ -50,16 +51,19 @@ func TestRun(t *testing.T) {
 	if err := os.Mkdir(sessions, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	workcell := func(dir string, stdin *os.File, args ...string) *exec.Cmd {
+	verb := func(dir string, stdin *os.File, args ...string) *exec.Cmd {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute) // a cold Go build is the longest run
 		t.Cleanup(cancel)
-		cmd := exec.CommandContext(ctx, filepath.Join(bin, "workcell"), append(append([]string{"run"}, append(flags, "--")...), args...)...)
+		cmd := exec.CommandContext(ctx, filepath.Join(bin, "workcell"), args...)
 		cmd.Dir = dir
 		cmd.Env = append(os.Environ(), "XDG_DATA_HOME="+tmp, "HOME="+tmp, "TERM=xterm", "TMPDIR="+sessions)
 		if stdin != nil {
 			cmd.Stdin = stdin
 		}
 		return cmd
+	}
+	workcell := func(dir string, stdin *os.File, args ...string) *exec.Cmd {
+		return verb(dir, stdin, append(append([]string{"run"}, append(flags, "--")...), args...)...)
 	}
 	// pipesIn runs the child in dir with stdin from the reader and returns what it printed and how it ended.
 	pipesIn := func(t *testing.T, dir string, stdin *bytes.Reader, args ...string) (stdout, stderr string, code int) {
@@ -314,6 +318,136 @@ echo exit=$rc; echo compiles=$(printf '%s\n' "$out" | grep -c '/compile '); [ $r
 			t.Errorf("the terminal was left changed: %+v, was %+v (%v)", after, before, err)
 		}
 	})
+
+	// The command reads lines and answers each as got:<line>; quit ends it with status 5.
+	const echo = `echo READY; while read l; do echo "got:$l"; [ "$l" = quit ] && exit 5; done`
+
+	// Closing the terminal detaches (A9): the supervisor stays the one process that owns the VM,
+	// `attach` brings a terminal back, and the end of the command is recorded (I9).
+	t.Run("detach", func(t *testing.T) {
+		run := onTerminal(t, workcell(repo, nil, "sh", "-c", echo))
+		run.out.wait(t, "READY")
+		run.master.Close() // the terminal goes away: SIGHUP, and EIO on its input
+		select {
+		case err := <-run.exited:
+			t.Fatalf("the session ended with its terminal: %v", err)
+		case <-time.After(time.Second):
+		}
+		if out, err := verb(repo, nil, "ls").Output(); err != nil || !regexp.MustCompile(`running +`+regexp.QuoteMeta(repo)).Match(out) {
+			t.Fatalf("workcell ls after the terminal closed: %q, %v; want the session running", out, err)
+		}
+		at := onTerminal(t, verb(repo, nil, "attach"))
+		at.typeUntil(t, "ping\n", "got:ping")
+		at.master.WriteString("quit\n")
+		if code := exitCode(t, at.exited, "attach"); code != 5 {
+			t.Errorf("attach exited %d, want the command's 5", code)
+		}
+		if code := exitCode(t, run.exited, "run"); code != 5 {
+			t.Errorf("run exited %d, want the command's 5", code)
+		}
+		if !at.restored() {
+			t.Error("attach left its terminal changed")
+		}
+		if out, err := verb(repo, nil, "log").Output(); err != nil || !strings.Contains(string(out), "session_end") || !strings.Contains(string(out), "exit 5") {
+			t.Errorf("workcell log has no session_end for exit 5: %q, %v", out, err)
+		}
+		if out, err := verb(repo, nil, "verify").CombinedOutput(); err != nil {
+			t.Errorf("workcell verify: %v\n%s", err, out)
+		}
+	})
+
+	// A second attach takes the terminal over: the client before it ends, restored, and says so.
+	t.Run("takeover", func(t *testing.T) {
+		run := onTerminal(t, workcell(repo, nil, "sh", "-c", echo))
+		run.out.wait(t, "READY")
+		first := onTerminal(t, verb(repo, nil, "attach"))
+		first.typeUntil(t, "one\n", "got:one")
+		run.out.wait(t, "detached") // the terminal that started the session was the client before
+		second := onTerminal(t, verb(repo, nil, "attach"))
+		second.typeUntil(t, "two\n", "got:two")
+		if code := exitCode(t, first.exited, "the first attach"); code != 0 || !strings.Contains(first.out.String(), "detached") || !first.restored() {
+			t.Errorf("first attach: exit %d, restored %v, shows %q; want 0, restored, and a detached line", code, first.restored(), first.out.String())
+		}
+		if strings.Contains(first.out.String(), "got:two") {
+			t.Error("the output went to the client that was turned out")
+		}
+		second.master.WriteString("quit\n")
+		if code := exitCode(t, second.exited, "the second attach"); code != 5 {
+			t.Errorf("second attach exited %d, want 5", code)
+		}
+		if code := exitCode(t, run.exited, "run"); code != 5 {
+			t.Errorf("run exited %d, want 5", code)
+		}
+	})
+}
+
+// terminal is a command started on a pseudo-terminal of its own, which is also its controlling terminal.
+type terminal struct {
+	master   *os.File
+	out      *screen
+	exited   <-chan error
+	restored func() bool // whether the terminal's settings are what they were before the command ran
+}
+
+func onTerminal(t *testing.T, cmd *exec.Cmd) *terminal {
+	t.Helper()
+	master, slave := openPTY(t)
+	setSize(t, master, 24, 80)
+	before, err := unix.IoctlGetTermios(int(slave.Fd()), unix.TCGETS)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmd.Stdin, cmd.Stdout, cmd.Stderr = slave, slave, slave
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true, Setctty: true}
+	out := &screen{}
+	go out.copyFrom(master)
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	exited := make(chan error, 1)
+	go func() { exited <- cmd.Wait() }()
+	t.Cleanup(func() {
+		if t.Failed() {
+			t.Logf("%v shows:\n%q", cmd.Args[1:], out.String())
+		}
+	})
+	return &terminal{master, out, exited, func() bool {
+		after, err := unix.IoctlGetTermios(int(slave.Fd()), unix.TCGETS)
+		return err == nil && *after == *before
+	}}
+}
+
+// typeUntil types line again and again until the terminal shows want, for up to 30 s: a client
+// that has not connected yet reads nothing, and a line typed twice is answered twice.
+func (x *terminal) typeUntil(t *testing.T, line, want string) {
+	t.Helper()
+	for end := time.Now().Add(30 * time.Second); time.Now().Before(end); time.Sleep(100 * time.Millisecond) {
+		if strings.Contains(x.out.String(), want) {
+			return
+		}
+		if _, err := x.master.WriteString(line); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Fatalf("no %q on the terminal in 30 s; it shows %q", want, x.out.String())
+}
+
+// exitCode is the exit status of the command that ended, waiting up to 30 s for it.
+func exitCode(t *testing.T, exited <-chan error, what string) int {
+	t.Helper()
+	select {
+	case err := <-exited:
+		var exit *exec.ExitError
+		if errors.As(err, &exit) {
+			return exit.ExitCode()
+		} else if err != nil {
+			t.Fatalf("%s: %v", what, err)
+		}
+		return 0
+	case <-time.After(30 * time.Second):
+		t.Fatalf("%s did not end in 30 s", what)
+	}
+	return -1
 }
 
 // debianImage builds cmd/mkimage into dir and runs it on the pinned Debian: the root image

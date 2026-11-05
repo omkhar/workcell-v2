@@ -19,9 +19,10 @@ func run(_ []string, stderr io.Writer) int {
 	return 125
 }
 
-// diff and pull have none either.
-func diff(_ []string, stderr io.Writer) int { return run(nil, stderr) }
-func pull(_ []string, stderr io.Writer) int { return run(nil, stderr) }
+// attach, diff and pull have none either.
+func attach(_ []string, stderr io.Writer) int { return run(nil, stderr) }
+func diff(_ []string, stderr io.Writer) int   { return run(nil, stderr) }
+func pull(_ []string, stderr io.Writer) int   { return run(nil, stderr) }
 
 // benchStart has no backend here either.
 func benchStart(_, stderr io.Writer) int {
