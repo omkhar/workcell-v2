@@ -580,3 +580,5 @@ Proved: hosted gate green on 5ff8326 with the I7 row: cross-session-residue pass
 Review: one finding fixed in one round (I7 rm clause: removeSession split the vmm record on whitespace, so a TMPDIR holding a space left the VMM directory and its sockets behind; it now splits on newline, with a T6 regression row that failed before the fix); its attacker field was the operator's own TMPDIR, accepted because it breaks the invariant's own rm clause with a reproduction. Three reviewer notes are one PARKED.md line.
 Budget: product 11443 of 15000, test 19593 of 22164, direct dependencies 3 of 15, WORKCELL_* 1 of 12 (a pre-existing test canary in internal/secret), Markdown unchanged.
 Next: U-303 (wire the proxy in, boundary, fable, env:kvm, deps U-301, U-302, U-204b, U-005, H-011 all [x]) is the next takeable unit for the cloud, then U-304 to U-308 behind it; U-504 (named caches) and U-602 (attach) now have U-205; W-801b, W-802b and B-826b wait for scheduled runs of release.yml, nightly.yml and bump.yml, which C7 shows once they have fired. The claim was PR #90, which this run gives its final title.
+
+## 2026-11-05T01:42Z U-303 START mode=cloud
