@@ -6,10 +6,12 @@ package main
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/omkhar/workcell/v2/internal/policy"
@@ -37,29 +39,62 @@ func configFile() (string, error) {
 	return filepath.Join(dir, "config.toml"), err
 }
 
+// repoFile is the policy a repository may carry, in the directory a session starts in.
+const repoFile = "workcell.toml"
+
 // loadPolicy reads the policy and builds what a session needs from it: the proxy's allowlist,
-// with the entries of this session's --allow flags added to the file's (I13: the operator typed
-// them on the host), and the secret bindings. A nil allowlist means the policy allows nothing:
-// no TCP port is relayed. An error names the file and line, or the flag. Only the user's own
-// file is read: nothing in a repository can add or change a secret (I13).
-func loadPolicy(extra []string) (*proxy.Allowlist, []binding, error) {
+// and the secret bindings. The user's file is narrowed by the workcell.toml of the current directory,
+// which may take grants away and give none (I13); then the entries of this session's --allow flags are
+// added (I13: the operator typed them on the host, and the repository may not undo that). A
+// repository file that is not a regular file is ignored, with a line on stderr. A nil allowlist means
+// the policy allows nothing: no TCP port is relayed. An error names the file and line, or the flag.
+// note is a line for `explain` about what the repository file took away or asked for in vain, "" for none.
+func loadPolicy(extra []string, stderr io.Writer) (allow *proxy.Allowlist, secrets []binding, note string, err error) {
 	file, err := configFile()
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, "", err
 	}
 	p, err := policy.Read(file)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, "", err
 	}
+	cwd, err := os.Getwd()
+	if err != nil {
+		return nil, nil, "", err
+	}
+	repo, err := policy.ReadRepo(filepath.Join(cwd, repoFile))
+	if errors.Is(err, policy.ErrNotRegular) {
+		fmt.Fprintf(stderr, "workcell: %v: ignored, a policy file must be a regular file\n", err)
+		repo, err = policy.Policy{}, nil
+	}
+	if err != nil {
+		return nil, nil, "", err
+	}
+	narrowed, asked := policy.Narrow(p, repo)
+	asked = slices.DeleteFunc(asked, func(s string) bool {
+		return slices.ContainsFunc(extra, func(x string) bool { return strconv.Quote(x) == s })
+	})
+	note = repoNote(asked, len(narrowed.Allow) < len(p.Allow) || len(narrowed.Secret) < len(p.Secret), file)
+	p = narrowed
 	for _, text := range extra {
 		p.Allow = append(p.Allow, policy.Entry{Text: text}) // line 0: it comes from a flag
 	}
-	allow, err := allowlist(p, file)
-	if err != nil {
-		return nil, nil, err
+	if allow, err = allowlist(p, file); err != nil {
+		return nil, nil, "", err
 	}
-	secrets, err := bindings(p, allow, file)
-	return allow, secrets, err
+	secrets, err = bindings(p, allow, file)
+	return allow, secrets, note, err
+}
+
+// repoNote is the line `explain` adds about the repository's workcell.toml, "" when it changed nothing.
+func repoNote(asked []string, narrowed bool, file string) string {
+	switch {
+	case len(asked) > 0:
+		return repoFile + " asks for " + strings.Join(asked, ", ") + ": not granted; allow it in " + file + " or with --allow\n"
+	case narrowed:
+		return repoFile + " narrows the policy of " + file + "\n"
+	}
+	return ""
 }
 
 // binding is one [[secret]] row ready for a session: the grant the broker releases, the rule

@@ -4,11 +4,13 @@
 package policy
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
 	"slices"
 	"strings"
+	"syscall"
 	"testing"
 )
 
@@ -226,6 +228,98 @@ func TestRead(t *testing.T) {
 		})
 	}
 }
+
+func TestNarrow(t *testing.T) {
+	allow := func(texts ...string) []Entry {
+		var es []Entry
+		for i, x := range texts {
+			es = append(es, Entry{x, i + 1})
+		}
+		return es
+	}
+	row := func(name, host string) Secret {
+		return Secret{Name: name, Source: "file:/k", Host: host, Header: "x-api-key", Method: "GET", Path: "/v1"}
+	}
+	user := Policy{AllowSet: true, Allow: allow("bound.test", "other.test"), Secret: []Secret{row("a", "bound.test"), row("b", "other.test")}}
+	tests := []struct {
+		name  string
+		repo  Policy
+		allow []string
+		names []string
+		asked []string
+	}{
+		{"empty repo policy", Policy{}, []string{"bound.test", "other.test"}, []string{"a", "b"}, nil},
+		{"no network table, no rows", Policy{Secret: nil}, []string{"bound.test", "other.test"}, []string{"a", "b"}, nil},
+		{"widens a host", Policy{AllowSet: true, Allow: allow("bound.test", "evil.test")}, []string{"bound.test"}, []string{"a"}, []string{`"evil.test"`}},
+		{"respells a host", Policy{AllowSet: true, Allow: allow("BOUND.test", "bound.test.", "*.test", "bound.test:443")}, nil, nil, []string{`"BOUND.test"`, `"bound.test."`, `"*.test"`, `"bound.test:443"`}},
+		{"a host with a newline and an escape", Policy{AllowSet: true, Allow: allow("x.test\n  https://evil.test  (443)\x1b[0m")}, nil, nil, []string{`"x.test\n  https://evil.test  (443)\x1b[0m"`}},
+		{"narrows to a subset", Policy{AllowSet: true, Allow: allow("bound.test")}, []string{"bound.test"}, []string{"a"}, nil},
+		{"an empty allow array allows nothing", Policy{AllowSet: true}, nil, nil, nil},
+		{"a secret goes with its narrowed host", Policy{AllowSet: true, Allow: allow("other.test")}, []string{"other.test"}, []string{"b"}, nil},
+		{"names a secret with another host, header, source", Policy{Secret: []Secret{{Name: "a", Source: "cmd:id", Host: "evil.test", Header: "authorization"}}}, []string{"bound.test", "other.test"}, []string{"a"}, nil},
+		{"drops method and path", Policy{Secret: []Secret{{Name: "b", Source: "file:/etc/hostname"}}}, []string{"bound.test", "other.test"}, []string{"b"}, nil},
+		{"a secret the user lacks", Policy{Secret: []Secret{row("a", "bound.test"), row("c", "bound.test")}}, []string{"bound.test", "other.test"}, []string{"a"}, []string{`secret "c"`}},
+		{"a row without a name", Policy{Secret: []Secret{{Source: "file:/k"}}}, []string{"bound.test", "other.test"}, nil, []string{`secret ""`}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got, asked := Narrow(user, tc.repo)
+			var hosts, names []string
+			for _, e := range got.Allow {
+				hosts = append(hosts, e.Text)
+			}
+			for _, s := range got.Secret {
+				names = append(names, s.Name)
+				if want := row(s.Name, s.Host); !reflect.DeepEqual(s, want) {
+					t.Errorf("row %+v is not the user's %+v", s, want)
+				}
+			}
+			if !slices.Equal(hosts, tc.allow) || !slices.Equal(names, tc.names) || !slices.Equal(asked, tc.asked) {
+				t.Errorf("Narrow = %q, %q, asked %q; want %q, %q, %q", hosts, names, asked, tc.allow, tc.names, tc.asked)
+			}
+		})
+	}
+}
+
+func TestReadRepo(t *testing.T) {
+	dir := t.TempDir()
+	outside := filepath.Join(dir, "outside.toml")
+	if err := os.WriteFile(outside, []byte("[network]\nallow = [\"evil.test\"]\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	tests := []struct {
+		name  string
+		make  func(path string) error
+		want  []Entry
+		other error // an error other than a path that is no file
+	}{
+		{"missing", func(string) error { return nil }, nil, nil},
+		{"a file", func(p string) error { return os.WriteFile(p, []byte("[network]\nallow = [\"a.test\"]\n"), 0o600) }, []Entry{{"a.test", 2}}, nil},
+		{"a symbolic link", func(p string) error { return os.Symlink(outside, p) }, nil, ErrNotRegular},
+		{"a pipe", func(p string) error { return syscall.Mkfifo(p, 0o600) }, nil, ErrNotRegular},
+		{"a directory", func(p string) error { return os.Mkdir(p, 0o700) }, nil, ErrNotRegular},
+		{"too large", func(p string) error { return os.WriteFile(p, []byte(strings.Repeat("#", maxBytes+1)), 0o600) }, nil, errTooLarge},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			path := filepath.Join(dir, strings.ReplaceAll(tc.name, " ", "_")+".toml")
+			if err := tc.make(path); err != nil {
+				t.Skip(err)
+			}
+			got, err := ReadRepo(path)
+			switch {
+			case tc.other == errTooLarge:
+				if err == nil || !strings.Contains(err.Error(), "larger than") {
+					t.Errorf("ReadRepo = %v, want larger than", err)
+				}
+			case !errors.Is(err, tc.other) || (tc.other == nil && err != nil) || !slices.Equal(got.Allow, tc.want):
+				t.Errorf("ReadRepo = %v, %v; want %v, %v", got.Allow, err, tc.want, tc.other)
+			}
+		})
+	}
+}
+
+var errTooLarge = errors.New("too large")
 
 // FuzzParse holds the reader to never panicking or hanging on any bytes, and to naming a line
 // that exists for every entry it returns. U-503 feeds it a repository's file (T5).

@@ -4,7 +4,7 @@
 // Package policy reads the session policy of SPEC section 5, ~/.config/workcell/config.toml.
 // The file is TOML, but only the subset the specification shows: tables [name] and [[name]],
 // bare keys, basic double-quoted strings, integers, arrays of strings and # comments. The
-// reader is the package's own, so that no module sits on the trust path: U-503 reads a
+// reader is the package's own, so that no module sits on the trust path: ReadRepo reads a
 // repository-controlled workcell.toml with it (I13), which is why it is fuzzed (T5). Anything
 // outside the subset is refused with the line it stands on.
 package policy
@@ -15,8 +15,10 @@ import (
 	"io"
 	"io/fs"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
+	"syscall"
 	"unicode/utf8"
 )
 
@@ -29,6 +31,9 @@ type Policy struct {
 	// port 443 by SNI, or "name:port", with the line it stands on. The entries are checked by
 	// the proxy's allowlist, not here. Nothing allowed means no TCP port is relayed.
 	Allow []Entry
+	// AllowSet is whether the file has an allow array, even an empty one: for a repository's file
+	// that is the difference between narrowing the network to nothing and not speaking of it.
+	AllowSet bool
 	// Secret is the [[secret]] rows, in file order. Each is checked by the proxy and the
 	// broker, not here, beyond what the file must say.
 	Secret []Secret
@@ -62,6 +67,35 @@ func Read(path string) (Policy, error) {
 		return Policy{}, err
 	}
 	defer f.Close()
+	return readAll(f, path)
+}
+
+// ErrNotRegular is what ReadRepo says of a path that is a symbolic link, a pipe, a directory or any
+// other thing but a file.
+var ErrNotRegular = errors.New("not a regular file")
+
+// ReadRepo reads a repository's workcell.toml, the bytes of which the guest may have written (R6):
+// the last name is opened without following a link and without waiting for a writer, and only a regular
+// file is read. A file that does not exist is an empty policy; anything else that is not a regular file
+// is ErrNotRegular, never opened for reading.
+func ReadRepo(path string) (Policy, error) {
+	f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK|syscall.O_NOCTTY|syscall.O_CLOEXEC, 0)
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+		return Policy{}, nil
+	case errors.Is(err, syscall.ELOOP):
+		return Policy{}, fmt.Errorf("%s: %w (a symbolic link)", path, ErrNotRegular)
+	case err != nil:
+		return Policy{}, err
+	}
+	defer f.Close()
+	if st, err := f.Stat(); err != nil || !st.Mode().IsRegular() {
+		return Policy{}, fmt.Errorf("%s: %w", path, ErrNotRegular)
+	}
+	return readAll(f, path)
+}
+
+func readAll(f *os.File, path string) (Policy, error) {
 	b, err := io.ReadAll(io.LimitReader(f, maxBytes+1))
 	if err != nil {
 		return Policy{}, fmt.Errorf("%s: %w", path, err)
@@ -70,6 +104,48 @@ func Read(path string) (Policy, error) {
 		return Policy{}, fmt.Errorf("%s: larger than %d bytes", path, maxBytes)
 	}
 	return Parse(string(b), path)
+}
+
+// Narrow is the user's policy as a repository's file leaves it (I13): that file can take grants away
+// and give none. With an allow array, only the user's entries it names, with exactly the same text, stay, and a secret whose host that drops goes too;
+// with [[secret]] rows, only the user's rows whose name a row of it names stay, as the user wrote them. Of a
+// repository's row only the name is read. [workspace], [resources] and [update] are not read. What the
+// repository asked for that the user did not grant comes back as asked: a host or a secret's name, each quoted.
+func Narrow(user, repo Policy) (got Policy, asked []string) {
+	got = user
+	if repo.AllowSet {
+		got.Allow = nil
+		for _, e := range user.Allow {
+			if slices.ContainsFunc(repo.Allow, func(r Entry) bool { return r.Text == e.Text }) {
+				got.Allow = append(got.Allow, e)
+			}
+		}
+		for _, r := range repo.Allow {
+			if !slices.ContainsFunc(user.Allow, func(e Entry) bool { return e.Text == r.Text }) {
+				asked = append(asked, strconv.Quote(r.Text))
+			}
+		}
+	}
+	if len(repo.Secret) > 0 {
+		got.Secret = nil
+		for _, u := range user.Secret {
+			if slices.ContainsFunc(repo.Secret, func(r Secret) bool { return r.Name == u.Name }) {
+				got.Secret = append(got.Secret, u)
+			}
+		}
+		for _, r := range repo.Secret {
+			if !slices.ContainsFunc(user.Secret, func(u Secret) bool { return u.Name == r.Name }) {
+				asked = append(asked, "secret "+strconv.Quote(r.Name))
+			}
+		}
+	}
+	if repo.AllowSet { // a secret goes with its host when the host is narrowed away
+		has := func(es []Entry, h string) bool {
+			return slices.ContainsFunc(es, func(e Entry) bool { return e.Text == h })
+		}
+		got.Secret = slices.DeleteFunc(slices.Clone(got.Secret), func(s Secret) bool { return has(user.Allow, s.Host) && !has(got.Allow, s.Host) })
+	}
+	return got, asked
 }
 
 // tables are the tables SPEC section 5 names, and whether each is an array of tables. Only
@@ -106,7 +182,7 @@ func Parse(text, name string) (Policy, error) {
 				if v.kind != kStrings {
 					return Policy{}, fmt.Errorf("%s:%d: allow must be an array of strings", name, v.line)
 				}
-				p.Allow = v.strs
+				p.Allow, p.AllowSet = v.strs, true
 			}
 		case "secret":
 			s, err := secretRow(t, name)

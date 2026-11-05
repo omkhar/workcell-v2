@@ -187,7 +187,7 @@ with ADR-003 and ADR-004, they build on the proposal, and you can accept it at a
       accept: in a real guest, create, write, read, truncate, rename, symlink, readdir, unlink and chmod behave as on the host tree and show on the host at once; `ls -la` and `git status` in a mounted repository work; a host disconnect leaves no hung guest process
 - [x] U-502 | flow:boundary | model:fable | env:kvm | deps:U-500,U-204b,U-007,U-502a,U-502b,U-502c | tries:0 | Mount mode (`--mount`), with host-side path confinement. The last part: the `--mount` flag on `run`, `pull` and `diff` refusing a mount session in one line, the `explain` verb with its workspace line (U-308 adds network reach to it later), the escape adapter's mode field and argument, and I1 in both modes
       accept: I1 added to `enforced.txt` and green in both modes; `explain` states in plain words that the agent writes directly to the real tree
-- [ ] U-503 | flow:boundary | model:sonnet | env:kvm | deps:U-402,U-009 | tries:0 | Policy loading and merge, where repo-local policy can only narrow
+- [x] U-503 | flow:boundary | model:sonnet | env:kvm | deps:U-402,U-009 | tries:0 | Policy loading and merge, where repo-local policy can only narrow
       accept: I13 added to `enforced.txt` and green
 - [ ] U-504 | flow:build | model:sonnet | env:kvm | deps:U-500,U-205 | tries:0 | Optional named dependency caches, read-only by default
       accept: a second `go build` or `npm ci` in a fresh session is warm; I7 still green
