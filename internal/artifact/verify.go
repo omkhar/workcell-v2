@@ -33,9 +33,9 @@ import (
 )
 
 const (
-	// maxArtifact bounds one download and one tarball's decompressed bytes. A
+	// MaxArtifact bounds one download and one tarball's decompressed bytes. A
 	// provider CLI is at most a few hundred MiB; an OCI manifest is a few KiB.
-	maxArtifact     = 512 << 20
+	MaxArtifact     = 512 << 20
 	maxBundle       = 64 << 10
 	maxAttestations = 1 << 20
 	maxRedirects    = 3
@@ -249,9 +249,12 @@ func (v Verifier) root() *sigstore.Root {
 	return v.Root
 }
 
-// open starts an https GET and returns the body of a 200 whose declared length
-// is within cap. Redirects follow the pins policy: at most three, https only.
-func (v Verifier) open(ctx context.Context, rawURL string, limit int64) (io.ReadCloser, error) {
+// Fetch starts an https GET of rawURL with client, or http.DefaultClient when
+// it is nil, and returns the body of a 200 that is within limit bytes, whether
+// declared or streamed: the body fails past limit, and maps a transport fault to
+// a fixed phrase. Redirects follow the pins policy: at most three, https only.
+// It is the one bounded reader of upstream bytes on the host (B8).
+func Fetch(ctx context.Context, client *http.Client, rawURL string, limit int64) (io.ReadCloser, error) {
 	if err := httpsURL(rawURL); err != nil {
 		return nil, err
 	}
@@ -259,7 +262,7 @@ func (v Verifier) open(ctx context.Context, rawURL string, limit int64) (io.Read
 	if err != nil {
 		return nil, errors.New("not a usable URL")
 	}
-	c := *cmp.Or(v.Client, http.DefaultClient)
+	c := *cmp.Or(client, http.DefaultClient)
 	c.CheckRedirect = func(req *http.Request, via []*http.Request) error {
 		if len(via) > maxRedirects {
 			return errors.New("too many redirects")
@@ -279,50 +282,39 @@ func (v Verifier) open(ctx context.Context, rawURL string, limit int64) (io.Read
 	}
 	if resp.ContentLength > limit {
 		resp.Body.Close()
-		return nil, errors.New("over the size cap")
+		return nil, errCap
 	}
-	return resp.Body, nil
+	return &body{resp.Body, limit}, nil
 }
 
 // readAll fetches a small body, such as a bundle, into memory.
 func (v Verifier) readAll(ctx context.Context, rawURL string, limit int64) ([]byte, error) {
-	body, err := v.open(ctx, rawURL, limit)
+	b, err := Fetch(ctx, v.Client, rawURL, limit)
 	if err != nil {
 		return nil, err
 	}
-	defer body.Close()
-	b, err := io.ReadAll(io.LimitReader(body, limit+1))
-	if err != nil {
-		return nil, bare(err)
-	}
-	if int64(len(b)) > limit {
-		return nil, errors.New("over the size cap")
-	}
-	return b, nil
+	defer b.Close()
+	return io.ReadAll(b)
 }
 
 // download streams one artifact through sha256 and sha512 once, and, when
 // member is set, through the gzip tarball reader that digests that member.
 // Nothing is written to disk, and the bytes hashed are the bytes parsed.
 func (v Verifier) download(ctx context.Context, rawURL, member string) (sum256, sum512, memberSum []byte, err error) {
-	body, err := v.open(ctx, rawURL, maxArtifact)
+	b, err := Fetch(ctx, v.Client, rawURL, MaxArtifact)
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	defer body.Close()
+	defer b.Close()
 	h256, h512 := sha256.New(), sha512.New()
-	var n int64
-	r := io.TeeReader(io.LimitReader(body, maxArtifact+1), io.MultiWriter(h256, h512, count{&n}))
+	r := io.TeeReader(b, io.MultiWriter(h256, h512))
 	if member != "" {
-		if memberSum, err = tarMember(r, member, maxArtifact); err != nil {
+		if memberSum, err = tarMember(r, member, MaxArtifact); err != nil {
 			return nil, nil, nil, err
 		}
 	}
 	if _, err := io.Copy(io.Discard, r); err != nil {
-		return nil, nil, nil, bare(err)
-	}
-	if n > maxArtifact {
-		return nil, nil, nil, errors.New("over the size cap")
+		return nil, nil, nil, err
 	}
 	return h256.Sum(nil), h512.Sum(nil), memberSum, nil
 }
@@ -336,7 +328,7 @@ func tarMember(r io.Reader, name string, limit int64) ([]byte, error) {
 	if err != nil {
 		return nil, errors.New("tarball: not a gzip stream")
 	}
-	tr := tar.NewReader(&limited{r: gz, n: limit})
+	tr := tar.NewReader(&body{gz, limit})
 	var sum []byte
 	for {
 		h, err := tr.Next()
@@ -369,27 +361,27 @@ func tarMember(r io.Reader, name string, limit int64) ([]byte, error) {
 	return sum, nil
 }
 
-// limited reads at most n bytes from r and then fails, unlike io.LimitReader,
-// which ends quietly.
-type limited struct {
-	r io.Reader
+var errCap = errors.New("over the size cap")
+
+// body reads at most n bytes from a reader and then fails, unlike io.LimitReader,
+// which ends quietly. Any other fault but the end is mapped to a fixed phrase.
+type body struct {
+	io.ReadCloser
 	n int64
 }
 
-func (l *limited) Read(p []byte) (int, error) {
-	if l.n <= 0 {
-		return 0, errors.New("over the size cap")
+func (b *body) Read(p []byte) (int, error) {
+	if int64(len(p)) > b.n+1 {
+		p = p[:b.n+1]
 	}
-	n, err := l.r.Read(p[:min(int64(len(p)), l.n)])
-	l.n -= int64(n)
+	n, err := b.ReadCloser.Read(p)
+	if b.n -= int64(n); b.n < 0 {
+		return 0, errCap
+	}
+	if err != nil && err != io.EOF {
+		err = bare(err)
+	}
 	return n, err
-}
-
-type count struct{ n *int64 }
-
-func (c count) Write(p []byte) (int, error) {
-	*c.n += int64(len(p))
-	return len(p), nil
 }
 
 // bare maps a transport error to a fixed phrase, so that an error names the

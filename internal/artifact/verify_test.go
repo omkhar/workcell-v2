@@ -479,7 +479,7 @@ func TestVerify(t *testing.T) {
 			s.routes[key(s.cand.Artifacts["amd64"].URL)] = route{hijack: true}
 		}},
 		{name: "5E over-size-cap declared", src: gh, mut: func(s *setup) {
-			s.routes[key(s.cand.Artifacts["amd64"].URL)] = route{header: map[string]string{"Content-Length": strconv.Itoa(maxArtifact + 1)}}
+			s.routes[key(s.cand.Artifacts["amd64"].URL)] = route{header: map[string]string{"Content-Length": strconv.Itoa(MaxArtifact + 1)}}
 		}},
 		{name: "5E over-size-cap bundle", src: gh, signed: true, mut: bundle(func(*setup) []byte { return make([]byte, maxBundle+1) })},
 		{name: "5E over-size-cap bundle chunked", src: gh, signed: true, mut: func(s *setup) {
@@ -540,7 +540,7 @@ func TestVerify(t *testing.T) {
 			s.retar("amd64", entry{name: "/tool-amd64", body: []byte("binary for amd64")})
 		}},
 		{name: "25V member-oversized header", src: gh, signed: true, member: true, mut: func(s *setup) {
-			s.retar("amd64", entry{name: "tool-amd64", size: maxArtifact + 1})
+			s.retar("amd64", entry{name: "tool-amd64", size: MaxArtifact + 1})
 		}},
 		{name: "25V not-a-tarball", src: gh, signed: true, member: true, mut: func(s *setup) {
 			s.routes[key(s.cand.Artifacts["amd64"].URL)] = route{body: []byte("binary for amd64")}
