@@ -46,6 +46,29 @@ func TestWorkspaceDevice(t *testing.T) {
 	}
 }
 
+func TestLayers(t *testing.T) {
+	tests := []struct {
+		name, cmdline string
+		want          []layer
+	}{
+		{"none", "root=/dev/vda ro workcell.workspace=/dev/vdb", nil},
+		{"one", "root=/dev/vda workcell.layer=claude:/dev/vdc\n", []layer{{"claude", "/dev/vdc"}}},
+		{"two, in order", "workcell.layer=codex:/dev/vdc workcell.layer=claude:/dev/vdd", []layer{{"codex", "/dev/vdc"}, {"claude", "/dev/vdd"}}},
+		{"not a device", "workcell.layer=claude:vdc workcell.layer=codex:/dev/vdd", []layer{{"codex", "/dev/vdd"}}},
+		{"no device", "workcell.layer=claude", nil},
+		{"no name", "workcell.layer=:/dev/vdc", nil},
+		{"a name with a slash or a dot", "workcell.layer=../etc:/dev/vdc workcell.layer=a/b:/dev/vdd", nil},
+		{"another name", "other.workcell.layer=claude:/dev/vdc", nil},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := layers(tc.cmdline); !slices.Equal(got, tc.want) {
+				t.Errorf("layers(%q) = %v, want %v", tc.cmdline, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestMounted(t *testing.T) {
 	tests := []struct {
 		name, cmdline string

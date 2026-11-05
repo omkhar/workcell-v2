@@ -55,26 +55,43 @@ func hypervisor(ctx context.Context, data string) error {
 
 // tarMember returns the named member of a gzipped tar archive.
 func tarMember(tgz []byte, name string) ([]byte, error) {
-	gz, err := gzip.NewReader(bytes.NewReader(tgz))
-	if err != nil {
-		return nil, err
-	}
-	tr := tar.NewReader(gz)
-	for {
-		h, err := tr.Next()
-		if err != nil {
-			return nil, fmt.Errorf("archive has no %s: %w", name, err)
-		}
+	var out []byte
+	err := untar(tgz, func(h *tar.Header, r io.Reader) (err error) {
 		if h.Name == name {
-			return io.ReadAll(io.LimitReader(tr, maxDownload))
+			out, err = io.ReadAll(io.LimitReader(r, maxDownload))
+		}
+		return err
+	})
+	if err == nil && out == nil {
+		err = fmt.Errorf("archive has no %s", name)
+	}
+	return out, err
+}
+
+// untar calls each with every entry of a tar archive, gzipped or plain.
+func untar(b []byte, each func(*tar.Header, io.Reader) error) error {
+	r := io.Reader(bytes.NewReader(b))
+	if gz, err := gzip.NewReader(bytes.NewReader(b)); err == nil {
+		r = gz
+	}
+	for tr := tar.NewReader(r); ; {
+		h, err := tr.Next()
+		if err == io.EOF {
+			return nil
+		}
+		if err == nil {
+			err = each(h, tr)
+		}
+		if err != nil {
+			return err
 		}
 	}
 }
 
 // hostBuild compiles pkg for this host: static Linux, as the product's own
-// build does.
-func hostBuild(ctx context.Context, repo, out, pkg string) error {
-	return goBuild(ctx, repo, out, pkg, "CGO_ENABLED=0", "GOOS=linux", "GOARCH=amd64")
+// build does, under the build overlay file named when one is.
+func hostBuild(ctx context.Context, repo, out, pkg, overlay string) error {
+	return goBuild(ctx, repo, out, pkg, overlay, "CGO_ENABLED=0", "GOOS=linux", "GOARCH=amd64")
 }
 
 // sign does nothing: a Linux binary runs unsigned.

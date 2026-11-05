@@ -37,7 +37,6 @@ import (
 const (
 	bootLimit  = 20 * time.Second // from Start to the guest's connection
 	frameLimit = 5 * time.Second  // one frame, once it has begun
-	path       = "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 )
 
 // run is `workcell run [--mount] [--cpus N] [--memory SIZE] [--disk SIZE] [--allow HOST]... [--] <cmd> [args...]`: it boots a guest
@@ -59,6 +58,9 @@ func run(args []string, stderr io.Writer) int {
 	var a artifacts
 	if err == nil {
 		a, err = findArtifacts(dir)
+	}
+	if err == nil {
+		a.layers, err = findLayers(dir)
 	}
 	code := 0
 	if err == nil {
@@ -104,7 +106,7 @@ func session(argv []string, caps limits, mount bool, a artifacts, allow *proxy.A
 	defer b.close()
 	raw := b.conn
 
-	req := guest.Exec{Argv: argv, Env: []string{path, "HOME=/root", "LANG=C.UTF-8"}, Dir: "/workspace", CA: b.ca}
+	req := guest.Exec{Argv: argv, Env: []string{pathEnv(a.layers), "HOME=/root", "LANG=C.UTF-8"}, Dir: "/workspace", CA: b.ca}
 	if b.ca != nil {
 		req.Env = append(req.Env, guest.TrustEnv(guest.TrustDir)...)
 	}
@@ -234,20 +236,22 @@ func boot(a artifacts, caps limits, sigs <-chan os.Signal, session, image, mount
 			return nil, 0, err
 		}
 	}
-	cmdline := caps.cmdline()
+	cmdline, first := caps.cmdline(), 'b' // the first layer's drive comes after the root and, in clone mode, the workspace
 	switch {
 	case mount != "":
 		cmdline += " workcell.mount=1"
 	case image != "":
 		cmdline += " workcell.workspace=/dev/vdb"
+		first = 'c'
 	}
+	cmdline += layerArgs(a.layers, first)
 	var ports []uint16 // the TCP ports the guest relays and the proxy serves; UDP 53 is relayed regardless
 	var names []string // the names the resolver answers: every host the proxy would admit (I3)
 	if allow != nil {
 		ports, names = allow.Ports(), allow.Hosts()
 	}
 	console := &tail{}
-	m := newMachine(a, vmm.Config{Kernel: a.kernel, Initrd: a.initrd, Image: a.image,
+	m := newMachine(a, vmm.Config{Kernel: a.kernel, Initrd: a.initrd, Image: a.image, Layers: a.layers,
 		Workspace: image, Cmdline: cmdline + " " + portsArg(ports), CPUs: caps.CPUs, MemoryMiB: caps.MemoryMiB, CID: 3, Console: console, Dir: dir})
 	var served mountService
 	closeAll := func() { // kills the VM on every path out; the export's descriptors go with it

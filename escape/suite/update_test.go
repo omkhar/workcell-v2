@@ -53,6 +53,9 @@ func (noObserve) Bench(context.Context) (sandbox.Output, error) {
 func (noObserve) Bind(context.Context, string, string) (net.Listener, net.PacketConn, error) {
 	return nil, nil, sandbox.ErrNotImplemented
 }
+func (noObserve) Install(context.Context, sandbox.Layer) (string, error) {
+	return "", sandbox.ErrNotImplemented
+}
 
 type idle struct{ noObserve }
 

@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+
+	"github.com/omkhar/workcell/v2/internal/vmm"
 )
 
 // dataDir is where the pinned artifacts live: $XDG_DATA_HOME/workcell, or
@@ -24,7 +26,11 @@ func dataDir() (string, error) {
 
 // artifacts are the files a session boots from, and the directory they are in: the kernel,
 // the initramfs, the root image and, where the backend is a program (vmmBinary), that too.
-type artifacts struct{ binary, kernel, initrd, image, dir string }
+// run adds the provider layers (findLayers); pull and bench boot without them.
+type artifacts struct {
+	binary, kernel, initrd, image, dir string
+	layers                             []vmm.Layer
+}
 
 // required names the files the backend here needs in the data directory, the VMM first.
 func required() []string {

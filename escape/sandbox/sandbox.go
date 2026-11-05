@@ -122,6 +122,15 @@ type UpdateConfig struct {
 	Name, Version string
 }
 
+// Layer is one provider layer a judge wants installed on the host, as
+// `workcell update <agent>` installs it: the provider, the release, and the
+// tar (plain or gzip) holding bin/<binary> that the judge serves at URL, on
+// the test host's loopback over https under the suite's authority (T8).
+type Layer struct {
+	Agent, Version, URL string
+	Artifact            []byte
+}
+
 // Sandbox is one sandbox holding the payload. A test gets a fresh one.
 type Sandbox interface {
 	// Start creates the sandbox and places the payload binary inside it. It
@@ -181,6 +190,11 @@ type Observe interface {
 	// however it likes and leaves the install as it was. An error means the
 	// client could not be run or its install could not be read.
 	Update(ctx context.Context, u UpdateConfig) (installed []byte, err error)
+	// Install has the host install l for every session of this process, as
+	// `workcell update --to <version> <agent>` does from a row naming l.URL
+	// and the artifact's digest, and returns the host path of the image
+	// holding the layer, "" when the adapter keeps none. A refusal is an error.
+	Install(ctx context.Context, l Layer) (image string, err error)
 	// Bench runs the product's start benchmark once on the host, as
 	// `workcell bench start` does, with the artifacts this session's runs
 	// use, and returns what it printed and its exit status (SPEC P1). The

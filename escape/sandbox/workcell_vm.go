@@ -7,6 +7,7 @@ package sandbox
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -18,6 +19,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"syscall"
@@ -40,8 +42,9 @@ const loader = `cat >/tmp/p && chmod 755 /tmp/p && exec /tmp/p "$@"`
 
 // prepared is what Prepare made, once per process, for every session.
 var prepared struct {
-	bin string // the workcell binary
-	xdg string // XDG_DATA_HOME holding workcell/{vmlinux,initrd.cpio,root.ext4} and, on Linux, firecracker
+	bin  string // the workcell binary
+	xdg  string // XDG_DATA_HOME holding workcell/{vmlinux,initrd.cpio,root.ext4} and, on Linux, firecracker
+	repo string // the module's directory, for a build the product's rows are swapped in (Install)
 }
 
 // workcell is one session of the product: a directory holding its policy,
@@ -51,6 +54,7 @@ var prepared struct {
 // as one Exec or one Pull.
 type workcell struct {
 	dir     string
+	bin     string // the product with the suite's row compiled in, once Install ran; "" is prepared.bin
 	payload string
 	cfg     Config
 	mu      sync.Mutex
@@ -90,7 +94,7 @@ func prepareWorkcell(ctx context.Context, dir string) error {
 		},
 		func() error {
 			init := filepath.Join(tmp, "init")
-			if err := guestBuild(ctx, repo, init, module+"/cmd/workcell-init"); err != nil {
+			if err := goBuild(ctx, repo, init, module+"/cmd/workcell-init", "", "CGO_ENABLED=0", "GOOS=linux", "GOARCH="+guestArch); err != nil {
 				return err
 			}
 			b, err := os.ReadFile(init)
@@ -105,7 +109,7 @@ func prepareWorkcell(ctx context.Context, dir string) error {
 		},
 		func() error {
 			mkimage := filepath.Join(tmp, "mkimage")
-			if err := hostBuild(ctx, repo, mkimage, module+"/cmd/mkimage"); err != nil {
+			if err := hostBuild(ctx, repo, mkimage, module+"/cmd/mkimage", ""); err != nil {
 				return err
 			}
 			cmd := exec.CommandContext(ctx, mkimage, "-pin", filepath.Join(repo, "pins", "debian.json"), "-arch", guestArch, "-o", filepath.Join(data, "root.ext4"))
@@ -117,7 +121,7 @@ func prepareWorkcell(ctx context.Context, dir string) error {
 		},
 		func() error {
 			bin := filepath.Join(tmp, "workcell")
-			if err := hostBuild(ctx, repo, bin, module+"/cmd/workcell"); err != nil {
+			if err := hostBuild(ctx, repo, bin, module+"/cmd/workcell", ""); err != nil {
 				return err
 			}
 			return sign(ctx, tmp, bin)
@@ -126,7 +130,7 @@ func prepareWorkcell(ctx context.Context, dir string) error {
 	if err != nil {
 		return fmt.Errorf("workcell adapter: %w", err)
 	}
-	prepared.bin, prepared.xdg = filepath.Join(tmp, "workcell"), xdg
+	prepared.bin, prepared.xdg, prepared.repo = filepath.Join(tmp, "workcell"), xdg, repo
 	fmt.Fprintf(os.Stderr, "escape: workcell sandbox ready in %s\n", time.Since(start).Round(time.Second))
 	return nil
 }
@@ -166,16 +170,14 @@ func fetch(ctx context.Context, url, sum string) ([]byte, error) {
 	return b, nil
 }
 
-// guestBuild compiles pkg of the module at repo into out for the guest:
-// static Linux of the guest's architecture, as the product's own build does.
-func guestBuild(ctx context.Context, repo, out, pkg string) error {
-	return goBuild(ctx, repo, out, pkg, "CGO_ENABLED=0", "GOOS=linux", "GOARCH="+guestArch)
-}
-
 // goBuild compiles pkg of the module at repo into out with env added to the
-// environment.
-func goBuild(ctx context.Context, repo, out, pkg string, env ...string) error {
-	cmd := exec.CommandContext(ctx, "go", "build", "-trimpath", "-o", out, pkg)
+// environment, under the build overlay file named when one is.
+func goBuild(ctx context.Context, repo, out, pkg, overlay string, env ...string) error {
+	args := []string{"build", "-trimpath", "-o", out}
+	if overlay != "" {
+		args = append(args, "-overlay", overlay)
+	}
+	cmd := exec.CommandContext(ctx, "go", append(args, pkg)...)
 	cmd.Dir = repo
 	cmd.Env = append(os.Environ(), env...)
 	if b, err := cmd.CombinedOutput(); err != nil {
@@ -299,7 +301,7 @@ func (w *workcell) cli(ctx context.Context, in io.Reader, args ...string) (Outpu
 	if w.cfg.Roots != "" {
 		env = append(env, "SSL_CERT_FILE="+w.cfg.Roots) // the operator's trust store, which Go reads for the system roots
 	}
-	argv := append([]string{prepared.bin}, args...)
+	argv := append([]string{cmp.Or(w.bin, prepared.bin)}, args...)
 	if w.cfg.Resolver != "" {
 		var err error
 		ns := 0
@@ -380,7 +382,7 @@ func (w *workcell) Helper(ctx context.Context, name string) (int, error) {
 		run := w.run
 		w.mu.Unlock()
 		if run != nil {
-			if pid, ok := productProcess(run.Process.Pid, prepared.bin); ok {
+			if pid, ok := productProcess(run.Process.Pid, cmp.Or(w.bin, prepared.bin)); ok {
 				return pid, nil
 			}
 		}
@@ -390,9 +392,53 @@ func (w *workcell) Helper(ctx context.Context, name string) (int, error) {
 	}
 }
 
-// Stop removes the session's directory and every session image the product
-// kept, since no `workcell rm` exists yet and tests run one at a time: the
-// next test's pull must find only its own runs.
+// rows maps a provider to its pin row, as the product's install table does.
+var rows = map[string]string{"claude": "claude-code", "codex": "codex", "copilot": "copilot-cli"}
+
+// Install builds the product once more with the row l needs in place of
+// the file under pins/ that would hold it, a build overlay, so that the
+// tree is untouched and the product has no hook (SPEC A11); has it run
+// `workcell update --to <version> <agent>` with the session's trust store;
+// and names the image `current` then points at. The runs use that binary.
+func (w *workcell) Install(ctx context.Context, l Layer) (string, error) {
+	name, ok := rows[l.Agent]
+	if w.dir == "" || !ok {
+		return "", fmt.Errorf("workcell: Install before Start, or no pin row for agent %q", l.Agent)
+	}
+	row := fmt.Sprintf(`{"Name":%q,"Class":"guest","Version":%q,"Artifacts":{%q:{"URL":%q,"SHA256":"%x"}}}`, name, l.Version, runtime.GOARCH, l.URL, sha256.Sum256(l.Artifact))
+	dir := filepath.Join(w.dir, "overlay")
+	file, bin := filepath.Join(dir, name+".json"), filepath.Join(dir, "workcell")
+	swap := fmt.Sprintf(`{"Replace":{%q:%q}}`, filepath.Join(prepared.repo, "pins", name+".json"), file)
+	err := errors.Join(os.MkdirAll(dir, 0o755), os.WriteFile(file, []byte(row), 0o644), os.WriteFile(file+".overlay", []byte(swap), 0o644))
+	if err == nil {
+		err = hostBuild(ctx, prepared.repo, bin, module+"/cmd/workcell", file+".overlay")
+	}
+	if err == nil {
+		err = sign(ctx, dir, bin)
+	}
+	if err != nil {
+		return "", fmt.Errorf("workcell: build with the row %s: %w", name, err)
+	}
+	w.bin = bin
+	out, err := w.cli(ctx, nil, "update", "--to", l.Version, l.Agent)
+	if err == nil && out.Exit != 0 {
+		err = fmt.Errorf("exit %d: %s", out.Exit, bytes.TrimSpace(out.Stderr))
+	}
+	layers := filepath.Join(prepared.xdg, "workcell", "layers", l.Agent)
+	var current []byte
+	if err == nil {
+		current, err = os.ReadFile(filepath.Join(layers, "current"))
+	}
+	if err != nil {
+		return "", fmt.Errorf("workcell update %s: %w", l.Agent, err)
+	}
+	return filepath.Join(layers, strings.TrimSpace(string(current))), nil
+}
+
+// Stop removes the session's directory, every session image the product
+// kept, since no `workcell rm` exists yet and tests run one at a time, and
+// every layer installed: the next test's pull must find only its own runs,
+// and its sessions boot with no layer.
 func (w *workcell) Stop() error {
 	if w.dir == "" {
 		return nil
@@ -400,5 +446,6 @@ func (w *workcell) Stop() error {
 	if w.ns != nil {
 		w.ns.stop()
 	}
-	return errors.Join(os.RemoveAll(w.dir), os.RemoveAll(filepath.Join(prepared.xdg, "workcell", "sessions")))
+	data := filepath.Join(prepared.xdg, "workcell")
+	return errors.Join(os.RemoveAll(w.dir), os.RemoveAll(filepath.Join(data, "sessions")), os.RemoveAll(filepath.Join(data, "layers")))
 }

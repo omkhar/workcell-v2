@@ -75,6 +75,11 @@ func setup() (string, error) {
 	}
 	_ = os.MkdirAll("/tmp", 0o755)
 	mount("tmpfs", "/tmp", "tmpfs", tmpfsSize(disk))
+	for _, l := range layers(string(cmdline)) {
+		if err := mountLayer(l); err != nil { // the agent is then not on PATH: less, never more
+			fmt.Fprintln(os.Stderr, "workcell-init: layer", l.name+":", err)
+		}
+	}
 	var werr error
 	if mounted(string(cmdline)) {
 		werr = mountFUSE()

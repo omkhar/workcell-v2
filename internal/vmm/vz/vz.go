@@ -246,11 +246,12 @@ func configure(cfg vmm.Config, c *console) (*vz.VirtualMachineConfiguration, err
 		return nil, err
 	}
 	vmc.SetSocketDevicesVirtualMachineConfiguration([]vz.SocketDeviceConfiguration{sock})
+	drives := []drive{{cfg.Image, true}, {cfg.Workspace, false}}
+	for _, l := range cfg.Layers {
+		drives = append(drives, drive{l.Image, true})
+	}
 	var disks []vz.StorageDeviceConfiguration
-	for _, d := range []struct {
-		path     string
-		readOnly bool
-	}{{cfg.Image, true}, {cfg.Workspace, false}} {
+	for _, d := range drives {
 		if d.path == "" {
 			continue
 		}
@@ -266,6 +267,12 @@ func configure(cfg vmm.Config, c *console) (*vz.VirtualMachineConfiguration, err
 	}
 	vmc.SetStorageDevicesVirtualMachineConfiguration(disks)
 	return vmc, nil
+}
+
+// drive is one block device: the file behind it and whether the guest may write it.
+type drive struct {
+	path     string
+	readOnly bool
 }
 
 // console is the guest's serial console: the framework writes to w, and start's

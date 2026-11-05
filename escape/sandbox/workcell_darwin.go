@@ -74,9 +74,10 @@ func productProcess(root int, _ string) (int, bool) { return root, true }
 // hypervisor fetches nothing: Virtualization.framework is part of the OS.
 func hypervisor(context.Context, string) error { return nil }
 
-// hostBuild compiles pkg for this Mac, with cgo, which the framework needs.
-func hostBuild(ctx context.Context, repo, out, pkg string) error {
-	return goBuild(ctx, repo, out, pkg, "CGO_ENABLED=1", "GOOS=darwin", "GOARCH=arm64")
+// hostBuild compiles pkg for this Mac, with cgo, which the framework needs,
+// under the build overlay file named when one is.
+func hostBuild(ctx context.Context, repo, out, pkg, overlay string) error {
+	return goBuild(ctx, repo, out, pkg, overlay, "CGO_ENABLED=1", "GOOS=darwin", "GOARCH=arm64")
 }
 
 // sign signs the freshly built bin ad hoc with the virtualization
