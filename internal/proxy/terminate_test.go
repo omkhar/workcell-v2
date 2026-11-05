@@ -45,6 +45,11 @@ func (b *fakeBroker) Lookup(_ context.Context, host, header string) ([]byte, err
 	return b.last, b.err
 }
 
+// No rule of the fixture has a sign-in flow; signin_test.go has a broker that holds tokens.
+func (b *fakeBroker) Issue(string, string, []byte, []byte) error              { return b.err }
+func (b *fakeBroker) Refresh(context.Context, string, string) ([]byte, error) { return nil, b.err }
+func (b *fakeBroker) Tokens(string, string) ([]byte, []byte)                  { return nil, nil }
+
 func (b *fakeBroker) callCount() int {
 	b.mu.Lock()
 	defer b.mu.Unlock()

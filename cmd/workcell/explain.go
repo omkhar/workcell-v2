@@ -45,8 +45,8 @@ func explain(args []string, stderr io.Writer) int {
 }
 
 // bound is the secrets part: each by name, with the host and header it goes out in, the method
-// and path prefix it is narrowed to, and the guest variable that holds its placeholder. Never
-// its source or its value (I5).
+// and path prefix it is narrowed to, the token endpoint that issues it when its source is a
+// sign-in flow, and the guest variable that holds its placeholder. Never its value (I5).
 func bound(secrets []binding) string {
 	if len(secrets) == 0 {
 		return "secrets: none\n"
@@ -60,6 +60,9 @@ func bound(secrets []binding) string {
 		}
 		if s.rule.Path != "" {
 			fmt.Fprintf(&b, ", under %s", s.rule.Path)
+		}
+		if s.rule.SignIn != nil {
+			fmt.Fprintf(&b, ", signed in at https://%s%s", s.rule.SignIn.Host, s.rule.SignIn.Path)
 		}
 		if s.env != "" {
 			fmt.Fprintf(&b, ", as $%s", s.env)

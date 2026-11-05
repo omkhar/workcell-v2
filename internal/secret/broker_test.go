@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -77,6 +78,82 @@ func TestLookupReleasesOnlyGrantedPairs(t *testing.T) {
 	}
 	if strings.Contains(log.String(), "sk-a") || strings.Contains(log.String(), "g-key") {
 		t.Fatalf("ledger leaks a value: %s", log.String())
+	}
+}
+
+// TestSignInGrant: a grant whose source is a sign-in flow releases nothing
+// before a sign-in, then the access token to Lookup and the refresh token
+// to Refresh; a refresh that issues an access token alone keeps the refresh
+// token; a replaced token is zeroed where it was held; Tokens hands out
+// copies; and the ledger holds the sign-in, the refresh and each release,
+// never a byte of a token.
+func TestSignInGrant(t *testing.T) {
+	log := &syncBuffer{}
+	grants := append(testGrants(t), Grant{Name: "oauth", Source: "signin:login.example/oauth/token", Host: "api.example", Header: "authorization"})
+	b, err := NewBroker(grants, log)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	lookup := func(refresh bool) string {
+		f := b.Lookup
+		if refresh {
+			f = b.Refresh
+		}
+		v, err := f(ctx, "api.example", "authorization")
+		if err != nil {
+			return "refused"
+		}
+		return string(v)
+	}
+	first := []byte("sk-acc-1")
+	steps := []struct {
+		name string
+		step func() string
+		want string
+	}{
+		{"lookup before", func() string { return lookup(false) }, "refused"},
+		{"refresh before", func() string { return lookup(true) }, "refused"},
+		{"refresh of a static grant", func() string {
+			_, err := b.Refresh(ctx, "api.anthropic.com", "x-api-key")
+			return fmt.Sprint(err != nil)
+		}, "true"},
+		{"issue to a static grant", func() string {
+			v := []byte("x")
+			err := b.Issue("api.anthropic.com", "x-api-key", v, nil)
+			return fmt.Sprintf("%t %q", err != nil, v)
+		}, `true "\x00"`},
+		{"sign in", func() string { return fmt.Sprint(b.Issue("api.example", "authorization", first, []byte("sk-ref-1"))) }, "<nil>"},
+		{"lookup", func() string { return lookup(false) }, "sk-acc-1"},
+		{"refresh", func() string { return lookup(true) }, "sk-ref-1"},
+		{"tokens are copies", func() string {
+			a, r := b.Tokens("api.example", "authorization")
+			a[0], r[0] = 'X', 'X'
+			return lookup(false) + " " + lookup(true)
+		}, "sk-acc-1 sk-ref-1"},
+		{"a refresh issues a new access token", func() string { return fmt.Sprint(b.Issue("api.example", "authorization", []byte("sk-acc-2"), nil)) }, "<nil>"},
+		{"the old one is zeroed", func() string { return fmt.Sprint(bytes.Equal(first, make([]byte, len(first)))) }, "true"},
+		{"lookup after", func() string { return lookup(false) + " " + lookup(true) }, "sk-acc-2 sk-ref-1"},
+	}
+	for _, s := range steps {
+		if got := s.step(); got != s.want {
+			t.Errorf("%s: got %q, want %q", s.name, got, s.want)
+		}
+	}
+	want := "not_signed_in not_signed_in not_granted not_granted signed_in granted refresh_granted granted refresh_granted refreshed granted refresh_granted"
+	if got := log.results(); got != want {
+		t.Errorf("ledger results = %q, want %q", got, want)
+	}
+	if strings.Contains(log.String(), "sk-") {
+		t.Fatalf("ledger leaks a token: %s", log.String())
+	}
+	if a, r := b.Tokens("api.anthropic.com", "x-api-key"); a != nil || r != nil {
+		t.Errorf("Tokens of a static grant = (%q, %q), want none", a, r)
+	}
+	b = newTestBroker(t, failingLog{sync: errors.New("io error")})
+	b.tokens[pair{"api.anthropic.com", "x-api-key"}] = &tokens{}
+	if err := b.Issue("api.anthropic.com", "x-api-key", []byte("sk-acc-1"), nil); err == nil {
+		t.Error("Issue succeeded with a ledger that does not sync")
 	}
 }
 

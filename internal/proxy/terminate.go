@@ -60,23 +60,34 @@ func NewPlaceholder() string {
 // IsPlaceholder reports whether text is exactly one placeholder.
 func IsPlaceholder(text string) bool { return placeholderPattern.MatchString(text) }
 
-// Broker returns the real value of a brokered header. The credential broker
-// implements it; the proxy owns the bytes it gets, wipes them once the
-// request carries the value, and never holds a value between requests.
+// Broker is the credential broker as the proxy uses it. Lookup returns the
+// real value of a brokered header; the proxy owns the bytes it gets, wipes
+// them once the request carries the value, and never holds a value between
+// requests. The rest serve a rule's sign-in flow, each for the row bound to
+// (host, header): Issue takes the tokens its endpoint issued, an empty one
+// for a token the answer did not carry, which the broker owns and holds in
+// place of those before; Refresh returns the refresh token it holds,
+// recorded as Lookup records a value; Tokens returns copies of both tokens
+// it holds, nil before a sign-in, which the caller wipes.
 type Broker interface {
 	Lookup(ctx context.Context, host, header string) ([]byte, error)
+	Issue(host, header string, access, refresh []byte) error
+	Refresh(ctx context.Context, host, header string) ([]byte, error)
+	Tokens(host, header string) (access, refresh []byte)
 }
 
 // TerminateRule names a host whose TLS the proxy terminates and the header
 // whose placeholder value it swaps for the brokered value. Method, when set,
 // narrows the swap to requests of that method, and Path to requests under
 // that path prefix: a placeholder sent any other way to the host is refused.
+// SignIn, when set, is the flow that issues the value (signin.go).
 type TerminateRule struct {
 	Host        string
 	Header      string
 	Placeholder string
 	Method      string
 	Path        string
+	SignIn      *SignIn
 }
 
 // NewTerminateRule mints a placeholder for the rule binding header on host,
@@ -94,7 +105,7 @@ func NewTerminateRule(host, header, method, path string) (TerminateRule, error) 
 		return TerminateRule{}, fmt.Errorf("terminate rule has an invalid header name: %q", header)
 	case method != "" && !methodPattern.MatchString(method):
 		return TerminateRule{}, fmt.Errorf("terminate rule method must be capital letters: %q", method)
-	case path != "" && (path[0] != '/' || strings.ContainsAny(path, "?#") || strings.IndexFunc(path, func(c rune) bool { return c < '!' || c > '~' }) >= 0):
+	case path != "" && !validPath(path):
 		return TerminateRule{}, fmt.Errorf("terminate rule path must begin with / and hold printable ASCII without ? or #: %q", path)
 	}
 	return r, nil
@@ -230,14 +241,16 @@ func (ca *SessionCA) issue(host string, key *ecdsa.PrivateKey) (*x509.Certificat
 
 // Terminate makes p terminate TLS for every host on the SNI allowlist, with a
 // leaf from ca, and swap each rule's placeholder header via broker. A rule's
-// host must be on the SNI allowlist; a host can have one rule per header.
-// Header names are stored lowercase, the form the credential broker's grants
-// use, since HTTP header names ignore case.
+// host must be on the SNI allowlist, as must its sign-in host; a host can
+// have one rule per header, and a token endpoint serves one rule. Header
+// names are stored lowercase, the form the credential broker's grants use,
+// since HTTP header names ignore case.
 func (p *Proxy) Terminate(ca *SessionCA, broker Broker, rules []TerminateRule) error {
 	terminate := make(map[string][]TerminateRule, len(p.allow.sni))
 	for host := range p.allow.sni {
 		terminate[host] = nil
 	}
+	signin := map[string][]TerminateRule{}
 	seen := map[string]bool{}
 	for _, r := range rules {
 		if !p.allow.sni[r.Host] {
@@ -250,8 +263,18 @@ func (p *Proxy) Terminate(ca *SessionCA, broker Broker, rules []TerminateRule) e
 		}
 		seen[key] = true
 		terminate[r.Host] = append(terminate[r.Host], r)
+		if s := r.SignIn; s != nil {
+			if !p.allow.sni[s.Host] {
+				return fmt.Errorf("sign-in host %s is not on the port 443 allowlist", s.Host)
+			}
+			if seen[s.Host+s.Path] {
+				return fmt.Errorf("token endpoint %s%s serves more than one rule", s.Host, s.Path)
+			}
+			seen[s.Host+s.Path] = true
+			signin[s.Host] = append(signin[s.Host], r)
+		}
 	}
-	p.ca, p.broker, p.terminate = ca, broker, terminate
+	p.ca, p.broker, p.terminate, p.signin = ca, broker, terminate, signin
 	p.transport = &http.Transport{
 		ForceAttemptHTTP2: false,
 		IdleConnTimeout:   90 * time.Second,
@@ -344,9 +367,10 @@ func (p *Proxy) serveTerminated(client net.Conn, host string, replay []byte) {
 	ln := &oneConnListener{conn: make(chan net.Conn, 1), done: make(chan struct{}), addr: client.LocalAddr()}
 	ln.conn <- &closeNotifyConn{Conn: tlsConn, ln: ln}
 	proxy := &httputil.ReverseProxy{
-		FlushInterval: -1,
-		ErrorLog:      discardLog,
-		Transport:     p.transport,
+		FlushInterval:  -1,
+		ErrorLog:       discardLog,
+		Transport:      p.transport,
+		ModifyResponse: p.tokenResponse,
 		Rewrite: func(r *httputil.ProxyRequest) {
 			r.Out.URL.Scheme = "https"
 			r.Out.URL.Host = host
@@ -388,6 +412,18 @@ func (p *Proxy) serveTerminated(client net.Conn, host string, replay []byte) {
 				}
 				r.Header.Set(rule.Header, prefix+string(value)) // the one copy the request carries
 				clear(value)
+			}
+			// At a token endpoint the body is read whole, its refresh
+			// placeholder swapped, and the answer rewritten (signin.go).
+			if rule, ok := p.tokenEndpoint(host, r.URL); ok {
+				body, reason := p.tokenRequest(r, rule)
+				if reason != "" {
+					p.deny(host, tlsPort, reason)
+					http.Error(w, "request to the token endpoint refused: "+reason, http.StatusBadGateway)
+					return
+				}
+				defer clear(body) // the one copy the request carries, once it has gone
+				r = r.WithContext(context.WithValue(r.Context(), tokenKey{}, rule))
 			}
 			if carriesPlaceholder(r) {
 				p.deny(host, tlsPort, "placeholder_unswapped")

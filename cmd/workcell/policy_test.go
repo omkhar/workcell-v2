@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/omkhar/workcell/v2/internal/policy"
+	"github.com/omkhar/workcell/v2/internal/proxy"
 )
 
 func TestConfigDir(t *testing.T) {
@@ -114,6 +115,14 @@ func TestBindings(t *testing.T) {
 		{"a bad path", []policy.Secret{with(func(s *policy.Secret) { s.Path = "v1" })}, "", "config.toml:5: secret \"k\": terminate rule path"},
 		{"a bad env", []policy.Secret{with(func(s *policy.Secret) { s.Env = "1KEY=" })}, "", "config.toml:5: secret \"k\": env \"1KEY=\" is not a variable name"},
 		{"the pair bound twice", []policy.Secret{row, with(func(s *policy.Secret) { s.Name, s.Header, s.Line = "j", "x-API-key", 9 })}, "", "config.toml:9: secret \"j\": header x-api-key on a.example is already bound on line 5"},
+		{"a sign-in source", []policy.Secret{with(func(s *policy.Secret) {
+			s.Source, s.Header, s.Env = "signin:A.example/oauth/token", "authorization", "A_KEY"
+		})},
+			"secrets: swapped in by the session proxy; the guest holds a placeholder\n  k: in authorization to https://a.example, signed in at https://a.example/oauth/token, as $A_KEY\n", ""},
+		{"a sign-in host not allowed", []policy.Secret{with(func(s *policy.Secret) { s.Source = "signin:b.example/oauth/token" })}, "", "config.toml:5: secret \"k\": sign-in host \"b.example\" is not a bare name"},
+		{"a bad sign-in source", []policy.Secret{with(func(s *policy.Secret) { s.Source = "signin:a.example" })}, "", "config.toml:5: secret \"k\": sign-in source must be signin:HOST/PATH"},
+		{"the token endpoint bound twice", []policy.Secret{with(func(s *policy.Secret) { s.Source = "signin:a.example/t" }), with(func(s *policy.Secret) { s.Source, s.Header, s.Line = "signin:a.example/t", "authorization", 9 })},
+			"", "config.toml:9: secret \"k\": token endpoint a.example/t is already bound on line 5"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -133,6 +142,12 @@ func TestBindings(t *testing.T) {
 					t.Errorf("binding %d = %+v, want the row's name and source, the rule's host and header, a fresh placeholder", i, b)
 				}
 				seen[b.rule.Placeholder] = true
+				if s := b.rule.SignIn; s != nil && (seen[s.Refresh] || !proxy.IsPlaceholder(s.Refresh)) {
+					t.Errorf("binding %d has refresh placeholder %q, want a fresh one", i, s.Refresh)
+				}
+				if s := b.rule.SignIn; s != nil {
+					seen[s.Refresh] = true
+				}
 			}
 			if text := bound(got); text != tc.text || strings.Contains(text, "file:") {
 				t.Errorf("bound = %q, want %q", text, tc.text)

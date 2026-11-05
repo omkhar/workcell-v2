@@ -40,6 +40,11 @@ func TestLedgerAuditRecordsCountsEachLine(t *testing.T) {
 	for _, tc := range []struct{ line, want string }{
 		{`{` + ts + `,"host":"api.anthropic.com","header":"authorization","credential":"anthropic","result":"granted"}`, granted},
 		{`{` + ts + `,"host":"api.anthropic.com","header":"x-api-key","credential":"anthropic","result":"granted"}`, granted},
+		{`{` + ts + `,"host":"api.anthropic.com","header":"x-api-key","credential":"anthropic","result":"refresh_granted"}`, granted},
+		{`{` + ts + `,"host":"api.anthropic.com","header":"x-api-key","credential":"anthropic","result":"signed_in"}`, granted},
+		{`{` + ts + `,"host":"api.anthropic.com","header":"x-api-key","credential":"anthropic","result":"refreshed"}`, granted},
+		{`{` + ts + `,"host":"api.anthropic.com","header":"x-api-key","result":"not_signed_in"}`, denied},
+		{`{` + ts + `,"result":"signed_in","credential":"other","host":"api.anthropic.com","header":"x-api-key"}`, malformed},
 		{`{` + ts + `,"result":"bad_token"}`, denied},
 		{`{` + ts + `,"host":"evil.example","header":"x-api-key","result":"not_granted"}`, denied},
 		{`{` + ts + `,"result":"rate_limited"}`, denied},
