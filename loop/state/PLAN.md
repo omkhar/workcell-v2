@@ -160,7 +160,7 @@ with ADR-003 and ADR-004, they build on the proposal, and you can accept it at a
       accept: scripted session against a local fake API
 - [x] U-405 | flow:build | model:sonnet | env:kvm | deps:U-402 | tries:0 | Codex adapter, API key path
       accept: as U-404
-- [ ] U-406 | flow:build | model:sonnet | env:kvm | deps:U-402 | tries:0 | Copilot CLI and Gemini CLI adapters
+- [x] U-406 | flow:build | model:sonnet | env:kvm | deps:U-402 | tries:0 | Copilot CLI and Gemini CLI adapters
       accept: as U-404
 - [ ] U-407 | flow:boundary | model:fable | env:kvm | deps:U-401 | tries:0 | Git over HTTPS: inject a token scoped to named repositories by path
       accept: clone and push work for an allowed repository; the same placeholder fails for any other repository on the same host
