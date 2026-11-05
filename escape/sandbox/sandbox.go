@@ -89,9 +89,15 @@ type Config struct {
 // connection to Host is to carry Value (SPEC A4, I5, I6). Method and Path,
 // when set, narrow the binding to requests of that method under that path
 // prefix. The control adapter does what a naive sandbox does and stages
-// Value itself, wherever the guest asks for it.
+// Value itself, wherever the guest asks for it. Source, when set, names
+// the row's source in the product's own words instead of a file holding
+// Value, which is then empty: `signin:<host><path>` has the host obtain
+// the credential from a sign-in flow at that token endpoint, so that the
+// guest is to see the tokens the endpoint issues only as placeholders, the
+// access one in Env. The control adapter stages nothing for such a row:
+// the guest talks to the endpoint itself and gets what it issues.
 type Secret struct {
-	Name, Value, Host, Header, Env, Method, Path string
+	Name, Value, Host, Header, Env, Method, Path, Source string
 }
 
 // UpdateConfig is one run of the product's update client as a judge wants

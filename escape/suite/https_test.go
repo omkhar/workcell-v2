@@ -13,7 +13,7 @@ import (
 // The judges on canaries that never listened: the product's pass path, and
 // the path where the guest reached nothing, must each return at once.
 func TestJudgesOnFakeCanaries(t *testing.T) {
-	sec := NewSecret("bound.escape.test", false)
+	sec := NewSecret(withSecret)
 	placeholder := secretPrefix + strings.Repeat("0", secretHex)
 	clean := request{sni: "bound.escape.test", host: "bound.escape.test:1", proto: "HTTP/1.1", method: "GET", url: "/check"}
 	withPlaceholder := request{host: "other.escape.test:2", url: "/replay", headers: http.Header{"X-Api-Key": {placeholder}}}
@@ -84,7 +84,7 @@ func TestJudgesOnFakeCanaries(t *testing.T) {
 // TestExchange checks the parser of an exchange and what the swap rule
 // admits under a binding, narrowed and not.
 func TestExchange(t *testing.T) {
-	wide, narrow := NewSecret("bound.escape.test", false), NewSecret("bound.escape.test", true)
+	wide, narrow := NewSecret(withSecret), NewSecret(narrowed)
 	cases := []struct {
 		spec       string
 		ok         bool
