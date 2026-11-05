@@ -162,3 +162,21 @@ func TestSeat(t *testing.T) {
 		s.send(out("lost"))
 	}
 }
+
+// TestClientEndsWithItsConnection is the regression test for a session that ends in error (a
+// malformed frame from the guest, I12): no Exit frame reaches the client, so only the closing of
+// its connection ends it, and the supervisor, which waits for it, must not hang.
+func TestClientEndsWithItsConnection(t *testing.T) {
+	ours, theirs := net.Pipe()
+	ended := make(chan int, 1)
+	go func() { code, _ := client(theirs, func() {}, false); ended <- code }()
+	ours.Close()
+	select {
+	case code := <-ended:
+		if code != 0 {
+			t.Errorf("client ended with %d, want 0", code)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("client still running 10 s after its connection closed")
+	}
+}

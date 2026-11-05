@@ -181,7 +181,8 @@ func session(argv []string, caps limits, mount bool, a artifacts, allow *proxy.A
 			signalled = true
 			err = c.WriteFrame(wire.Frame{Type: guest.TypeSignal, Payload: guest.EncodeSignal(int(sig.(syscall.Signal)))})
 		case r := <-done:
-			<-shown // the last output reaches the terminal first
+			theirs.Close() // when no Exit came, nothing else ends the client; after one it has read it already
+			<-shown        // the last output reaches the terminal first
 			return r.code, r.err
 		}
 		if err != nil {
