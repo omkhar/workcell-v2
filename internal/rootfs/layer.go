@@ -5,6 +5,9 @@ package rootfs
 
 import (
 	"archive/tar"
+	"bufio"
+	"bytes"
+	"compress/gzip"
 	"errors"
 	"fmt"
 	"io"
@@ -19,6 +22,22 @@ const (
 	opaqueMarker   = ".wh..wh..opq"
 	maxPath        = 4096 // Linux PATH_MAX; also keeps mkParents quick on a hostile pax path
 )
+
+// Apply reads a tar from r, gzip-compressed or plain, told apart by the gzip magic
+// bytes, and applies it to t as applyLayer does. limit bounds the tar stream and the
+// file data; the bytes used are returned.
+func (t *Tree) Apply(r io.Reader, limit int64) (int64, error) {
+	br := bufio.NewReader(r)
+	var in io.Reader = br
+	if magic, _ := br.Peek(2); bytes.Equal(magic, []byte{0x1f, 0x8b}) {
+		zr, err := gzip.NewReader(br)
+		if err != nil {
+			return 0, errors.New("layer: not a gzip stream")
+		}
+		in = zr
+	}
+	return applyLayer(t, in, limit)
+}
 
 // applyLayer reads an uncompressed tar from r and applies it to t on top of what is
 // there, as the OCI image spec says. It never follows a symlink and never touches
