@@ -4,12 +4,14 @@
 package main
 
 import (
+	"bytes"
 	"errors"
 	"io"
 	"net"
 	"net/netip"
 	"os"
 	"runtime"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -260,5 +262,42 @@ func TestRelayCloseEndsAdapters(t *testing.T) {
 		if time.Now().After(deadline) {
 			t.Fatalf("%d goroutines after the relay closed, %d before", runtime.NumGoroutine(), before)
 		}
+	}
+}
+
+// TestBoundedLogCapsTheDenyLog is the regression test for the deny log's growth (I10): lines
+// go in while they fit, the marker goes in exactly once, the rest is dropped, and every write
+// reports success so that the proxy never stalls.
+func TestBoundedLogCapsTheDenyLog(t *testing.T) {
+	line := strings.Repeat("x", 29) + "\n"
+	tests := []struct {
+		name   string
+		limit  int
+		writes int
+		want   string
+	}{
+		{"nothing written", 100, 0, ""},
+		{"under the cap", 100, 2, line + line},
+		{"at the cap exactly", 90, 3, line + line + line},
+		{"the line that would pass the cap is the marker", 100, 4, line + line + line + denyLogFull},
+		{"everything after the marker is dropped", 100, 1000, line + line + line + denyLogFull},
+		{"a cap below one line holds the marker alone", 10, 5, denyLogFull},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			l := &boundedLog{w: &buf, limit: tc.limit}
+			for i := range tc.writes {
+				if n, err := l.Write([]byte(line)); n != len(line) || err != nil {
+					t.Fatalf("write %d = %d, %v; want %d, nil", i, n, err, len(line))
+				}
+			}
+			if got := buf.String(); got != tc.want {
+				t.Errorf("the log holds %q, want %q", got, tc.want)
+			}
+			if strings.Count(buf.String(), denyLogFull) > 1 {
+				t.Error("the marker was written more than once")
+			}
+		})
 	}
 }

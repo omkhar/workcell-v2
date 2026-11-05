@@ -210,12 +210,12 @@ func boot(a artifacts, caps limits, sigs <-chan os.Signal, session, image, mount
 	if err != nil {
 		return nil, 0, err
 	}
-	denyLog := io.Writer(io.Discard) // the proxy's deny lines: deny.log in the session directory, if any
+	denyLog := io.Writer(io.Discard) // the proxy's deny lines: deny.log in the session directory, if any, bounded (I10)
 	var denyFile *os.File
 	if session != "" {
 		f, err := os.OpenFile(filepath.Join(session, "deny.log"), os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0o600)
 		if err == nil {
-			denyLog, denyFile = f, f
+			denyLog, denyFile = &boundedLog{w: f, limit: maxDenyLogBytes}, f
 			err = recordBoot(session, dir)
 		}
 		if err != nil {
