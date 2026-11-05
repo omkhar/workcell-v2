@@ -684,3 +684,5 @@ Review: no findings; three notes and one less-code note are PARKED.md lines. No 
 Budget: product 13724 of 15000, test 25586 of 25586 (zero headroom; the builder trimmed its own test to fit, folded nothing), direct dependencies 3 of 15, Markdown unchanged.
 Learned: every test line now needs a matching cut until product grows (1.5 lines of cap per product line); U-405 and U-406 should reuse TestScriptedClaudeSession's fake and table rather than add files; a cmd/workcell test cannot reach a real guest without the escape adapter's artifacts, so the API-key path in a real VM rests on the existing I5 rows, which exercise the same session() env path.
 Next: U-405 (Codex adapter; build, sonnet, env:kvm, deps U-402), then U-406, U-407 (deps U-401), U-503 (deps U-402, U-009); U-600, U-504 and U-602 are takeable too. The claim was PR #102, which this run gives its final title.
+
+## 2026-11-05T12:08Z U-405 START mode=cloud
