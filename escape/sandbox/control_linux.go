@@ -86,6 +86,9 @@ func (c *control) Start(_ context.Context, cfg Config) (string, error) {
 		fmt.Fprintf(os.Stderr, "escape: control: no naive resolver at %s (%v): the guest's lookups will go unanswered\n", naiveResolverAddr, err)
 	}
 	host, _, _ := net.SplitHostPort(naiveResolverAddr)
+	if cfg.Resolver != "" { // the judge's own resolver instead: the guest dials for itself here
+		host = cfg.Resolver
+	}
 	if err := os.WriteFile(filepath.Join(dir, "resolv.conf"), []byte("nameserver "+host+"\n"), 0o644); err != nil {
 		return "", fmt.Errorf("control: write resolv.conf: %w", err)
 	}

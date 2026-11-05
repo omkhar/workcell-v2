@@ -13,6 +13,8 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
+	"strings"
 )
 
 // The pinned x86_64 guest artifacts: the Firecracker release and the kernel
@@ -73,3 +75,39 @@ func hostBuild(ctx context.Context, repo, out, pkg string) error {
 
 // sign does nothing: a Linux binary runs unsigned.
 func sign(context.Context, string, string) error { return nil }
+
+// steersResolver: on Linux the product can be run under a /etc/resolv.conf
+// of the session's own, so a session may name a resolver.
+const steersResolver = true
+
+// resolverLoader runs as the product's own process, in a mount namespace of
+// its own: it makes every mount private, so that nothing it binds shows on
+// the host, binds the session's resolv.conf ($1) over /etc/resolv.conf,
+// becomes the user the suite runs as ($2, $3; the loader itself runs as
+// root, since binding needs that), and becomes the product with exactly the
+// environment the suite gives it (the K=V words after the ids, then the
+// command). The product then resolves every name with the resolver that
+// file names, as any program on the host would, and knows nothing else.
+const resolverLoader = `mount --make-rprivate / && mount --bind "$1" /etc/resolv.conf || { echo "workcell adapter: cannot bind the session's resolv.conf over /etc/resolv.conf" >&2; exit 125; }; u=$2 g=$3; shift 3; exec setpriv --reuid="$u" --regid="$g" --init-groups -- env -i "$@"`
+
+// steered returns the argv that runs argv under a /etc/resolv.conf naming
+// resolver, with env as its whole environment: the loader above in a new
+// mount namespace, through sudo when the suite is not root, as a hosted
+// runner grants without a password. The resolv.conf is written under dir.
+func steered(dir, resolver string, env, argv []string) ([]string, error) {
+	file := filepath.Join(dir, "resolv.conf")
+	if err := os.WriteFile(file, []byte("nameserver "+resolver+"\n"), 0o644); err != nil {
+		return nil, fmt.Errorf("write the session's resolv.conf: %w", err)
+	}
+	var out []string
+	if os.Geteuid() != 0 {
+		out = append(out, "sudo", "-n")
+	}
+	out = append(out, "unshare", "-m", "/bin/sh", "-c", resolverLoader, "sh", file, strconv.Itoa(os.Getuid()), strconv.Itoa(os.Getgid()))
+	for _, kv := range env {
+		if strings.Contains(kv, "=") { // a word without one would be read as the command
+			out = append(out, kv)
+		}
+	}
+	return append(out, argv...), nil
+}

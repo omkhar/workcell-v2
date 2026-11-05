@@ -144,7 +144,7 @@ func runOne(ctx context.Context, fresh func() (sandbox.Sandbox, error), payload 
 		}
 		s := session{sb: sb}
 		sessions = append(sessions, s)
-		cfg := sandbox.Config{Payload: payload, Mount: t.Want.Mount, CPUs: t.Want.CPUs, MemoryMiB: t.Want.MemoryMiB, DiskMiB: t.Want.DiskMiB, Allow: t.Want.Allow, Deny: t.Want.Deny}
+		cfg := sandbox.Config{Payload: payload, Mount: t.Want.Mount, CPUs: t.Want.CPUs, MemoryMiB: t.Want.MemoryMiB, DiskMiB: t.Want.DiskMiB, Allow: t.Want.Allow, Deny: t.Want.Deny, Resolver: t.Want.Resolver}
 		if t.Want.Secret {
 			sec := suite.NewSecret(t.Want.Allow[0])
 			cfg.Secret = &sec
@@ -168,7 +168,7 @@ func runOne(ctx context.Context, fresh func() (sandbox.Sandbox, error), payload 
 		if err != nil {
 			return suite.Session{}, err
 		}
-		ses := suite.Session{Run: probe(ctx, sb, t.Name), Workspace: cfg.Workspace, Guest: guest, Allow: cfg.Allow, Deny: cfg.Deny, Another: open,
+		ses := suite.Session{Run: probe(ctx, sb, t.Name), Workspace: cfg.Workspace, Guest: guest, Allow: cfg.Allow, Deny: cfg.Deny, Payload: payload, Another: open,
 			Exec: func(ctx context.Context, args ...string) (sandbox.Output, error) {
 				return sb.Exec(ctx, append([]string{t.Name}, args...)...)
 			},

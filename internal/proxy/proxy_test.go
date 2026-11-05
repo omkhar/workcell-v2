@@ -487,3 +487,62 @@ func TestRouteRefusesUnicodeFoldedSNI(t *testing.T) {
 		t.Fatalf("route reason = %q, want sni_not_allowed", got)
 	}
 }
+
+func TestConnectVetsEveryAnswerOnEveryConnection(t *testing.T) {
+	t.Parallel()
+	a := netip.MustParseAddr
+	cases := []struct {
+		name    string
+		answers [][]netip.Addr // one answer set per lookup; a nil set is a lookup error
+		reasons []string
+	}{
+		{"public and private mixed", [][]netip.Addr{{a("8.8.8.8"), a("10.255.255.254")}}, []string{"blocked_address"}},
+		{"private listed first", [][]netip.Addr{{a("10.255.255.254"), a("8.8.8.8")}}, []string{"blocked_address"}},
+		{"mapped loopback", [][]netip.Addr{{a("::ffff:127.0.0.1")}}, []string{"blocked_address"}},
+		{"unspecified", [][]netip.Addr{{a("0.0.0.0")}}, []string{"blocked_address"}},
+		{"metadata", [][]netip.Addr{{a("169.254.169.254")}}, []string{"blocked_address"}},
+		{"lookup error", [][]netip.Addr{nil}, []string{"resolve_failed"}},
+		{"empty answer", [][]netip.Addr{{}}, []string{"resolve_failed"}},
+		{"answer changes to loopback", [][]netip.Addr{{a("8.8.8.8")}, {a("127.0.0.1")}}, []string{"", "blocked_address"}},
+		{"answer changes to public", [][]netip.Addr{{a("127.0.0.1")}, {a("8.8.8.8")}}, []string{"blocked_address", ""}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			upstream, err := net.Listen("tcp", "127.0.0.1:0")
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer upstream.Close()
+			p, _, dialed := testProxy(t, "example.com:443", nil, upstream.Addr().String())
+			var lookups int
+			p.lookup = func(context.Context, string) ([]netip.Addr, error) {
+				answer := tc.answers[lookups]
+				lookups++
+				if answer == nil {
+					return nil, errors.New("lookup failed")
+				}
+				return answer, nil
+			}
+			wantDials := 0
+			for i, want := range tc.reasons {
+				conn, reason := p.connect("example.com", 443)
+				if reason != want {
+					t.Fatalf("connection %d: reason = %q, want %q", i+1, reason, want)
+				}
+				if conn != nil {
+					_ = conn.Close()
+					wantDials++
+				}
+			}
+			if lookups != len(tc.reasons) {
+				t.Fatalf("lookups = %d, want one per connection (%d)", lookups, len(tc.reasons))
+			}
+			p.mu.Lock()
+			defer p.mu.Unlock()
+			if len(*dialed) != wantDials {
+				t.Fatalf("dialed %v, want %d dials", *dialed, wantDials)
+			}
+		})
+	}
+}

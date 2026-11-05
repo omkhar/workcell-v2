@@ -57,6 +57,13 @@ type Config struct {
 	// session like an allowed name does, so that a policy the guest widened
 	// would reach a canary under it. The control adapter ignores it.
 	Deny []string
+	// Resolver is the IPv4 address of a DNS server on the test host, port
+	// 53, that the host side of the session is to ask for every name it
+	// resolves on the guest's behalf, as its /etc/resolv.conf resolver; ""
+	// leaves the adapter's own. The judge runs that server and so says what
+	// an allowed name resolves to (SPEC I4). In the control adapter the
+	// guest dials for itself, so there it is the guest's resolver.
+	Resolver string
 	// Secret is a credential bound to one allowed name; nil for none.
 	Secret *Secret
 }

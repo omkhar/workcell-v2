@@ -11,6 +11,8 @@ import "context"
 // here is implemented.
 type workcell struct{}
 
+const steersResolver = false
+
 func prepareWorkcell(context.Context, string) error { return ErrNotImplemented }
 
 func (*workcell) Start(context.Context, Config) (string, error) { return "", ErrNotImplemented }

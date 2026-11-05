@@ -58,6 +58,9 @@ type Session struct {
 	Allow  []string
 	Deny   []string // names that resolve for the session but no policy allows
 	Secret sandbox.Secret
+	// Payload is the host path of the payload binary: the probe, and the
+	// helper a judge runs through sudo for what needs root on the test host.
+	Payload string
 	// Pull brings the guest's workspace back to the host directory dest, as
 	// the product's pull does.
 	Pull func(dest string) error
@@ -76,10 +79,11 @@ type Judge func(ctx context.Context, s Session) (pass bool, detail string, err e
 // Want is the sandbox a test needs: an export, whether it is the user's
 // tree served live rather than a clone (`--mount`, SPEC A5), the caps the
 // adapter is to state (zero: the adapter's default), the names the policy
-// allows and the names it does not, whether a fresh secret is bound to the
-// first allowed name, and the repo-local policy (a workcell.toml the runner
-// plants in the export before the session starts) that the hostile
-// repository brings.
+// allows and the names it does not, the resolver the host side of the
+// session is to use (the judge's, see sandbox.Config.Resolver), whether a
+// fresh secret is bound to the first allowed name, and the repo-local
+// policy (a workcell.toml the runner plants in the export before the
+// session starts) that the hostile repository brings.
 type Want struct {
 	Workspace bool
 	Mount     bool
@@ -88,6 +92,7 @@ type Want struct {
 	DiskMiB   int
 	Allow     []string
 	Deny      []string
+	Resolver  string
 	Secret    bool
 	Policy    string
 }
