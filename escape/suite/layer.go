@@ -80,14 +80,10 @@ func layerJudge(ctx context.Context, s Session) (bool, string, error) {
 		return false, "", err
 	}
 	defer src.stop()
-	var image string
-	for _, agent := range slices.Sorted(maps.Keys(layers)) {
-		img, err := install(ctx, s, src, agent, layers[agent], nil)
-		if err != nil {
+	var image string // claude's, the last installed
+	for _, agent := range slices.Backward(slices.Sorted(maps.Keys(layers))) {
+		if image, err = install(ctx, s, src, agent, layers[agent], nil); err != nil {
 			return false, "", err
-		}
-		if agent == layerAgent {
-			image = img
 		}
 	}
 	before, err := fileSum(image)
@@ -127,8 +123,7 @@ func layerJudge(ctx context.Context, s Session) (bool, string, error) {
 	return true, both, nil
 }
 
-// missing names the first agent of layers whose version a session, by its
-// detail, did not print; "" when it printed them all.
+// missing names the first agent of layers whose version got lacks, "" for none.
 func missing(got map[string]string) string {
 	for _, agent := range slices.Sorted(maps.Keys(layers)) {
 		if got[agent] != layers[agent] {
@@ -158,29 +153,30 @@ func fields(detail string) map[string]string {
 	return out
 }
 
-// layerProbe finds each agent of layers on PATH and runs `<agent>
-// --version`; hashes every file of claude's layer (the parent of the
-// binary's directory); and, as "attack", tries as root to make claude print
-// the version given, then says what it prints afterwards. args: verb, version.
+// layerProbe runs `<agent> --version` for each agent of layers on PATH,
+// hashes every file of claude's layer (the parent of the binary's directory)
+// and, as "attack", tries as root to make claude print the version given,
+// then says what it prints. Versions first: a detail is cut at maxDetail.
 func layerProbe(args []string) Result {
 	if len(args) != 2 {
 		return Result{Status: "error", Detail: "want attack|check and version"}
 	}
 	var detail []string
 	for _, agent := range slices.Sorted(maps.Keys(layers)) {
-		path, err := exec.LookPath(agent)
-		if err != nil {
+		if path, err := exec.LookPath(agent); err != nil {
 			detail = append(detail, agent+"=none")
-			continue
+		} else {
+			detail = append(detail, agent+"="+output(path, "--version"))
 		}
-		detail = append(detail, agent+"="+output(path, "--version"))
-		if agent == layerAgent {
-			root := filepath.Dir(filepath.Dir(path))
-			detail = append(detail, "hash="+treeSum(root))
-			if args[0] == "attack" {
-				detail = append(detail, hijack(path, root, []byte("#!/bin/sh\necho "+args[1]+"\n")), "runs="+output(path, "--version"))
-			}
-		}
+	}
+	path, err := exec.LookPath(layerAgent)
+	if err != nil {
+		return Result{Status: "missing", Detail: strings.Join(detail, " ")}
+	}
+	root := filepath.Dir(filepath.Dir(path))
+	detail = append(detail, "hash="+treeSum(root))
+	if args[0] == "attack" {
+		detail = append(detail, hijack(path, root, []byte("#!/bin/sh\necho "+args[1]+"\n")), "runs="+output(path, "--version"))
 	}
 	return Result{Status: "tried", Detail: strings.Join(detail, " ")}
 }
@@ -193,6 +189,10 @@ func layerProbe(args []string) Result {
 // layer's own, never the test host's disk.
 func hijack(path, root string, body []byte) string {
 	write := func(p string) string { return "write=" + status(os.WriteFile(p, body, 0o755)) }
+	mount := func(args ...string) string { // what mount says of its last argument, the point, bounded: a detail is one line
+		msg := strings.TrimPrefix(output("mount", args...), "mount:_"+args[len(args)-1]+":_")
+		return msg[:min(len(msg), 24)]
+	}
 	out := []string{write(path), "unlink=" + status(os.Remove(path))}
 	if out[1] == "unlink=ok" {
 		out = append(out, write(path))
@@ -202,7 +202,7 @@ func hijack(path, root string, body []byte) string {
 	if !ro {
 		return strings.Join(append(out, "remount=skipped,device=skipped"), " ")
 	}
-	if msg := output("mount", "-o", "remount,rw", root); msg != "" {
+	if msg := mount("-o", "remount,rw", root); msg != "" {
 		out = append(out, "remount="+msg)
 	} else {
 		out = append(out, "remount=ok,"+write(path))
@@ -213,7 +213,7 @@ func hijack(path, root string, body []byte) string {
 		f.Close()
 	}
 	out = append(out, "device="+status(err))
-	if msg := output("mount", "-o", "rw", dev, "/mnt"); msg != "" {
+	if msg := mount("-o", "rw", dev, "/mnt"); msg != "" {
 		out = append(out, "mount="+msg)
 	} else {
 		out = append(out, "mount=ok,"+write(filepath.Join("/mnt", "bin", filepath.Base(path))))
