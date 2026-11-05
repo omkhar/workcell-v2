@@ -108,11 +108,7 @@ func session(argv []string, caps limits, mount bool, a artifacts, allow *proxy.A
 	if b.ca != nil {
 		req.Env = append(req.Env, guest.TrustEnv(guest.TrustDir)...)
 	}
-	for _, s := range secrets {
-		if s.env != "" {
-			req.Env = append(req.Env, s.env+"="+s.rule.Placeholder)
-		}
-	}
+	req.Env = append(req.Env, placeholderEnv(secrets)...)
 	restore, tty := rawMode(unix.Stdin)
 	if tty {
 		defer restore()

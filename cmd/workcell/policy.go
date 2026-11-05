@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/omkhar/workcell/v2/internal/policy"
+	"github.com/omkhar/workcell/v2/internal/provider"
 	"github.com/omkhar/workcell/v2/internal/proxy"
 	"github.com/omkhar/workcell/v2/internal/secret"
 )
@@ -62,11 +63,24 @@ func loadPolicy(extra []string) (*proxy.Allowlist, []binding, error) {
 
 // binding is one [[secret]] row ready for a session: the grant the broker releases, the rule
 // the proxy swaps by, holding the placeholder minted here, and the guest variable that carries
-// the placeholder, "" for none. The value itself is read by the broker, per use, on the host (I5).
+// the placeholder, "" for none, and the provider whose defaults filled the row, "" for none. The
+// value itself is read by the broker, per use, on the host (I5).
 type binding struct {
-	grant secret.Grant
-	rule  proxy.TerminateRule
-	env   string
+	grant  secret.Grant
+	rule   proxy.TerminateRule
+	env    string
+	serves string
+}
+
+// placeholderEnv is the guest's variables that carry placeholders, one per binding with an env:
+// the only form of a secret the guest ever holds (A4).
+func placeholderEnv(secrets []binding) (env []string) {
+	for _, s := range secrets {
+		if s.env != "" {
+			env = append(env, s.env+"="+s.rule.Placeholder)
+		}
+	}
+	return env
 }
 
 // envName is a variable name as the guest's environment takes it.
@@ -76,12 +90,28 @@ var envName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 // each. The proxy judges host, header, method and path (A3); the host must then be a bare name
 // of the allow list, so that the proxy terminates it and swaps there (I6), as must the host of a
 // sign-in source; no two rows may bind one header on one host, or one token endpoint; and env
-// must be a variable name. A fault is reported with its line.
+// must be a variable name. A row that gives a name and source but no host and no header takes
+// them, and env unless it gives one, from the provider secret of that name: a convenience that
+// grants nothing, since the host must still be in the allow list (I13). The provider's prefix
+// needs no rule: the proxy keeps a "Bearer " the guest sends before the placeholder. A fault is
+// reported with its line.
 func bindings(p policy.Policy, allow *proxy.Allowlist, file string) ([]binding, error) {
 	var out []binding
 	bound := map[string]int{} // the line that bound each host and header, and each token endpoint
 	for _, s := range p.Secret {
 		at := fmt.Sprintf("%s:%d: secret %q", file, s.Line, s.Name)
+		serves := ""
+		if s.Host == "" && s.Header == "" {
+			if d, prov, ok := provider.FindSecret(s.Name); ok {
+				s.Host, s.Header, serves = d.Host, d.Header, prov.Name
+				if s.Env == "" {
+					s.Env = d.Env
+				}
+			}
+		}
+		if s.Host == "" || s.Header == "" {
+			return nil, fmt.Errorf("%s: host and header are missing: name a provider's secret or give host and header", at)
+		}
 		rule, err := proxy.NewTerminateRule(s.Host, s.Header, s.Method, s.Path)
 		if err == nil && strings.HasPrefix(s.Source, "signin:") {
 			rule.SignIn, err = proxy.NewSignIn(s.Source)
@@ -95,7 +125,7 @@ func bindings(p policy.Policy, allow *proxy.Allowlist, file string) ([]binding, 
 		}
 		switch {
 		case allow == nil || !slices.Contains(allow.TLSHosts(), rule.Host):
-			return nil, fmt.Errorf("%s: host %q is not a bare name in [network] allow", at, s.Host)
+			return nil, fmt.Errorf("%s: host %q is not a bare name in [network] allow: add %q there, or pass --allow %s", at, s.Host, rule.Host, rule.Host)
 		case bound[pair] != 0:
 			return nil, fmt.Errorf("%s: header %s on %s is already bound on line %d", at, rule.Header, rule.Host, bound[pair])
 		case endpoint != "" && !slices.Contains(allow.TLSHosts(), rule.SignIn.Host):
@@ -109,7 +139,7 @@ func bindings(p policy.Policy, allow *proxy.Allowlist, file string) ([]binding, 
 		if endpoint != "" {
 			bound[endpoint] = s.Line
 		}
-		out = append(out, binding{grant: secret.Grant{Name: s.Name, Source: s.Source, Host: rule.Host, Header: rule.Header}, rule: rule, env: s.Env})
+		out = append(out, binding{grant: secret.Grant{Name: s.Name, Source: s.Source, Host: rule.Host, Header: rule.Header}, rule: rule, env: s.Env, serves: serves})
 	}
 	return out, nil
 }

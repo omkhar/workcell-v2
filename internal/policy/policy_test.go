@@ -83,6 +83,7 @@ func TestParseSecret(t *testing.T) {
 		{"every key", full, []Secret{{"a", "file:/s", "a.example", "X-Api-Key", "A_KEY", "POST", "/v1/", 1}}},
 		{"two rows, the second after another table", full + "[network]\n[[secret]]\nname = \"b\"\nsource = \"cmd:/bin/b\"\nhost = \"b.example\"\nheader = \"authorization\"\n",
 			[]Secret{{"a", "file:/s", "a.example", "X-Api-Key", "A_KEY", "POST", "/v1/", 1}, {Name: "b", Source: "cmd:/bin/b", Host: "b.example", Header: "authorization", Line: 10}}},
+		{"name and source alone", "[[secret]]\nname = \"anthropic\"\nsource = \"file:/s\"\n", []Secret{{Name: "anthropic", Source: "file:/s", Line: 1}}},
 		{"no secret", "[network]\nallow = []\n", nil},
 	}
 	for _, tc := range tests {
@@ -131,8 +132,6 @@ func TestParseRefuses(t *testing.T) {
 		{"secret key not a string", "[[secret]]\nname = \"a\"\nsource = [\"file:/s\"]\n", "config.toml:3: source must be a string"},
 		{"secret without a name", "\n[[secret]]\nsource = \"file:/s\"\nhost = \"h\"\nheader = \"k\"\n", "config.toml:2: [[secret]] needs a name"},
 		{"secret without a source", "[[secret]]\nname = \"a\"\nhost = \"h\"\nheader = \"k\"\n", "config.toml:1: [[secret]] needs a source"},
-		{"secret without a host", "[[secret]]\nname = \"a\"\nsource = \"file:/s\"\nheader = \"k\"\n", "config.toml:1: [[secret]] needs a host"},
-		{"secret with an empty header", "[[secret]]\nname = \"a\"\nsource = \"file:/s\"\nhost = \"h\"\nheader = \"\"\n", "config.toml:1: [[secret]] needs a header"},
 		{"allow is a string", "[network]\nallow = \"a.example\"\n", "config.toml:2: allow must be an array of strings"},
 		{"allow is an integer", "[network]\nallow = 443\n", "config.toml:2: allow must be an array of strings"},
 		{"array of integers", "[network]\nallow = [443]\n", "config.toml:2: an array may hold strings alone, got \"443\""},

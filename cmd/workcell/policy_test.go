@@ -4,6 +4,8 @@
 package main
 
 import (
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -89,7 +91,7 @@ func TestAllowlist(t *testing.T) {
 // host is not a bare allowed name, or that the proxy refuses, or that binds a pair again, or
 // whose env is not a variable name, is refused with its line.
 func TestBindings(t *testing.T) {
-	allow, err := allowlist(policy.Policy{Allow: []policy.Entry{{Text: "a.example", Line: 2}, {Text: "db.example:5432", Line: 2}}}, "config.toml")
+	allow, err := allowlist(policy.Policy{Allow: []policy.Entry{{Text: "a.example", Line: 2}, {Text: "db.example:5432", Line: 2}, {Text: "api.anthropic.com", Line: 3}}}, "config.toml")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -107,7 +109,17 @@ func TestBindings(t *testing.T) {
 			"secrets: swapped in by the session proxy; the guest holds a placeholder\n  k: in x-api-key to https://a.example, POST only, under /v1/, as $A_KEY\n", ""},
 		{"two headers on one host", []policy.Secret{row, with(func(s *policy.Secret) { s.Header, s.Line = "authorization", 9 })},
 			"secrets: swapped in by the session proxy; the guest holds a placeholder\n  k: in x-api-key to https://a.example\n  k: in authorization to https://a.example\n", ""},
-		{"host not allowed", []policy.Secret{with(func(s *policy.Secret) { s.Host = "b.example" })}, "", "config.toml:5: secret \"k\": host \"b.example\" is not a bare name"},
+		{"host not allowed", []policy.Secret{with(func(s *policy.Secret) { s.Host = "b.example" })}, "", "config.toml:5: secret \"k\": host \"b.example\" is not a bare name in [network] allow: add \"b.example\" there, or pass --allow b.example"},
+		{"a provider's secret", []policy.Secret{{Name: "anthropic", Source: "file:/s", Line: 5}},
+			"secrets: swapped in by the session proxy; the guest holds a placeholder\n  anthropic: in x-api-key to https://api.anthropic.com, as $ANTHROPIC_API_KEY, for claude\n", ""},
+		{"a provider's secret, the row's env and method win", []policy.Secret{{Name: "anthropic", Source: "file:/s", Env: "MY_KEY", Method: "POST", Line: 5}},
+			"secrets: swapped in by the session proxy; the guest holds a placeholder\n  anthropic: in x-api-key to https://api.anthropic.com, POST only, as $MY_KEY, for claude\n", ""},
+		{"a provider's secret on a host that is not allowed", []policy.Secret{{Name: "openai", Source: "file:/s", Line: 5}}, "",
+			"config.toml:5: secret \"openai\": host \"api.openai.com\" is not a bare name in [network] allow: add \"api.openai.com\" there, or pass --allow api.openai.com"},
+		{"no host or header, and no such provider secret", []policy.Secret{{Name: "nope", Source: "file:/s", Line: 5}}, "",
+			"config.toml:5: secret \"nope\": host and header are missing: name a provider's secret or give host and header"},
+		{"a header without a host", []policy.Secret{with(func(s *policy.Secret) { s.Host = "" })}, "",
+			"config.toml:5: secret \"k\": host and header are missing: name a provider's secret or give host and header"},
 		{"host allowed on a forward port alone", []policy.Secret{with(func(s *policy.Secret) { s.Host = "db.example" })}, "", "config.toml:5: secret \"k\": host \"db.example\" is not a bare name"},
 		{"an IP host", []policy.Secret{with(func(s *policy.Secret) { s.Host = "10.0.0.1" })}, "", "config.toml:5: secret \"k\": terminate rule"},
 		{"a bad header", []policy.Secret{with(func(s *policy.Secret) { s.Header = "x api key" })}, "", "config.toml:5: secret \"k\": terminate rule has an invalid header name"},
@@ -189,6 +201,57 @@ func TestAllowlistFlags(t *testing.T) {
 			}
 			if err != nil || !slices.Equal(got.Ports(), tc.ports) || !slices.Equal(got.Hosts(), tc.hosts) {
 				t.Errorf("allowlist = %v, %v; want ports %v hosts %v", got, err, tc.ports, tc.hosts)
+			}
+		})
+	}
+}
+
+// TestProviderPolicy loads a real config file the way `workcell run` does: a [[secret]] row that
+// names only the provider's secret takes its host, header and env, the guest's environment holds
+// the placeholder and never the key, and the host stays the user's grant (I13), from the file or
+// from --allow, or the load fails naming the host to allow.
+func TestProviderPolicy(t *testing.T) {
+	const key = "sk-ant-real-0123456789"
+	keyFile := filepath.Join(t.TempDir(), "key")
+	if err := os.WriteFile(keyFile, []byte(key+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	tests := []struct {
+		name, allow string
+		flags       []string
+		err         string
+	}{
+		{"allowed in the file", `allow = ["api.anthropic.com"]`, nil, ""},
+		{"allowed by --allow", `allow = []`, []string{"api.anthropic.com"}, ""},
+		{"not allowed", `allow = ["github.com"]`, nil, `secret "anthropic": host "api.anthropic.com" is not a bare name in [network] allow: add "api.anthropic.com" there, or pass --allow api.anthropic.com`},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			t.Setenv("XDG_CONFIG_HOME", dir)
+			if err := os.MkdirAll(filepath.Join(dir, "workcell"), 0o700); err != nil {
+				t.Fatal(err)
+			}
+			text := "[network]\n" + tc.allow + "\n\n[[secret]]\nname = \"anthropic\"\nsource = \"file:" + keyFile + "\"\n"
+			if err := os.WriteFile(filepath.Join(dir, "workcell", "config.toml"), []byte(text), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			_, got, err := loadPolicy(tc.flags)
+			if tc.err != "" {
+				if err == nil || !strings.HasSuffix(err.Error(), tc.err) || strings.Contains(err.Error(), "\n") {
+					t.Fatalf("loadPolicy = %v, want one line ending %q", err, tc.err)
+				}
+				return
+			}
+			if err != nil || len(got) != 1 {
+				t.Fatalf("loadPolicy = %v, %v", got, err)
+			}
+			if r := got[0].rule; r.Host != "api.anthropic.com" || r.Header != "x-api-key" || got[0].env != "ANTHROPIC_API_KEY" || got[0].grant.Source != "file:"+keyFile {
+				t.Errorf("binding = %+v, want api.anthropic.com, x-api-key, $ANTHROPIC_API_KEY", got[0])
+			}
+			env := placeholderEnv(got)
+			if want := []string{"ANTHROPIC_API_KEY=" + got[0].rule.Placeholder}; !slices.Equal(env, want) || !proxy.IsPlaceholder(got[0].rule.Placeholder) || strings.Contains(strings.Join(env, "\x00"), key) {
+				t.Errorf("guest env = %q, want %q and no key", env, want)
 			}
 		})
 	}
