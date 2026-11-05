@@ -121,6 +121,8 @@ var All = []Test{
 	{ID: "I1", Name: "mount-device-node", Probe: deviceProbe, Host: deviceJudge, Want: live},
 	{ID: "I1", Name: "mount-link-rename", Probe: moveProbe, Host: outside(nil), Want: live},
 	{ID: "I7", Name: "cross-session-residue", Probe: residueProbe, Host: residueJudge, Want: exported},
+	// Root changes the provider layer the host installed; the next session must not see it.
+	{ID: "I7", Name: "layer-read-only", Probe: layerProbe, Host: layerJudge},
 	// The guest asks for twice its cap; the host, watched from outside, must
 	// give no more than the cap.
 	{ID: "I10", Name: "fork-flood", Probe: forkProbe, Host: forkJudge, Want: capped},

@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"path/filepath"
 	"slices"
 	"strconv"
 )
@@ -34,8 +35,12 @@ func Prepare(ctx context.Context, name, dir string) error {
 	if name == "workcell" {
 		return prepareWorkcell(ctx, dir)
 	}
+	prefix = filepath.Join(dir, "layers")
 	return nil
 }
+
+// prefix is where a plain container installs every provider, as /usr/local: on every session's PATH, writable.
+var prefix string
 
 // unsupported says why the CLI cannot honour cfg today, "" when it can: it
 // takes an export, a network policy, a secret, a CPU count of 1 to 32,

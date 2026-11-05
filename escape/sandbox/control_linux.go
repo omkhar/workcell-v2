@@ -4,6 +4,7 @@
 package sandbox
 
 import (
+	"archive/tar"
 	"bytes"
 	"context"
 	"crypto/tls"
@@ -66,7 +67,7 @@ func (c *control) Start(_ context.Context, cfg Config) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("control: place payload: %w", err)
 	}
-	c.env = []string{"PATH=/usr/sbin:/usr/bin:/sbin:/bin", "HOME=/root"}
+	c.env = []string{"PATH=" + filepath.Join(prefix, "bin") + ":/usr/sbin:/usr/bin:/sbin:/bin", "HOME=/root"}
 	c.workspace = cfg.Workspace
 	ln, err := net.Listen("unix", filepath.Join(dir, "channel"))
 	if err != nil {
@@ -355,6 +356,22 @@ func (c *control) Update(ctx context.Context, u UpdateConfig) ([]byte, error) {
 		return nil, fmt.Errorf("control: fetch artifact: %w", err)
 	}
 	return art, os.WriteFile(filepath.Join(c.dir, "installed-"+u.Name), art, 0o755)
+}
+
+// Install does what a naive sandbox does: it unpacks the artifact into the
+// one prefix every session's PATH starts with, writable, and keeps no image.
+func (c *control) Install(_ context.Context, l Layer) (string, error) {
+	return "", untar(l.Artifact, func(h *tar.Header, r io.Reader) error {
+		if h.Typeflag == tar.TypeDir {
+			return nil
+		}
+		b, err := io.ReadAll(r)
+		p := filepath.Join(prefix, h.Name)
+		if err == nil {
+			err = errors.Join(os.MkdirAll(filepath.Dir(p), 0o755), os.WriteFile(p, b, os.FileMode(h.Mode)))
+		}
+		return err
+	})
 }
 
 // Bench: a plain container boots no VM, so there is no start to time. It

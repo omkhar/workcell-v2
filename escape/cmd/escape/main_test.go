@@ -48,6 +48,9 @@ func (f *fake) Channel(context.Context) (sandbox.Channel, error) {
 func (f *fake) Update(context.Context, sandbox.UpdateConfig) ([]byte, error) {
 	return nil, sandbox.ErrNotImplemented
 }
+func (f *fake) Install(context.Context, sandbox.Layer) (string, error) {
+	return "", sandbox.ErrNotImplemented
+}
 func (f *fake) Bind(context.Context, string, string) (net.Listener, net.PacketConn, error) {
 	return nil, nil, sandbox.ErrNotImplemented
 }

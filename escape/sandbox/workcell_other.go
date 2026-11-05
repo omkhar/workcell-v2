@@ -34,4 +34,6 @@ func (*workcell) Bind(context.Context, string, string) (net.Listener, net.Packet
 	return nil, nil, ErrNotImplemented
 }
 
+func (*workcell) Install(context.Context, Layer) (string, error) { return "", ErrNotImplemented }
+
 func (*workcell) Stop() error { return nil }
