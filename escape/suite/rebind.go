@@ -9,6 +9,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"slices"
 	"strings"
@@ -81,8 +82,10 @@ func (r rebind) answers() string {
 // rebindProbe connects to the allowed name args[0] (name:port) as a program
 // would, through the guest's own resolver, and sends the token args[1] on
 // one line; with args[2] "sni" it offers a TLS ClientHello naming the host
-// instead, and sends the token inside TLS if the handshake completes. It
-// tries twice, the second time after a pause, and reports both.
+// instead and, if the handshake completes, sends the token inside TLS as the
+// path of a request for the host, since a host that terminates the
+// connection resolves the name only to forward a request. It tries twice,
+// the second time after a pause, and reports both.
 func rebindProbe(args []string) Result {
 	if len(args) != 3 {
 		return Result{Status: "error", Detail: "want name:port, token and line|sni"}
@@ -105,14 +108,15 @@ func connectName(addr, token string, sni bool) Result {
 	}
 	defer c.Close()
 	c.SetDeadline(time.Now().Add(3 * time.Second))
+	line := token + "\n"
 	if sni {
 		tc := tls.Client(c, &tls.Config{ServerName: host, InsecureSkipVerify: true, MinVersion: tls.VersionTLS12}) //nolint:gosec // the probe is the attacker
 		if err := tc.Handshake(); err != nil {
 			return Result{Status: "handshake-failed", Detail: "to " + addr + ": " + err.Error()}
 		}
-		c = tc
+		c, line = tc, fmt.Sprintf("GET /%s HTTP/1.1\r\nHost: %s\r\nConnection: close\r\n\r\n", token, host)
 	}
-	if _, err := fmt.Fprintln(c, token); err != nil {
+	if _, err := io.WriteString(c, line); err != nil {
 		return Result{Status: "connected-write-failed", Detail: err.Error()}
 	}
 	return answered(c, "to "+addr)
