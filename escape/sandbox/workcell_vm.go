@@ -266,16 +266,25 @@ func (w *workcell) Bench(ctx context.Context) (Output, error) {
 
 // cli runs the product once with the prepared artifacts and the session's
 // policy, in the session's export when it has one, stdin from in, both
-// streams bounded. An exit
-// status is reported in Output, not as an error. On cancel the product gets
-// SIGTERM, which it forwards, and a little while to take its VM down.
+// streams bounded, and, when the session names a resolver, under a
+// /etc/resolv.conf of the session's own (steered). An exit status is
+// reported in Output, not as an error. On cancel the product gets SIGTERM,
+// which it forwards, and a little while to take its VM down.
 func (w *workcell) cli(ctx context.Context, in io.Reader, args ...string) (Output, error) {
-	cmd := exec.CommandContext(ctx, prepared.bin, args...)
+	env := append(os.Environ(), "XDG_DATA_HOME="+prepared.xdg, "XDG_CONFIG_HOME="+filepath.Join(w.dir, "config"))
+	argv := append([]string{prepared.bin}, args...)
+	if w.cfg.Resolver != "" {
+		var err error
+		if argv, err = steered(w.dir, w.cfg.Resolver, env, argv); err != nil {
+			return Output{}, fmt.Errorf("workcell %s: %w", args[0], err)
+		}
+	}
+	cmd := exec.CommandContext(ctx, argv[0], argv[1:]...)
 	cmd.Dir = w.dir
 	if w.cfg.Workspace != "" {
 		cmd.Dir = w.cfg.Workspace
 	}
-	cmd.Env = append(os.Environ(), "XDG_DATA_HOME="+prepared.xdg, "XDG_CONFIG_HOME="+filepath.Join(w.dir, "config"))
+	cmd.Env = env
 	cmd.Stdin = in
 	stdout, stderr := &bounded{limit: MaxStdout}, &bounded{limit: MaxStderr}
 	cmd.Stdout, cmd.Stderr = stdout, stderr

@@ -16,15 +16,17 @@ import (
 // trailing dot, every label 1 to 63 bytes of printable ASCII without a dot.
 
 const (
-	dnsTypeA    = 1
-	dnsTypePTR  = 12
-	dnsTypeTXT  = 16
-	dnsTypeAAAA = 28
-	dnsTypeOPT  = 41
-	dnsTypeANY  = 255
-	dnsClassIN  = 1
-	maxLabel    = 63
-	maxName     = 255
+	dnsTypeA        = 1
+	dnsTypeCNAME    = 5
+	dnsTypePTR      = 12
+	dnsTypeTXT      = 16
+	dnsTypeAAAA     = 28
+	dnsTypeOPT      = 41
+	dnsTypeANY      = 255
+	dnsClassIN      = 1
+	dnsRcodeRefused = 5
+	maxLabel        = 63
+	maxName         = 255
 )
 
 // Response codes (RFC 1035 section 4.1.1), as the resolver probes name them.
@@ -44,12 +46,19 @@ func dnsQuery(q dnsQuestion) []byte {
 	binary.BigEndian.PutUint16(b[0:], q.ID)
 	b[2] = 0x01 // QR 0, opcode 0, RD
 	b[5] = 1    // QDCOUNT
-	for _, label := range strings.Split(strings.TrimSuffix(q.Name, "."), ".") {
+	b = append(b, encodeName(q.Name)...)
+	return binary.BigEndian.AppendUint16(binary.BigEndian.AppendUint16(b, q.Type), dnsClassIN)
+}
+
+// encodeName is name in wire form: each label behind its length, then the
+// root. A name the rules above forbid still encodes.
+func encodeName(name string) []byte {
+	var b []byte
+	for _, label := range strings.Split(strings.TrimSuffix(name, "."), ".") {
 		b = append(b, byte(len(label)))
 		b = append(b, label...)
 	}
-	b = append(b, 0)
-	return binary.BigEndian.AppendUint16(binary.BigEndian.AppendUint16(b, q.Type), dnsClassIN)
+	return append(b, 0)
 }
 
 // parseDNSQuery decodes a message as a query (QR 0) whose first question has

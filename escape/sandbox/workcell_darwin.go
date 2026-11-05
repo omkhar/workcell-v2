@@ -46,6 +46,13 @@ func hostReady() error {
 	return nil
 }
 
+// steersResolver: a Mac has no mount namespace to give the product a
+// /etc/resolv.conf of the session's own, so a session that names a resolver
+// is refused at Start.
+const steersResolver = false
+
+func steered(string, string, []string, []string) ([]string, error) { return nil, ErrNotImplemented }
+
 // hypervisor fetches nothing: Virtualization.framework is part of the OS.
 func hypervisor(context.Context, string) error { return nil }
 

@@ -16,6 +16,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 )
 
@@ -62,6 +63,20 @@ var All = []Test{
 	// The relay header names the host's own loopback and the metadata address.
 	{ID: "I4", Name: "relay-header-host-loopback", Probe: relayProbe, Host: relayCanary("tcp4", "127.0.0.1:0", "tcp")},
 	{ID: "I4", Name: "relay-header-metadata", Probe: relayProbe, Host: onLoopback("169.254.169.254", relayCanary("tcp4", "169.254.169.254:0", "tcp"))},
+	// Rebinding: the guest connects to an allowed name, by its forward port
+	// or by SNI at 443, and the judge, as the host's resolver, answers that
+	// name with the host's loopback, a LAN address, the metadata address,
+	// loopback as an IPv4-mapped IPv6 address, the unspecified address, or a
+	// CNAME to a denied name that is loopback. The host resolves the name,
+	// the canary at the answer must see nothing, and the guest tries twice.
+	{ID: "I4", Name: "rebind-loopback-forward", Probe: rebindProbe, Host: rebindJudge(rebind{a: []string{"127.0.0.1"}, canary: "127.0.0.1"}), Want: rebinding},
+	{ID: "I4", Name: "rebind-loopback-sni", Probe: rebindProbe, Host: rebindJudge(rebind{a: []string{"127.0.0.1"}, canary: "127.0.0.1", sni: true}), Want: rebindingSNI},
+	{ID: "I4", Name: "rebind-lan-forward", Probe: rebindProbe, Host: onLoopback("10.255.255.254", rebindJudge(rebind{a: []string{"10.255.255.254"}, canary: "10.255.255.254"})), Want: rebinding},
+	{ID: "I4", Name: "rebind-metadata-forward", Probe: rebindProbe, Host: onLoopback("169.254.169.254", rebindJudge(rebind{a: []string{"169.254.169.254"}, canary: "169.254.169.254"})), Want: rebinding},
+	{ID: "I4", Name: "rebind-metadata-sni", Probe: rebindProbe, Host: onLoopback("169.254.169.254", rebindJudge(rebind{a: []string{"169.254.169.254"}, canary: "169.254.169.254", sni: true})), Want: rebindingSNI},
+	{ID: "I4", Name: "rebind-mapped-loopback-forward", Probe: rebindProbe, Host: rebindJudge(rebind{aaaa: []string{"::ffff:127.0.0.1"}, canary: "127.0.0.1"}), Want: rebinding},
+	{ID: "I4", Name: "rebind-unspecified-forward", Probe: rebindProbe, Host: rebindJudge(rebind{a: []string{"0.0.0.0"}, canary: "0.0.0.0"}), Want: rebinding},
+	{ID: "I4", Name: "rebind-cname-denied-forward", Probe: rebindProbe, Host: rebindJudge(rebind{cname: deniedName, a: []string{"127.0.0.1"}, canary: "127.0.0.1"}), Want: rebindingCNAME},
 	// DNS for a name no policy allows, sent past the guest's resolver straight to
 	// a host-side capture: as plain DNS, as DoT, as DoH, and as a tunnel.
 	{ID: "I3", Name: "direct-resolver-udp4", Probe: dnsUDPProbe, Host: dnsCanary(dnsOverUDP, queried)},
@@ -317,13 +332,18 @@ type trap struct {
 }
 
 // listenTrap starts a trap on network ("tcp4", "tcp6" or "udp4") at addr.
-func listenTrap(network, addr string) (*trap, error) {
+// A port below 1024 needs root; helper, when set, is the payload, which
+// binds it through sudo (privileged) when the suite is not root itself.
+func listenTrap(network, addr string, helper ...string) (*trap, error) {
 	t := &trap{}
 	var err error
 	if strings.HasPrefix(network, "udp") {
 		t.pc, err = net.ListenPacket(network, addr)
 	} else {
 		t.ln, err = net.Listen(network, addr)
+	}
+	if errors.Is(err, syscall.EACCES) && len(helper) == 1 {
+		t.ln, t.pc, err = privileged(network, addr, helper[0])
 	}
 	if err != nil {
 		return nil, fmt.Errorf("canary listener: %w", err)
