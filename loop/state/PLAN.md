@@ -137,7 +137,7 @@ with ADR-003 and ADR-004, they build on the proposal, and you can accept it at a
       accept: I4 added to `enforced.txt` and green
 - [x] U-306 | flow:boundary | model:sonnet | env:kvm | deps:U-303,U-010 | tries:0 | Fail closed when any helper dies
       accept: I11 added to `enforced.txt` and green
-- [ ] U-307 | flow:boundary | model:fable | env:kvm | deps:U-303,U-008 | tries:0 | TLS termination with a per-session CA held only on the host. Install the CA in the guest trust store and the usual runtime variables. Enforce SNI, Host and certificate agreement
+- [x] U-307 | flow:boundary | model:fable | env:kvm | deps:U-303,U-008 | tries:0 | TLS termination with a per-session CA held only on the host. Install the CA in the guest trust store and the usual runtime variables. Enforce SNI, Host and certificate agreement
       accept: I6 added to `enforced.txt` and green; curl, Node, Python, Go and Java clients in the guest all validate
 - [ ] U-308 | flow:build | model:sonnet | env:kvm | deps:U-303 | tries:0 | Denial experience: `workcell log -f` shows denials live, `workcell explain` prints effective reach, `--allow host` widens one session
       accept: a blocked `npm install` tells the user the exact host to allow, in one line

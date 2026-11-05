@@ -52,12 +52,6 @@ func bind(ctx context.Context, s Session, network, addr string) (net.Listener, n
 	return ln, pc, err
 }
 
-// privileged binds network/addr in the host's own network as root, through
-// the payload (sandbox.RootBind).
-func privileged(network, addr, payload string) (net.Listener, net.PacketConn, error) {
-	return sandbox.RootBind(network, addr, payload, 0)
-}
-
 const (
 	holdFor     = 5 * time.Second         // how long the guest holds its connection open, for the kill to land
 	attemptWait = 1500 * time.Millisecond // what one attempt after the hold may take
@@ -222,8 +216,8 @@ func helperKilled(name string, atStart bool) Judge {
 		}
 		ns := serveNamesOn(pc, rebind{a: []string{host}, names: []string{s.Allow[0] + ".", s.Deny[0] + "."}})
 		defer ns.stop()
-		allowed, denied := &canary{name: s.Allow[0]}, &canary{name: s.Deny[0]}
-		stop, err := serveCanaries(ln, nil, st.serve, allowed, denied)
+		allowed, denied := &canary{name: s.Allow[0], respond: st.serve}, &canary{name: s.Deny[0]}
+		stop, err := serveCanaries(ln, nil, allowed, denied)
 		if err != nil {
 			return false, "", err
 		}

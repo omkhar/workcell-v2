@@ -11,6 +11,7 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/omkhar/workcell/v2/escape/sandbox"
 	"golang.org/x/sys/unix"
 )
 
@@ -20,6 +21,12 @@ import (
 // descriptor over (sandbox.RootBind): the judge stays what it is, and root
 // ran one bind. The same payload, entered as root into a session's own
 // network namespace, binds the judge's canaries there.
+
+// privileged binds network/addr in the host's own network as root, through
+// the payload (sandbox.RootBind).
+func privileged(network, addr, payload string) (net.Listener, net.PacketConn, error) {
+	return sandbox.RootBind(network, addr, payload, 0)
+}
 
 // Bind is the payload as root on the test host: it binds network/addr,
 // sends the descriptor to the judge waiting at the unix socket path, and

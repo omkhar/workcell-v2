@@ -146,11 +146,14 @@ var All = []Test{
 	// name must see no request for the other, and the other must see none at
 	// all. And a plain client in the guest must meet the host's own leaf for
 	// the name, trusted through the environment the product set, never the
-	// canary's: the connection was terminated, not spliced.
-	{ID: "I6", Name: "sni-host-mismatch-h1", Probe: mismatchProbe(false), Host: twoNames(false, strictJudge), Want: terminating},
-	{ID: "I6", Name: "sni-authority-mismatch-h2", Probe: mismatchProbe(true), Host: twoNames(false, strictJudge), Want: terminating},
-	{ID: "I6", Name: "ech-hidden-sni", Probe: echProbe, Host: twoNames(true, strictJudge), Want: terminating},
-	{ID: "I6", Name: "terminated-session-leaf", Probe: terminatedProbe, Host: twoNames(false, terminationJudge), Want: terminating},
+	// canary's: the connection was terminated, not spliced. And the canary
+	// under one name presents a certificate for the other: the host, which
+	// verifies the upstream as itself, must carry no request to it.
+	{ID: "I6", Name: "sni-host-mismatch-h1", Probe: mismatchProbe(false), Host: twoNames(false, false, strictJudge), Want: terminating},
+	{ID: "I6", Name: "sni-authority-mismatch-h2", Probe: mismatchProbe(true), Host: twoNames(false, false, strictJudge), Want: terminating},
+	{ID: "I6", Name: "ech-hidden-sni", Probe: echProbe, Host: twoNames(true, false, strictJudge), Want: terminating},
+	{ID: "I6", Name: "terminated-session-leaf", Probe: terminatedProbe, Host: twoNames(false, false, terminationJudge), Want: terminating},
+	{ID: "I6", Name: "upstream-leaf-mismatch", Probe: upstreamProbe, Host: twoNames(false, true, upstreamJudge), Want: terminating},
 	// The repository the guest hands back is hostile: its hooks, config,
 	// attributes and submodule URL aim at the host, and its tree names paths
 	// through "..", through a symlink an earlier pull brought, twice in

@@ -7,14 +7,12 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/binary"
-	"errors"
 	"fmt"
 	"io"
 	"net"
 	"slices"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 )
 
@@ -127,10 +125,11 @@ func connectName(addr, token string, sni bool) Result {
 // the canary must see nothing, and the resolver must have been asked.
 func rebindJudge(r rebind) Judge {
 	return func(ctx context.Context, s Session) (bool, string, error) {
-		ns, err := serveNames(net.JoinHostPort(judgeResolver, "53"), s.Payload, r)
+		_, pc, err := bind(ctx, s, "udp4", net.JoinHostPort(judgeResolver, "53"))
 		if err != nil {
-			return false, "", err
+			return false, "", fmt.Errorf("the judge's resolver: %w", err)
 		}
+		ns := serveNamesOn(pc, r)
 		defer ns.stop()
 		port, mode := forwardPort, "line"
 		if r.sni {
@@ -169,19 +168,6 @@ type nameServer struct {
 	asked []string
 	done  bool
 	wg    sync.WaitGroup
-}
-
-// serveNames starts the judge's resolver at addr, through the payload as
-// root (privileged) when port 53 needs that.
-func serveNames(addr, helper string, r rebind) (*nameServer, error) {
-	pc, err := net.ListenPacket("udp4", addr)
-	if errors.Is(err, syscall.EACCES) && helper != "" {
-		_, pc, err = privileged("udp4", addr, helper)
-	}
-	if err != nil {
-		return nil, fmt.Errorf("the judge's resolver at %s: %w", addr, err)
-	}
-	return serveNamesOn(pc, r), nil
 }
 
 // serveNamesOn is the judge's resolver on pc, which is its from here.

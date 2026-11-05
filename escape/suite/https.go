@@ -4,6 +4,7 @@
 package suite
 
 import (
+	"cmp"
 	"context"
 	"crypto/ecdh"
 	"crypto/rand"
@@ -39,48 +40,30 @@ type request struct {
 	headers                       http.Header
 }
 
-// canary is one HTTPS server the judge runs for one allowed name: what it
-// received. ech, when set, is the config list under which it accepts a
-// hidden name. Several canaries may share one listener (serveCanaries),
-// told apart by the name the connection's SNI carried.
+// canary is one HTTPS server the judge runs for one allowed name, and what
+// it received. ech is the config list under which it accepts a hidden name;
+// respond writes the response once the request is recorded (else 200);
+// leafFor is the name its certificate is for instead of its own. Canaries
+// share one listener (serveCanaries), told apart by the connection's SNI.
 type canary struct {
 	name, addr string
 	ech        []byte
+	respond    http.HandlerFunc
+	leafFor    string
 	mu         sync.Mutex
 	seen       []request
-	stop       func()
-}
-
-// listen starts a canary for name at a port of the host's choosing. respond,
-// if set, writes the response after the request is recorded; else the canary
-// answers 200. keys, if set, make the canary accept ECH.
-func listen(name string, keys []tls.EncryptedClientHelloKey, respond http.HandlerFunc) (*canary, error) {
-	addr, err := resolve(hostAddr + ":0")
-	if err != nil {
-		return nil, err
-	}
-	ln, err := net.Listen("tcp4", addr)
-	if err != nil {
-		return nil, fmt.Errorf("canary listener: %w", err)
-	}
-	return serveCanary(name, ln, keys, respond)
-}
-
-// serveCanary serves a canary for name on ln, which is its from here.
-func serveCanary(name string, ln net.Listener, keys []tls.EncryptedClientHelloKey, respond http.HandlerFunc) (*canary, error) {
-	c := &canary{name: name}
-	var err error
-	c.stop, err = serveCanaries(ln, keys, respond, c)
-	return c, err
 }
 
 // serveCanaries serves the canaries on ln, which is theirs from here, under
 // one certificate of the suite's authority for all their names. A request
 // is the canary's whose name the SNI gave, the first's when none did.
-func serveCanaries(ln net.Listener, keys []tls.EncryptedClientHelloKey, respond http.HandlerFunc, cs ...*canary) (func(), error) {
-	names := make([]string, len(cs))
-	for i, c := range cs {
-		names[i], c.addr = c.name, ln.Addr().String()
+func serveCanaries(ln net.Listener, keys []tls.EncryptedClientHelloKey, cs ...*canary) (func(), error) {
+	var names []string
+	for _, c := range cs {
+		c.addr = ln.Addr().String()
+		if n := cmp.Or(c.leafFor, c.name); !slices.Contains(names, n) {
+			names = append(names, n)
+		}
 	}
 	cfg, err := certificate(names...)
 	if err != nil {
@@ -105,8 +88,8 @@ func serveCanaries(ln net.Listener, keys []tls.EncryptedClientHelloKey, respond 
 			c.seen = append(c.seen, request{sni: r.TLS.ServerName, host: r.Host, proto: r.Proto, method: r.Method,
 				url: r.URL.String(), ech: r.TLS.ECHAccepted, headers: r.Header.Clone()})
 			c.mu.Unlock()
-			if respond != nil {
-				respond(w, r)
+			if c.respond != nil {
+				c.respond(w, r)
 			}
 		}),
 	}
@@ -371,39 +354,41 @@ func redirectProbe(args []string) Result {
 	return report(fetch(t.get(t.bound, "/start?key="+t.value), t.addrs, &tls.Config{}, false))
 }
 
-// twoCanaries starts a canary for the bound name and one for the other, the
-// first with ECH keys under the other's name when ech is set, and hands them
-// to judge with the session, stopping both after.
+// twoCanaries serves a canary for the bound name and one for the other on a
+// listener at a port of the host's choosing, the first with ECH keys under
+// the other's name when ech is set and answering as respondBound says, and
+// hands them to judge with the session, stopping both after.
 func twoCanaries(ech bool, respondBound func(other *canary) http.HandlerFunc, judge func(s Session, bound, other *canary) (bool, string, error)) Judge {
 	return func(ctx context.Context, s Session) (bool, string, error) {
-		var otherName string
+		bound, other := &canary{name: s.Secret.Host}, &canary{}
 		for _, n := range slices.Concat(s.Deny, s.Allow) { // a denied name, or the allowed one the secret is not bound to
 			if n != s.Secret.Host {
-				otherName = n
+				other.name = n
 			}
 		}
-		other, err := listen(otherName, nil, nil)
-		if err != nil {
-			return false, "", err
-		}
-		defer other.stop()
-		var respond http.HandlerFunc
 		if respondBound != nil {
-			respond = respondBound(other)
+			bound.respond = respondBound(other)
 		}
-		var list []byte
+		addr, err := resolve(hostAddr + ":0")
+		var ln net.Listener
+		if err == nil {
+			ln, err = net.Listen("tcp4", addr)
+		}
+		if err != nil {
+			return false, "", fmt.Errorf("canary listener: %w", err)
+		}
 		var keys []tls.EncryptedClientHelloKey
 		if ech {
-			if list, keys, err = echKeys(other.name); err != nil {
+			if bound.ech, keys, err = echKeys(other.name); err != nil {
+				ln.Close()
 				return false, "", err
 			}
 		}
-		bound, err := listen(s.Secret.Host, keys, respond)
+		stop, err := serveCanaries(ln, keys, bound, other)
 		if err != nil {
 			return false, "", err
 		}
-		defer bound.stop()
-		bound.ech = list
+		defer stop()
 		return judge(s, bound, other)
 	}
 }

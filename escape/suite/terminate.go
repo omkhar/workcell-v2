@@ -5,6 +5,7 @@ package suite
 
 import (
 	"bufio"
+	"cmp"
 	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
@@ -111,9 +112,10 @@ func certificate(names ...string) (*tls.Config, error) {
 
 // twoNames serves a canary for each allowed name on one listener at port
 // 443 where the product reaches the test host, the first accepting ECH
-// under the second's name when ech is set, runs the judge's resolver
+// under the second's name when ech is set and, when misleaf is set, under
+// a certificate for the second's name alone; runs the judge's resolver
 // answering both names with that address, and hands the canaries to judge.
-func twoNames(ech bool, judge func(s Session, bound, other *canary) (bool, string, error)) Judge {
+func twoNames(ech, misleaf bool, judge func(s Session, bound, other *canary) (bool, string, error)) Judge {
 	return func(ctx context.Context, s Session) (bool, string, error) {
 		ln, _, err := bind(ctx, s, "tcp4", hostAddr+":443")
 		if err != nil {
@@ -128,6 +130,9 @@ func twoNames(ech bool, judge func(s Session, bound, other *canary) (bool, strin
 		ns := serveNamesOn(pc, rebind{a: []string{host}, names: []string{s.Allow[0] + ".", s.Allow[1] + "."}})
 		defer ns.stop()
 		bound, other := &canary{name: s.Allow[0]}, &canary{name: s.Allow[1]}
+		if misleaf {
+			bound.leafFor = other.name
+		}
 		var keys []tls.EncryptedClientHelloKey
 		if ech {
 			if bound.ech, keys, err = echKeys(other.name); err != nil {
@@ -135,7 +140,7 @@ func twoNames(ech bool, judge func(s Session, bound, other *canary) (bool, strin
 				return false, "", err
 			}
 		}
-		stop, err := serveCanaries(ln, keys, nil, bound, other)
+		stop, err := serveCanaries(ln, keys, bound, other)
 		if err != nil {
 			return false, "", err
 		}
@@ -178,11 +183,7 @@ func terminatedProbe(args []string) Result {
 	case !errors.As(envErr, &verify):
 		return dialFailed(envErr)
 	}
-	file := os.Getenv("SSL_CERT_FILE")
-	if file == "" {
-		file = "unset"
-	}
-	return Result{Status: status, Detail: fmt.Sprintf("env roots: %s; canary roots: %s; SSL_CERT_FILE=%s", envSaid, canarySaid, file)}
+	return Result{Status: status, Detail: fmt.Sprintf("env roots: %s; canary roots: %s; SSL_CERT_FILE=%s", envSaid, canarySaid, cmp.Or(os.Getenv("SSL_CERT_FILE"), "unset"))}
 }
 
 // handshake opens TLS to addr as name under roots and says whether it
@@ -232,4 +233,33 @@ func terminationJudge(s Session, bound, other *canary) (bool, string, error) {
 		return false, "", fmt.Errorf("%s saw nothing, though the guest validated a connection to it (guest says %s: %s)", bound.name, r.Status, r.Detail)
 	}
 	return true, fmt.Sprintf("%s (guest says %s: %s)", bound.served(), r.Status, r.Detail), nil
+}
+
+// upstreamProbe asks each name for /check as a well-behaved client, the
+// bound one first: SNI, Host and URL agree, in the open.
+func upstreamProbe(args []string) Result {
+	t, bad := parseTargets(args)
+	if bad.Status != "" {
+		return bad
+	}
+	return after(t.check(), report(fetch(t.get(t.other, "/check"), t.addrs, &tls.Config{}, false)))
+}
+
+// upstreamJudge, with the bound canary's certificate made for the other
+// name, expects the host to have refused that upstream: the bound canary
+// must have served nothing, while the other, whose certificate is its own,
+// served the guest's request. A product that reached neither proves
+// nothing; one that served the bound name verified no certificate.
+func upstreamJudge(s Session, bound, other *canary) (bool, string, error) {
+	r, err := run(s, bound, other)
+	if err != nil {
+		return false, "", err
+	}
+	if rs := bound.requests(); len(rs) > 0 {
+		return false, fmt.Sprintf("%s, whose certificate is for %s alone, served %d requests: the upstream certificate was not verified (guest says %s: %s)", bound.name, other.name, len(rs), r.Status, r.Detail), nil
+	}
+	if len(other.requests()) == 0 {
+		return false, "", fmt.Errorf("%s saw nothing, not even the well-formed request a correct product serves (guest says %s: %s)", other.name, r.Status, r.Detail)
+	}
+	return true, fmt.Sprintf("%s; %s (guest says %s: %s)", bound.served(), other.served(), r.Status, r.Detail), nil
 }

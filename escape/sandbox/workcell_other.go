@@ -35,8 +35,3 @@ func (*workcell) Bind(context.Context, string, string) (net.Listener, net.Packet
 }
 
 func (*workcell) Stop() error { return nil }
-
-// RootBind binds through sudo and the payload on Linux only.
-func RootBind(string, string, string, int) (net.Listener, net.PacketConn, error) {
-	return nil, nil, ErrNotImplemented
-}
