@@ -752,3 +752,5 @@ Review: no findings. The reviewer re-fetched the vendor manifest and the linux-x
 Budget: product 14356 of 15000, test 26477 of 26534 (57 lines of headroom), bump tool 735 of 800, update.go 342 of 800, direct dependencies 3 of 15, Markdown 590 of 2500, YAML 432 of 500, WORKCELL_* 1 of 12. The diff is about 270 added and 80 removed lines across 16 files, not split.
 Learned: this session's network reaches registry.npmjs.org, raw.githubusercontent.com and the Claude Code vendor root but not api.github.com or GitHub release downloads, so a GitHub-sourced row can be described here but not pinned; all three providers also publish per-platform npm packages holding the native binary, which the npm source cannot yet address per arch; the escape result detail cap is 256 bytes, so a probe must emit what the judge needs first.
 Next: U-503 (policy loading and merge; boundary, sonnet, env:kvm, deps U-402, U-009) is the next takeable unit for the cloud; U-600, U-504 and U-602 are takeable too. The claim was PR #112, which this run gives its final title.
+
+## 2026-11-05T17:50Z U-503 START mode=cloud
