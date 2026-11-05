@@ -5,7 +5,8 @@ in the guest trusted, network and credentials enforced on the host.
 
 - `loop/SPEC.md` holds the rules: invariants, architecture, budgets, and the
   evidence, review, workflow and upstream-freshness rules. Read it before any change.
-- `loop/gate.sh` is the only gate. It is the same command locally and in CI.
+- To build and test, follow `CONTRIBUTING.md`. `loop/gate.sh` is the only gate.
+  It is the same command locally and in CI.
 - Only the paths in `loop/free-paths.txt` may change without the maintainer's signature.
   Everything else is locked.
 - `_legacy/` is v1 code kept for reference. It is not compiled. Mine it for
