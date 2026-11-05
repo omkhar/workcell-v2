@@ -687,16 +687,19 @@ func lastLines(b []byte, n int) string {
 // minFree is the room doctor asks of the data directory's volume: its images, and a session's clone at the default 1GiB cap.
 const minFree = 4 << 30
 
-// doctor is `workcell doctor`: one line each for the hypervisor, the artifacts and the disk space a
-// session needs, "ok" or "FAIL" and then the line that fixes it. It exits 1 if any fails, and only
-// reports: `workcell update` fills the data directory.
+// doctor is `workcell doctor`: "ok" or "FAIL" and a fix line for the hypervisor, the artifacts and the
+// disk space a session needs. It exits 1 if any fails, and only reports: `workcell update` fills the data directory.
 func doctor(args []string, stdout, stderr io.Writer) int {
 	dir, err := dataDir()
 	if err != nil || len(args) != 0 {
 		fmt.Fprintln(stderr, "usage: workcell doctor\n  says whether this host can run a session, and how to fix what it cannot")
 		return 2
 	}
-	_, imageErr := findArtifacts(dir)
+	a, imageErr := findArtifacts(dir)
+	cfg := vmm.Config{Kernel: a.kernel, Initrd: a.initrd, CPUs: 1, MemoryMiB: 512} // proves the entitlement too
+	if imageErr != nil {
+		a, cfg = artifacts{}, vmm.Config{}
+	}
 	var st unix.Statfs_t
 	var diskErr error
 	for p := dir; ; p = filepath.Dir(p) { // the data directory does not exist before the first update
@@ -709,20 +712,16 @@ func doctor(args []string, stdout, stderr io.Writer) int {
 		diskErr = errors.New("too little room")
 	}
 	rc := 0
-	for _, c := range []struct {
-		name, fix string
-		err       error
-	}{
-		{"hypervisor", "on Linux add your user to the kvm group (sudo usermod -aG kvm $USER, then log in again) or fix the udev rule of /dev/kvm; on a Mac use Apple silicon and a binary signed for virtualization", newMachine(artifacts{}, vmm.Config{}).Check(context.Background())},
-		{"image", "the pinned artifacts arrive in " + dir + " with workcell update", imageErr},
-		{fmt.Sprintf("disk (%d MiB free in %s, %d MiB needed)", free>>20, dir, minFree>>20), "free space on the volume that holds " + dir, diskErr},
-	} {
-		if c.err == nil {
-			fmt.Fprintln(stdout, "ok  ", c.name)
-			continue
+	row := func(name, fix string, err error) {
+		if err == nil {
+			fmt.Fprintln(stdout, "ok  ", name)
+			return
 		}
 		rc = 1
-		fmt.Fprintf(stdout, "FAIL %s: %v\n     fix: %s\n", c.name, c.err, c.fix)
+		fmt.Fprintf(stdout, "FAIL %s: %v\n     fix: %s\n", name, err, fix)
 	}
+	row("hypervisor", "Linux: add your user to the kvm group (sudo usermod -aG kvm $USER) and log in again; Mac: use Apple silicon and a binary signed for virtualization", newMachine(a, cfg).Check(context.Background()))
+	row("image", "the pinned artifacts arrive in "+dir+" with workcell update", imageErr)
+	row(fmt.Sprintf("disk (%d MiB free in %s, %d MiB needed)", free>>20, dir, minFree>>20), "free space on the volume that holds "+dir, diskErr)
 	return rc
 }
