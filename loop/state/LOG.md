@@ -612,3 +612,5 @@ Review: one finding accepted (P5, S12: the steered adapter could not end a produ
 Budget: product 12312 of 15000, test 22197 of 23468, direct dependencies 3 of 15, Markdown 590 of 2500, YAML 432 of 500, WORKCELL_* 1 of 12.
 Learned: the positive path through the proxy is still unshown. Every reserved range a test could own on lo (RFC 5737, 198.18/15, 100.64/10, 2001:db8::/32, 3fff::/20) is one the ported blockedAddr refuses, and any other address is someone's, so the I5, I6 and I11 rows that need a forwarded connection to a local canary still have no dialable destination; U-306 and U-307 must decide (an ADR, or a single reserved range the product treats as local only when the host owns it on lo, are the two shapes seen). The Resolver steering is reusable for them as it stands.
 Next: U-306 (fail closed when any helper dies; boundary, sonnet, env:kvm, deps U-303 and U-010, both [x]) is the next takeable unit for the cloud, then U-307 and U-308; U-600 (audit, deps U-303), U-504 and U-602 are takeable too. The claim was PR #93, which this run gives its final title.
+
+## 2026-11-05T05:20Z U-306 START mode=cloud
