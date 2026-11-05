@@ -8,7 +8,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -188,9 +187,10 @@ func TestProductProcess(t *testing.T) {
 
 // TestIsolate holds a network namespace, binds the forward port in it, and
 // has the payload's own dial probe, entered into the namespace as the
-// product is, deliver a token to the listener; from the host's own network
-// the same address is unreachable. Root, or sudo without a password, and
-// util-linux are needed, as the escape suite needs them.
+// product is, deliver a token to the listener. Nothing here dials the
+// address from the host's own network: a packet to it from there could
+// leave the host (SPEC T8). Root, or sudo without a password, and util-linux
+// are needed, as the escape suite needs them.
 func TestIsolate(t *testing.T) {
 	if os.Geteuid() != 0 && exec.Command("sudo", "-n", "true").Run() != nil {
 		t.Skip("needs root or sudo -n")
@@ -220,10 +220,6 @@ func TestIsolate(t *testing.T) {
 	}
 	if _, _, err := h.bind("tcp4", "host:8443"); err == nil || !strings.Contains(err.Error(), "in use") {
 		t.Fatalf("a second bind of the port: %v; want address in use", err)
-	}
-	if c, err := net.DialTimeout("tcp4", ln.Addr().String(), time.Second); err == nil {
-		c.Close()
-		t.Fatalf("%s is reachable from the host's own network", ln.Addr())
 	}
 	got := make(chan string, 1)
 	go func() {
