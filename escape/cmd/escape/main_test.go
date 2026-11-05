@@ -80,7 +80,7 @@ func TestRunOutcomes(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			rep := run(context.Background(), "fake", func() (sandbox.Sandbox, error) { return &c.sb, nil }, "", []suite.Test{test})
+			rep := run(context.Background(), "fake", func() (sandbox.Sandbox, error) { return &c.sb, nil }, "", "", []suite.Test{test})
 			if len(rep.Results) != 1 || rep.Results[0].Outcome != c.outcome {
 				t.Fatalf("got %+v, want outcome %s", rep.Results, c.outcome)
 			}
@@ -117,7 +117,7 @@ func TestSessions(t *testing.T) {
 		return err == nil, "", err
 	}
 	test := suite.Test{ID: "I7", Name: "t", Host: judge, Want: suite.Want{Workspace: true, CPUs: 1}}
-	rep := run(context.Background(), "fake", func() (sandbox.Sandbox, error) { return sb, nil }, "", []suite.Test{test})
+	rep := run(context.Background(), "fake", func() (sandbox.Sandbox, error) { return sb, nil }, "", "", []suite.Test{test})
 	if rep.Passed != 1 || len(got) != 2 || sb.stops != 2 || len(sb.workspaces) != 2 {
 		t.Fatalf("report %+v, %d sessions, %d stops, workspaces %q", rep, len(got), sb.stops, sb.workspaces)
 	}

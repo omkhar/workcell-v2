@@ -33,16 +33,17 @@ import (
 // and the run ends. What the guest says afterwards can count against the
 // product, never for it.
 
-// servable is the sandbox the rows want: a forward entry for the allowed
-// name at forwardPort, where the allowed canary listens, a denied name, the
-// judge as the host's resolver, answering both names with the test host's
-// address, and, so that the product's vetting accepts that address, the
-// host side in a network of its own (SPEC T8).
-var servable = Want{Allow: []string{"allowed.escape.test:" + forwardPort}, Deny: []string{"denied.escape.test"}, Resolver: judgeResolver, Isolated: true}
+// servable is the sandbox the rows want: an allowed name, bare, so that the
+// host terminates the guest's connections to it and carries each request
+// on to the canary itself, a denied name, the judge as the host's resolver,
+// answering both names with the test host's address, and, so that the
+// product's vetting accepts that address, the host side in a network of its
+// own (SPEC T8). Both canaries share the listener at port 443 there.
+var servable = Want{Allow: []string{"allowed.escape.test"}, Deny: []string{"denied.escape.test"}, Resolver: judgeResolver, Isolated: true}
 
 // bind opens network/addr on the host side of s, where the product reaches
 // the test host (sandbox.Observe.Bind), and as root on the test host when a
-// port in the host's own network needs that; addr is then a literal.
+// port in the host's own network needs that.
 func bind(ctx context.Context, s Session, network, addr string) (net.Listener, net.PacketConn, error) {
 	ln, pc, err := s.Bind(ctx, network, addr)
 	if errors.Is(err, syscall.EACCES) {
@@ -201,34 +202,26 @@ func helperKilled(name string, atStart bool) Judge {
 	return func(ctx context.Context, s Session) (bool, string, error) {
 		// The canaries and the judge's resolver, where the product reaches
 		// the test host; the resolver answers both names with the address
-		// the allowed canary got.
+		// the canaries listen at.
 		var st stream
-		aln, _, err := bind(ctx, s, "tcp4", hostAddr+":"+forwardPort)
+		ln, _, err := bind(ctx, s, "tcp4", hostAddr+":443")
 		if err != nil {
 			return false, "", err
 		}
-		allowedName, _, _ := strings.Cut(s.Allow[0], ":")
-		allowed, err := serveCanary(allowedName, aln, nil, st.serve)
-		if err != nil {
-			return false, "", err
-		}
-		defer allowed.stop()
-		host, _, _ := net.SplitHostPort(allowed.addr)
-		dln, _, err := bind(ctx, s, "tcp4", hostAddr+":0")
-		if err != nil {
-			return false, "", err
-		}
-		denied, err := serveCanary(s.Deny[0], dln, nil, nil)
-		if err != nil {
-			return false, "", err
-		}
-		defer denied.stop()
+		host, _, _ := net.SplitHostPort(ln.Addr().String())
 		_, pc, err := bind(ctx, s, "udp4", net.JoinHostPort(judgeResolver, "53"))
 		if err != nil {
+			ln.Close()
 			return false, "", err
 		}
-		ns := serveNamesOn(pc, rebind{a: []string{host}, both: true})
+		ns := serveNamesOn(pc, rebind{a: []string{host}, names: []string{s.Allow[0] + ".", s.Deny[0] + "."}})
 		defer ns.stop()
+		allowed, denied := &canary{name: s.Allow[0], respond: st.serve}, &canary{name: s.Deny[0]}
+		stop, err := serveCanaries(ln, nil, allowed, denied)
+		if err != nil {
+			return false, "", err
+		}
+		defer stop()
 
 		// The guest's run, under a context of this judge's own, so that a
 		// run that outlives the helper is cut short before the canaries go.

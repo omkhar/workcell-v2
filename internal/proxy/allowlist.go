@@ -113,6 +113,9 @@ func (a *Allowlist) Hosts() []string {
 	return slices.Sorted(maps.Keys(hosts))
 }
 
+// TLSHosts lists the hosts allowed on port 443, in ascending order: the names the proxy terminates.
+func (a *Allowlist) TLSHosts() []string { return slices.Sorted(maps.Keys(a.sni)) }
+
 // Ports lists the ports the proxy must listen on, in ascending order.
 func (a *Allowlist) Ports() []uint16 {
 	var ports []uint16

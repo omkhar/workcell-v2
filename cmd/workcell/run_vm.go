@@ -101,7 +101,10 @@ func session(argv []string, caps limits, mount bool, a artifacts, allow *proxy.A
 	defer b.close()
 	raw := b.conn
 
-	req := guest.Exec{Argv: argv, Env: []string{path, "HOME=/root", "LANG=C.UTF-8"}, Dir: "/workspace"}
+	req := guest.Exec{Argv: argv, Env: []string{path, "HOME=/root", "LANG=C.UTF-8"}, Dir: "/workspace", CA: b.ca}
+	if b.ca != nil {
+		req.Env = append(req.Env, guest.TrustEnv(guest.TrustDir)...)
+	}
 	restore, tty := rawMode(unix.Stdin)
 	if tty {
 		defer restore()
@@ -154,6 +157,7 @@ func session(argv []string, caps limits, mount bool, a artifacts, allow *proxy.A
 type booted struct {
 	conn  net.Conn
 	took  time.Duration // from just before the VMM started to the guest's connection
+	ca    []byte        // the session CA's certificate, PEM, when the proxy terminates TLS; its key stays in the proxy
 	close func()
 }
 
@@ -200,7 +204,8 @@ func export(dir string, caps limits, repo string) (string, error) {
 // boot starts a guest and waits for its init to dial in. The guest's /workspace is the ext4
 // image at image (clone mode), or the directory mount itself, served live over vsock (mount
 // mode, ADR-005), or empty when both are "". The guest's network is the proxy for allow, or
-// none when allow is nil (A3). close ends the VM and removes its files; the image stays, and
+// none when allow is nil (A3); every name allowed on port 443 is terminated with a CA made
+// here, for this session alone (I6, A9). close ends the VM and removes its files; the image stays, and
 // the mounted directory is never anything but the user's own tree. A nil result means the
 // session goes no further: code and err say how it ended (see accept).
 // The VMM's sockets and config live in a directory under TMPDIR, since a unix socket path has
@@ -262,8 +267,20 @@ func boot(a artifacts, caps limits, sigs <-chan os.Signal, session, image, mount
 	}
 	// The relay runs until Close closes its listener, and closes the adapters then, which ends Serve.
 	listeners := newAdapters(ports)
+	var ca []byte
 	if allow != nil {
 		p := proxy.New(allow, denyLog)
+		if hosts := allow.TLSHosts(); len(hosts) > 0 {
+			sessionCA, err := proxy.NewSessionCA(hosts, time.Now().Add(proxy.MaxCALifetime))
+			if err == nil {
+				err = p.Terminate(sessionCA, nil, nil) // no broker and no rules yet: nothing is swapped
+			}
+			if err != nil {
+				closeAll()
+				return nil, 0, err
+			}
+			ca = sessionCA.CertPEM()
+		}
 		for port, l := range listeners {
 			go func() { _ = p.Serve(l, port) }()
 		}
@@ -290,7 +307,7 @@ func boot(a artifacts, caps limits, sigs <-chan os.Signal, session, image, mount
 		closeAll()
 		return nil, code, err
 	}
-	return &booted{conn: raw, took: time.Since(start), close: func() { raw.Close(); closeAll() }}, 0, nil
+	return &booted{conn: raw, took: time.Since(start), ca: ca, close: func() { raw.Close(); closeAll() }}, 0, nil
 }
 
 // once is the channel's listener: it takes exactly one connection, the init's, then closes,

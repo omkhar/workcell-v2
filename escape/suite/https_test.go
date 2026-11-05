@@ -18,7 +18,7 @@ func TestJudgesOnFakeCanaries(t *testing.T) {
 	clean := request{sni: "bound.escape.test", host: "bound.escape.test:1", proto: "HTTP/1.1", method: "GET", url: "/check"}
 	withPlaceholder := request{host: "other.escape.test:2", url: "/replay", headers: http.Header{"X-Api-Key": {placeholder}}}
 	withReal := request{host: "other.escape.test:2", url: "/leak?key=" + sec.Value}
-	judges := map[string]func(Session, *canary, *canary) (bool, string, error){"strict": strictJudge, "leak": leakJudge}
+	judges := map[string]func(Session, *canary, *canary) (bool, string, error){"strict": strictJudge, "leak": leakJudge, "termination": terminationJudge, "upstream": upstreamJudge}
 	cases := []struct {
 		judge        string
 		bound, other []request
@@ -28,7 +28,7 @@ func TestJudgesOnFakeCanaries(t *testing.T) {
 	}{
 		{"strict", nil, nil, "unreachable", false, true},
 		{"strict", []request{clean}, nil, "unreachable", true, false},
-		{"strict", []request{clean, clean}, nil, "served", false, false},
+		{"strict", []request{clean, clean}, nil, "served", true, false}, // the mismatch rewritten to the one name
 		{"strict", []request{clean, {sni: "bound.escape.test", host: "other.escape.test:2"}}, nil, "served", false, false},
 		{"strict", []request{clean}, []request{clean}, "served", false, false},
 		{"strict", []request{clean}, nil, "ech-accepted", false, false},
@@ -36,6 +36,15 @@ func TestJudgesOnFakeCanaries(t *testing.T) {
 		{"leak", []request{clean}, nil, "unreachable", true, false},
 		{"leak", []request{clean}, []request{withPlaceholder}, "served", true, false},
 		{"leak", []request{clean}, []request{withReal}, "served", false, false},
+		{"termination", []request{clean}, nil, "terminated", true, false},
+		{"termination", []request{clean}, nil, "spliced", false, false},
+		{"termination", []request{clean}, nil, "untrusted", false, false},
+		{"termination", []request{clean}, []request{clean}, "terminated", false, false},
+		{"termination", []request{{sni: "", host: "bound.escape.test:1"}}, nil, "terminated", false, false},
+		{"termination", nil, nil, "terminated", false, true},
+		{"upstream", nil, []request{clean}, "served", true, false},
+		{"upstream", []request{clean}, []request{clean}, "served", false, false},
+		{"upstream", nil, nil, "unreachable", false, true},
 	}
 	for i, c := range cases {
 		s := Session{Allow: withSecret.Allow, Secret: sec, Run: func(...string) (Result, error) {

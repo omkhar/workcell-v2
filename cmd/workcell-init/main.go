@@ -170,6 +170,11 @@ func serve() error {
 				if err != nil {
 					return err
 				}
+				if len(req.CA) > 0 { // the session CA, for the command's clients; without it they have that much less trust
+					if err := guest.WriteTrust(guest.TrustDir, req.CA, time.Now()); err != nil {
+						fmt.Fprintln(os.Stderr, "workcell-init: trust store:", err)
+					}
+				}
 				if cmd, err = start(req, s); err != nil {
 					if err := s.send(guest.TypeExit, guest.EncodeExit(guest.Exit{Err: err.Error()})); err != nil {
 						return err

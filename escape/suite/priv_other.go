@@ -6,7 +6,6 @@
 package suite
 
 import (
-	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -14,7 +13,7 @@ import (
 
 // privileged binds a port below 1024 through sudo on Linux only.
 func privileged(network, addr, _ string) (net.Listener, net.PacketConn, error) {
-	return nil, nil, fmt.Errorf("bind %s %s needs root: %w", network, addr, errors.New("Linux only"))
+	return nil, nil, fmt.Errorf("bind %s %s needs root: Linux only", network, addr)
 }
 
 // Bind is the payload's privileged helper, on Linux only.

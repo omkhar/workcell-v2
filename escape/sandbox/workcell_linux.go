@@ -17,7 +17,6 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
-	"sync"
 	"syscall"
 	"time"
 )
@@ -96,13 +95,13 @@ const steersResolver = true
 const isolatedAddr = "192.175.48.1"
 
 // holder is a session's own network namespace: the payload that made it
-// and holds it, as root, and the connection it binds sockets over. The
+// and holds it, as root, and the connection whose closing lets it go. The
 // product is started inside it (steered) and the judge's canaries listen
 // in it (bind).
 type holder struct {
-	pid  int
-	conn *net.UnixConn
-	mu   sync.Mutex
+	pid     int
+	payload string
+	conn    *net.UnixConn
 }
 
 // isolate starts the holder: the payload under `unshare -n`, as root (sudo
@@ -115,11 +114,7 @@ func isolate(dir, payload string) (*holder, error) {
 		return nil, err
 	}
 	defer ln.Close()
-	var argv []string
-	if os.Geteuid() != 0 {
-		argv = append(argv, "sudo", "-n")
-	}
-	argv = append(argv, "unshare", "-n", payload, "netns", path, isolatedAddr)
+	argv := asRoot("unshare", "-n", payload, "netns", path, isolatedAddr)
 	cmd := exec.Command(argv[0], argv[1:]...)
 	stderr := &bounded{limit: MaxStderr}
 	cmd.Stderr = stderr
@@ -132,7 +127,7 @@ func isolate(dir, payload string) (*holder, error) {
 	if err != nil {
 		return nil, fmt.Errorf("the holder of the session's network namespace did not call back: %v: %s", err, bytes.TrimSpace(stderr.bytes()))
 	}
-	h := &holder{conn: c}
+	h := &holder{payload: payload, conn: c}
 	if _, err := fmt.Fscanf(c, "pid %d\n", &h.pid); err != nil || h.pid <= 1 {
 		c.Close()
 		return nil, fmt.Errorf("the holder of the session's network namespace said no pid: %v: %s", err, bytes.TrimSpace(stderr.bytes()))
@@ -140,26 +135,76 @@ func isolate(dir, payload string) (*holder, error) {
 	return h, nil
 }
 
-// bind has the holder bind network/addr in the namespace, "host" in addr
-// standing for isolatedAddr, and hands the socket back over SCM_RIGHTS.
+// bind binds network/addr in the namespace, "host" in addr standing for
+// isolatedAddr, through the payload as root inside it (RootBind).
 func (h *holder) bind(network, addr string) (net.Listener, net.PacketConn, error) {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	if host, port, err := net.SplitHostPort(addr); err == nil && host == "host" {
-		addr = net.JoinHostPort(isolatedAddr, port)
+	return RootBind(network, addr, h.payload, h.pid)
+}
+
+// stop hangs up on the holder, which then exits; the namespace goes once
+// nothing runs in it.
+func (h *holder) stop() { h.conn.Close() }
+
+// asRoot is argv through sudo, without a prompt, when the suite is not root.
+func asRoot(argv ...string) []string {
+	if os.Geteuid() != 0 {
+		return append([]string{"sudo", "-n"}, argv...)
 	}
-	where := fmt.Sprintf("bind %s %s in the session's network namespace", network, addr)
-	if _, err := fmt.Fprintf(h.conn, "%s %s\n", network, addr); err != nil {
-		return nil, nil, fmt.Errorf("%s: %w", where, err)
-	}
-	buf, oob := make([]byte, 256), make([]byte, 64)
-	h.conn.SetReadDeadline(time.Now().Add(5 * time.Second))
-	n, oobn, _, _, err := h.conn.ReadMsgUnix(buf, oob)
+	return argv
+}
+
+// RootBind binds network/addr as root on the test host, by the payload's
+// bind verb (suite.Bind), which hands the socket back over a unix socket
+// under a directory of its own: for a port below 1024 in the host's own
+// network, or, entered into the network namespace that the process ns
+// holds when ns is set, for anything there. "host" in addr stands for the
+// test host's address: isolatedAddr in a namespace, HostAddr else. The
+// listener (tcp) or packet conn (udp) comes back; root ran one bind.
+func RootBind(network, addr, payload string, ns int) (net.Listener, net.PacketConn, error) {
+	host, port, err := net.SplitHostPort(addr)
 	if err != nil {
-		return nil, nil, fmt.Errorf("%s: %w", where, err)
+		return nil, nil, err
 	}
-	if line := strings.TrimSpace(string(buf[:n])); line != "ok" {
-		return nil, nil, fmt.Errorf("%s: %s", where, line)
+	if host == "host" {
+		if host = isolatedAddr; ns == 0 {
+			if host, err = HostAddr(); err != nil {
+				return nil, nil, err
+			}
+		}
+		addr = net.JoinHostPort(host, port)
+	}
+	where := fmt.Sprintf("bind %s %s as root", network, addr)
+	var argv []string
+	if ns > 0 {
+		where += " in the session's network namespace"
+		argv = append(argv, "nsenter", "--net=/proc/"+strconv.Itoa(ns)+"/ns/net")
+	}
+	dir, err := os.MkdirTemp("", "escape-bind-")
+	if err != nil {
+		return nil, nil, err
+	}
+	defer os.RemoveAll(dir)
+	path := filepath.Join(dir, "fd")
+	ln, err := net.ListenUnix("unix", &net.UnixAddr{Name: path, Net: "unix"})
+	if err != nil {
+		return nil, nil, err
+	}
+	defer ln.Close()
+	argv = asRoot(append(argv, payload, "bind", network, addr, path)...)
+	if out, err := exec.Command(argv[0], argv[1:]...).CombinedOutput(); err != nil {
+		return nil, nil, fmt.Errorf("%s: %v: %s", where, err, bytes.TrimSpace(out))
+	}
+	ln.SetDeadline(time.Now().Add(2 * time.Second))
+	c, err := ln.AcceptUnix()
+	if err != nil {
+		return nil, nil, fmt.Errorf("%s: no descriptor came back: %w", where, err)
+	}
+	defer c.Close()
+	c.SetDeadline(time.Now().Add(2 * time.Second))
+	oob := make([]byte, 64)
+	_, oobn, _, _, err := c.ReadMsgUnix(make([]byte, 1), oob)
+	if err != nil {
+		return nil, nil, fmt.Errorf("%s: read the descriptor: %w", where, err)
 	}
 	msgs, err := syscall.ParseSocketControlMessage(oob[:oobn])
 	var fds []int
@@ -167,7 +212,7 @@ func (h *holder) bind(network, addr string) (net.Listener, net.PacketConn, error
 		fds, err = syscall.ParseUnixRights(&msgs[0])
 	}
 	if err != nil || len(fds) != 1 {
-		return nil, nil, fmt.Errorf("%s: no descriptor came back (%v)", where, err)
+		return nil, nil, fmt.Errorf("%s: the descriptor: %v (%d messages, %d descriptors)", where, err, len(msgs), len(fds))
 	}
 	f := os.NewFile(uintptr(fds[0]), network)
 	defer f.Close()
@@ -178,10 +223,6 @@ func (h *holder) bind(network, addr string) (net.Listener, net.PacketConn, error
 	l, err := net.FileListener(f)
 	return l, nil, err
 }
-
-// stop hangs up on the holder, which then exits; the namespace goes once
-// nothing runs in it.
-func (h *holder) stop() { h.conn.Close() }
 
 // productProcess finds the product's own process under root, the process
 // the adapter started for a run: root itself, or the deepest of its
@@ -250,9 +291,6 @@ func steered(dir, resolver string, env, argv []string, ns int) ([]string, error)
 		return nil, fmt.Errorf("write the session's resolv.conf: %w", err)
 	}
 	var out []string
-	if os.Geteuid() != 0 {
-		out = append(out, "sudo", "-n")
-	}
 	if ns > 0 {
 		out = append(out, "nsenter", "--net=/proc/"+strconv.Itoa(ns)+"/ns/net")
 	}
@@ -262,5 +300,5 @@ func steered(dir, resolver string, env, argv []string, ns int) ([]string, error)
 			out = append(out, kv)
 		}
 	}
-	return append(out, argv...), nil
+	return asRoot(append(out, argv...)...), nil
 }

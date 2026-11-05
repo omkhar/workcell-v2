@@ -192,22 +192,43 @@ func outcome(r dnsReply) string {
 }
 
 // lookupProbe asks the resolver args[0] names, every "label=spec" in
-// args[2:], all at once, and reports "label=outcome/ms" for each. args[1]
-// is the token. Every question goes at once so that the run stays short
-// when the resolver answers nothing.
+// args[3:], all at once, and reports "label=outcome/ms" for each. args[1]
+// is the token. First, as args[2] says, it sends nothing ("plain"), the
+// hostile datagrams of garbage ("garbage"), each given garbageWait for an
+// answer (the host must survive them, I12, and answer and refuse as
+// before), or a burst of burstSize queries from one socket ("burst"),
+// counting what came back within lookupWait; the burst is reported as one
+// more field, "burst=sent/answered/refused/ms". Every question goes at once
+// so that the run stays short when the resolver answers nothing.
 func lookupProbe(args []string) Result {
-	if len(args) < 3 {
-		return Result{Status: "error", Detail: "want target, token and label=spec..."}
+	if len(args) < 4 {
+		return Result{Status: "error", Detail: "want target, token, plain|garbage|burst and label=spec..."}
 	}
 	addr, err := resolverAddr(args[0])
 	if err != nil {
 		return Result{Status: "error", Detail: err.Error()}
 	}
-	out, err := lookups(addr, args[1], args[2:])
+	var first string
+	switch args[2] {
+	case "plain":
+	case "garbage":
+		replied, all := 0, garbage(args[1])
+		for _, g := range all {
+			if poke(addr, g) {
+				replied++
+			}
+		}
+		first = fmt.Sprintf("garbage=%d/%d ", replied, len(all))
+	case "burst":
+		first = "burst=" + burst(addr, args[1]) + " "
+	default:
+		return Result{Status: "error", Detail: "want plain, garbage or burst, not " + args[2]}
+	}
+	out, err := lookups(addr, args[1], args[3:])
 	if err != nil {
 		return Result{Status: "error", Detail: err.Error()}
 	}
-	return Result{Status: "asked", Detail: addr + " " + out}
+	return Result{Status: "asked", Detail: addr + " " + first + out}
 }
 
 // lookups runs every "label=spec" against addr concurrently and returns
@@ -233,29 +254,21 @@ func lookups(addr, token string, specs []string) (string, error) {
 	return strings.Join(out, " "), nil
 }
 
-// burstProbe sends burstSize queries for distinct names under TOKEN.invalid
-// to args[0] from one socket, as fast as it can, counts what came back for
-// each within lookupWait, and then asks the lookups in args[2:] as
-// lookupProbe does: the resolver must still be there after the burst.
-func burstProbe(args []string) Result {
-	if len(args) < 3 {
-		return Result{Status: "error", Detail: "want target, token and label=spec..."}
-	}
-	addr, err := resolverAddr(args[0])
-	if err != nil {
-		return Result{Status: "error", Detail: err.Error()}
-	}
+// burst sends burstSize queries for distinct names under token.invalid to
+// addr from one socket, as fast as it can, and tallies "sent/answered/
+// refused/ms": how many went, how many got any answer within lookupWait,
+// and how many of those were refusals.
+func burst(addr, token string) string {
 	c, err := net.DialTimeout("udp", addr, lookupWait)
 	if err != nil {
-		return Result{Status: "error", Detail: "burst: " + err.Error()}
+		return "0/0/0/0ms"
 	}
 	defer c.Close()
 	start := time.Now()
 	c.SetDeadline(start.Add(lookupWait))
 	sent := 0
 	for i := range burstSize {
-		msg := dnsQuery(dnsQuestion{ID: uint16(i), Name: fmt.Sprintf("b%d.%s.invalid.", i, args[1]), Type: dnsTypeA})
-		if _, err := c.Write(msg); err != nil {
+		if _, err := c.Write(dnsQuery(dnsQuestion{ID: uint16(i), Name: fmt.Sprintf("b%d.%s.invalid.", i, token), Type: dnsTypeA})); err != nil {
 			break
 		}
 		sent++
@@ -271,52 +284,13 @@ func burstProbe(args []string) Result {
 			seen[r.ID] = outcome(r)
 		}
 	}
-	took := time.Since(start)
-	tally := map[string]int{}
+	refused := 0
 	for _, o := range seen {
-		tally[o]++
-	}
-	var parts []string
-	for _, k := range []string{"refused", "nxdomain", "nodata"} {
-		if tally[k] > 0 {
-			parts = append(parts, fmt.Sprintf("%s:%d", k, tally[k]))
-			delete(tally, k)
+		if o == "refused" || o == "nxdomain" || o == "nodata" {
+			refused++
 		}
 	}
-	for k, n := range tally {
-		parts = append(parts, fmt.Sprintf("%s:%d", k, n))
-	}
-	after, err := lookups(addr, args[1], args[2:])
-	if err != nil {
-		return Result{Status: "error", Detail: err.Error()}
-	}
-	return Result{Status: "asked", Detail: fmt.Sprintf("burst sent=%d got=%d %s in %dms; then %s", sent, len(seen), strings.Join(parts, ","), took.Milliseconds(), after)}
-}
-
-// garbageProbe sends the resolver datagrams no decoder should take, one at
-// a time, each given garbageWait for an answer, and then asks the lookups in
-// args[2:] as lookupProbe does. The host must survive the garbage (I12) and
-// still answer and refuse as before.
-func garbageProbe(args []string) Result {
-	if len(args) < 3 {
-		return Result{Status: "error", Detail: "want target, token and label=spec..."}
-	}
-	addr, err := resolverAddr(args[0])
-	if err != nil {
-		return Result{Status: "error", Detail: err.Error()}
-	}
-	all := garbage(args[1])
-	replied := 0
-	for _, g := range all {
-		if poke(addr, g) {
-			replied++
-		}
-	}
-	after, err := lookups(addr, args[1], args[2:])
-	if err != nil {
-		return Result{Status: "error", Detail: err.Error()}
-	}
-	return Result{Status: "asked", Detail: fmt.Sprintf("%d of %d hostile datagrams got an answer; then %s", replied, len(all), after)}
+	return fmt.Sprintf("%d/%d/%d/%dms", sent, len(seen), refused, time.Since(start).Milliseconds())
 }
 
 // poke sends one hostile datagram and says whether anything came back
@@ -362,17 +336,23 @@ func garbage(token string) [][]byte {
 }
 
 // resolverJudge has the guest ask target, resolvConf or a literal address
-// with hostAddr in it, the lookups, and holds every answer to what the
-// lookup wants. The invariant holds only if all of them do.
-func resolverJudge(target string, qs []lookup) Judge {
+// with hostAddr in it, the lookups, after what first names (plain, garbage
+// or burst, see lookupProbe), and holds every answer to what the lookup
+// wants, the burst's tally too. The invariant holds only if all of them do.
+func resolverJudge(target, first string, qs []lookup) Judge {
+	if first == "burst" {
+		qs = append([]lookup{{"burst", "a burst of " + strconv.Itoa(burstSize) + " queries", "burst"}}, qs...)
+	}
 	return func(ctx context.Context, s Session) (bool, string, error) {
 		target, err := resolve(target)
 		if err != nil {
 			return false, "", err
 		}
-		args := []string{target, newToken()}
+		args := []string{target, newToken(), first}
 		for _, q := range qs {
-			args = append(args, q.label+"="+q.spec)
+			if q.want != "burst" {
+				args = append(args, q.label+"="+q.spec)
+			}
 		}
 		r, err := s.Run(args...)
 		if err != nil {
@@ -399,10 +379,17 @@ func resolverJudge(target string, qs []lookup) Judge {
 
 // judge says what is wrong with an outcome, "" when nothing is.
 func (q lookup) judge(got string) string {
-	what, ms, _ := strings.Cut(got, "/")
 	if got == "" {
 		return fmt.Sprintf("no outcome for %s", q.spec)
 	}
+	if q.want == "burst" { // every query of the burst must have been answered, with a refusal
+		var sent, answered, refused, ms int
+		if n, _ := fmt.Sscanf(got, "%d/%d/%d/%dms", &sent, &answered, &refused, &ms); n != 4 || sent < burstSize || answered < sent || refused < sent {
+			return fmt.Sprintf("of %s, %d were sent, %d answered and %d refused; every one must be refused", q.spec, sent, answered, refused)
+		}
+		return ""
+	}
+	what, ms, _ := strings.Cut(got, "/")
 	took, _ := strconv.Atoi(strings.TrimSuffix(ms, "ms"))
 	switch q.want {
 	case "addr":
@@ -426,37 +413,4 @@ func (q lookup) judge(got string) string {
 		return fmt.Sprintf("%s got %s only after %s, past %s", q.spec, what, ms, fast)
 	}
 	return ""
-}
-
-// burstJudge has the guest send the burst and then the lookups: every query
-// of the burst must get a refusal, and the lookups after must still hold.
-func burstJudge(qs []lookup) Judge {
-	inner := resolverJudge(resolvConf, qs)
-	return func(ctx context.Context, s Session) (bool, string, error) {
-		pass, detail, err := inner(ctx, s)
-		if err != nil || !pass {
-			return pass, detail, err
-		}
-		// The burst's own tally: "burst sent=N got=M refused:K,...".
-		var sent, got, refused int
-		for _, f := range strings.Fields(detail) {
-			k, v, _ := strings.Cut(f, "=")
-			switch k {
-			case "sent":
-				sent, _ = strconv.Atoi(v)
-			case "got":
-				got, _ = strconv.Atoi(v)
-			}
-			for _, kv := range strings.Split(f, ",") {
-				if k, v, ok := strings.Cut(kv, ":"); ok && (k == "refused" || k == "nxdomain" || k == "nodata") {
-					n, _ := strconv.Atoi(v)
-					refused += n
-				}
-			}
-		}
-		if sent < burstSize || got < sent || refused < sent {
-			return false, fmt.Sprintf("of %d queries in a burst, %d were answered and %d refused; every one must be refused (%s)", sent, got, refused, detail), nil
-		}
-		return true, detail, nil
-	}
 }

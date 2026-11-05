@@ -7,13 +7,12 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/binary"
-	"errors"
 	"fmt"
+	"io"
 	"net"
 	"slices"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 )
 
@@ -56,10 +55,11 @@ type rebind struct {
 	cname   string
 	canary  string
 	sni     bool
-	// both gives the denied name the same records as the allowed one, so
-	// that a session whose policy the guest widened would reach a canary
-	// under it (sandbox.Config.Deny).
-	both bool
+	// names are the names answered with the records, as the resolver hears
+	// them, with the trailing dot; allowedName alone when empty. A denied
+	// name among them lets a session whose policy the guest widened reach
+	// a canary under it (sandbox.Config.Deny).
+	names []string
 }
 
 // answers says what the resolver tells about the allowed name.
@@ -80,8 +80,10 @@ func (r rebind) answers() string {
 // rebindProbe connects to the allowed name args[0] (name:port) as a program
 // would, through the guest's own resolver, and sends the token args[1] on
 // one line; with args[2] "sni" it offers a TLS ClientHello naming the host
-// instead, and sends the token inside TLS if the handshake completes. It
-// tries twice, the second time after a pause, and reports both.
+// instead and, if the handshake completes, sends the token inside TLS as the
+// path of a request for the host, since a host that terminates the
+// connection resolves the name only to forward a request. It tries twice,
+// the second time after a pause, and reports both.
 func rebindProbe(args []string) Result {
 	if len(args) != 3 {
 		return Result{Status: "error", Detail: "want name:port, token and line|sni"}
@@ -104,14 +106,15 @@ func connectName(addr, token string, sni bool) Result {
 	}
 	defer c.Close()
 	c.SetDeadline(time.Now().Add(3 * time.Second))
+	line := token + "\n"
 	if sni {
 		tc := tls.Client(c, &tls.Config{ServerName: host, InsecureSkipVerify: true, MinVersion: tls.VersionTLS12}) //nolint:gosec // the probe is the attacker
 		if err := tc.Handshake(); err != nil {
 			return Result{Status: "handshake-failed", Detail: "to " + addr + ": " + err.Error()}
 		}
-		c = tc
+		c, line = tc, fmt.Sprintf("GET /%s HTTP/1.1\r\nHost: %s\r\nConnection: close\r\n\r\n", token, host)
 	}
-	if _, err := fmt.Fprintln(c, token); err != nil {
+	if _, err := io.WriteString(c, line); err != nil {
 		return Result{Status: "connected-write-failed", Detail: err.Error()}
 	}
 	return answered(c, "to "+addr)
@@ -122,10 +125,11 @@ func connectName(addr, token string, sni bool) Result {
 // the canary must see nothing, and the resolver must have been asked.
 func rebindJudge(r rebind) Judge {
 	return func(ctx context.Context, s Session) (bool, string, error) {
-		ns, err := serveNames(net.JoinHostPort(judgeResolver, "53"), s.Payload, r)
+		_, pc, err := bind(ctx, s, "udp4", net.JoinHostPort(judgeResolver, "53"))
 		if err != nil {
-			return false, "", err
+			return false, "", fmt.Errorf("the judge's resolver: %w", err)
 		}
+		ns := serveNamesOn(pc, r)
 		defer ns.stop()
 		port, mode := forwardPort, "line"
 		if r.sni {
@@ -164,19 +168,6 @@ type nameServer struct {
 	asked []string
 	done  bool
 	wg    sync.WaitGroup
-}
-
-// serveNames starts the judge's resolver at addr, through the payload as
-// root (privileged) when port 53 needs that.
-func serveNames(addr, helper string, r rebind) (*nameServer, error) {
-	pc, err := net.ListenPacket("udp4", addr)
-	if errors.Is(err, syscall.EACCES) && helper != "" {
-		_, pc, err = privileged("udp4", addr, helper)
-	}
-	if err != nil {
-		return nil, fmt.Errorf("the judge's resolver at %s: %w", addr, err)
-	}
-	return serveNamesOn(pc, r), nil
 }
 
 // serveNamesOn is the judge's resolver on pc, which is its from here.
@@ -227,11 +218,15 @@ func (ns *nameServer) questions() []string {
 // typeNames names the types a resolver is asked, for the record of it.
 var typeNames = map[uint16]string{dnsTypeA: "A", dnsTypeAAAA: "AAAA", dnsTypeCNAME: "CNAME", dnsTypeTXT: "TXT", dnsTypePTR: "PTR", dnsTypeANY: "ANY"}
 
-// answer is the response to q: for the allowed name, the CNAME when the row
-// has one and then the row's records of the type asked, NOERROR with no
+// answer is the response to q: for a name of the row's, the CNAME when the
+// row has one and then the row's records of the type asked, NOERROR with no
 // record when it has none of that type; REFUSED for every other name.
 func (r rebind) answer(q dnsQuestion) []byte {
-	if !strings.EqualFold(q.Name, allowedName) && !(r.both && strings.EqualFold(q.Name, deniedName)) {
+	names := r.names
+	if len(names) == 0 {
+		names = []string{allowedName}
+	}
+	if !slices.ContainsFunc(names, func(n string) bool { return strings.EqualFold(q.Name, n) }) {
 		return dnsResponse(q, dnsRcodeRefused, nil)
 	}
 	owner := q.Name

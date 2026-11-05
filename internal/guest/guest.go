@@ -80,7 +80,9 @@ const MaxErr = 256
 
 // Exec asks the init to run one command. Argv[0] is looked up in the PATH of Env when it
 // holds no slash. With PTY the command gets a controlling terminal of Rows by Cols and
-// its output arrives as TypeStdout; otherwise it gets three pipes.
+// its output arrives as TypeStdout; otherwise it gets three pipes. CA, when set, is the
+// session's CA certificate in PEM, at most MaxCA bytes, which the init puts in the guest's
+// trust stores (WriteTrust) before the command runs; Env then names them (TrustEnv).
 type Exec struct {
 	Argv []string `json:"argv"`
 	Env  []string `json:"env,omitempty"`
@@ -88,6 +90,7 @@ type Exec struct {
 	PTY  bool     `json:"pty,omitempty"`
 	Rows uint16   `json:"rows,omitempty"`
 	Cols uint16   `json:"cols,omitempty"`
+	CA   []byte   `json:"ca,omitempty"`
 }
 
 // Resize is a new window size for the command's PTY.
@@ -122,6 +125,9 @@ func DecodeExec(b []byte) (Exec, error) {
 	}
 	if len(e.Argv) == 0 {
 		return Exec{}, errors.New("exec request: empty argv")
+	}
+	if len(e.CA) > MaxCA {
+		return Exec{}, fmt.Errorf("exec request: %d bytes of CA, limit %d", len(e.CA), MaxCA)
 	}
 	return e, nil
 }

@@ -51,7 +51,7 @@ func (b *fakeBroker) callCount() int {
 
 // terminateFixture runs an upstream that echoes the x-api-key and Authorization
 // it received and a proxy that terminates example.com, with a rule for each of
-// those headers, and splices a.example.com.
+// those headers, and a.example.com, with none.
 func terminateFixture(t *testing.T, broker Broker) (proxyAddr string, ca *SessionCA, upstreamRoots *x509.CertPool, p *Proxy, log *bytes.Buffer) {
 	t.Helper()
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -65,7 +65,7 @@ func terminateFixture(t *testing.T, broker Broker) (proxyAddr string, ca *Sessio
 	upstreamRoots.AddCert(server.Certificate())
 	p, buf, _ := testProxy(t, "example.com:443 a.example.com:443", []netip.Addr{netip.MustParseAddr("8.8.8.8")}, server.Listener.Addr().String())
 	p.upstreamRoots = upstreamRoots
-	ca, err := NewSessionCA([]string{"example.com"}, time.Now().Add(time.Hour))
+	ca, err := NewSessionCA([]string{"example.com", "a.example.com"}, time.Now().Add(time.Hour))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -128,7 +128,7 @@ func do(t *testing.T, c *http.Client, req *http.Request) (int, string) {
 func TestTerminateSwapsOnlyExactPlaceholder(t *testing.T) {
 	t.Parallel()
 	broker := &fakeBroker{value: "real-secret"}
-	addr, ca, upstreamRoots, _, _ := terminateFixture(t, broker)
+	addr, ca, _, p, log := terminateFixture(t, broker)
 	c := clientVia(addr, caPool(t, ca))
 	cases := []struct{ sent, want string }{
 		{testPlaceholder, "example.com real-secret"},
@@ -141,24 +141,49 @@ func TestTerminateSwapsOnlyExactPlaceholder(t *testing.T) {
 			t.Errorf("sent %q: upstream saw (%d, %q), want %q", tc.sent, code, body, tc.want)
 		}
 	}
-	// A forged Host header must not change what reaches upstream.
-	req, _ := http.NewRequest(http.MethodGet, "https://example.com/", nil)
-	req.Host = "evil.example"
-	req.Header.Set("X-Api-Key", testPlaceholder)
-	if _, body := do(t, c, req); body != "example.com real-secret" {
-		t.Errorf("forged Host: upstream saw %q, want example.com real-secret", body)
+	// A Host that is not the SNI's name, another allowed name included, is
+	// refused before the broker or the upstream hears of it (I6); one that
+	// spells the name differently is the name.
+	for host, code := range map[string]int{"evil.example": 421, "a.example.com": 421, "EXAMPLE.COM:443": 200, "example.com.": 200} {
+		req, _ := http.NewRequest(http.MethodGet, "https://example.com/", nil)
+		req.Host = host
+		req.Header.Set("X-Api-Key", testPlaceholder)
+		if got, body := do(t, c, req); got != code || code == 200 && body != "example.com real-secret" {
+			t.Errorf("Host %s: got (%d, %q), want %d", host, got, body, code)
+		}
 	}
-	if n := broker.callCount(); n != 3 {
-		t.Errorf("broker calls = %d, want 3 (placeholder values only)", n)
+	if n := broker.callCount(); n != 4 {
+		t.Errorf("broker calls = %d, want 4 (placeholder values only)", n)
 	}
 	if broker.calls[0] != "example.com x-api-key" {
 		t.Errorf("broker call = %q, want host and header", broker.calls[0])
 	}
+	want := denyLine{Host: "example.com", Port: 443, Reason: "host_mismatch", Count: 2, Seq: 2}
+	if d := denies(t, p, log); len(d) != 2 || d[1] != want {
+		t.Errorf("deny lines = %+v, want 2 ending in %+v", d, want)
+	}
 
-	// A host outside the terminate set keeps the splice path: the client sees
-	// the upstream certificate, not a session leaf, and nothing is swapped.
-	if code, body := get(t, clientVia(addr, upstreamRoots), "https://a.example.com/", testPlaceholder); code != http.StatusOK || body != "a.example.com "+testPlaceholder {
-		t.Errorf("spliced GET = (%d, %q), want the placeholder untouched", code, body)
+	// Every allowed name is terminated, with or without a rule: the client
+	// sees a session leaf for a.example.com too.
+	if code, body := get(t, c, "https://a.example.com/", "user-key"); code != http.StatusOK || body != "a.example.com user-key" {
+		t.Errorf("GET to the host without a rule = (%d, %q), want it served through the session leaf", code, body)
+	}
+}
+
+func TestSameHost(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		host string
+		want bool
+	}{
+		{"example.com", true}, {"EXAMPLE.com", true}, {"example.com:443", true}, {"example.com.", true}, {"Example.COM.:443", true},
+		{"", false}, {"a.example.com", false}, {"example.com:8443", false}, {"example.com:443.", false}, {"example.com:443:443", false},
+		{"example.com\u212a", false}, {"exam\u212ale.com", false}, {"example.com evil", false},
+	}
+	for _, tc := range cases {
+		if got := sameHost(tc.host, "example.com"); got != tc.want {
+			t.Errorf("sameHost(%q) = %t, want %t", tc.host, got, tc.want)
+		}
 	}
 }
 

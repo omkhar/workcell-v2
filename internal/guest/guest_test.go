@@ -11,7 +11,7 @@ import (
 )
 
 func TestExec(t *testing.T) {
-	full := Exec{Argv: []string{"sh", "-c", "exit 7"}, Env: []string{"PATH=/bin"}, Dir: "/w", PTY: true, Rows: 24, Cols: 80}
+	full := Exec{Argv: []string{"sh", "-c", "exit 7"}, Env: []string{"PATH=/bin"}, Dir: "/w", PTY: true, Rows: 24, Cols: 80, CA: []byte("-----BEGIN")}
 	tests := []struct {
 		name string
 		in   []byte
@@ -25,6 +25,7 @@ func TestExec(t *testing.T) {
 		{"not json", []byte(`argv`), Exec{}, false},
 		{"empty", nil, Exec{}, false},
 		{"rows too big", []byte(`{"argv":["ls"],"rows":65536}`), Exec{}, false},
+		{"ca too big", EncodeExec(Exec{Argv: []string{"ls"}, CA: bytes.Repeat([]byte{'x'}, MaxCA+1)}), Exec{}, false},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
