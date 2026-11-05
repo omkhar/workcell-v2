@@ -269,7 +269,8 @@ func (w *workcell) Bench(ctx context.Context) (Output, error) {
 // streams bounded, and, when the session names a resolver, under a
 // /etc/resolv.conf of the session's own (steered). An exit status is
 // reported in Output, not as an error. On cancel the product gets SIGTERM,
-// which it forwards, and a little while to take its VM down.
+// which it forwards, and a little while to take its VM down; then its
+// process group is killed.
 func (w *workcell) cli(ctx context.Context, in io.Reader, args ...string) (Output, error) {
 	env := append(os.Environ(), "XDG_DATA_HOME="+prepared.xdg, "XDG_CONFIG_HOME="+filepath.Join(w.dir, "config"))
 	argv := append([]string{prepared.bin}, args...)
@@ -288,9 +289,17 @@ func (w *workcell) cli(ctx context.Context, in io.Reader, args ...string) (Outpu
 	cmd.Stdin = in
 	stdout, stderr := &bounded{limit: MaxStdout}, &bounded{limit: MaxStderr}
 	cmd.Stdout, cmd.Stderr = stdout, stderr
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true} // the product and what it forks, in a group of their own
 	cmd.Cancel = func() error { return cmd.Process.Signal(syscall.SIGTERM) }
 	cmd.WaitDelay = 3 * time.Second
 	err := cmd.Run()
+	if ctx.Err() != nil && cmd.Process != nil {
+		// The kill Go sent after WaitDelay reached only cmd.Process, which
+		// under steering is sudo: what is left of the group, a product that
+		// ignored the SIGTERM and its hypervisor, goes now. They run as the
+		// suite's user, so that needs no sudo.
+		_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+	}
 	out := Output{Stdout: stdout.bytes(), Stderr: stderr.bytes()}
 	var exit *exec.ExitError
 	switch {
