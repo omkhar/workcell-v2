@@ -39,6 +39,9 @@ func LoadAllowlist(path string) (*Allowlist, error) {
 	return ParseAllowlist(string(data), path)
 }
 
+// maxLogHost is the longest DNS name.
+const maxLogHost = 253
+
 // canonicalHost lower-cases a host name and drops a trailing dot, so every
 // lookup keyed by host agrees on one spelling.
 func canonicalHost(host string) string {

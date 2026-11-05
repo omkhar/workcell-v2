@@ -7,13 +7,13 @@ package secret
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/omkhar/workcell/v2/internal/audit"
 )
 
 const (
@@ -27,13 +27,28 @@ type Grant struct {
 	Name, Source, Host, Header string
 }
 
-// Ledger receives one JSON line per lookup and makes it durable on Sync. A
-// value is released only after its record is durable, so a writer that cannot
-// sync is not a ledger.
-type Ledger interface {
-	io.Writer
-	Sync() error
-}
+// Ledger takes one record per lookup and returns once it is durable. A value
+// is released only after Record returns nil: a *audit.Log is one, and a
+// ledger that cannot be written is not.
+type Ledger interface{ Record(audit.Record) error }
+
+// maxLineBytes bounds the host and header of one lookup that the broker records.
+const maxLineBytes = 4096
+
+// Ledger results: each grant, and each denial, the broker records. A grant
+// names its credential: a value released for its header, its refresh token
+// released for its token endpoint, or the tokens its sign-in flow issued,
+// at the sign-in and at each refresh.
+const (
+	resultGranted        = "granted"
+	resultRefreshGranted = "refresh_granted"
+	resultSignedIn       = "signed_in"
+	resultRefreshed      = "refreshed"
+	resultRateLimited    = "rate_limited"
+	resultNotGranted     = "not_granted"
+	resultNotSignedIn    = "not_signed_in"
+	resultMalformed      = "malformed"
+)
 
 type pair struct{ host, header string }
 
@@ -57,7 +72,6 @@ type Broker struct {
 	// quota beyond their own lookups nor fill the ledger.
 	rejectStart time.Time
 	rejected    int
-	logFailed   error
 }
 
 // NewBroker builds a broker from the session's [[secret]] rows. Each field
@@ -215,35 +229,11 @@ func (b *Broker) allow(start *time.Time, count *int) bool {
 	return true
 }
 
-// record appends one line and makes it durable before it returns, so a
-// caller can withhold a value whose record did not reach the ledger.
+// record puts one lookup in the ledger and makes it durable before it returns, so a
+// caller can withhold a value whose record did not reach it.
 func (b *Broker) record(p pair, name, result string) error {
-	line, _ := json.Marshal(ledgerRecord{
-		Time:       b.now().UTC().Format(time.RFC3339Nano),
-		Host:       p.host,
-		Header:     p.header,
-		Credential: name,
-		Result:     result,
-	})
-	line = append(line, '\n')
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	// A failed write or sync may have left a partial record; nothing is
-	// appended after it, so the ledger never carries a release it cannot
-	// account for, and nothing is granted from then on.
-	if b.logFailed != nil {
-		return b.logFailed
-	}
-	n, err := b.log.Write(line)
-	if err == nil && n != len(line) {
-		err = io.ErrShortWrite
-	}
-	if err == nil {
-		err = b.log.Sync()
-	}
-	if err != nil {
-		b.logFailed = fmt.Errorf("secret ledger failed; no further grants: %w", err)
-		return b.logFailed
+	if err := b.log.Record(audit.Record{Event: audit.Secret, Host: p.host, Header: p.header, Name: name, Result: result}); err != nil {
+		return fmt.Errorf("secret ledger failed; no grant: %w", err)
 	}
 	return nil
 }

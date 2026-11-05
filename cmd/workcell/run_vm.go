@@ -17,11 +17,13 @@ import (
 	"os/signal"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
 	"time"
 
+	"github.com/omkhar/workcell/v2/internal/audit"
 	"github.com/omkhar/workcell/v2/internal/fileserve"
 	"github.com/omkhar/workcell/v2/internal/guest"
 	"github.com/omkhar/workcell/v2/internal/proxy"
@@ -85,7 +87,7 @@ func run(args []string, stderr io.Writer) int {
 // of which the guest gets each placeholder alone, in the variable its row names (I5, A4). It
 // returns the command's exit code. A nonzero code with an error means the command could not
 // run; an error alone means the session failed.
-func session(argv []string, caps limits, mount bool, a artifacts, allow *proxy.Allowlist, secrets []binding) (int, error) {
+func session(argv []string, caps limits, mount bool, a artifacts, allow *proxy.Allowlist, secrets []binding) (code int, err error) {
 	sigs := make(chan os.Signal, 4)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM, syscall.SIGWINCH)
 	defer signal.Stop(sigs)
@@ -98,13 +100,26 @@ func session(argv []string, caps limits, mount bool, a artifacts, allow *proxy.A
 		return 0, err
 	}
 	defer lock.Close()
+	log, err := openAudit(a.dir, dir)
+	if err != nil {
+		os.RemoveAll(dir)
+		return 0, err
+	}
+	defer func() { // the last record of the session, whatever way it ended
+		end := "exit " + strconv.Itoa(code)
+		if err != nil && code == 0 {
+			end = "failed"
+		}
+		_ = log.Record(audit.Record{Event: audit.SessionEnd, Result: end})
+		log.Close()
+	}()
 	image, live := "", ""
 	if mount {
 		live = cwd // the record alone: the work lands in cwd itself
 	} else if image, err = export(dir, caps, cwd); err != nil {
 		return 0, err
 	}
-	b, code, err := boot(a, caps, sigs, dir, image, live, allow, secrets)
+	b, code, err := boot(a, caps, sigs, dir, log, image, live, allow, secrets)
 	if b == nil {
 		return code, err
 	}
@@ -199,6 +214,24 @@ func newSession(a artifacts, repo string) (string, *os.File, error) {
 	return dir, lock, nil
 }
 
+// openAudit makes the session's record in the session directory dir, signed with the host's key in
+// data, and writes its first line. A session that cannot be recorded does not start (I9).
+func openAudit(data, dir string) (*audit.Log, error) {
+	key, err := audit.LoadKey(data)
+	if err != nil {
+		return nil, err
+	}
+	log, err := audit.Create(dir, key, time.Now)
+	if err != nil {
+		return nil, err
+	}
+	if err := log.Record(audit.Record{Event: audit.SessionStart}); err != nil {
+		log.Close()
+		return nil, err
+	}
+	return log, nil
+}
+
 // export copies the directory repo into the new session directory dir: the image the guest gets as /workspace.
 // The image lives in the data directory, not under TMPDIR, because a reflink only works
 // within one filesystem and the data directory shares the home filesystem with most
@@ -224,20 +257,13 @@ func export(dir string, caps limits, repo string) (string, error) {
 // The VMM's sockets and config live in a directory under TMPDIR, since a unix socket path has
 // 108 bytes and the data directory may be deep. The path is recorded in session, a session
 // directory ("" for none), so that rm removes it even after the supervisor was killed (I7).
-func boot(a artifacts, caps limits, sigs <-chan os.Signal, session, image, mount string, allow *proxy.Allowlist, secrets []binding) (*booted, int, error) {
+func boot(a artifacts, caps limits, sigs <-chan os.Signal, session string, log *audit.Log, image, mount string, allow *proxy.Allowlist, secrets []binding) (*booted, int, error) {
 	dir, err := os.MkdirTemp("", "wc") // short names: see above
 	if err != nil {
 		return nil, 0, err
 	}
-	denyLog := io.Writer(io.Discard) // the proxy's deny lines: deny.log in the session directory, if any, bounded (I10)
-	var denyFile, ledger *os.File
 	if session != "" {
-		f, err := os.OpenFile(filepath.Join(session, "deny.log"), os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0o600)
-		if err == nil {
-			denyLog, denyFile = &boundedLog{w: f, limit: maxDenyLogBytes}, f
-			err = recordBoot(session, dir)
-		}
-		if err != nil {
+		if err := recordBoot(session, dir); err != nil {
 			os.RemoveAll(dir)
 			return nil, 0, err
 		}
@@ -265,12 +291,6 @@ func boot(a artifacts, caps limits, sigs <-chan os.Signal, session, image, mount
 		if served != nil {
 			served.Close()
 		}
-		if denyFile != nil {
-			denyFile.Close() // a deny line the proxy writes after this is dropped
-		}
-		if ledger != nil {
-			ledger.Close() // and a secret use after this is refused: the broker fails closed
-		}
 		os.RemoveAll(dir)
 	}
 	ln, err := m.Listen(guest.Port)
@@ -286,12 +306,12 @@ func boot(a artifacts, caps limits, sigs <-chan os.Signal, session, image, mount
 	// The relay runs until Close closes its listener, and closes the adapters then, which ends Serve.
 	listeners := newAdapters(ports)
 	var ca []byte
-	p := proxy.New(allow, denyLog) // with no allowlist it serves nothing, and still records what the relay and the resolver refuse
+	p := proxy.New(allow, log) // with no allowlist it serves nothing, and still records what the relay and the resolver refuse
 	if allow != nil {
 		if hosts := allow.TLSHosts(); len(hosts) > 0 {
 			sessionCA, err := proxy.NewSessionCA(hosts, time.Now().Add(proxy.MaxCALifetime))
 			if err == nil {
-				ledger, err = bind(p, sessionCA, secrets, session)
+				err = bind(p, sessionCA, secrets, log)
 			}
 			if err != nil {
 				closeAll()
@@ -330,33 +350,24 @@ func boot(a artifacts, caps limits, sigs <-chan os.Signal, session, image, mount
 
 // bind makes p terminate every allowed name with ca and swap each binding's placeholder for the
 // value its broker releases on the host, which it does only once the use is durable in the
-// session's ledger, secrets.log in the session directory (I9): the host, header and name of
-// each use, never a byte of the value. With no binding there is no broker and nothing is
-// swapped. The ledger file, when there is one, is the caller's to close with the session.
-func bind(p *proxy.Proxy, ca *proxy.SessionCA, secrets []binding, session string) (*os.File, error) {
+// session's audit log (I9): the host, header and name of each use, never a byte of the value.
+// With no binding there is no broker and nothing is swapped.
+func bind(p *proxy.Proxy, ca *proxy.SessionCA, secrets []binding, log *audit.Log) error {
 	if len(secrets) == 0 {
-		return nil, p.Terminate(ca, nil, nil)
+		return p.Terminate(ca, nil, nil)
 	}
-	if session == "" {
-		return nil, errors.New("a secret needs a session directory for its ledger")
-	}
-	ledger, err := os.OpenFile(filepath.Join(session, "secrets.log"), os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0o600)
-	if err != nil {
-		return nil, err
+	if log == nil {
+		return errors.New("a secret needs a session directory for its ledger")
 	}
 	grants, rules := make([]secret.Grant, len(secrets)), make([]proxy.TerminateRule, len(secrets))
 	for i, s := range secrets {
 		grants[i], rules[i] = s.grant, s.rule
 	}
-	broker, err := secret.NewBroker(grants, ledger)
-	if err == nil {
-		err = p.Terminate(ca, broker, rules)
-	}
+	broker, err := secret.NewBroker(grants, log)
 	if err != nil {
-		ledger.Close()
-		return nil, err
+		return err
 	}
-	return ledger, nil
+	return p.Terminate(ca, broker, rules)
 }
 
 // once is the channel's listener: it takes exactly one connection, the init's, then closes,

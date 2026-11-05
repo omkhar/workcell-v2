@@ -109,41 +109,6 @@ func (c *relayConn) Close() error {
 	return err
 }
 
-// maxDenyLogBytes bounds what one session's deny.log may put on the host disk (I10): the guest
-// can attempt connections for as long as the session lives, and each refusal is one line.
-const maxDenyLogBytes = 8 << 20
-
-// denyLogFull is the one line written when the cap is reached. It is no deny line: it has no
-// host, port, count or seq, so a reader of the log can tell it apart, and the seq of the deny
-// lines says how many were written before it.
-const denyLogFull = "{\"reason\":\"deny_log_full\"}\n"
-
-// boundedLog writes whole lines to w while the total stays within limit bytes, then writes
-// denyLogFull once and drops everything after it. Every write reports success, so that the
-// proxy never stalls on its log. The file may exceed limit by the marker alone.
-type boundedLog struct {
-	w     io.Writer
-	limit int
-	mu    sync.Mutex
-	n     int
-	full  bool
-}
-
-func (l *boundedLog) Write(p []byte) (int, error) {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	switch {
-	case l.full:
-	case l.n+len(p) <= l.limit:
-		_, _ = l.w.Write(p)
-		l.n += len(p)
-	default:
-		l.full = true
-		_, _ = l.w.Write([]byte(denyLogFull))
-	}
-	return len(p), nil
-}
-
 // denyFunc records one refused attempt: the proxy's Deny.
 type denyFunc func(host string, port uint16, reason string)
 

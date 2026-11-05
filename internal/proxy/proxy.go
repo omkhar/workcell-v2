@@ -9,15 +9,15 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
-	"encoding/json"
 	"errors"
 	"io"
 	"net"
 	"net/http"
 	"net/netip"
 	"strings"
-	"sync"
 	"time"
+
+	"github.com/omkhar/workcell/v2/internal/audit"
 )
 
 // extECH is the encrypted_client_hello extension type.
@@ -91,14 +91,15 @@ type Proxy struct {
 	slots chan struct{} // one token per live connection
 	shed  chan uint16   // ports of shed connections awaiting a deny line
 
-	mu      sync.Mutex
-	denyLog io.Writer
-	denies  map[denyKey]uint64
-	seq     uint64 // deny lines written so far
+	rec Recorder
 }
 
-// New returns a proxy for allow that writes deny lines to denyLog.
-func New(allow *Allowlist, denyLog io.Writer) *Proxy {
+// Recorder takes one record of a connection attempt, allowed or refused (I9). It need not wait for
+// the disk. A *audit.Log is one, and the one nil *audit.Log takes nothing.
+type Recorder interface{ Note(audit.Record) error }
+
+// New returns a proxy for allow that records every attempt it decides to rec.
+func New(allow *Allowlist, rec Recorder) *Proxy {
 	var dialer net.Dialer
 	p := &Proxy{
 		allow: allow,
@@ -108,10 +109,9 @@ func New(allow *Allowlist, denyLog io.Writer) *Proxy {
 		dial: func(ctx context.Context, addr netip.AddrPort) (net.Conn, error) {
 			return dialer.DialContext(ctx, "tcp", addr.String())
 		},
-		slots:   make(chan struct{}, maxConns),
-		shed:    make(chan uint16, 64),
-		denyLog: denyLog,
-		denies:  map[denyKey]uint64{},
+		slots: make(chan struct{}, maxConns),
+		shed:  make(chan uint16, 64),
+		rec:   rec,
 	}
 	go func() {
 		for port := range p.shed {
@@ -159,6 +159,7 @@ func (p *Proxy) handle(client net.Conn, port uint16) {
 		return
 	}
 	if _, ok := p.terminate[host]; ok && port == tlsPort {
+		p.allowed(host, port)
 		p.serveTerminated(client, host, replay)
 		return
 	}
@@ -168,6 +169,7 @@ func (p *Proxy) handle(client net.Conn, port uint16) {
 		return
 	}
 	defer upstream.Close()
+	p.allowed(host, port)
 	if _, err := upstream.Write(replay); err != nil {
 		return
 	}
@@ -299,24 +301,12 @@ func splice(client, upstream net.Conn) {
 }
 
 // Deny records a refusal that happens outside the proxy (the resolver's, the relay's) through
-// the same writer, so that the log keeps one numbering, one count per key and one bound.
+// the same writer, so that the log keeps one order.
 func (p *Proxy) Deny(host string, port uint16, reason string) { p.deny(host, port, reason) }
 
-// deny writes one bounded JSONL line with the running count for this
-// (host, port, reason) and the log-wide line number. New keys past maxDenyKeys share one overflow key, so
-// the log holds at most maxDenyKeys+1 keys whatever ports the allowlist holds.
 func (p *Proxy) deny(host string, port uint16, reason string) {
-	if len(host) > maxLogHost {
-		host = host[:maxLogHost]
-	}
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	key := denyKey{host, port, reason}
-	if _, seen := p.denies[key]; !seen && len(p.denies) >= maxDenyKeys {
-		key = denyKey{overflowHost, 0, overflowCause}
-	}
-	p.denies[key]++
-	p.seq++
-	line, _ := json.Marshal(denyLine{key.host, key.port, key.reason, p.denies[key], p.seq})
-	_, _ = p.denyLog.Write(append(line, '\n'))
+	_ = p.rec.Note(audit.Record{Event: audit.Connect, Host: host, Port: port, Result: reason})
 }
+
+// allowed records a connection that the policy admitted and that went through.
+func (p *Proxy) allowed(host string, port uint16) { p.deny(host, port, audit.Allowed) }

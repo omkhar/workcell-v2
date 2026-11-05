@@ -221,7 +221,8 @@ var All = []Test{
 	{ID: "I13", Name: "repo-policy-lifts-memory-cap", Probe: memoryProbe, Host: memoryJudge, Want: uncapped},
 	// The guest, told where the host keeps the session's record, plants a
 	// record, sends the record's path to /dev/null, or empties it; and a user
-	// with the file edits it after the fact, which verify must notice.
+	// with the file edits it after the fact, dropping, altering, cutting,
+	// appending or reordering records, which verify must notice.
 	{ID: "I9", Name: "audit-forge-record", Probe: auditProbe, Host: auditJudge("forge"), Want: exported},
 	{ID: "I9", Name: "audit-suppress-record", Probe: auditProbe, Host: auditJudge("suppress")},
 	{ID: "I9", Name: "audit-truncate-record", Probe: auditProbe, Host: auditJudge("truncate")},
@@ -229,6 +230,12 @@ var All = []Test{
 	{ID: "I9", Name: "verify-altered-byte", Probe: auditProbe, Host: offlineJudge("alter")},
 	{ID: "I9", Name: "verify-truncated-record", Probe: auditProbe, Host: offlineJudge("truncate")},
 	{ID: "I9", Name: "verify-appended-record", Probe: auditProbe, Host: offlineJudge("append")},
+	{ID: "I9", Name: "verify-swapped-records", Probe: auditProbe, Host: offlineJudge("swap")},
+	// The guest connects to an allowed name and to a denied one; the records
+	// the run adds must name both attempts, the one let through and the one
+	// refused. The names reach the guest in hex, so its own words cannot
+	// put them in the record.
+	{ID: "I9", Name: "audit-records-connection", Probe: connectProbe, Host: recordedJudge, Want: servable},
 	// Each host helper is killed with SIGKILL while the guest holds a
 	// connection it was served through, and the proxy once more while the
 	// guest is still booting. After, nothing of the session may run, the

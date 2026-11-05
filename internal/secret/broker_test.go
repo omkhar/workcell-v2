@@ -7,31 +7,41 @@ package secret
 import (
 	"bytes"
 	"context"
+	"crypto/ed25519"
 	"errors"
 	"fmt"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/omkhar/workcell/v2/internal/audit"
 	"github.com/omkhar/workcell/v2/internal/proxy"
 )
 
 var _ proxy.Broker = (*Broker)(nil)
 
-// syncBuffer is a ledger the test reads back.
-type syncBuffer struct{ bytes.Buffer }
+// fakeLedger is a ledger the test reads back; err makes every record fail.
+type fakeLedger struct {
+	recs []audit.Record
+	err  error
+}
 
-func (*syncBuffer) Sync() error { return nil }
+func (l *fakeLedger) Record(r audit.Record) error {
+	if l.err == nil {
+		l.recs = append(l.recs, r)
+	}
+	return l.err
+}
 
-func (b *syncBuffer) results() string {
+func (l *fakeLedger) results() string {
 	var out []string
-	for _, line := range strings.Split(strings.TrimSpace(b.String()), "\n") {
-		if _, rest, ok := strings.Cut(line, `"result":"`); ok {
-			out = append(out, strings.TrimSuffix(rest, `"}`))
-		}
+	for _, r := range l.recs {
+		out = append(out, r.Result)
 	}
 	return strings.Join(out, " ")
 }
+
+func (l *fakeLedger) String() string { return fmt.Sprint(l.recs) }
 
 // testGrants sends one secret in either of two headers and another secret to
 // a second host, matching the ledger tests' known.
@@ -54,7 +64,7 @@ func newTestBroker(t *testing.T, log Ledger) *Broker {
 }
 
 func TestLookupReleasesOnlyGrantedPairs(t *testing.T) {
-	log := &syncBuffer{}
+	log := &fakeLedger{}
 	b := newTestBroker(t, log)
 	for _, tc := range []struct{ host, header, want string }{
 		{"api.anthropic.com", "x-api-key", "sk-a"},
@@ -88,7 +98,7 @@ func TestLookupReleasesOnlyGrantedPairs(t *testing.T) {
 // copies; and the ledger holds the sign-in, the refresh and each release,
 // never a byte of a token.
 func TestSignInGrant(t *testing.T) {
-	log := &syncBuffer{}
+	log := &fakeLedger{}
 	grants := append(testGrants(t), Grant{Name: "oauth", Source: "signin:login.example/oauth/token", Host: "api.example", Header: "authorization"})
 	b, err := NewBroker(grants, log)
 	if err != nil {
@@ -150,7 +160,7 @@ func TestSignInGrant(t *testing.T) {
 	if a, r := b.Tokens("api.anthropic.com", "x-api-key"); a != nil || r != nil {
 		t.Errorf("Tokens of a static grant = (%q, %q), want none", a, r)
 	}
-	b = newTestBroker(t, failingLog{sync: errors.New("io error")})
+	b = newTestBroker(t, &fakeLedger{err: errors.New("io error")})
 	b.tokens[pair{"api.anthropic.com", "x-api-key"}] = &tokens{}
 	if err := b.Issue("api.anthropic.com", "x-api-key", []byte("sk-acc-1"), nil); err == nil {
 		t.Error("Issue succeeded with a ledger that does not sync")
@@ -158,7 +168,7 @@ func TestSignInGrant(t *testing.T) {
 }
 
 func TestLookupWithholdsAValueItCannotResolve(t *testing.T) {
-	log := &syncBuffer{}
+	log := &fakeLedger{}
 	b, err := NewBroker([]Grant{{Name: "x", Source: "file:/nonexistent/secret", Host: "h", Header: "k"}}, log)
 	if err != nil {
 		t.Fatal(err)
@@ -166,13 +176,13 @@ func TestLookupWithholdsAValueItCannotResolve(t *testing.T) {
 	if v, err := b.Lookup(context.Background(), "h", "k"); err == nil || v != nil {
 		t.Fatalf("Lookup = %q, %v; want an error", v, err)
 	}
-	if log.Len() != 0 {
+	if len(log.recs) != 0 {
 		t.Fatalf("ledger = %q, want no release recorded", log.String())
 	}
 }
 
 func TestRateLimitIsAFixedWindow(t *testing.T) {
-	b := newTestBroker(t, &syncBuffer{})
+	b := newTestBroker(t, &fakeLedger{})
 	clock := time.Unix(1000, 0)
 	b.now = func() time.Time { return clock }
 	lookup := func() ([]byte, error) { return b.Lookup(context.Background(), "api.anthropic.com", "x-api-key") }
@@ -203,12 +213,12 @@ func TestDenialsSpendTheirOwnBudget(t *testing.T) {
 		{strings.Repeat("h", maxLineBytes+1), true},
 		{"evil.example", false},
 	} {
-		log := &syncBuffer{}
+		log := &fakeLedger{}
 		b := newTestBroker(t, log)
 		for i := 0; i < rateLimit+5; i++ {
 			_, _ = b.Lookup(context.Background(), tc.host, "x-api-key")
 		}
-		if n := strings.Count(log.String(), "\n"); n != rateLimit {
+		if n := len(log.recs); n != rateLimit {
 			t.Errorf("host of %d bytes: %d denials recorded, want %d", len(tc.host), n, rateLimit)
 		}
 		if _, err := b.Lookup(context.Background(), "api.anthropic.com", "x-api-key"); (err == nil) != tc.wantGrant {
@@ -229,7 +239,7 @@ func TestNewBrokerRefusesBadRows(t *testing.T) {
 		{"no header", []Grant{{Name: "n", Source: "file:/s", Host: "h"}}},
 		{"duplicate pair", []Grant{row, {Name: "m", Source: "file:/t", Host: "h", Header: "k"}}},
 	} {
-		if _, err := NewBroker(tc.rows, &syncBuffer{}); err == nil {
+		if _, err := NewBroker(tc.rows, &fakeLedger{}); err == nil {
 			t.Errorf("%s: NewBroker accepted %+v", tc.name, tc.rows)
 		}
 	}
@@ -238,41 +248,22 @@ func TestNewBrokerRefusesBadRows(t *testing.T) {
 	}
 }
 
-// failingLog fails every write or every sync.
-type failingLog struct{ write, sync error }
-
-func (f failingLog) Write(p []byte) (int, error) {
-	if f.write != nil {
-		return 0, f.write
-	}
-	return len(p), nil
-}
-
-func (f failingLog) Sync() error { return f.sync }
-
-// recoveringLog fails its first write half way and then accepts everything.
-type recoveringLog struct{ writes int }
-
-func (r *recoveringLog) Write(p []byte) (int, error) {
-	r.writes++
-	if r.writes == 1 {
-		return len(p) / 2, errors.New("disk full")
-	}
-	return len(p), nil
-}
-
-func (*recoveringLog) Sync() error { return nil }
-
-// TestGrantIsWithheldWhenTheRecordIsNotDurable also keeps the ledger failed
-// after a partial write: no later grant is released.
+// TestGrantIsWithheldWhenTheRecordIsNotDurable: no grant is released, on the first lookup or the next.
 func TestGrantIsWithheldWhenTheRecordIsNotDurable(t *testing.T) {
 	for _, tc := range []struct {
 		name string
 		log  Ledger
 	}{
-		{"write fails", failingLog{write: errors.New("disk full")}},
-		{"sync fails", failingLog{sync: errors.New("io error")}},
-		{"partial write", &recoveringLog{}},
+		{"the ledger fails", &fakeLedger{err: errors.New("disk full")}},
+		{"the ledger is a closed log", func() Ledger {
+			l, err := audit.Create(t.TempDir(), ed25519.NewKeyFromSeed(make([]byte, ed25519.SeedSize)), time.Now)
+			if err != nil {
+				t.Fatal(err)
+			}
+			l.Close()
+			return l
+		}()},
+		{"the ledger is no log", (*audit.Log)(nil)},
 	} {
 		b := newTestBroker(t, tc.log)
 		for i := 0; i < 2; i++ {
