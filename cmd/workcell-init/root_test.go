@@ -153,3 +153,25 @@ func TestTmpfsSize(t *testing.T) {
 		t.Errorf("tmpfsSize(64) = %q, want size=64m", got)
 	}
 }
+
+func TestCaches(t *testing.T) {
+	tests := []struct {
+		name, cmdline string
+		want          []cache
+	}{
+		{"none", "root=/dev/vda ro workcell.layer=claude:/dev/vdc", nil},
+		{"two, in order", "workcell.cache=go:/dev/vdd:ro workcell.cache=npm:/dev/vde:rw\n", []cache{{"go", "/dev/vdd", false}, {"npm", "/dev/vde", true}}},
+		{"not a device", "workcell.cache=go:vdd:ro", nil},
+		{"another mode", "workcell.cache=go:/dev/vdd:rx workcell.cache=go:/dev/vdd", nil},
+		{"no name", "workcell.cache=:/dev/vdd:ro", nil},
+		{"a name with a slash or a dot", "workcell.cache=../etc:/dev/vdd:ro workcell.cache=a/b:/dev/vdd:rw", nil},
+		{"another name", "other.workcell.cache=go:/dev/vdd:ro", nil},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := caches(tc.cmdline); !slices.Equal(got, tc.want) {
+				t.Errorf("caches(%q) = %v, want %v", tc.cmdline, got, tc.want)
+			}
+		})
+	}
+}

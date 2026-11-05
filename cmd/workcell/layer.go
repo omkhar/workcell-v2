@@ -56,3 +56,31 @@ func pathEnv(layers []vmm.Layer) string {
 	}
 	return s + "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 }
+
+// cacheArgs is the init's workcell.cache=<name>:<device>:<ro|rw> for each cache, in the order the
+// backend attaches the drives, the first of them at the drive letter next.
+func cacheArgs(caches []vmm.Cache, next rune) string {
+	var s strings.Builder
+	for i, c := range caches {
+		mode := "ro"
+		if c.Writable {
+			mode = "rw"
+		}
+		fmt.Fprintf(&s, " workcell.cache=%s:/dev/vd%c:%s", c.Name, next+rune(i), mode)
+	}
+	return s.String()
+}
+
+// cacheEnv points the tools of the two caches workcell knows at their directories; any other
+// cache is mounted and sets nothing.
+func cacheEnv(caches []vmm.Cache) []string {
+	known := map[string][]string{
+		"go":  {"GOMODCACHE=/cache/go/mod", "GOCACHE=/cache/go/build"},
+		"npm": {"npm_config_cache=/cache/npm"},
+	}
+	var env []string
+	for _, c := range caches {
+		env = append(env, known[c.Name]...)
+	}
+	return env
+}

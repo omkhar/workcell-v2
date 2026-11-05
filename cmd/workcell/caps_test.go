@@ -74,7 +74,7 @@ func TestParseRun(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			caps, mount, _, argv, ok := parseRun(tc.args, io.Discard)
+			caps, mount, _, _, argv, ok := parseRun(tc.args, io.Discard)
 			if ok != (tc.argv != nil) || !slices.Equal(argv, tc.argv) || (ok && (caps != tc.caps || mount != tc.mount)) {
 				t.Errorf("parseRun(%q) = %+v, %v, %q, %v; want %+v, %v, %q", tc.args, caps, mount, argv, ok, tc.caps, tc.mount, tc.argv)
 			}
@@ -111,7 +111,7 @@ func TestParseRunAllow(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			_, _, allow, _, ok := parseRun(tc.args, io.Discard)
+			_, _, allow, _, _, ok := parseRun(tc.args, io.Discard)
 			if ok != tc.ok || !slices.Equal(allow, tc.want) {
 				t.Errorf("parseRun(%q) allow = %q, %v; want %q, %v", tc.args, allow, ok, tc.want, tc.ok)
 			}

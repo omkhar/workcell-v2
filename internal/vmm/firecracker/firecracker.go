@@ -239,5 +239,8 @@ func encode(cfg vmm.Config) ([]byte, error) {
 	for _, l := range cfg.Layers {
 		c.Drives = append(c.Drives, drive{ID: l.Name, Path: l.Image, ReadOnly: true})
 	}
+	for _, k := range cfg.Caches { // the drive_id of a layer is a bare agent name, so a cache's is prefixed
+		c.Drives = append(c.Drives, drive{ID: "cache-" + k.Name, Path: k.Image, ReadOnly: !k.Writable})
+	}
 	return json.Marshal(c)
 }

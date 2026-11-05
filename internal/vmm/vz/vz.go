@@ -250,6 +250,9 @@ func configure(cfg vmm.Config, c *console) (*vz.VirtualMachineConfiguration, err
 	for _, l := range cfg.Layers {
 		drives = append(drives, drive{l.Image, true})
 	}
+	for _, c := range cfg.Caches {
+		drives = append(drives, drive{c.Image, !c.Writable})
+	}
 	var disks []vz.StorageDeviceConfiguration
 	for _, d := range drives {
 		if d.path == "" {

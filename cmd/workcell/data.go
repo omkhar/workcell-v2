@@ -26,10 +26,11 @@ func dataDir() (string, error) {
 
 // artifacts are the files a session boots from, and the directory they are in: the kernel,
 // the initramfs, the root image and, where the backend is a program (vmmBinary), that too.
-// run adds the provider layers (findLayers); pull and bench boot without them.
+// run adds the provider layers (findLayers) and the caches (openCaches); pull and bench boot without them.
 type artifacts struct {
 	binary, kernel, initrd, image, dir string
 	layers                             []vmm.Layer
+	caches                             []vmm.Cache
 }
 
 // required names the files the backend here needs in the data directory, the VMM first.
