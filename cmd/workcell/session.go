@@ -164,7 +164,10 @@ func removeSession(sessions, id string) error {
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return err
 	}
-	for _, tmp := range strings.Fields(string(b)) {
+	for _, tmp := range strings.Split(string(b), "\n") { // a path may hold a space, never a newline
+		if tmp == "" {
+			continue
+		}
 		// Only what MkdirTemp(.., "wc") made: an absolute path to a directory, never a link.
 		if st, err := os.Lstat(tmp); errors.Is(err, fs.ErrNotExist) {
 			continue

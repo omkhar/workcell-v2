@@ -156,6 +156,18 @@ func TestRemoveSession(t *testing.T) {
 			os.WriteFile(filepath.Join(tmp, "vsock_1"), nil, 0o600)
 			return tmp
 		}, false},
+		{"recorded VMM directory whose path holds a space goes too", idOld, func(t *testing.T, sessions, _ string) string {
+			parent := filepath.Join(t.TempDir(), "a b")
+			if err := os.Mkdir(parent, 0o700); err != nil {
+				t.Fatal(err)
+			}
+			tmp, err := os.MkdirTemp(parent, "wc")
+			if err != nil {
+				t.Fatal(err)
+			}
+			os.WriteFile(filepath.Join(tmp, "vsock_1"), nil, 0o600)
+			return tmp
+		}, false},
 		{"recorded directory already gone", idOld, func(t *testing.T, sessions, _ string) string {
 			return filepath.Join(t.TempDir(), "wcgone")
 		}, false},
