@@ -196,7 +196,7 @@ with ADR-003 and ADR-004, they build on the proposal, and you can accept it at a
 
 - [x] U-600 | flow:boundary | model:sonnet | env:any | deps:U-303 | tries:0 | Port `_legacy/auditlog`, `auditseal` and `keystore` to `internal/audit` (S14). One hash-chained log fed by the proxy, secret store and lifecycle
       accept: no import of `applecontainer`, `hoststate` or `sessions`
-- [ ] U-601 | flow:boundary | model:sonnet | env:kvm | deps:U-600,U-010,H-011 | tries:0 | `workcell verify` and `workcell log --format ocsf`
+- [x] U-601 | flow:boundary | model:sonnet | env:kvm | deps:U-600,U-010,H-011 | tries:0 | `workcell verify` and `workcell log --format ocsf`
       accept: I9 added to `enforced.txt` and green
 - [ ] U-602 | flow:build | model:sonnet | env:kvm | deps:U-205 | tries:0 | Detach and `attach`
       accept: a session survives terminal close; a second attach takes over cleanly
