@@ -8,21 +8,23 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"crypto/ed25519"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/binary"
-	"encoding/json"
 	"errors"
 	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
-	"strconv"
-	"strings"
+	"slices"
+	"sync"
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/omkhar/workcell/v2/internal/audit"
 )
 
 func TestBlockedAddr(t *testing.T) {
@@ -166,21 +168,29 @@ func FuzzPeekSNI(f *testing.F) {
 
 // testProxy returns a proxy whose resolver maps every host to addrs and whose
 // dialer sends every dial to target, recording the address it was asked for.
-func testProxy(t *testing.T, allow string, addrs []netip.Addr, target string) (*Proxy, *bytes.Buffer, *[]netip.AddrPort) {
+func testProxy(t *testing.T, allow string, addrs []netip.Addr, target string) (*Proxy, *recorder, *[]netip.AddrPort) {
 	t.Helper()
 	a := must(ParseAllowlist(allow, "allowlist"))
-	var log bytes.Buffer
-	p := New(a, &log)
+	log := &recorder{}
+	p := New(a, log)
 	var dialed []netip.AddrPort
 	p.lookup = func(context.Context, string) ([]netip.Addr, error) { return addrs, nil }
 	p.dial = func(ctx context.Context, addr netip.AddrPort) (net.Conn, error) {
-		p.mu.Lock()
+		log.mu.Lock()
 		dialed = append(dialed, addr)
-		p.mu.Unlock()
+		log.mu.Unlock()
 		var d net.Dialer
 		return d.DialContext(ctx, "tcp", target)
 	}
-	return p, &log, &dialed
+	return p, log, &dialed
+}
+
+// testLedger is a real session log in a new directory, for a broker to write to.
+func testLedger(t *testing.T) *audit.Log {
+	t.Helper()
+	l := must(audit.Create(t.TempDir(), ed25519.NewKeyFromSeed(make([]byte, ed25519.SeedSize)), time.Now))
+	t.Cleanup(func() { l.Close() })
+	return l
 }
 
 // listen serves p on a loopback listener for port and returns its address.
@@ -192,20 +202,50 @@ func listen(t *testing.T, p *Proxy, port uint16) string {
 	return ln.Addr().String()
 }
 
-func denies(t *testing.T, p *Proxy, log *bytes.Buffer) []denyLine {
+// recorder collects what the proxy notes. Its mutex also guards the dials the tests record.
+type recorder struct {
+	mu   sync.Mutex
+	recs []audit.Record
+}
+
+func (r *recorder) Note(rec audit.Record) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.recs = append(r.recs, rec)
+	return nil
+}
+
+// has says whether rec, with no time, was noted.
+func (r *recorder) has(rec audit.Record) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return slices.Contains(r.recs, rec)
+}
+
+// denyLine is a refusal as the tests compare it: the count of its (host, port, reason) so far and
+// its number among the refusals.
+type denyLine struct {
+	Host   string
+	Port   uint16
+	Reason string
+	Count  uint64
+	Seq    uint64
+}
+
+// denies are the refusals noted so far; a connection that went through is not one.
+func denies(t *testing.T, p *Proxy, log *recorder) []denyLine {
 	t.Helper()
-	p.mu.Lock()
-	text := log.String()
-	p.mu.Unlock()
+	log.mu.Lock()
+	defer log.mu.Unlock()
 	var out []denyLine
-	for _, line := range strings.Split(strings.TrimSpace(text), "\n") {
-		if line == "" {
+	counts := map[denyLine]uint64{}
+	for _, r := range log.recs {
+		if r.Event != audit.Connect || r.Result == audit.Allowed {
 			continue
 		}
-		var d denyLine
-		if err := json.Unmarshal([]byte(line), &d); err != nil {
-			t.Fatalf("deny line %q: %v", line, err)
-		}
+		d := denyLine{Host: r.Host, Port: r.Port, Reason: r.Result}
+		counts[d]++
+		d.Count, d.Seq = counts[d], uint64(len(out)+1)
 		out = append(out, d)
 	}
 	return out
@@ -248,9 +288,12 @@ func TestProxyTLSEndToEnd(t *testing.T) {
 	if err != nil || body != "hello through proxy" {
 		t.Fatalf("allowed GET = (%q, %v), want the upstream body", body, err)
 	}
-	p.mu.Lock()
+	log.mu.Lock()
 	got := append([]netip.AddrPort(nil), *dialed...)
-	p.mu.Unlock()
+	log.mu.Unlock()
+	if want := (audit.Record{Event: audit.Connect, Host: "example.com", Port: 443, Result: audit.Allowed}); !log.has(want) {
+		t.Errorf("no record of the allowed connection %+v", want)
+	}
 	if want := netip.AddrPortFrom(public, 443); len(got) != 1 || got[0] != want {
 		t.Fatalf("dialed %v, want [%v]", got, want)
 	}
@@ -285,9 +328,9 @@ func TestProxyRefusesBlockedResolution(t *testing.T) {
 	if _, err := httpsGet("example.com", addr, roots); err == nil {
 		t.Fatal("GET to a host that resolves to a metadata address succeeded, want refusal")
 	}
-	p.mu.Lock()
+	log.mu.Lock()
 	n := len(*dialed)
-	p.mu.Unlock()
+	log.mu.Unlock()
 	if n != 0 {
 		t.Fatalf("proxy dialed %d times, want 0", n)
 	}
@@ -328,45 +371,18 @@ func TestProxyTCPForward(t *testing.T) {
 	if n, err := other.Read(make([]byte, 1)); n != 0 || !errors.Is(err, io.EOF) {
 		t.Fatalf("read on a non-allowlisted port = (%d, %v), want EOF", n, err)
 	}
+	if want := (audit.Record{Event: audit.Connect, Host: "db.example", Port: 5432, Result: audit.Allowed}); !log.has(want) {
+		t.Errorf("no record of the allowed connection %+v", want)
+	}
 	want := denyLine{Port: 5433, Reason: "port_not_allowed", Count: 1, Seq: 1}
 	if d := denies(t, p, log); len(d) != 1 || d[0] != want {
 		t.Fatalf("deny lines = %+v, want [%+v]", d, want)
 	}
 }
 
-func TestDenyLogIsBounded(t *testing.T) {
-	t.Parallel()
-	p, log, _ := testProxy(t, "example.com:443", nil, "")
-	p.deny(strings.Repeat("a", 1000), 443, "sni_not_allowed")
-	if d := denies(t, p, log); len(d) != 1 || len(d[0].Host) != maxLogHost {
-		t.Fatalf("deny host length = %+v, want %d", d, maxLogHost)
-	}
-	for i := range maxDenyKeys + 10 {
-		p.deny(strconv.Itoa(i)+".example", 443, "sni_not_allowed")
-	}
-	if keys := len(p.denies); keys != maxDenyKeys+1 {
-		t.Fatalf("deny counter keys = %d, want %d", keys, maxDenyKeys+1)
-	}
-	if !strings.Contains(log.String(), overflowHost) {
-		t.Fatal("no overflow deny line after the key limit")
-	}
-	// Past the limit, distinct ports and reasons still share the one overflow
-	// key, so every line the proxy writes stays inside the reader's key cap.
-	for i := range maxDenyKeys + 10 {
-		p.deny("late.example", uint16(i+1), []string{"no_sni", "sni_not_allowed"}[i%2])
-	}
-	if keys := len(p.denies); keys != maxDenyKeys+1 {
-		t.Fatalf("deny counter keys after many ports = %d, want %d", keys, maxDenyKeys+1)
-	}
-	got := DenyAuditRecords(log.Bytes())
-	if want := "malformed_lines=0"; !strings.HasSuffix(got[len(got)-1], want) {
-		t.Fatalf("reader summary of the proxy log = %q, want suffix %q", got[len(got)-1], want)
-	}
-}
-
 func TestConnectSharesBudgetAcrossAddresses(t *testing.T) {
 	t.Parallel()
-	p := New(&Allowlist{}, io.Discard)
+	p := New(&Allowlist{}, &recorder{})
 	p.lookup = func(context.Context, string) ([]netip.Addr, error) {
 		return []netip.Addr{
 			netip.MustParseAddr("8.8.8.8"), netip.MustParseAddr("8.8.4.4"),
@@ -418,7 +434,7 @@ func TestPeekSNIRefusesECH(t *testing.T) {
 
 func TestConnectLooksUpRootedName(t *testing.T) {
 	t.Parallel()
-	p := New(&Allowlist{}, io.Discard)
+	p := New(&Allowlist{}, &recorder{})
 	var looked string
 	p.lookup = func(_ context.Context, host string) ([]netip.Addr, error) {
 		looked = host
@@ -459,7 +475,7 @@ func TestServeShedsConnectionsOverTheLimit(t *testing.T) {
 }
 
 func TestRouteRefusesUnicodeFoldedSNI(t *testing.T) {
-	p := New(&Allowlist{sni: map[string]bool{"k.example": true}}, io.Discard)
+	p := New(&Allowlist{sni: map[string]bool{"k.example": true}}, &recorder{})
 	c, srv := net.Pipe()
 	go func() { _, _ = srv.Write(clientHello(t, "\u212a.example")) }()
 	if _, _, got := p.route(c, 443); got != "sni_not_allowed" {
@@ -490,7 +506,7 @@ func TestConnectVetsEveryAnswerOnEveryConnection(t *testing.T) {
 			t.Parallel()
 			upstream := must(net.Listen("tcp", "127.0.0.1:0"))
 			defer upstream.Close()
-			p, _, dialed := testProxy(t, "example.com:443", nil, upstream.Addr().String())
+			p, log, dialed := testProxy(t, "example.com:443", nil, upstream.Addr().String())
 			var lookups int
 			p.lookup = func(context.Context, string) ([]netip.Addr, error) {
 				answer := tc.answers[lookups]
@@ -514,8 +530,8 @@ func TestConnectVetsEveryAnswerOnEveryConnection(t *testing.T) {
 			if lookups != len(tc.reasons) {
 				t.Fatalf("lookups = %d, want one per connection (%d)", lookups, len(tc.reasons))
 			}
-			p.mu.Lock()
-			defer p.mu.Unlock()
+			log.mu.Lock()
+			defer log.mu.Unlock()
 			if len(*dialed) != wantDials {
 				t.Fatalf("dialed %v, want %d dials", *dialed, wantDials)
 			}

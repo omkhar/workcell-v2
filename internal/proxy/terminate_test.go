@@ -63,7 +63,7 @@ func (b *fakeBroker) callCount() int {
 // those headers, a.example.com, with none, n.example.com, with an x-api-key
 // rule narrowed to POST under /v1/, and r.example.com, with an Authorization
 // rule scoped to the repository octo/allowed.
-func terminateFixture(t *testing.T, broker Broker) (proxyAddr string, ca *SessionCA, upstreamRoots *x509.CertPool, p *Proxy, log *bytes.Buffer) {
+func terminateFixture(t *testing.T, broker Broker) (proxyAddr string, ca *SessionCA, upstreamRoots *x509.CertPool, p *Proxy, log *recorder) {
 	t.Helper()
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = io.WriteString(w, r.Host+" "+strings.Join(r.Header.Values("X-Api-Key"), ","))

@@ -12,18 +12,17 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
-	"github.com/omkhar/workcell/v2/internal/proxy"
+	"github.com/omkhar/workcell/v2/internal/audit"
 )
 
 // logPoll is how often `log -f` looks for new bytes: a plain read from the last offset (A9).
 const logPoll = 250 * time.Millisecond
 
-// logs is `workcell log [-f] [id]`: it shows the session's denials, one line each, with the host
-// to allow. The session is id, or the newest run in this directory. With -f it keeps showing
-// them as they are written, until the session is no longer running.
+// logs is `workcell log [-f] [id]`: it shows the session's record, one line each, and for a refused
+// connection the host to allow. The session is id, or the newest run in this directory. With -f it
+// keeps showing the record as it is written, until the session is no longer running.
 func logs(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("log", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
@@ -68,8 +67,8 @@ func logSession(id string) (string, error) {
 	return dir, nil
 }
 
-// showDenies prints what the session's deny.log holds and, with follow, what is added to it until
-// the session is not running and the file has no more bytes. A session with no deny.log has none yet.
+// showDenies prints what the session's audit.log holds and, with follow, what is added to it until
+// the session is not running and the file has no more bytes. A session with no audit.log has none yet.
 func showDenies(dir, cfg string, follow bool, out io.Writer) error {
 	var off int64
 	r := denyReader{cfg: cfg}
@@ -78,7 +77,7 @@ func showDenies(dir, cfg string, follow bool, out io.Writer) error {
 		if err != nil {
 			return err
 		}
-		f, err := os.Open(filepath.Join(dir, "deny.log"))
+		f, err := os.Open(filepath.Join(dir, audit.LogName))
 		if err == nil {
 			var data []byte
 			if _, err = f.Seek(off, io.SeekStart); err == nil {
@@ -99,14 +98,14 @@ func showDenies(dir, cfg string, follow bool, out io.Writer) error {
 		time.Sleep(logPoll)
 	}
 	if r.malformed > 0 {
-		fmt.Fprintf(out, "%d malformed line(s) in deny.log were not shown\n", r.malformed)
+		fmt.Fprintf(out, "%d malformed line(s) in audit.log were not shown\n", r.malformed)
 	}
 	return nil
 }
 
-// denyReader turns the bytes of a deny.log, as they arrive, into one line of text per deny line.
-// A line the strict reader refuses is counted, never printed: it is host-written, but its
-// fields came from the guest.
+// denyReader turns the bytes of an audit.log, as they arrive, into one line of text per record: the
+// record's own line, or for a refused connection the sentence denyMessage makes. A line the strict
+// reader refuses is counted, never printed: it is host-written, but its fields came from the guest.
 type denyReader struct {
 	cfg       string
 	pending   []byte // the start of a line whose end has not arrived
@@ -122,27 +121,30 @@ func (r *denyReader) feed(data []byte, out io.Writer) {
 		}
 		line := string(r.pending[:i])
 		r.pending = r.pending[i+1:]
-		if d, ok := proxy.ParseDenyLine(line); ok {
-			fmt.Fprintln(out, denyMessage(d, r.cfg))
-		} else if line == strings.TrimSuffix(denyLogFull, "\n") {
-			fmt.Fprintln(out, "deny log full, later denials were dropped")
-		} else {
+		switch d, ok := audit.ParseLine(line); {
+		case !ok:
 			r.malformed++
+		case d.Event == audit.Connect && d.Result != audit.Allowed:
+			fmt.Fprintln(out, denyMessage(d, r.cfg))
+		case d.Event == audit.LogFull:
+			fmt.Fprintln(out, "log full, later connections were not recorded")
+		default:
+			fmt.Fprintln(out, line)
 		}
 	}
 }
 
 // denyMessage is one deny line in a sentence: what was refused, and the one thing to do about it.
 // The host is guest-chosen bytes for a TLS name, so it is shown only in a form safe to copy.
-func denyMessage(d proxy.DenyLine, cfg string) string {
-	host := proxy.SafeHost(d.Host)
-	named := host != "" && host != "(invalid)" && host != "(overflow)"
+func denyMessage(d audit.Record, cfg string) string {
+	host := audit.SafeHost(d.Host)
+	named := host != "" && host != "(invalid)"
 	allow := func(entry string) string {
 		return fmt.Sprintf("allow it with  workcell run --allow %s  or add %q to [network] allow in %s", entry, entry, cfg)
 	}
-	switch d.Reason {
+	switch d.Result {
 	case "name_not_allowed", "sni_not_allowed":
-		via := map[string]string{"name_not_allowed": "dns", "sni_not_allowed": "tls"}[d.Reason]
+		via := map[string]string{"name_not_allowed": "dns", "sni_not_allowed": "tls"}[d.Result]
 		if !named {
 			return fmt.Sprintf("denied %s (%s): not a host name, so there is nothing to allow", hostText(host), via)
 		}
@@ -154,7 +156,7 @@ func denyMessage(d proxy.DenyLine, cfg string) string {
 	case "host_mismatch":
 		return fmt.Sprintf("denied %s (tls): the request named another host than its TLS name", hostText(host))
 	}
-	return fmt.Sprintf("denied %s port %d: %s", hostText(host), d.Port, d.Reason)
+	return fmt.Sprintf("denied %s port %d: %s", hostText(host), d.Port, d.Result)
 }
 
 // hostText is a host as printed when it is no remedy: "(invalid)" for none.

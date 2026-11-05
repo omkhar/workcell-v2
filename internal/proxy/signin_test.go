@@ -305,7 +305,7 @@ func mustParseQuery(s string) url.Values {
 
 // signinFixture terminates api.example.com, where the rule binds the access token
 // as a bearer, and login.example.com, the token host, both served by p.
-func signinFixture(t *testing.T, p *provider, broker Broker) (*http.Client, TerminateRule, *Proxy, *bytes.Buffer) {
+func signinFixture(t *testing.T, p *provider, broker Broker) (*http.Client, TerminateRule, *Proxy, *recorder) {
 	t.Helper()
 	server := httptest.NewTLSServer(p)
 	t.Cleanup(server.Close)

@@ -6,10 +6,13 @@ package suite
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 )
 
@@ -174,6 +177,15 @@ func offlineJudge(edit string) Judge {
 				return false, "", errors.New("the record holds no line to copy")
 			}
 			edited = append(bytes.Clone(b), lines[len(lines)-1]...)
+		case "swap": // the two middle records change places, both whole
+			if len(lines) < 2 {
+				return false, "", fmt.Errorf("the record holds %d lines; swapping two needs two", len(lines))
+			}
+			i := len(lines) / 2
+			if bytes.Equal(lines[i-1], lines[i]) {
+				return false, "", errors.New("the two middle records are the same byte for byte; nothing to swap")
+			}
+			edited = bytes.Join([][]byte{bytes.Join(lines[:i-1], nil), lines[i], lines[i-1], bytes.Join(lines[i+1:], nil)}, nil)
 		default:
 			return false, "", errors.New("unknown edit " + edit)
 		}
@@ -186,4 +198,70 @@ func offlineJudge(edit string) Judge {
 		}
 		return true, fmt.Sprintf("verify rejects the record after the %s edit: %s", edit, err), nil
 	}
+}
+
+// connectProbe opens TLS from the guest to the allowed name and to the
+// denied one, each at the address the judge gave, and says only how each
+// went: never the names. Both sandboxes may keep the guest's words, its
+// command line and its output, so the names come in hex and leave as
+// "served", "refused" and the like; a record naming one can then only be
+// the host's own account of the connection. args: allowed name in hex, its
+// address, denied name in hex, its address.
+func connectProbe(args []string) Result {
+	if len(args) != 4 {
+		return Result{Status: "error", Detail: "want allowed name in hex, address, denied name in hex, address"}
+	}
+	var out []string
+	status := "unreached"
+	for i, label := range []string{"allowed", "denied"} {
+		name, err := hex.DecodeString(args[2*i])
+		if err != nil {
+			return Result{Status: "error", Detail: label + " name is not hex"}
+		}
+		t := targets{addrs: map[string]string{string(name): args[2*i+1]}}
+		r := report(fetch(t.get(string(name), "/recorded"), t.addrs, &tls.Config{}, false))
+		if r.Status == "served" {
+			status = "served"
+		}
+		out = append(out, label+"="+r.Status)
+	}
+	return Result{Status: status, Detail: strings.Join(out, " ")}
+}
+
+// recordedJudge serves a canary for the allowed name and one for the denied
+// name, has the guest try both, and expects the records the run added to
+// name each: a connection attempt the host let through and one it refused
+// are both recorded (I9). The names reach the guest in hex and come back
+// as verdicts, so a record naming one is the host's, not the guest's echo.
+func recordedJudge(ctx context.Context, s Session) (bool, string, error) {
+	allowed, denied := &canary{name: s.Allow[0]}, &canary{name: s.Deny[0]}
+	ns, stop, err := serveTwo(ctx, s, nil, allowed, denied)
+	if err != nil {
+		return false, "", err
+	}
+	defer ns.stop()
+	defer stop()
+	_, before, err := s.Audit(ctx)
+	if err != nil {
+		return false, "", err
+	}
+	r, err := s.Run(hex.EncodeToString([]byte(allowed.name)), allowed.addr, hex.EncodeToString([]byte(denied.name)), denied.addr)
+	if err != nil {
+		return false, "", err
+	}
+	say := fmt.Sprintf(" (guest says %s: %s)", r.Status, r.Detail)
+	_, after, err := s.Audit(ctx)
+	if err != nil {
+		return false, "", err
+	}
+	if len(after) < len(before) {
+		return false, fmt.Sprintf("%d records before the run, %d after%s", len(before), len(after), say), nil
+	}
+	added := after[len(before):]
+	for _, name := range []string{allowed.name, denied.name} {
+		if !slices.ContainsFunc(added, func(rec string) bool { return strings.Contains(rec, name) }) {
+			return false, fmt.Sprintf("none of the %d records the run added names %s%s", len(added), name, say), nil
+		}
+	}
+	return true, fmt.Sprintf("the run added %d records, naming both the allowed and the denied connection%s", len(added), say), nil
 }
