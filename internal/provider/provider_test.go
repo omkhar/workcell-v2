@@ -52,7 +52,7 @@ func TestEmbeddedProviders(t *testing.T) {
 		t.Error("Lookup found a provider that is not there")
 	}
 	for name, want := range map[string]string{"anthropic": "claude", "openai": "codex", "github": "copilot", "gemini": "gemini", "nope": ""} {
-		if s, p, ok := FindSecret(name); ok != (want != "") || p.Name != want || ok && s.Name != name {
+		if s, p, ok := FindSecret(name); ok != (want != "") || p.Name != want || ok && s.Name != name || name == "openai" && s.Prefix != "Bearer " || name == "anthropic" && s.Prefix != "" {
 			t.Errorf("FindSecret(%q) = %+v, %q, %v; want provider %q", name, s, p.Name, ok, want)
 		}
 	}
@@ -106,17 +106,13 @@ func TestLoadRefuses(t *testing.T) {
 		{"bad method", npm("method = \"curl\""), "method must be binary or npm"},
 		{"binary is a path", sub(`binary = "demo"`, `binary = "/bin/demo"`), "binary must be an executable's name"},
 		{"syntax", sub(`pin = "demo"`, `pin = 'demo'`), "demo.toml:8: literal strings"},
+		{"an npm package is fine", npm("method = \"npm\"\npackage = \"@x/demo\""), ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			_, err := Load(fstest.MapFS{"demo.toml": {Data: []byte(tc.text)}})
-			if err == nil || !strings.Contains(err.Error(), tc.want) {
+			if (err == nil) != (tc.want == "") || err != nil && !strings.Contains(err.Error(), tc.want) {
 				t.Errorf("Load error = %v, want it to hold %q", err, tc.want)
 			}
 		})
 	}
-	t.Run("npm package", func(t *testing.T) {
-		if _, err := Load(fstest.MapFS{"demo.toml": {Data: []byte(npm("method = \"npm\"\npackage = \"@x/demo\""))}}); err != nil {
-			t.Error(err)
-		}
-	})
 }

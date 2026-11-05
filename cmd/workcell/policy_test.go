@@ -4,6 +4,7 @@
 package main
 
 import (
+	"cmp"
 	"os"
 	"path/filepath"
 	"slices"
@@ -97,6 +98,7 @@ func TestBindings(t *testing.T) {
 	}
 	row := policy.Secret{Name: "k", Source: "file:/s", Host: "A.example.", Header: "X-Api-Key", Line: 5}
 	with := func(f func(s *policy.Secret)) policy.Secret { s := row; f(&s); return s }
+	const swapped = "secrets: swapped in by the session proxy; the guest holds a placeholder\n"
 	tests := []struct {
 		name string
 		rows []policy.Secret
@@ -104,22 +106,14 @@ func TestBindings(t *testing.T) {
 		err  string // the start of the error
 	}{
 		{"none", nil, "secrets: none\n", ""},
-		{"a row", []policy.Secret{row}, "secrets: swapped in by the session proxy; the guest holds a placeholder\n  k: in x-api-key to https://a.example\n", ""},
-		{"every key", []policy.Secret{with(func(s *policy.Secret) { s.Env, s.Method, s.Path = "A_KEY", "POST", "/v1/" })},
-			"secrets: swapped in by the session proxy; the guest holds a placeholder\n  k: in x-api-key to https://a.example, POST only, under /v1/, as $A_KEY\n", ""},
-		{"two headers on one host", []policy.Secret{row, with(func(s *policy.Secret) { s.Header, s.Line = "authorization", 9 })},
-			"secrets: swapped in by the session proxy; the guest holds a placeholder\n  k: in x-api-key to https://a.example\n  k: in authorization to https://a.example\n", ""},
+		{"a row", []policy.Secret{row}, swapped + "  k: in x-api-key to https://a.example\n", ""},
+		{"every key", []policy.Secret{with(func(s *policy.Secret) { s.Env, s.Method, s.Path = "A_KEY", "POST", "/v1/" })}, swapped + "  k: in x-api-key to https://a.example, POST only, under /v1/, as $A_KEY\n", ""},
+		{"two headers on one host", []policy.Secret{row, with(func(s *policy.Secret) { s.Header, s.Line = "authorization", 9 })}, swapped + "  k: in x-api-key to https://a.example\n  k: in authorization to https://a.example\n", ""},
 		{"host not allowed", []policy.Secret{with(func(s *policy.Secret) { s.Host = "b.example" })}, "", "config.toml:5: secret \"k\": host \"b.example\" is not a bare name in [network] allow: add \"b.example\" there, or pass --allow b.example"},
-		{"a provider's secret", []policy.Secret{{Name: "anthropic", Source: "file:/s", Line: 5}},
-			"secrets: swapped in by the session proxy; the guest holds a placeholder\n  anthropic: in x-api-key to https://api.anthropic.com, as $ANTHROPIC_API_KEY, for claude\n", ""},
-		{"a provider's secret, the row's env and method win", []policy.Secret{{Name: "anthropic", Source: "file:/s", Env: "MY_KEY", Method: "POST", Line: 5}},
-			"secrets: swapped in by the session proxy; the guest holds a placeholder\n  anthropic: in x-api-key to https://api.anthropic.com, POST only, as $MY_KEY, for claude\n", ""},
-		{"a provider's secret on a host that is not allowed", []policy.Secret{{Name: "openai", Source: "file:/s", Line: 5}}, "",
-			"config.toml:5: secret \"openai\": host \"api.openai.com\" is not a bare name in [network] allow: add \"api.openai.com\" there, or pass --allow api.openai.com"},
-		{"no host or header, and no such provider secret", []policy.Secret{{Name: "nope", Source: "file:/s", Line: 5}}, "",
-			"config.toml:5: secret \"nope\": host and header are missing: name a provider's secret or give host and header"},
-		{"a header without a host", []policy.Secret{with(func(s *policy.Secret) { s.Host = "" })}, "",
-			"config.toml:5: secret \"k\": host and header are missing: name a provider's secret or give host and header"},
+		{"a provider's secret", []policy.Secret{{Name: "anthropic", Source: "file:/s", Line: 5}}, swapped + "  anthropic: in x-api-key to https://api.anthropic.com, as $ANTHROPIC_API_KEY, for claude\n", ""},
+		{"a provider's secret, the row's env and method win", []policy.Secret{{Name: "anthropic", Source: "file:/s", Env: "MY_KEY", Method: "POST", Line: 5}}, swapped + "  anthropic: in x-api-key to https://api.anthropic.com, POST only, as $MY_KEY, for claude\n", ""},
+		{"no host or header, and no such provider secret", []policy.Secret{{Name: "nope", Source: "file:/s", Line: 5}}, "", "config.toml:5: secret \"nope\": host and header are missing: name a provider's secret or give host and header"},
+		{"a header without a host", []policy.Secret{with(func(s *policy.Secret) { s.Host = "" })}, "", "config.toml:5: secret \"k\": host and header are missing: name a provider's secret or give host and header"},
 		{"host allowed on a forward port alone", []policy.Secret{with(func(s *policy.Secret) { s.Host = "db.example" })}, "", "config.toml:5: secret \"k\": host \"db.example\" is not a bare name"},
 		{"an IP host", []policy.Secret{with(func(s *policy.Secret) { s.Host = "10.0.0.1" })}, "", "config.toml:5: secret \"k\": terminate rule"},
 		{"a bad header", []policy.Secret{with(func(s *policy.Secret) { s.Header = "x api key" })}, "", "config.toml:5: secret \"k\": terminate rule has an invalid header name"},
@@ -129,12 +123,10 @@ func TestBindings(t *testing.T) {
 		{"the pair bound twice", []policy.Secret{row, with(func(s *policy.Secret) { s.Name, s.Header, s.Line = "j", "x-API-key", 9 })}, "", "config.toml:9: secret \"j\": header x-api-key on a.example is already bound on line 5"},
 		{"a sign-in source", []policy.Secret{with(func(s *policy.Secret) {
 			s.Source, s.Header, s.Env = "signin:A.example/oauth/token", "authorization", "A_KEY"
-		})},
-			"secrets: swapped in by the session proxy; the guest holds a placeholder\n  k: in authorization to https://a.example, signed in at https://a.example/oauth/token, as $A_KEY\n", ""},
+		})}, swapped + "  k: in authorization to https://a.example, signed in at https://a.example/oauth/token, as $A_KEY\n", ""},
 		{"a sign-in host not allowed", []policy.Secret{with(func(s *policy.Secret) { s.Source = "signin:b.example/oauth/token" })}, "", "config.toml:5: secret \"k\": sign-in host \"b.example\" is not a bare name"},
 		{"a bad sign-in source", []policy.Secret{with(func(s *policy.Secret) { s.Source = "signin:a.example" })}, "", "config.toml:5: secret \"k\": sign-in source must be signin:HOST/PATH"},
-		{"the token endpoint bound twice", []policy.Secret{with(func(s *policy.Secret) { s.Source = "signin:a.example/t" }), with(func(s *policy.Secret) { s.Source, s.Header, s.Line = "signin:a.example/t", "authorization", 9 })},
-			"", "config.toml:9: secret \"k\": token endpoint a.example/t is already bound on line 5"},
+		{"the token endpoint bound twice", []policy.Secret{with(func(s *policy.Secret) { s.Source = "signin:a.example/t" }), with(func(s *policy.Secret) { s.Source, s.Header, s.Line = "signin:a.example/t", "authorization", 9 })}, "", "config.toml:9: secret \"k\": token endpoint a.example/t is already bound on line 5"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -154,10 +146,10 @@ func TestBindings(t *testing.T) {
 					t.Errorf("binding %d = %+v, want the row's name and source, the rule's host and header, a fresh placeholder", i, b)
 				}
 				seen[b.rule.Placeholder] = true
-				if s := b.rule.SignIn; s != nil && (seen[s.Refresh] || !proxy.IsPlaceholder(s.Refresh)) {
-					t.Errorf("binding %d has refresh placeholder %q, want a fresh one", i, s.Refresh)
-				}
 				if s := b.rule.SignIn; s != nil {
+					if seen[s.Refresh] || !proxy.IsPlaceholder(s.Refresh) {
+						t.Errorf("binding %d has refresh placeholder %q, want a fresh one", i, s.Refresh)
+					}
 					seen[s.Refresh] = true
 				}
 			}
@@ -209,50 +201,55 @@ func TestAllowlistFlags(t *testing.T) {
 // TestProviderPolicy loads a real config file the way `workcell run` does: a [[secret]] row that
 // names only the provider's secret takes its host, header and env, the guest's environment holds
 // the placeholder and never the key, and the host stays the user's grant (I13), from the file or
-// from --allow, or the load fails naming the host to allow.
+// --allow, or the load fails naming it. It holds for Claude Code and Codex.
 func TestProviderPolicy(t *testing.T) {
-	const key = "sk-ant-real-0123456789"
+	const key = "sk-real-0123456789"
 	keyFile := filepath.Join(t.TempDir(), "key")
 	if err := os.WriteFile(keyFile, []byte(key+"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	tests := []struct {
-		name, allow string
-		flags       []string
-		err         string
-	}{
-		{"allowed in the file", `allow = ["api.anthropic.com"]`, nil, ""},
-		{"allowed by --allow", `allow = []`, []string{"api.anthropic.com"}, ""},
-		{"not allowed", `allow = ["github.com"]`, nil, `secret "anthropic": host "api.anthropic.com" is not a bare name in [network] allow: add "api.anthropic.com" there, or pass --allow api.anthropic.com`},
+	providers := []struct{ secret, host, header, env string }{
+		{"anthropic", "api.anthropic.com", "x-api-key", "ANTHROPIC_API_KEY"},
+		{"openai", "api.openai.com", "authorization", "OPENAI_API_KEY"},
 	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			dir := t.TempDir()
-			t.Setenv("XDG_CONFIG_HOME", dir)
-			if err := os.MkdirAll(filepath.Join(dir, "workcell"), 0o700); err != nil {
-				t.Fatal(err)
-			}
-			text := "[network]\n" + tc.allow + "\n\n[[secret]]\nname = \"anthropic\"\nsource = \"file:" + keyFile + "\"\n"
-			if err := os.WriteFile(filepath.Join(dir, "workcell", "config.toml"), []byte(text), 0o600); err != nil {
-				t.Fatal(err)
-			}
-			_, got, err := loadPolicy(tc.flags)
-			if tc.err != "" {
-				if err == nil || !strings.HasSuffix(err.Error(), tc.err) || strings.Contains(err.Error(), "\n") {
-					t.Fatalf("loadPolicy = %v, want one line ending %q", err, tc.err)
+	tests := []struct {
+		name  string
+		allow string // the [network] allow entries; the provider's host is HOST
+		flags string // the --allow flag, HOST for the provider's host, or none
+		deny  bool   // the load fails naming the host
+	}{
+		{"allowed in the file", `["HOST"]`, "", false},
+		{"allowed by --allow", `[]`, "HOST", false},
+		{"not allowed", `["github.com"]`, "", true},
+	}
+	for _, pv := range providers {
+		for _, tc := range tests {
+			t.Run(pv.secret+" "+tc.name, func(t *testing.T) {
+				dir := t.TempDir()
+				t.Setenv("XDG_CONFIG_HOME", dir)
+				text := "[network]\nallow = " + strings.ReplaceAll(tc.allow, "HOST", pv.host) + "\n\n[[secret]]\nname = \"" + pv.secret + "\"\nsource = \"file:" + keyFile + "\"\n"
+				if err := cmp.Or(os.MkdirAll(filepath.Join(dir, "workcell"), 0o700), os.WriteFile(filepath.Join(dir, "workcell", "config.toml"), []byte(text), 0o600)); err != nil {
+					t.Fatal(err)
 				}
-				return
-			}
-			if err != nil || len(got) != 1 {
-				t.Fatalf("loadPolicy = %v, %v", got, err)
-			}
-			if r := got[0].rule; r.Host != "api.anthropic.com" || r.Header != "x-api-key" || got[0].env != "ANTHROPIC_API_KEY" || got[0].grant.Source != "file:"+keyFile {
-				t.Errorf("binding = %+v, want api.anthropic.com, x-api-key, $ANTHROPIC_API_KEY", got[0])
-			}
-			env := placeholderEnv(got)
-			if want := []string{"ANTHROPIC_API_KEY=" + got[0].rule.Placeholder}; !slices.Equal(env, want) || !proxy.IsPlaceholder(got[0].rule.Placeholder) || strings.Contains(strings.Join(env, "\x00"), key) {
-				t.Errorf("guest env = %q, want %q and no key", env, want)
-			}
-		})
+				_, got, err := loadPolicy(strings.Fields(strings.ReplaceAll(tc.flags, "HOST", pv.host)))
+				if tc.deny {
+					want := `secret "` + pv.secret + `": host "` + pv.host + `" is not a bare name in [network] allow: add "` + pv.host + `" there, or pass --allow ` + pv.host
+					if err == nil || !strings.HasSuffix(err.Error(), want) || strings.Contains(err.Error(), "\n") {
+						t.Fatalf("loadPolicy = %v, want one line ending %q", err, want)
+					}
+					return
+				}
+				if err != nil || len(got) != 1 {
+					t.Fatalf("loadPolicy = %v, %v", got, err)
+				}
+				if r := got[0].rule; r.Host != pv.host || r.Header != pv.header || got[0].env != pv.env || got[0].grant.Source != "file:"+keyFile {
+					t.Errorf("binding = %+v, want %s, %s, $%s", got[0], pv.host, pv.header, pv.env)
+				}
+				env := placeholderEnv(got)
+				if want := []string{pv.env + "=" + got[0].rule.Placeholder}; !slices.Equal(env, want) || !proxy.IsPlaceholder(got[0].rule.Placeholder) || strings.Contains(strings.Join(env, "\x00"), key) {
+					t.Errorf("guest env = %q, want %q and no key", env, want)
+				}
+			})
+		}
 	}
 }
