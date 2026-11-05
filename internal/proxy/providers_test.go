@@ -20,11 +20,10 @@ import (
 	"github.com/omkhar/workcell/v2/internal/secret"
 )
 
-// TestScriptedProviderSession runs the Claude Code and Codex adapters' requests against a fake of
-// each one's API on a loopback listener of the test's own (T8), through the terminating proxy and
-// the real broker. The rule is built as cmd/workcell builds it from the provider's secret, written
-// out here because internal/provider imports this package; the tests of internal/provider and
-// cmd/workcell read the data files. The fake answers only for the real key (A4, I5).
+// TestScriptedProviderSession runs each adapter's requests against a fake of its API on a loopback
+// listener of the test's own (T8), through the terminating proxy and the real broker, with the rule
+// built as cmd/workcell builds it (internal/provider imports this package, so the data files are
+// read by the tests of internal/provider and cmd/workcell). The fake answers only for the real key.
 func TestScriptedProviderSession(t *testing.T) {
 	const key = "REAL-0123456789"
 	providers := []struct {
@@ -36,6 +35,10 @@ func TestScriptedProviderSession(t *testing.T) {
 			`{"id":"msg_01","type":"message","role":"assistant","model":"claude-test","content":[{"type":"text","text":"Hello from the fake"}],"stop_reason":"end_turn"}`},
 		{"openai", "api.openai.com", "authorization", "Bearer ", "/v1/responses", "Content-Type", "application/json", "x-api-key", `{"model":"codex-test","input":"hi","instructions":"be brief","stream":false}`,
 			`{"id":"resp_01","object":"response","status":"completed","output":[{"type":"message","content":[{"type":"output_text","text":"Hello from the fake"}]}]}`},
+		{"gemini", "generativelanguage.googleapis.com", "x-goog-api-key", "", "/v1beta/models/gemini-2.5-pro:generateContent", "Content-Type", "application/json", "authorization", `{"contents":[{"role":"user","parts":[{"text":"hi"}]}]}`,
+			`{"candidates":[{"content":{"role":"model","parts":[{"text":"Hello from the fake"}]},"finishReason":"STOP"}]}`},
+		{"github", "api.githubcopilot.com", "authorization", "Bearer ", "/chat/completions", "Copilot-Integration-Id", "copilot-developer-cli", "x-api-key", `{"model":"copilot-test","messages":[{"role":"user","content":"hi"}],"stream":false}`,
+			`{"id":"chatcmpl-01","object":"chat.completion","choices":[{"index":0,"message":{"role":"assistant","content":"Hello from the fake"},"finish_reason":"stop"}]}`},
 	}
 	for _, pv := range providers {
 		t.Run(pv.secret, func(t *testing.T) {
@@ -93,7 +96,7 @@ func TestScriptedProviderSession(t *testing.T) {
 						b, _ := io.ReadAll(resp.Body)
 						reply = resp.Status + " " + string(b) + resp.Header.Get(pv.header)
 					}
-					if got := strings.Contains(reply, `"text":"Hello from the fake"`); got != tc.ok || tc.ok && !strings.HasPrefix(reply, "200") || strings.Contains(reply, key) {
+					if got := strings.Contains(reply, "Hello from the fake"); got != tc.ok || tc.ok && !strings.HasPrefix(reply, "200") || strings.Contains(reply, key) {
 						t.Errorf("reply = %q (err %v), want the fake's message: %v, and never the real key", reply, err, tc.ok)
 					}
 					mu.Lock()

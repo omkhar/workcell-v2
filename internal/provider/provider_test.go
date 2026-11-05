@@ -52,7 +52,7 @@ func TestEmbeddedProviders(t *testing.T) {
 		t.Error("Lookup found a provider that is not there")
 	}
 	for name, want := range map[string]string{"anthropic": "claude", "openai": "codex", "github": "copilot", "gemini": "gemini", "nope": ""} {
-		if s, p, ok := FindSecret(name); ok != (want != "") || p.Name != want || ok && s.Name != name || name == "openai" && s.Prefix != "Bearer " || name == "anthropic" && s.Prefix != "" {
+		if s, p, ok := FindSecret(name); ok != (want != "") || p.Name != want || ok && s.Name != name || ok && s.Prefix != map[string]string{"openai": "Bearer ", "github": "Bearer "}[name] {
 			t.Errorf("FindSecret(%q) = %+v, %q, %v; want provider %q", name, s, p.Name, ok, want)
 		}
 	}

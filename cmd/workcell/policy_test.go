@@ -87,10 +87,8 @@ func TestAllowlist(t *testing.T) {
 	}
 }
 
-// TestBindings: a [[secret]] row becomes a grant and a rule with one fresh placeholder, the host
-// canonical and the header lowercase in both, and explain names it without its source; a row whose
-// host is not a bare allowed name, or that the proxy refuses, or that binds a pair again, or
-// whose env is not a variable name, is refused with its line.
+// TestBindings: a [[secret]] row becomes a grant and a rule with a fresh placeholder, and explain
+// names it without its source; a row the proxy or the allowlist refuses is refused with its line.
 func TestBindings(t *testing.T) {
 	allow, err := allowlist(policy.Policy{Allow: []policy.Entry{{Text: "a.example", Line: 2}, {Text: "db.example:5432", Line: 2}, {Text: "api.anthropic.com", Line: 3}}}, "config.toml")
 	if err != nil {
@@ -201,16 +199,14 @@ func TestAllowlistFlags(t *testing.T) {
 // TestProviderPolicy loads a real config file the way `workcell run` does: a [[secret]] row that
 // names only the provider's secret takes its host, header and env, the guest's environment holds
 // the placeholder and never the key, and the host stays the user's grant (I13), from the file or
-// --allow, or the load fails naming it. It holds for Claude Code and Codex.
+// --allow, or the load fails naming it. It holds for every adapter.
 func TestProviderPolicy(t *testing.T) {
 	const key = "sk-real-0123456789"
-	keyFile := filepath.Join(t.TempDir(), "key")
-	if err := os.WriteFile(keyFile, []byte(key+"\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
 	providers := []struct{ secret, host, header, env string }{
 		{"anthropic", "api.anthropic.com", "x-api-key", "ANTHROPIC_API_KEY"},
 		{"openai", "api.openai.com", "authorization", "OPENAI_API_KEY"},
+		{"gemini", "generativelanguage.googleapis.com", "x-goog-api-key", "GEMINI_API_KEY"},
+		{"github", "api.githubcopilot.com", "authorization", "COPILOT_GITHUB_TOKEN"},
 	}
 	tests := []struct {
 		name  string
@@ -226,9 +222,10 @@ func TestProviderPolicy(t *testing.T) {
 		for _, tc := range tests {
 			t.Run(pv.secret+" "+tc.name, func(t *testing.T) {
 				dir := t.TempDir()
+				keyFile := filepath.Join(dir, "key")
 				t.Setenv("XDG_CONFIG_HOME", dir)
 				text := "[network]\nallow = " + strings.ReplaceAll(tc.allow, "HOST", pv.host) + "\n\n[[secret]]\nname = \"" + pv.secret + "\"\nsource = \"file:" + keyFile + "\"\n"
-				if err := cmp.Or(os.MkdirAll(filepath.Join(dir, "workcell"), 0o700), os.WriteFile(filepath.Join(dir, "workcell", "config.toml"), []byte(text), 0o600)); err != nil {
+				if err := cmp.Or(os.MkdirAll(filepath.Join(dir, "workcell"), 0o700), os.WriteFile(filepath.Join(dir, "workcell", "config.toml"), []byte(text), 0o600), os.WriteFile(keyFile, []byte(key+"\n"), 0o600)); err != nil {
 					t.Fatal(err)
 				}
 				_, got, err := loadPolicy(strings.Fields(strings.ReplaceAll(tc.flags, "HOST", pv.host)))
