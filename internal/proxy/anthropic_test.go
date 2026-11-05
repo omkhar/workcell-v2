@@ -34,7 +34,6 @@ func TestScriptedClaudeSession(t *testing.T) {
 		mu.Lock()
 		seen = append(seen, r.Header.Get("X-Api-Key"))
 		mu.Unlock()
-		w.Header().Set("Content-Type", "application/json")
 		if r.Method != http.MethodPost || r.URL.Path != "/v1/messages" || r.Header.Get("X-Api-Key") != key || r.Header.Get("Anthropic-Version") == "" {
 			w.WriteHeader(http.StatusUnauthorized)
 			_, _ = io.WriteString(w, `{"type":"error","error":{"type":"authentication_error","message":"invalid x-api-key"}}`)
@@ -74,12 +73,11 @@ func TestScriptedClaudeSession(t *testing.T) {
 			req, _ := http.NewRequest(http.MethodPost, "https://"+tc.host+"/v1/messages", strings.NewReader(`{"model":"claude-test","max_tokens":16,"messages":[{"role":"user","content":"hi"}]}`))
 			req.Header.Set(tc.header, tc.value)
 			req.Header.Set("Anthropic-Version", "2023-06-01")
-			req.Header.Set("Content-Type", "application/json")
 			resp, err := client.Do(req)
 			reply := ""
 			if err == nil {
+				defer resp.Body.Close()
 				b, _ := io.ReadAll(resp.Body)
-				resp.Body.Close()
 				reply = resp.Status + " " + string(b) + resp.Header.Get("X-Api-Key")
 			}
 			if got := strings.Contains(reply, `"text":"Hello from the fake"`); got != tc.ok || tc.ok && !strings.HasPrefix(reply, "200") {

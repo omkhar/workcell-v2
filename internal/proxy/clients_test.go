@@ -6,12 +6,14 @@ package proxy
 import (
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"io"
 	"net"
 	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -51,10 +53,6 @@ func TestClientsValidateSessionLeaf(t *testing.T) {
 	_, port, _ := net.SplitHostPort(ln.Addr().String())
 	url := "https://localhost:" + port + "/"
 	env := append(guest.TrustEnv(dir), "PATH="+os.Getenv("PATH"), "HOME="+t.TempDir())
-	for _, kv := range env {
-		k, v, _ := strings.Cut(kv, "=")
-		t.Setenv(k, v) // for Go: crypto/x509 reads SSL_CERT_FILE when the system roots are first wanted
-	}
 	// Java's source-file mode compiles and runs one file; the store comes from JAVA_TOOL_OPTIONS.
 	java := filepath.Join(t.TempDir(), "Get.java")
 	os.WriteFile(java, []byte("public class Get { public static void main(String[] a) throws Exception {\n"+
@@ -82,7 +80,15 @@ func TestClientsValidateSessionLeaf(t *testing.T) {
 		})
 	}
 	t.Run("go", func(t *testing.T) {
-		resp, err := (&http.Client{Timeout: 5 * time.Second}).Get(url) // nil RootCAs: the system roots, from SSL_CERT_FILE
+		// Go reads SSL_CERT_FILE once per process, and on macOS the first TLS handshake in the test binary
+		// fixes the roots, so nil roots would depend on test order: use the file the variable names, as a guest program does.
+		i := slices.IndexFunc(env, func(kv string) bool { return strings.HasPrefix(kv, "SSL_CERT_FILE=") })
+		pem, err := os.ReadFile(strings.TrimPrefix(env[max(i, 0)], "SSL_CERT_FILE=")) // no entry: env[0] is no certificate file either
+		pool := x509.NewCertPool()
+		if err != nil || !pool.AppendCertsFromPEM(pem) {
+			t.Fatalf("SSL_CERT_FILE is missing from env or names no certificate file: %v", err)
+		}
+		resp, err := (&http.Client{Timeout: 5 * time.Second, Transport: &http.Transport{TLSClientConfig: &tls.Config{RootCAs: pool}}}).Get(url)
 		if err != nil {
 			t.Fatal(err)
 		}
