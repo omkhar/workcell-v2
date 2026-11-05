@@ -23,6 +23,7 @@ import (
 
 	"github.com/omkhar/workcell/v2/internal/fileserve"
 	"github.com/omkhar/workcell/v2/internal/guest"
+	"github.com/omkhar/workcell/v2/internal/proxy"
 	"github.com/omkhar/workcell/v2/internal/relay"
 	"github.com/omkhar/workcell/v2/internal/vmm"
 	"github.com/omkhar/workcell/v2/internal/wire"
@@ -38,11 +39,17 @@ const (
 
 // run is `workcell run [--mount] [--cpus N] [--memory SIZE] [--disk SIZE] [--] <cmd> [args...]`: it boots a guest
 // with a copy of the current directory in it, or with the directory itself served live (`--mount`, A5), runs the
-// command there and exits as the command did. This process is the session's supervisor (A9): it owns the VM
-// and the channel, and the VM dies with it.
+// command there and exits as the command did. This process is the session's supervisor (A9): it owns the VM,
+// the channel and the proxy, and the VM dies with it. The policy (SPEC section 5) is read first: a file it
+// cannot take is refused like a bad argument, before anything boots.
 func run(args []string, stderr io.Writer) int {
 	caps, mount, args, ok := parseRun(args, stderr)
 	if !ok {
+		return 2
+	}
+	allow, err := loadAllowlist()
+	if err != nil {
+		fmt.Fprintln(stderr, "workcell run:", err)
 		return 2
 	}
 	dir, err := dataDir()
@@ -52,7 +59,7 @@ func run(args []string, stderr io.Writer) int {
 	}
 	code := 0
 	if err == nil {
-		code, err = session(args, caps, mount, a)
+		code, err = session(args, caps, mount, a, allow)
 	}
 	if err != nil {
 		fmt.Fprintln(stderr, "workcell:", err)
@@ -64,9 +71,10 @@ func run(args []string, stderr io.Writer) int {
 }
 
 // session boots a guest and runs argv in it, with the current directory copied in, or served
-// live when mount holds. It returns the command's exit code. A nonzero code with an error
-// means the command could not run; an error alone means the session failed.
-func session(argv []string, caps limits, mount bool, a artifacts) (int, error) {
+// live when mount holds, and with the network allow names (nil for none). It returns the
+// command's exit code. A nonzero code with an error means the command could not run; an
+// error alone means the session failed.
+func session(argv []string, caps limits, mount bool, a artifacts, allow *proxy.Allowlist) (int, error) {
 	sigs := make(chan os.Signal, 4)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM, syscall.SIGWINCH)
 	defer signal.Stop(sigs)
@@ -85,7 +93,7 @@ func session(argv []string, caps limits, mount bool, a artifacts) (int, error) {
 	} else if image, err = export(dir, caps, cwd); err != nil {
 		return 0, err
 	}
-	b, code, err := boot(a, caps, sigs, dir, image, live)
+	b, code, err := boot(a, caps, sigs, dir, image, live, allow)
 	if b == nil {
 		return code, err
 	}
@@ -190,19 +198,27 @@ func export(dir string, caps limits, repo string) (string, error) {
 
 // boot starts a guest and waits for its init to dial in. The guest's /workspace is the ext4
 // image at image (clone mode), or the directory mount itself, served live over vsock (mount
-// mode, ADR-005), or empty when both are "". close ends the VM and removes its files; the
-// image stays, and the mounted directory is never anything but the user's own tree. A nil
-// result means the session goes no further: code and err say how it ended (see accept).
+// mode, ADR-005), or empty when both are "". The guest's network is the proxy for allow, or
+// none when allow is nil (A3). close ends the VM and removes its files; the image stays, and
+// the mounted directory is never anything but the user's own tree. A nil result means the
+// session goes no further: code and err say how it ended (see accept).
 // The VMM's sockets and config live in a directory under TMPDIR, since a unix socket path has
 // 108 bytes and the data directory may be deep. The path is recorded in session, a session
 // directory ("" for none), so that rm removes it even after the supervisor was killed (I7).
-func boot(a artifacts, caps limits, sigs <-chan os.Signal, session, image, mount string) (*booted, int, error) {
+func boot(a artifacts, caps limits, sigs <-chan os.Signal, session, image, mount string, allow *proxy.Allowlist) (*booted, int, error) {
 	dir, err := os.MkdirTemp("", "wc") // short names: see above
 	if err != nil {
 		return nil, 0, err
 	}
+	denyLog := io.Writer(io.Discard) // the proxy's deny lines: deny.log in the session directory, if any
+	var denyFile *os.File
 	if session != "" {
-		if err := recordBoot(session, dir); err != nil {
+		f, err := os.OpenFile(filepath.Join(session, "deny.log"), os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0o600)
+		if err == nil {
+			denyLog, denyFile = f, f
+			err = recordBoot(session, dir)
+		}
+		if err != nil {
 			os.RemoveAll(dir)
 			return nil, 0, err
 		}
@@ -214,15 +230,21 @@ func boot(a artifacts, caps limits, sigs <-chan os.Signal, session, image, mount
 	case image != "":
 		cmdline += " workcell.workspace=/dev/vdb"
 	}
+	var ports []uint16 // the TCP ports the guest relays and the proxy serves; UDP 53 is relayed regardless
+	if allow != nil {
+		ports = allow.Ports()
+	}
 	console := &tail{}
-	// No allowlist yet, so no TCP port is relayed: the guest relays UDP 53 alone (U-303).
 	m := newMachine(a, vmm.Config{Kernel: a.kernel, Initrd: a.initrd, Image: a.image,
-		Workspace: image, Cmdline: cmdline + " " + portsArg(nil), CPUs: caps.CPUs, MemoryMiB: caps.MemoryMiB, CID: 3, Console: console, Dir: dir})
+		Workspace: image, Cmdline: cmdline + " " + portsArg(ports), CPUs: caps.CPUs, MemoryMiB: caps.MemoryMiB, CID: 3, Console: console, Dir: dir})
 	var served mountService
 	closeAll := func() { // kills the VM on every path out; the export's descriptors go with it
 		m.Close()
 		if served != nil {
 			served.Close()
+		}
+		if denyFile != nil {
+			denyFile.Close() // a deny line the proxy writes after this is dropped
 		}
 		os.RemoveAll(dir)
 	}
@@ -236,7 +258,15 @@ func boot(a artifacts, caps limits, sigs <-chan os.Signal, session, image, mount
 		closeAll()
 		return nil, 0, err
 	}
-	go serveRelay(streams) // until Close closes the listener
+	// The relay runs until Close closes its listener, and closes the adapters then, which ends Serve.
+	listeners := newAdapters(ports)
+	if allow != nil {
+		p := proxy.New(allow, denyLog)
+		for port, l := range listeners {
+			go func() { _ = p.Serve(l, port) }()
+		}
+	}
+	go serveRelay(streams, listeners, headerWait)
 	if mount != "" {
 		files, err := m.Listen(fileserve.Port)
 		if err == nil {

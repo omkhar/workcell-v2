@@ -118,7 +118,7 @@ func fetch(use func(*manifest, source) error) (int, error) {
 	sigs := make(chan os.Signal, 4)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
 	defer signal.Stop(sigs)
-	b, code, err := boot(a, defaults(), sigs, session, image, "")
+	b, code, err := boot(a, defaults(), sigs, session, image, "", nil) // no network: nothing to pull from but the image
 	if b == nil {
 		return code, err
 	}
