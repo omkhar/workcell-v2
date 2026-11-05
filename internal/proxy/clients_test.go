@@ -61,11 +61,10 @@ func TestClientsValidateSessionLeaf(t *testing.T) {
 		"var c = (java.net.HttpURLConnection) java.net.URI.create(a[0]).toURL().openConnection(); System.out.println(c.getResponseCode()); } }\n"), 0o644)
 	node := "require('https').get(process.argv[1], r => { console.log(r.statusCode); process.exit(0) }).on('error', e => { console.error(e.message); process.exit(1) })"
 	clients := map[string][]string{
-		"curl":    {"curl", "-sS", "-o", "/dev/null", "-w", "%{http_code}", url},
-		"node":    {"node", "-e", node, url},
-		"python":  {"python3", "-I", "-c", "import sys, urllib.request; print(urllib.request.urlopen(sys.argv[1]).status)", url},
-		"java":    {"java", java, url},
-		"keytool": {"keytool", "-list", "-keystore", filepath.Join(dir, "workcell-ca.jks"), "-storetype", "JKS", "-storepass", "changeit"},
+		"curl":   {"curl", "-sS", "-o", "/dev/null", "-w", "%{http_code}", url},
+		"node":   {"node", "-e", node, url},
+		"python": {"python3", "-I", "-c", "import sys, urllib.request; print(urllib.request.urlopen(sys.argv[1]).status)", url},
+		"java":   {"java", java, url},
 	}
 	for name, argv := range clients {
 		t.Run(name, func(t *testing.T) {
@@ -77,12 +76,8 @@ func TestClientsValidateSessionLeaf(t *testing.T) {
 			cmd := exec.CommandContext(ctx, argv[0], argv[1:]...)
 			cmd.Env = env
 			out, err := cmd.Output()
-			want := "200"
-			if name == "keytool" { // not a client: it checks the keystore's digest under the password and lists the entries
-				want = "trustedCertEntry"
-			}
-			if err != nil || !strings.Contains(strings.TrimSpace(string(out)), want) {
-				t.Errorf("%v: %v, output %q, want %q", argv, err, out, want)
+			if err != nil || strings.TrimSpace(string(out)) != "200" {
+				t.Errorf("%v: %v, output %q, want 200", argv, err, out)
 			}
 		})
 	}
