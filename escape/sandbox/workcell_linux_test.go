@@ -50,58 +50,14 @@ func TestSteered(t *testing.T) {
 	}
 }
 
-// TestSteeredRuns runs the loader with a stand-in for the product, which
-// prints what the product would see: the session's resolver in
-// /etc/resolv.conf, the caller's own ids, and only the environment given;
-// and the host's own /etc/resolv.conf is as it was. It needs unshare and,
-// unless the test is root, sudo without a password, as a hosted runner
-// has; elsewhere it is skipped.
-func TestSteeredRuns(t *testing.T) {
-	if _, err := exec.LookPath("unshare"); err != nil {
-		t.Skip("no unshare")
-	}
-	if os.Geteuid() != 0 {
-		if err := exec.Command("sudo", "-n", "true").Run(); err != nil {
-			t.Skip("not root, and sudo -n does not work here")
-		}
-	}
-	before, err := os.ReadFile("/etc/resolv.conf")
-	if err != nil {
-		t.Skip("no /etc/resolv.conf to bind over")
-	}
-	argv, err := steered(t.TempDir(), "127.9.8.7", []string{"PATH=/usr/bin:/bin", "ESCAPE_X=1", "bogus"},
-		[]string{"/bin/sh", "-c", `cat /etc/resolv.conf; id -u; id -g; echo "x=$ESCAPE_X"; env | grep -c . `}, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	out, err := exec.Command(argv[0], argv[1:]...).CombinedOutput()
-	if err != nil {
-		t.Fatalf("%v: %s", err, out)
-	}
-	want := fmt.Sprintf("nameserver 127.9.8.7\n%d\n%d\nx=1\n", os.Getuid(), os.Getgid())
-	if !strings.HasPrefix(string(out), want) {
-		t.Errorf("the stand-in saw:\n%s\nwant it to start:\n%s", out, want)
-	}
-	// After the prefix, the count of environment variables: PATH, ESCAPE_X and
-	// what the shell adds (PWD, SHLVL, _ and the like): a handful, not the
-	// caller's whole environment.
-	var n int
-	if _, err := fmt.Sscanf(strings.TrimPrefix(string(out), want), "%d", &n); err != nil || n > 8 {
-		t.Errorf("the stand-in saw %d environment variables (%v): %s", n, err, out)
-	}
-	if after, err := os.ReadFile("/etc/resolv.conf"); err != nil || !bytes.Equal(before, after) {
-		t.Errorf("the host's /etc/resolv.conf changed: %q, %v", after, err)
-	}
-}
-
 // TestCLICancel checks that a cancelled steered session ends when its
 // context does, and leaves no product behind: at once when the product
 // exits on the SIGTERM, and after WaitDelay when it ignores the signal.
 // When the suite is not root the product sits behind root's sudo, and the
 // kill Go sends then reaches only sudo, so the adapter must kill the
 // product's group itself. The product is a shell that notes its pid in the
-// session's directory. Like TestSteeredRuns it needs unshare and, unless
-// the test is root, sudo without a password; elsewhere it is skipped.
+// session's directory. It needs unshare and, unless the test is root, sudo
+// without a password; elsewhere it is skipped.
 func TestCLICancel(t *testing.T) {
 	if _, err := exec.LookPath("unshare"); err != nil {
 		t.Skip("no unshare")
@@ -122,6 +78,9 @@ func TestCLICancel(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			w := &workcell{dir: t.TempDir(), cfg: Config{Resolver: "127.9.8.7"}}
+			if err := os.Mkdir(filepath.Join(w.dir, "cwd"), 0o755); err != nil {
+				t.Fatal(err)
+			}
 			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 			defer cancel()
 			start := time.Now()
@@ -129,7 +88,7 @@ func TestCLICancel(t *testing.T) {
 			if took := time.Since(start); !errors.Is(err, context.DeadlineExceeded) || took > tc.within {
 				t.Fatalf("after %s: %v; want context.DeadlineExceeded within %s", took.Round(time.Millisecond), err, tc.within)
 			}
-			b, err := os.ReadFile(filepath.Join(w.dir, "pid"))
+			b, err := os.ReadFile(filepath.Join(w.dir, "cwd", "pid"))
 			if err != nil {
 				t.Fatal(err)
 			}

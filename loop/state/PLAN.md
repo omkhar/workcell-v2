@@ -150,7 +150,7 @@ with ADR-003 and ADR-004, they build on the proposal, and you can accept it at a
       accept: table tests show each source resolve and fail closed; a test that resolves a value, zeroes it and finds only zero bytes; no shell, no test hook, no import outside the standard library, `x/sys` and `x/net`
 - [x] U-400 | flow:boundary | model:opus | env:any | deps:U-302,U-400a,U-400b | tries:0 | Port `_legacy/credbroker` part 3 to an in-process `internal/secret` (S14), the last part: the grant table, the fixed-window rate limit and `record` (no grant without a durable ledger write) from `server.go`, behind a type that satisfies `proxy.Broker` from `internal/proxy/terminate.go`. The grants are the `[[secret]]` rows of SPEC section 5 (name, source, host, header), not the fixed map. Drop `Serve`, `listen`, the session token, the peer-UID, ancestry and ACL checks, `client.go` and `Main`. Sources: `file:`, `cmd:`, `secret-service:`
       accept: no socket, no `aptbroker` import; secrets are zeroed after use where Go allows
-- [ ] U-401 | flow:boundary | model:fable | env:kvm | deps:U-307,U-400,H-011 | tries:0 | Mint placeholders and inject at the proxy, bound to host, and optionally to method and path
+- [x] U-401 | flow:boundary | model:fable | env:kvm | deps:U-307,U-400,H-011 | tries:0 | Mint placeholders and inject at the proxy, bound to host, and optionally to method and path
       accept: I5 added to `enforced.txt` and green
 - [ ] U-402 | flow:build | model:sonnet | env:any | deps:U-401 | tries:0 | Adapter data model in TOML: hosts, header shape, placeholder files and variables, install command. Mine `_legacy/adapters/*/adapter.toml` for facts only
       accept: adding a provider is one data file and no Go code

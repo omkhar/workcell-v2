@@ -6,6 +6,7 @@ package suite
 import (
 	"bufio"
 	"bytes"
+	"cmp"
 	"context"
 	"fmt"
 	"io"
@@ -37,23 +38,40 @@ const (
 	fileLimit  = 1 << 20         // bytes read of one file
 	diskLimit  = 256 << 20       // bytes read from disk in all
 	fileQuota  = 50000           // files read in all
-	maxValues  = 6               // distinct values the result names; more is marked
+	maxValues  = 5               // distinct values the result names; more is marked
 	procLimit  = 512 << 20       // bytes read of one process's memory
 	memLimit   = 1 << 30         // bytes read of process memory in all
 	readChunk  = 1 << 20
 )
 
-// NewSecret makes a fresh secret bound to host, for the runner to put in a
-// session's Config when a test wants one.
-func NewSecret(host string) sandbox.Secret {
-	return sandbox.Secret{Name: "escape", Value: secretPrefix + newToken()[:secretHex], Host: host, Header: "x-api-key", Env: "ESCAPE_API_KEY"}
+// NewSecret makes a fresh secret bound to host, in the header boundHeader,
+// for the runner to put in a session's Config when a test wants one; narrow
+// binds it to narrowMethod requests under narrowPath alone.
+func NewSecret(host string, narrow bool) sandbox.Secret {
+	sec := sandbox.Secret{Name: "escape", Value: secretPrefix + newToken()[:secretHex], Host: host, Header: boundHeader, Env: "ESCAPE_API_KEY"}
+	if narrow {
+		sec.Method, sec.Path = narrowMethod, narrowPath
+	}
+	return sec
 }
 
-// withSecret is the sandbox the I5 and I6 tests want: a workspace, two
-// allowed names that resolve to the test host, and a secret bound to the
-// first. The guest's view of the names is given to each probe as a literal
-// address beside the name, since the canary's port is chosen per run.
-var withSecret = Want{Workspace: true, Allow: []string{"bound.escape.test", "other.escape.test"}, Secret: true}
+const (
+	boundHeader  = "x-api-key"
+	narrowMethod = "POST"
+	narrowPath   = "/v1/"
+)
+
+// withSecret is the sandbox the I5 tests want: a workspace, two allowed
+// names, bare, a secret bound to the first, the judge as the host's
+// resolver and the host side in a network of its own, where the judge
+// holds the one address both names resolve to and serves a canary for
+// each at port 443 (twoNames). The guest's view of the names is given to
+// each probe as a literal address beside the name. narrowed binds the
+// secret to one method and path as well.
+var (
+	withSecret = Want{Workspace: true, Allow: []string{"bound.escape.test", "other.escape.test"}, Resolver: judgeResolver, Isolated: true, Secret: true}
+	narrowed   = Want{Workspace: true, Allow: withSecret.Allow, Resolver: judgeResolver, Isolated: true, Secret: true, Narrow: true}
+)
 
 // findSecrets returns every secret-shaped value in b, in order, once each.
 func findSecrets(b []byte) []string {
@@ -117,12 +135,14 @@ func (s *scan) spent(phase string, limit bool) bool {
 // secretProbe scans the environment and arguments of every process it can
 // see, the disk, and process memory: every process in its own pid namespace,
 // then a few ancestors nearest first (the agent that launched it holds what
-// the host gave it), stopping at the first ancestor that holds a hit. The
-// values come first in the result, so that the line's bound (maxDetail) can
-// cut only where they were seen; a seventh value is marked with "+".
+// the host gave it), stopping at the first ancestor that holds a hit. What
+// its own environment holds as the credential (args[1] names the variable)
+// comes first in the result, then the values, so that the line's bound
+// (maxDetail) can cut only where they were seen; a sixth value is marked
+// with "+".
 func secretProbe(args []string) Result {
-	if len(args) != 1 {
-		return Result{Status: "error", Detail: "want the export path"}
+	if len(args) != 2 {
+		return Result{Status: "error", Detail: "want the export path and the credential variable"}
 	}
 	s := &scan{hits: map[string]string{}, deadline: time.Now().Add(diskBudget)}
 	pids := listPids()
@@ -142,10 +162,10 @@ func secretProbe(args []string) Result {
 	s.disk(dirs)
 	s.deadline = time.Now().Add(memBudget)
 	s.memory(pids)
-	var detail string
+	detail := "env=" + clean(cmp.Or(os.Getenv(args[1]), "unset"), 40, isToken, '?') + " "
 	if n := len(s.order); n > 0 {
 		values := s.order[:min(n, maxValues)]
-		detail = "found=" + strings.Join(values, " ")
+		detail += "found=" + strings.Join(values, " ")
 		if n > maxValues {
 			detail += "+"
 		}
@@ -306,10 +326,12 @@ func (s *scan) process(pid int) (hit, spent bool) {
 }
 
 // secretJudge binds a fresh secret to the session and fails if the guest's
-// scan turns the real value up anywhere. A scan that found more values than
-// it could name proves nothing either way.
+// scan turns the real value up anywhere, or if the guest's own environment
+// holds no credential at all: it is to hold a placeholder, which it then
+// uses (SPEC A4). A scan that found more values than it could name proves
+// nothing either way.
 func secretJudge(ctx context.Context, s Session) (bool, string, error) {
-	r, err := s.Run(s.Guest)
+	r, err := s.Run(s.Guest, s.Secret.Env)
 	if err != nil {
 		return false, "", err
 	}
@@ -318,6 +340,9 @@ func secretJudge(ctx context.Context, s Session) (bool, string, error) {
 	}
 	if strings.Contains(r.Detail, s.Secret.Value) {
 		return false, "the guest holds the real secret: " + r.Detail, nil
+	}
+	if strings.HasPrefix(r.Detail, "env=unset ") {
+		return false, "the guest was given no placeholder in " + s.Secret.Env + ": " + r.Detail, nil
 	}
 	if strings.Contains(r.Detail, "+ ") {
 		return false, "", fmt.Errorf("the guest found more secret-shaped values than it can name: %s", r.Detail)

@@ -67,7 +67,7 @@ func TestLookupReleasesOnlyGrantedPairs(t *testing.T) {
 		{"api.openai.com", "authorization", ""},
 	} {
 		got, err := b.Lookup(context.Background(), tc.host, tc.header)
-		if got != tc.want || (err == nil) != (tc.want != "") {
+		if string(got) != tc.want || (err == nil) != (tc.want != "") {
 			t.Errorf("Lookup(%q, %q) = %q, %v; want %q", tc.host, tc.header, got, err, tc.want)
 		}
 	}
@@ -86,7 +86,7 @@ func TestLookupWithholdsAValueItCannotResolve(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if v, err := b.Lookup(context.Background(), "h", "k"); err == nil || v != "" {
+	if v, err := b.Lookup(context.Background(), "h", "k"); err == nil || v != nil {
 		t.Fatalf("Lookup = %q, %v; want an error", v, err)
 	}
 	if log.Len() != 0 {
@@ -98,7 +98,7 @@ func TestRateLimitIsAFixedWindow(t *testing.T) {
 	b := newTestBroker(t, &syncBuffer{})
 	clock := time.Unix(1000, 0)
 	b.now = func() time.Time { return clock }
-	lookup := func() (string, error) { return b.Lookup(context.Background(), "api.anthropic.com", "x-api-key") }
+	lookup := func() ([]byte, error) { return b.Lookup(context.Background(), "api.anthropic.com", "x-api-key") }
 	for i := 0; i < rateLimit; i++ {
 		if _, err := lookup(); err != nil {
 			t.Fatalf("lookup %d refused: %v", i, err)
@@ -106,12 +106,12 @@ func TestRateLimitIsAFixedWindow(t *testing.T) {
 	}
 	for _, step := range []time.Duration{0, rateWindow - time.Nanosecond} {
 		clock = time.Unix(1000, 0).Add(step)
-		if v, err := lookup(); err == nil || v != "" {
+		if v, err := lookup(); err == nil || v != nil {
 			t.Fatalf("lookup %v into the full window = %q, %v; want rate_limited", step, v, err)
 		}
 	}
 	clock = time.Unix(1000, 0).Add(rateWindow)
-	if v, err := lookup(); err != nil || v != "sk-a" {
+	if v, err := lookup(); err != nil || string(v) != "sk-a" {
 		t.Fatalf("lookup in the next window = %q, %v", v, err)
 	}
 }
@@ -199,7 +199,7 @@ func TestGrantIsWithheldWhenTheRecordIsNotDurable(t *testing.T) {
 	} {
 		b := newTestBroker(t, tc.log)
 		for i := 0; i < 2; i++ {
-			if v, err := b.Lookup(context.Background(), "api.anthropic.com", "x-api-key"); err == nil || v != "" {
+			if v, err := b.Lookup(context.Background(), "api.anthropic.com", "x-api-key"); err == nil || v != nil {
 				t.Errorf("%s: lookup %d = %q, %v; want withheld", tc.name, i, v, err)
 			}
 		}

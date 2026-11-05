@@ -224,18 +224,13 @@ func RootBind(network, addr, payload string, ns int) (net.Listener, net.PacketCo
 	return l, nil, err
 }
 
-// productProcess finds the product's own process under root, the process
-// the adapter started for a run: root itself, or the deepest of its
-// descendants, whose executable is bin. Under steering root is sudo and the
-// product sits below it; a product that forked a supervisor of its own is
-// found below itself. A process between fork and exec still shows its
-// parent's executable, so a caller that finds nothing asks again.
-func productProcess(root int, bin string) (int, bool) {
+// EachProcess calls f with the pid, parent and group of every process on
+// the host, as /proc lists them now.
+func EachProcess(f func(pid, ppid, pgid int)) error {
 	es, err := os.ReadDir("/proc")
 	if err != nil {
-		return 0, false
+		return err
 	}
-	children := map[int][]int{}
 	for _, e := range es {
 		pid, err := strconv.Atoi(e.Name())
 		if err != nil {
@@ -243,15 +238,31 @@ func productProcess(root int, bin string) (int, bool) {
 		}
 		b, err := os.ReadFile("/proc/" + e.Name() + "/stat")
 		if err != nil {
+			continue // gone between the listing and the read
+		}
+		fl := strings.Fields(string(b[bytes.LastIndexByte(b, ')')+1:])) // after the comm, which may hold spaces: state ppid pgrp ...
+		if len(fl) < 3 {
 			continue
 		}
-		f := strings.Fields(string(b[bytes.LastIndexByte(b, ')')+1:])) // after the comm: state ppid pgrp ...
-		if len(f) < 2 {
-			continue
+		ppid, err1 := strconv.Atoi(fl[1])
+		pgid, err2 := strconv.Atoi(fl[2])
+		if err1 == nil && err2 == nil {
+			f(pid, ppid, pgid)
 		}
-		if ppid, err := strconv.Atoi(f[1]); err == nil {
-			children[ppid] = append(children[ppid], pid)
-		}
+	}
+	return nil
+}
+
+// productProcess finds the product's own process under root, the process
+// the adapter started for a run: root itself, or the deepest of its
+// descendants, whose executable is bin. Under steering root is sudo and the
+// product sits below it; a product that forked a supervisor of its own is
+// found below itself. A process between fork and exec still shows its
+// parent's executable, so a caller that finds nothing asks again.
+func productProcess(root int, bin string) (int, bool) {
+	children := map[int][]int{}
+	if EachProcess(func(pid, ppid, _ int) { children[ppid] = append(children[ppid], pid) }) != nil {
+		return 0, false
 	}
 	if real, err := filepath.EvalSymlinks(bin); err == nil {
 		bin = real

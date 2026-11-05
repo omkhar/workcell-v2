@@ -74,33 +74,32 @@ func NewBroker(grants []Grant, log Ledger) (*Broker, error) {
 
 // Lookup returns the value granted for header on host. A denial is recorded
 // while the denial window allows; a grant is always recorded, and withheld
-// when its record is not durable.
-func (b *Broker) Lookup(ctx context.Context, host, header string) (string, error) {
+// when its record is not durable. The caller owns the value and wipes it
+// with Zero.
+func (b *Broker) Lookup(ctx context.Context, host, header string) ([]byte, error) {
 	// A lookup over the request bound keeps every ledger line readable.
 	if len(host)+len(header) > maxLineBytes {
-		return "", b.deny(pair{}, resultMalformed)
+		return nil, b.deny(pair{}, resultMalformed)
 	}
 	p := pair{host, header}
 	if !b.allow(&b.windowStart, &b.count) {
-		return "", b.deny(p, resultRateLimited)
+		return nil, b.deny(p, resultRateLimited)
 	}
 	g, ok := b.grants[p]
 	if !ok {
-		return "", b.deny(p, resultNotGranted)
+		return nil, b.deny(p, resultNotGranted)
 	}
 	value, err := Resolve(ctx, g.Source)
 	if err != nil {
-		return "", fmt.Errorf("secret %s: %w", g.Name, err)
+		return nil, fmt.Errorf("secret %s: %w", g.Name, err)
 	}
-	defer Zero(value)
 	// The record is the ledger of every release: a value whose record is not
 	// durable is withheld, so the ledger never under-reports what left.
 	if err := b.record(p, g.Name, resultGranted); err != nil {
-		return "", err
+		Zero(value)
+		return nil, err
 	}
-	// proxy.Broker returns a string, so this one immutable copy outlives the
-	// zeroed bytes; U-401 may change the interface to drop it.
-	return string(value), nil
+	return value, nil
 }
 
 func (b *Broker) deny(p pair, result string) error {

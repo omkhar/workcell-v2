@@ -53,7 +53,7 @@ func TestParse(t *testing.T) {
 		{"CRLF line ends", "[network]\r\nallow = [\"a.example\"]\r\n", []Entry{{"a.example", 2}}},
 		{"no final newline", "[network]\nallow = [\"a.example\"]", []Entry{{"a.example", 2}}},
 		{"tabs and comments after a header", "[network]\t# the table\nallow\t=\t[\"a.example\"]\n", []Entry{{"a.example", 2}}},
-		{"two secrets", "[[secret]]\nname = \"a\"\n[[secret]]\nname = \"b\"\n[network]\nallow = [\"a.example\"]\n", []Entry{{"a.example", 6}}},
+		{"two secrets", "[[secret]]\nname = \"a\"\nsource = \"file:/a\"\nhost = \"h\"\nheader = \"k\"\n[[secret]]\nname = \"b\"\nsource = \"file:/b\"\nhost = \"h\"\nheader = \"j\"\n[network]\nallow = [\"a.example\"]\n", []Entry{{"a.example", 12}}},
 		{"negative and signed integers elsewhere", "[resources]\ncpus = -1\ndisk = +7\n", nil},
 		{"update table", "[update]\nchannel = \"hold\"\ncooloff = 14\n", nil},
 	}
@@ -65,6 +65,31 @@ func TestParse(t *testing.T) {
 			}
 			if !slices.Equal(got.Allow, tc.want) {
 				t.Errorf("Parse(%q).Allow = %v, want %v", tc.text, got.Allow, tc.want)
+			}
+		})
+	}
+}
+
+// TestParseSecret: each [[secret]] row comes back with its keys and its line, the optional
+// keys "" when left out; the Allow entries are TestParse's concern.
+func TestParseSecret(t *testing.T) {
+	full := "[[secret]]\nname = \"a\"\nsource = \"file:/s\"\nhost = \"a.example\"\nheader = \"X-Api-Key\"\nenv = \"A_KEY\"\nmethod = \"POST\"\npath = \"/v1/\"\n"
+	tests := []struct {
+		name string
+		text string
+		want []Secret
+	}{
+		{"the SPEC example", specExample, []Secret{{Name: "anthropic", Source: "keychain:workcell/anthropic", Host: "api.anthropic.com", Header: "x-api-key", Line: 5}}},
+		{"every key", full, []Secret{{"a", "file:/s", "a.example", "X-Api-Key", "A_KEY", "POST", "/v1/", 1}}},
+		{"two rows, the second after another table", full + "[network]\n[[secret]]\nname = \"b\"\nsource = \"cmd:/bin/b\"\nhost = \"b.example\"\nheader = \"authorization\"\n",
+			[]Secret{{"a", "file:/s", "a.example", "X-Api-Key", "A_KEY", "POST", "/v1/", 1}, {Name: "b", Source: "cmd:/bin/b", Host: "b.example", Header: "authorization", Line: 10}}},
+		{"no secret", "[network]\nallow = []\n", nil},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := Parse(tc.text, "config.toml")
+			if err != nil || !slices.Equal(got.Secret, tc.want) {
+				t.Errorf("Parse(%q).Secret = %+v, %v; want %+v", tc.text, got.Secret, err, tc.want)
 			}
 		})
 	}
@@ -82,6 +107,12 @@ func TestParseRefuses(t *testing.T) {
 		{"table defined twice", "[network]\nallow = []\n[network]\n", "config.toml:3: table [network] is defined twice, first on line 1"},
 		{"key defined twice", "[network]\nallow = []\nallow = []\n", "config.toml:3: key \"allow\" is defined twice"},
 		{"unknown key in network", "[network]\nallow = []\ndeny = []\n", "config.toml:3: unknown key \"deny\" in [network]"},
+		{"unknown key in secret", "[[secret]]\nname = \"a\"\nvalue = \"sk\"\n", "config.toml:3: unknown key \"value\" in [[secret]]"},
+		{"secret key not a string", "[[secret]]\nname = \"a\"\nsource = [\"file:/s\"]\n", "config.toml:3: source must be a string"},
+		{"secret without a name", "\n[[secret]]\nsource = \"file:/s\"\nhost = \"h\"\nheader = \"k\"\n", "config.toml:2: [[secret]] needs a name"},
+		{"secret without a source", "[[secret]]\nname = \"a\"\nhost = \"h\"\nheader = \"k\"\n", "config.toml:1: [[secret]] needs a source"},
+		{"secret without a host", "[[secret]]\nname = \"a\"\nsource = \"file:/s\"\nheader = \"k\"\n", "config.toml:1: [[secret]] needs a host"},
+		{"secret with an empty header", "[[secret]]\nname = \"a\"\nsource = \"file:/s\"\nhost = \"h\"\nheader = \"\"\n", "config.toml:1: [[secret]] needs a header"},
 		{"allow is a string", "[network]\nallow = \"a.example\"\n", "config.toml:2: allow must be an array of strings"},
 		{"allow is an integer", "[network]\nallow = 443\n", "config.toml:2: allow must be an array of strings"},
 		{"array of integers", "[network]\nallow = [443]\n", "config.toml:2: an array may hold strings alone, got \"443\""},

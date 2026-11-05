@@ -133,13 +133,22 @@ var All = []Test{
 	// served live, so a byte the guest writes under it is the host's at once,
 	// and so is a size the guest sets without writing.
 	{ID: "I10", Name: "mount-disk-flood", Probe: mountDiskProbe, Host: mountDiskJudge, Want: cappedLive},
-	// A secret is bound to one allowed name. The guest hunts for its value in
-	// every process, on disk and in memory, and replays whatever credential it
-	// was given at the other allowed name.
+	// A secret is bound to one allowed name, both names terminated on the
+	// host. The guest hunts for the real value in every process, on disk
+	// and in memory; sends the credential it was given, alone and as a
+	// bearer token, in the bound header to the bound name, which must
+	// reach the canary as the real value; replays it at the other allowed
+	// name; and sends it in another header, in the path and in the query
+	// of the bound name, none of which may reach a canary. Under a binding
+	// narrowed to one method and path, only that method under that path
+	// is swapped. And a redirect from the bound host carries the
+	// credential on to the other.
 	{ID: "I5", Name: "secret-in-guest", Probe: secretProbe, Host: secretJudge, Want: withSecret},
-	{ID: "I5", Name: "placeholder-replay", Probe: replayProbe, Host: twoCanaries(false, nil, leakJudge), Want: withSecret},
-	// A redirect from the bound host carries the credential on to the other.
-	{ID: "I5", Name: "redirect-carries-secret", Probe: redirectProbe, Host: twoCanaries(false, redirectTo, leakJudge), Want: withSecret},
+	{ID: "I5", Name: "placeholder-swapped", Probe: exchangeProbe, Host: twoNames(canaries{}, swapJudge("GET,bound,/check,header", "GET,bound,/bearer,bearer")), Want: withSecret},
+	{ID: "I5", Name: "placeholder-replay", Probe: exchangeProbe, Host: twoNames(canaries{}, swapJudge("GET,bound,/check,header", "GET,other,/replay,header")), Want: withSecret},
+	{ID: "I5", Name: "placeholder-misplaced", Probe: exchangeProbe, Host: twoNames(canaries{}, swapJudge("GET,bound,/check,header", "GET,other,/replay,header", "GET,bound,/auth,auth", "GET,bound,/path,path", "GET,bound,/query,query")), Want: withSecret},
+	{ID: "I5", Name: "placeholder-narrowed", Probe: exchangeProbe, Host: twoNames(canaries{}, swapJudge("POST,bound,/v1/ok,header", "GET,bound,/v1/ok,header", "POST,bound,/v2/no,header", "GET,bound,/check,header")), Want: narrowed},
+	{ID: "I5", Name: "redirect-carries-secret", Probe: exchangeProbe, Host: twoNames(canaries{respond: redirectTo}, swapJudge("GET,bound,/check,header", "GET,bound,/start,header")), Want: withSecret},
 	// Two allowed names, both terminated on the host. On a connection whose
 	// TLS names one, the request names the other, in the Host header, in
 	// :authority, or hidden from the SNI by ECH: the canary under the SNI's
@@ -149,11 +158,11 @@ var All = []Test{
 	// canary's: the connection was terminated, not spliced. And the canary
 	// under one name presents a certificate for the other: the host, which
 	// verifies the upstream as itself, must carry no request to it.
-	{ID: "I6", Name: "sni-host-mismatch-h1", Probe: mismatchProbe(false), Host: twoNames(false, false, strictJudge), Want: terminating},
-	{ID: "I6", Name: "sni-authority-mismatch-h2", Probe: mismatchProbe(true), Host: twoNames(false, false, strictJudge), Want: terminating},
-	{ID: "I6", Name: "ech-hidden-sni", Probe: echProbe, Host: twoNames(true, false, strictJudge), Want: terminating},
-	{ID: "I6", Name: "terminated-session-leaf", Probe: terminatedProbe, Host: twoNames(false, false, terminationJudge), Want: terminating},
-	{ID: "I6", Name: "upstream-leaf-mismatch", Probe: upstreamProbe, Host: twoNames(false, true, upstreamJudge), Want: terminating},
+	{ID: "I6", Name: "sni-host-mismatch-h1", Probe: mismatchProbe(false), Host: twoNames(canaries{}, strictJudge), Want: terminating},
+	{ID: "I6", Name: "sni-authority-mismatch-h2", Probe: mismatchProbe(true), Host: twoNames(canaries{}, strictJudge), Want: terminating},
+	{ID: "I6", Name: "ech-hidden-sni", Probe: echProbe, Host: twoNames(canaries{ech: true}, strictJudge), Want: terminating},
+	{ID: "I6", Name: "terminated-session-leaf", Probe: terminatedProbe, Host: twoNames(canaries{}, terminationJudge), Want: terminating},
+	{ID: "I6", Name: "upstream-leaf-mismatch", Probe: upstreamProbe, Host: twoNames(canaries{misleaf: true}, upstreamJudge), Want: terminating},
 	// The repository the guest hands back is hostile: its hooks, config,
 	// attributes and submodule URL aim at the host, and its tree names paths
 	// through "..", through a symlink an earlier pull brought, twice in
@@ -166,9 +175,11 @@ var All = []Test{
 	{ID: "I8", Name: "pull-case-collision", Probe: repoProbe, Host: collided, Want: exported},
 	{ID: "I8", Name: "pull-writes-dotgit", Probe: repoProbe, Host: planted, Want: exported},
 	// A workcell.toml in the repository tries to widen the policy: the
-	// allowlist, the secret's binding, the workspace mode and the caps.
-	{ID: "I13", Name: "repo-policy-widens-allowlist", Probe: replayProbe, Host: twoCanaries(false, nil, reachJudge), Want: widened},
-	{ID: "I13", Name: "repo-policy-rebinds-secret", Probe: replayProbe, Host: twoCanaries(false, nil, leakJudge), Want: rebound},
+	// allowlist, the secret's binding, the workspace mode and the caps. For
+	// the first two the guest replays its credential at the other name,
+	// which only the repository allows, or binds; it must see nothing.
+	{ID: "I13", Name: "repo-policy-widens-allowlist", Probe: exchangeProbe, Host: twoNames(canaries{}, swapJudge("GET,bound,/check,header", "GET,other,/replay,header")), Want: widened},
+	{ID: "I13", Name: "repo-policy-rebinds-secret", Probe: exchangeProbe, Host: twoNames(canaries{}, swapJudge("GET,bound,/check,header", "GET,other,/replay,header")), Want: rebound},
 	{ID: "I13", Name: "repo-policy-mounts-workspace", Probe: liveProbe, Host: liveJudge, Want: mounted},
 	{ID: "I13", Name: "repo-policy-lifts-memory-cap", Probe: memoryProbe, Host: memoryJudge, Want: uncapped},
 	// The guest, told where the host keeps the session's record, plants a

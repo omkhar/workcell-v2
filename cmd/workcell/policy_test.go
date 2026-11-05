@@ -83,6 +83,64 @@ func TestAllowlist(t *testing.T) {
 	}
 }
 
+// TestBindings: a [[secret]] row becomes a grant and a rule with one fresh placeholder, the host
+// canonical and the header lowercase in both, and explain names it without its source; a row whose
+// host is not a bare allowed name, or that the proxy refuses, or that binds a pair again, or
+// whose env is not a variable name, is refused with its line.
+func TestBindings(t *testing.T) {
+	allow, err := allowlist(policy.Policy{Allow: []policy.Entry{{Text: "a.example", Line: 2}, {Text: "db.example:5432", Line: 2}}}, "config.toml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	row := policy.Secret{Name: "k", Source: "file:/s", Host: "A.example.", Header: "X-Api-Key", Line: 5}
+	with := func(f func(s *policy.Secret)) policy.Secret { s := row; f(&s); return s }
+	tests := []struct {
+		name string
+		rows []policy.Secret
+		text string // what explain prints
+		err  string // the start of the error
+	}{
+		{"none", nil, "secrets: none\n", ""},
+		{"a row", []policy.Secret{row}, "secrets: swapped in by the session proxy; the guest holds a placeholder\n  k: in x-api-key to https://a.example\n", ""},
+		{"every key", []policy.Secret{with(func(s *policy.Secret) { s.Env, s.Method, s.Path = "A_KEY", "POST", "/v1/" })},
+			"secrets: swapped in by the session proxy; the guest holds a placeholder\n  k: in x-api-key to https://a.example, POST only, under /v1/, as $A_KEY\n", ""},
+		{"two headers on one host", []policy.Secret{row, with(func(s *policy.Secret) { s.Header, s.Line = "authorization", 9 })},
+			"secrets: swapped in by the session proxy; the guest holds a placeholder\n  k: in x-api-key to https://a.example\n  k: in authorization to https://a.example\n", ""},
+		{"host not allowed", []policy.Secret{with(func(s *policy.Secret) { s.Host = "b.example" })}, "", "config.toml:5: secret \"k\": host \"b.example\" is not a bare name"},
+		{"host allowed on a forward port alone", []policy.Secret{with(func(s *policy.Secret) { s.Host = "db.example" })}, "", "config.toml:5: secret \"k\": host \"db.example\" is not a bare name"},
+		{"an IP host", []policy.Secret{with(func(s *policy.Secret) { s.Host = "10.0.0.1" })}, "", "config.toml:5: secret \"k\": terminate rule"},
+		{"a bad header", []policy.Secret{with(func(s *policy.Secret) { s.Header = "x api key" })}, "", "config.toml:5: secret \"k\": terminate rule has an invalid header name"},
+		{"a bad method", []policy.Secret{with(func(s *policy.Secret) { s.Method = "post" })}, "", "config.toml:5: secret \"k\": terminate rule method"},
+		{"a bad path", []policy.Secret{with(func(s *policy.Secret) { s.Path = "v1" })}, "", "config.toml:5: secret \"k\": terminate rule path"},
+		{"a bad env", []policy.Secret{with(func(s *policy.Secret) { s.Env = "1KEY=" })}, "", "config.toml:5: secret \"k\": env \"1KEY=\" is not a variable name"},
+		{"the pair bound twice", []policy.Secret{row, with(func(s *policy.Secret) { s.Name, s.Header, s.Line = "j", "x-API-key", 9 })}, "", "config.toml:9: secret \"j\": header x-api-key on a.example is already bound on line 5"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := bindings(policy.Policy{Secret: tc.rows}, allow, "config.toml")
+			if tc.err != "" {
+				if err == nil || !strings.HasPrefix(err.Error(), tc.err) || strings.Contains(err.Error(), "\n") {
+					t.Fatalf("bindings = %v, want one line starting %q", err, tc.err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			seen := map[string]bool{}
+			for i, b := range got {
+				if b.grant.Name != tc.rows[i].Name || b.grant.Source != tc.rows[i].Source || b.grant.Host != b.rule.Host || b.grant.Header != b.rule.Header || b.rule.Placeholder == "" || seen[b.rule.Placeholder] {
+					t.Errorf("binding %d = %+v, want the row's name and source, the rule's host and header, a fresh placeholder", i, b)
+				}
+				seen[b.rule.Placeholder] = true
+			}
+			if text := bound(got); text != tc.text || strings.Contains(text, "file:") {
+				t.Errorf("bound = %q, want %q", text, tc.text)
+			}
+		})
+	}
+}
+
 // TestAllowlistFlags: each --allow value is judged as a config entry is, and joins the file's.
 func TestAllowlistFlags(t *testing.T) {
 	file := []policy.Entry{{Text: "a.example", Line: 3}}
