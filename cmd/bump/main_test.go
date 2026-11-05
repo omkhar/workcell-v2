@@ -100,8 +100,8 @@ func release(f *fixture, name, version string, built time.Time, wrongDigest bool
 	}
 	root := "/" + name + "/"
 	f.upstream[root+"latest"] = version + "\n"
-	f.upstream[root+version+"/manifest.json"] = fmt.Sprintf(`{"version":%q,"buildDate":%q,"platforms":{"linux-x64":{"checksum":%q}}}`,
-		version, built.Format(time.RFC3339), hex.EncodeToString(sum[:]))
+	f.upstream[root+version+"/manifest.json"] = fmt.Sprintf(`{"version":%q,"buildDate":%q,"platforms":{"linux-x64":{"checksum":%q,"binary":%q}}}`,
+		version, built.Format(time.RFC3339), hex.EncodeToString(sum[:]), name)
 	f.upstream[root+version+"/linux-x64/"+name] = art
 }
 

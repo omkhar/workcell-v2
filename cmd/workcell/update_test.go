@@ -26,8 +26,9 @@ import (
 	"github.com/omkhar/workcell/v2/internal/provider"
 )
 
-// tarball is a one-file layer, "package/bin/fake" holding body, gzip-compressed or plain.
-func tarball(t *testing.T, body string, gz bool) []byte {
+// tarball is a layer holding body at each of the names, as regular files of mode 0755,
+// gzip-compressed or plain.
+func tarball(t *testing.T, body string, gz bool, names ...string) []byte {
 	var buf bytes.Buffer
 	var w io.WriteCloser = gzip.NewWriter(&buf)
 	if !gz {
@@ -37,11 +38,8 @@ func tarball(t *testing.T, body string, gz bool) []byte {
 		}{&buf, io.NopCloser(nil)}
 	}
 	tw := tar.NewWriter(w)
-	for _, h := range []*tar.Header{
-		{Name: "package/", Typeflag: tar.TypeDir, Mode: 0o755},
-		{Name: "package/bin/fake", Typeflag: tar.TypeReg, Mode: 0o755, Size: int64(len(body))},
-	} {
-		if err := tw.WriteHeader(h); err != nil {
+	for _, name := range names {
+		if err := tw.WriteHeader(&tar.Header{Name: name, Typeflag: tar.TypeReg, Mode: 0o755, Size: int64(len(body))}); err != nil {
 			t.Fatal(err)
 		}
 		tw.Write([]byte(body))
@@ -51,12 +49,52 @@ func tarball(t *testing.T, body string, gz bool) []byte {
 	return buf.Bytes()
 }
 
-// TestUpdate walks one data directory through installs, a rollback, --to and the refusals,
-// against a loopback TLS upstream (T8) with rows the test supplies (A11): the markers only
-// ever name a complete image, a digest mismatch leaves current untouched, and the record
-// holds one line per step.
+// TestUnpack: a layer's shape is told by content. A bare file, a tar whose root holds one
+// file under any name, and a tar that already holds bin/<binary> each give bin/<binary>,
+// mode 0755; a tar whose root holds two files, or a bin/ without the binary, is refused.
+func TestUnpack(t *testing.T) {
+	tests := []struct {
+		name string
+		body []byte
+		want string // the bytes of bin/fake; "" for a refusal
+	}{
+		{"bare file", []byte("#!/bin/sh\n"), "#!/bin/sh\n"},
+		{"one root file", tarball(t, "x", true, "fake-x86_64-unknown-linux-musl"), "x"},
+		{"bin/fake already there", tarball(t, "y", false, "bin/fake", "LICENSE"), "y"},
+		{"two root files", tarball(t, "z", true, "fake", "LICENSE"), ""},
+		{"bin without the binary", tarball(t, "z", true, "fake", "bin/other"), ""},
+		{"gzip that is not a tar", append([]byte{0x1f, 0x8b}, make([]byte, 300)...), ""},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			f, err := os.CreateTemp(t.TempDir(), "artifact")
+			if err != nil {
+				t.Fatal(err)
+			}
+			f.Write(tc.body)
+			f.Seek(0, io.SeekStart)
+			tr, err := unpack(f, "fake")
+			if tc.want == "" {
+				if err == nil || !strings.Contains(err.Error(), "bin/fake") && !strings.Contains(err.Error(), "layer") {
+					t.Fatalf("got %v; want a refusal", err)
+				}
+				return
+			}
+			n := tr.Lookup("bin/fake")
+			if err != nil || n == nil || n.Mode != 0o755 || string(n.Data) != tc.want || len(tr.Names("/")) != 1+strings.Count(tc.name, "already") {
+				t.Fatalf("got %v, %+v; want bin/fake mode 0755 holding %q", err, n, tc.want)
+			}
+		})
+	}
+}
+
+// TestUpdate walks one data directory through installs of each shape, a rollback, --to and
+// the refusals, against a loopback TLS upstream (T8) with rows the test supplies (A11): the
+// markers only ever name a complete image, a digest mismatch or a shape refused leaves them
+// untouched, and the record holds one line per step.
 func TestUpdate(t *testing.T) {
-	bodies := map[string][]byte{"/v1.tgz": tarball(t, "one", true), "/v2.tgz": tarball(t, "two", true), "/v3.tar": tarball(t, "three", false)}
+	bodies := map[string][]byte{"/v1.tgz": tarball(t, "one", true, "bin/fake"), "/v2.tgz": tarball(t, "two", true, "fake-x86_64-unknown-linux-musl"),
+		"/v3.tar": tarball(t, "three", false, "bin/fake"), "/v4": []byte("#!/bin/sh\necho four\n"), "/v5.tgz": tarball(t, "five", true, "fake", "LICENSE")}
 	var hits atomic.Int32
 	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		hits.Add(1)
@@ -74,6 +112,8 @@ func TestUpdate(t *testing.T) {
 	v1 := release("1.0.0", "/v1.tgz", sum("/v1.tgz"), runtime.GOARCH)
 	v2 := release("2.0.0", "/v2.tgz", sum("/v2.tgz"), runtime.GOARCH)
 	v3 := release("3.0.0", "/v3.tar", sum("/v3.tar"), runtime.GOARCH)
+	v4 := release("4.0.0", "/v4", sum("/v4"), runtime.GOARCH)
+	v5 := release("5.0.0", "/v5.tgz", sum("/v5.tgz"), runtime.GOARCH)
 	bad := release("3.0.0", "/v3.tar", sum("/v2.tgz"), runtime.GOARCH)
 	row := func(cur pins.Release, prev *pins.Release) []pins.Pin {
 		return []pins.Pin{{Name: "fake-cli", Release: cur, Previous: prev}}
@@ -81,7 +121,7 @@ func TestUpdate(t *testing.T) {
 	img := func(r pins.Release) string {
 		return r.Version + "-" + r.Artifacts[runtime.GOARCH].SHA256[:16] + ".ext4"
 	}
-	binary := provider.Provider{Name: "fake", Install: provider.Install{Method: "binary", Pin: "fake-cli"}}
+	binary := provider.Provider{Name: "fake", Binary: "fake", Install: provider.Install{Method: "binary", Pin: "fake-cli"}}
 	steps := []struct {
 		name          string
 		rows          []pins.Pin
@@ -106,6 +146,9 @@ func TestUpdate(t *testing.T) {
 		{name: "not a binary install", rows: row(v3, &v1), prov: provider.Provider{Name: "fake", Install: provider.Install{Method: "npm", Package: "fake"}}, refusal: "binaries only", cur: img(v1), prev: img(v2), result: "refused"},
 		{name: "no row", rows: nil, prov: binary, refusal: "no row under pins/", cur: img(v1), prev: img(v2), result: "refused"},
 		{name: "third install from plain tar drops the oldest", rows: row(v3, &v2), prov: binary, want: "fake 3.0.0 " + v3.Artifacts[runtime.GOARCH].SHA256[:16], cur: img(v3), prev: img(v1), fetch: "/v3.tar", result: "installed"},
+		{name: "two root files", rows: row(v5, &v3), prov: binary, refusal: "neither bin/fake nor one file", cur: img(v3), prev: img(v1), fetch: "/v5.tgz", result: "refused"},
+		{name: "unpinned row", rows: []pins.Pin{{Name: "fake-cli"}}, prov: binary, refusal: "pins no release yet", cur: img(v3), prev: img(v1), result: "refused"},
+		{name: "bare file install", rows: row(v4, &v3), prov: binary, want: "fake 4.0.0 " + v4.Artifacts[runtime.GOARCH].SHA256[:16], cur: img(v4), prev: img(v3), fetch: "/v4", result: "installed"},
 	}
 	dir := filepath.Join(t.TempDir(), "data") // not there yet: the first step makes it
 	layers := filepath.Join(dir, "layers", "fake")

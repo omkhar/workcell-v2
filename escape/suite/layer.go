@@ -6,14 +6,17 @@ package suite
 import (
 	"archive/tar"
 	"bytes"
+	"compress/gzip"
 	"context"
 	"crypto/sha256"
 	"fmt"
 	"io"
 	"io/fs"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"time"
@@ -21,17 +24,52 @@ import (
 	"github.com/omkhar/workcell/v2/escape/sandbox"
 )
 
-// The provider layer row (I7). The host installs an agent from an upstream
-// the judge serves on its own loopback (SPEC T8), as `workcell update` does;
-// root in the guest does what it can to the layer the session runs it from
-// (hijack), and a second session must run the version the host installed
+// The provider layer row (I7, B8). The host installs the agents in layers
+// from an upstream the judge serves on its own loopback (SPEC T8), each in
+// the shape its real upstream uses, as `workcell update` does; root in the
+// guest does what it can to the layer the session runs claude from
+// (hijack), and a second session must run the versions the host installed
 // from a layer whose every file is as it was, the image on the host too.
-// hijacked is what the guest's own agent would print.
-const layerAgent, layerVersion, hijacked = "claude", "9.9.9", "6.6.6"
+// In between, the upstream serves claude as bytes whose digest is not the
+// row's, which the host must refuse and keep the layer it had (B8).
+// hijacked is what the guest's own agent, or the mismatched bytes, print.
+var layers = map[string]string{"claude": "9.9.9", "codex": "8.8.8"}
 
-// layerJudge serves the agent as far as the row cares, a tar holding
-// bin/<agent>, an executable shell script that prints the version, has the
-// host install it, and compares what two sessions see.
+const layerAgent, hijacked = "claude", "6.6.6"
+
+// shaped is the artifact an agent's upstream serves for a binary that
+// prints version, and the path it serves it at: claude a bare executable,
+// codex a gzip tar whose only entry, at the root, is named by the target
+// triple. The binary is a shell script as far as the row cares.
+func shaped(agent, version string) (string, []byte) {
+	body := []byte("#!/bin/sh\necho " + version + "\n")
+	if agent != "codex" {
+		return "/" + version + "/linux-x64/" + agent, body
+	}
+	name := "codex-" + map[string]string{"amd64": "x86_64", "arm64": "aarch64"}[runtime.GOARCH] + "-unknown-linux-musl"
+	var art bytes.Buffer
+	gz := gzip.NewWriter(&art)
+	tw := tar.NewWriter(gz)
+	tw.WriteHeader(&tar.Header{Name: name, Mode: 0o755, Size: int64(len(body)), Typeflag: tar.TypeReg})
+	tw.Write(body)
+	tw.Close()
+	gz.Close()
+	return "/" + name + ".tar.gz", art.Bytes()
+}
+
+// install has the host install agent at version from src, which serves the
+// shaped artifact the row's digest names, or served when that is not nil.
+func install(ctx context.Context, s Session, src *upstream, agent, version string, served []byte) (string, error) {
+	path, art := shaped(agent, version)
+	if served == nil {
+		served = art
+	}
+	src.set(path, whole(served))
+	return s.Install(ctx, sandbox.Layer{Agent: agent, Version: version, URL: src.url + path, Artifact: art})
+}
+
+// layerJudge installs every agent of layers, has the host refuse a digest
+// mismatch, and compares what two sessions see.
 func layerJudge(ctx context.Context, s Session) (bool, string, error) {
 	cfg, err := certificate("127.0.0.1")
 	if err != nil {
@@ -42,31 +80,29 @@ func layerJudge(ctx context.Context, s Session) (bool, string, error) {
 		return false, "", err
 	}
 	defer src.stop()
-	var art bytes.Buffer
-	tw, body := tar.NewWriter(&art), []byte("#!/bin/sh\necho "+layerVersion+"\n")
-	tw.WriteHeader(&tar.Header{Name: "bin/" + layerAgent, Mode: 0o755, Size: int64(len(body)), Typeflag: tar.TypeReg})
-	tw.Write(body)
-	tw.Close()
-	src.set("/"+layerAgent+".tar", whole(art.Bytes()))
-	image, err := s.Install(ctx, sandbox.Layer{Agent: layerAgent, Version: layerVersion, URL: src.url + "/" + layerAgent + ".tar", Artifact: art.Bytes()})
-	if err != nil {
-		return false, "", err
+	var image string
+	for _, agent := range slices.Sorted(maps.Keys(layers)) {
+		img, err := install(ctx, s, src, agent, layers[agent], nil)
+		if err != nil {
+			return false, "", err
+		}
+		if agent == layerAgent {
+			image = img
+		}
 	}
 	before, err := fileSum(image)
 	if err != nil {
 		return false, "", err
 	}
-	r, err := s.Run("attack", layerAgent, hijacked)
+	_, refused := install(ctx, s, src, layerAgent, "7.7.7", []byte("#!/bin/sh\necho "+hijacked+"\n"))
+	r, err := s.Run("attack", hijacked)
 	if err != nil {
 		return false, "", err
-	}
-	if one := fields(r.Detail); one["version"] != layerVersion {
-		return false, "", fmt.Errorf("the first session did not run the installed agent (%s)", says(r))
 	}
 	two, err := s.Another()
 	var r2 Result
 	if err == nil {
-		r2, err = two.Run("check", layerAgent, hijacked)
+		r2, err = two.Run("check", hijacked)
 	}
 	var after string
 	if err == nil {
@@ -77,14 +113,29 @@ func layerJudge(ctx context.Context, s Session) (bool, string, error) {
 	switch {
 	case err != nil:
 		return false, "", err
+	case refused == nil:
+		return false, "the host installed " + layerAgent + " from bytes whose digest is not the row's; " + both, nil
+	case missing(one) != "":
+		return false, "the first session did not run the " + missing(one) + " the host installed; " + both, nil
 	case before != after:
 		return false, "the layer image on the host changed under the session; " + both, nil
-	case other["version"] != layerVersion:
-		return false, "the second session did not run the version the host installed; " + both, nil
+	case missing(other) != "":
+		return false, "the second session did not run the " + missing(other) + " the host installed; " + both, nil
 	case other["hash"] != one["hash"]:
 		return false, "the second session saw a layer the first changed; " + both, nil
 	}
 	return true, both, nil
+}
+
+// missing names the first agent of layers whose version a session, by its
+// detail, did not print; "" when it printed them all.
+func missing(got map[string]string) string {
+	for _, agent := range slices.Sorted(maps.Keys(layers)) {
+		if got[agent] != layers[agent] {
+			return agent
+		}
+	}
+	return ""
 }
 
 // fileSum is the hex SHA-256 of the file at path, "" for no path.
@@ -107,24 +158,31 @@ func fields(detail string) map[string]string {
 	return out
 }
 
-// layerProbe finds the agent on PATH, runs `<agent> --version`, hashes
-// every file of its layer (the parent of the binary's directory), and, as
-// "attack", tries as root to make the agent print the version given, then
-// says what the agent prints afterwards. args: verb, agent, version.
+// layerProbe finds each agent of layers on PATH and runs `<agent>
+// --version`; hashes every file of claude's layer (the parent of the
+// binary's directory); and, as "attack", tries as root to make claude print
+// the version given, then says what it prints afterwards. args: verb, version.
 func layerProbe(args []string) Result {
-	if len(args) != 3 {
-		return Result{Status: "error", Detail: "want attack|check, agent and version"}
+	if len(args) != 2 {
+		return Result{Status: "error", Detail: "want attack|check and version"}
 	}
-	path, err := exec.LookPath(args[1])
-	if err != nil {
-		return Result{Status: "missing", Detail: "version=none " + short(err)}
+	var detail []string
+	for _, agent := range slices.Sorted(maps.Keys(layers)) {
+		path, err := exec.LookPath(agent)
+		if err != nil {
+			detail = append(detail, agent+"=none")
+			continue
+		}
+		detail = append(detail, agent+"="+output(path, "--version"))
+		if agent == layerAgent {
+			root := filepath.Dir(filepath.Dir(path))
+			detail = append(detail, "hash="+treeSum(root))
+			if args[0] == "attack" {
+				detail = append(detail, hijack(path, root, []byte("#!/bin/sh\necho "+args[1]+"\n")), "runs="+output(path, "--version"))
+			}
+		}
 	}
-	root := filepath.Dir(filepath.Dir(path))
-	detail := "version=" + output(path, "--version") + " hash=" + treeSum(root)
-	if args[0] == "attack" {
-		detail += " " + hijack(path, root, []byte("#!/bin/sh\necho "+args[2]+"\n")) + " runs=" + output(path, "--version")
-	}
-	return Result{Status: "tried", Detail: detail}
+	return Result{Status: "tried", Detail: strings.Join(detail, " ")}
 }
 
 // hijack tries every way root has to change the layer at root, whose
