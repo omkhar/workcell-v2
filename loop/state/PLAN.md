@@ -200,7 +200,7 @@ with ADR-003 and ADR-004, they build on the proposal, and you can accept it at a
       accept: I9 added to `enforced.txt` and green
 - [x] U-602 | flow:build | model:sonnet | env:kvm | deps:U-205 | tries:0 | Detach and `attach`
       accept: a session survives terminal close; a second attach takes over cleanly
-- [ ] U-603 | flow:build | model:sonnet | env:kvm | deps:U-602 | tries:0 | `workcell doctor`: hypervisor access, image present, disk space, each with a one-line fix
+- [x] U-603 | flow:build | model:sonnet | env:kvm | deps:U-602 | tries:0 | `workcell doctor`: hypervisor access, image present, disk space, each with a one-line fix
       accept: P3 checked on a clean container image
 
 ## Phase 7: macOS
