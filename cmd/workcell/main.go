@@ -11,36 +11,31 @@ import (
 	"github.com/omkhar/workcell/v2/internal/version"
 )
 
+// verbs is each verb's entry point, which takes the arguments after the verb and returns the exit code.
+var verbs = map[string]func([]string) int{
+	"run":     func(a []string) int { return run(a, os.Stderr) },
+	"ls":      func(a []string) int { return ls(a, os.Stdout, os.Stderr) },
+	"attach":  func(a []string) int { return attach(a, os.Stderr) },
+	"stop":    func(a []string) int { return stop(a, os.Stderr) },
+	"rm":      func(a []string) int { return rm(a, os.Stderr) },
+	"diff":    func(a []string) int { return diff(a, os.Stderr) },
+	"pull":    func(a []string) int { return pull(a, os.Stderr) },
+	"explain": func(a []string) int { return explain(a, os.Stderr) },
+	"log":     func(a []string) int { return logs(a, os.Stdout, os.Stderr) },
+	"verify":  func(a []string) int { return verify(a, os.Stdout, os.Stderr) },
+	"update":  func(a []string) int { return update(a, os.Stdout, os.Stderr) },
+	"doctor":  func(a []string) int { return doctor(a, os.Stdout, os.Stderr) },
+	"bench":   func(a []string) int { return bench(a, os.Stderr) },
+}
+
 func main() {
-	switch {
-	case len(os.Args) == 2 && os.Args[1] == "--version":
+	if len(os.Args) == 2 && os.Args[1] == "--version" {
 		fmt.Println(version.String())
-	case len(os.Args) >= 2 && os.Args[1] == "run":
-		os.Exit(run(os.Args[2:], os.Stderr))
-	case len(os.Args) >= 2 && os.Args[1] == "ls":
-		os.Exit(ls(os.Args[2:], os.Stdout, os.Stderr))
-	case len(os.Args) >= 2 && os.Args[1] == "attach":
-		os.Exit(attach(os.Args[2:], os.Stderr))
-	case len(os.Args) >= 2 && os.Args[1] == "stop":
-		os.Exit(stop(os.Args[2:], os.Stderr))
-	case len(os.Args) >= 2 && os.Args[1] == "rm":
-		os.Exit(rm(os.Args[2:], os.Stderr))
-	case len(os.Args) >= 2 && os.Args[1] == "diff":
-		os.Exit(diff(os.Args[2:], os.Stderr))
-	case len(os.Args) >= 2 && os.Args[1] == "pull":
-		os.Exit(pull(os.Args[2:], os.Stderr))
-	case len(os.Args) >= 2 && os.Args[1] == "explain":
-		os.Exit(explain(os.Args[2:], os.Stderr))
-	case len(os.Args) >= 2 && os.Args[1] == "log":
-		os.Exit(logs(os.Args[2:], os.Stdout, os.Stderr))
-	case len(os.Args) >= 2 && os.Args[1] == "verify":
-		os.Exit(verify(os.Args[2:], os.Stdout, os.Stderr))
-	case len(os.Args) >= 2 && os.Args[1] == "update":
-		os.Exit(update(os.Args[2:], os.Stdout, os.Stderr))
-	case len(os.Args) >= 2 && os.Args[1] == "bench":
-		os.Exit(bench(os.Args[2:], os.Stderr))
-	default:
-		fmt.Fprintln(os.Stderr, "workcell v2 is under construction; see loop/state/PLAN.md")
-		os.Exit(2)
+		return
 	}
+	if len(os.Args) >= 2 && verbs[os.Args[1]] != nil {
+		os.Exit(verbs[os.Args[1]](os.Args[2:]))
+	}
+	fmt.Fprintln(os.Stderr, "workcell v2 is under construction; see loop/state/PLAN.md")
+	os.Exit(2)
 }

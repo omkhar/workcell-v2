@@ -113,6 +113,36 @@ func TestRun(t *testing.T) {
 		}
 	})
 
+	// P3: on a clean data directory doctor finds the hypervisor and says what is missing; on the
+	// populated one every check passes.
+	t.Run("doctor", func(t *testing.T) {
+		for _, tc := range []struct {
+			name, xdg string
+			code      int
+			want      []string
+		}{
+			{"clean image", t.TempDir(), 1, []string{"ok   hypervisor\n", "FAIL image: ", "     fix: ", "ok   disk ("}},
+			{"populated", tmp, 0, []string{"ok   hypervisor\n", "ok   image\n", "ok   disk ("}},
+		} {
+			cmd := verb(repo, nil, "doctor")
+			cmd.Env = append(cmd.Env, "XDG_DATA_HOME="+tc.xdg) // the last of two settings wins
+			out, err := cmd.Output()
+			var exit *exec.ExitError
+			if err != nil && !errors.As(err, &exit) {
+				t.Fatal(err)
+			}
+			t.Logf("%s: workcell doctor exit %d:\n%s", tc.name, cmd.ProcessState.ExitCode(), out)
+			if cmd.ProcessState.ExitCode() != tc.code {
+				t.Errorf("%s: exit %d, want %d", tc.name, cmd.ProcessState.ExitCode(), tc.code)
+			}
+			for _, line := range tc.want {
+				if !strings.Contains(string(out), line) {
+					t.Errorf("%s: output lacks %q", tc.name, line)
+				}
+			}
+		}
+	})
+
 	t.Run("pipes", func(t *testing.T) {
 		stdout, stderr, code := pipes(t, nil, "sh", "-c", "echo out; echo err >&2")
 		if stdout != "out\n" || stderr != "err\n" || code != 0 {

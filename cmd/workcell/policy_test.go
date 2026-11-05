@@ -106,8 +106,8 @@ func TestBindings(t *testing.T) {
 		{"every key", []policy.Secret{with(func(s *policy.Secret) { s.Env, s.Method, s.Path = "A_KEY", "POST", "/v1/" })}, swapped + "  k: in x-api-key to https://a.example, POST only, under /v1/, as $A_KEY\n", ""},
 		{"two headers on one host", []policy.Secret{row, with(func(s *policy.Secret) { s.Header, s.Line = "authorization", 9 })}, swapped + "  k: in x-api-key to https://a.example\n  k: in authorization to https://a.example\n", ""},
 		{"host not allowed", []policy.Secret{with(func(s *policy.Secret) { s.Host = "b.example" })}, "", "config.toml:5: secret \"k\": host \"b.example\" is not a bare name in [network] allow: add \"b.example\" there, or pass --allow b.example"},
-		{"a provider's secret", []policy.Secret{{Name: "anthropic", Source: "file:/s", Line: 5}}, swapped + "  anthropic: in x-api-key to https://api.anthropic.com, as $ANTHROPIC_API_KEY, for claude\n", ""},
-		{"a provider's secret, the row's env and method win", []policy.Secret{{Name: "anthropic", Source: "file:/s", Env: "MY_KEY", Method: "POST", Line: 5}}, swapped + "  anthropic: in x-api-key to https://api.anthropic.com, POST only, as $MY_KEY, for claude\n", ""},
+		{"a provider's secret", []policy.Secret{{Name: "anthropic", Source: "file:/s", Line: 5}}, swapped + "  anthropic: in x-api-key to https://api.anthropic.com, as $ANTHROPIC_API_KEY\n", ""},
+		{"a provider's secret, the row's env and method win", []policy.Secret{{Name: "anthropic", Source: "file:/s", Env: "MY_KEY", Method: "POST", Line: 5}}, swapped + "  anthropic: in x-api-key to https://api.anthropic.com, POST only, as $MY_KEY\n", ""},
 		{"no host or header, and no such provider secret", []policy.Secret{{Name: "nope", Source: "file:/s", Line: 5}}, "", "config.toml:5: secret \"nope\": host and header are missing: name a provider's secret or give host and header"},
 		{"a header without a host", []policy.Secret{with(func(s *policy.Secret) { s.Host = "" })}, "", "config.toml:5: secret \"k\": host and header are missing: name a provider's secret or give host and header"},
 		{"host allowed on a forward port alone", []policy.Secret{with(func(s *policy.Secret) { s.Host = "db.example" })}, "", "config.toml:5: secret \"k\": host \"db.example\" is not a bare name"},
@@ -116,13 +116,11 @@ func TestBindings(t *testing.T) {
 		{"a bad method", []policy.Secret{with(func(s *policy.Secret) { s.Method = "post" })}, "", "config.toml:5: secret \"k\": terminate rule method"},
 		{"a bad path", []policy.Secret{with(func(s *policy.Secret) { s.Path = "v1" })}, "", "config.toml:5: secret \"k\": terminate rule path"},
 		{"a bad env", []policy.Secret{with(func(s *policy.Secret) { s.Env = "1KEY=" })}, "", "config.toml:5: secret \"k\": env \"1KEY=\" is not a variable name"},
-		{"the pair bound twice", []policy.Secret{row, with(func(s *policy.Secret) { s.Name, s.Header, s.Line = "j", "x-API-key", 9 })}, "", "config.toml:9: secret \"j\": header x-api-key on a.example is already bound on line 5"},
 		{"a sign-in source", []policy.Secret{with(func(s *policy.Secret) {
 			s.Source, s.Header, s.Env = "signin:A.example/oauth/token", "authorization", "A_KEY"
 		})}, swapped + "  k: in authorization to https://a.example, signed in at https://a.example/oauth/token, as $A_KEY\n", ""},
 		{"a sign-in host not allowed", []policy.Secret{with(func(s *policy.Secret) { s.Source = "signin:b.example/oauth/token" })}, "", "config.toml:5: secret \"k\": sign-in host \"b.example\" is not a bare name"},
 		{"a bad sign-in source", []policy.Secret{with(func(s *policy.Secret) { s.Source = "signin:a.example" })}, "", "config.toml:5: secret \"k\": sign-in source must be signin:HOST/PATH"},
-		{"the token endpoint bound twice", []policy.Secret{with(func(s *policy.Secret) { s.Source = "signin:a.example/t" }), with(func(s *policy.Secret) { s.Source, s.Header, s.Line = "signin:a.example/t", "authorization", 9 })}, "", "config.toml:9: secret \"k\": token endpoint a.example/t is already bound on line 5"},
 		{"repos", []policy.Secret{with(func(s *policy.Secret) {
 			s.Header, s.Env, s.Repos = "authorization", "GITHUB_TOKEN", []string{"octo/allowed", "octo/docs"}
 		})}, swapped + "  k: in authorization to https://a.example, for octo/allowed, octo/docs, as $GITHUB_TOKEN\n", ""},

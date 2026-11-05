@@ -13,7 +13,6 @@ package audit
 import (
 	"crypto/ed25519"
 	"crypto/sha256"
-	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -74,7 +73,6 @@ type Log struct {
 	key        ed25519.PrivateKey
 	now        func() time.Time
 	head       [sha256.Size]byte
-	n          uint64
 	size       int64
 	soft, hard int64
 	full       bool
@@ -155,7 +153,6 @@ func (l *Log) write(line []byte, durable bool) error {
 	_, err := l.log.Write(line)
 	if err == nil {
 		l.size += int64(len(line))
-		l.n++
 		l.head = next(l.head, line[:len(line)-1])
 		err = l.sign()
 	}
@@ -169,10 +166,10 @@ func (l *Log) write(line []byte, durable bool) error {
 	return nil
 }
 
-// sign writes the seal: the number of lines and the head of the chain, signed. It has one length
-// whatever the count, so each seal replaces the last in place.
+// sign writes the seal: the head of the chain, signed. It has one length whatever the count of
+// lines, so each seal replaces the last in place.
 func (l *Log) sign() error {
-	text := fmt.Sprintf("%020d %x %x\n", l.n, l.head, ed25519.Sign(l.key, sealed(l.n, l.head)))
+	text := fmt.Sprintf("%x %x\n", l.head, ed25519.Sign(l.key, sealed(l.head)))
 	_, err := l.seal.WriteAt([]byte(text), 0)
 	return err
 }
@@ -198,8 +195,8 @@ func next(head [sha256.Size]byte, line []byte) [sha256.Size]byte {
 	return [sha256.Size]byte(h.Sum(nil))
 }
 
-func sealed(n uint64, head [sha256.Size]byte) []byte {
-	return append(binary.BigEndian.AppendUint64([]byte("workcell-audit-seal-v1"), n), head[:]...)
+func sealed(head [sha256.Size]byte) []byte {
+	return append([]byte("workcell-audit-seal-v2"), head[:]...)
 }
 
 func clip(s string) string {
@@ -210,7 +207,7 @@ func clip(s string) string {
 }
 
 // Verify reads the log in dir and says whether it is exactly what the log that holds key wrote:
-// every line a record, and their number and chain the ones the seal signs. The error says only
+// every line a record, and their chain the one the seal signs. The error says only
 // that it is not, and where a line is no record. pub is the public half of the key.
 func Verify(dir string, pub ed25519.PublicKey) error {
 	f, err := os.Open(filepath.Join(dir, LogName))
@@ -234,9 +231,8 @@ func Verify(dir string, pub ed25519.PublicKey) error {
 	if err != nil {
 		return err
 	}
-	var sealN uint64
 	var headHex, sigHex string
-	if _, err := fmt.Sscanf(string(text), "%d %s %s", &sealN, &headHex, &sigHex); err != nil {
+	if _, err := fmt.Sscanf(string(text), "%s %s", &headHex, &sigHex); err != nil {
 		return errors.New("audit: the seal is unreadable")
 	}
 	h, herr := hex.DecodeString(headHex)
@@ -245,11 +241,11 @@ func Verify(dir string, pub ed25519.PublicKey) error {
 		return errors.New("audit: the seal is unreadable")
 	}
 	want := [sha256.Size]byte(h)
-	if len(pub) != ed25519.PublicKeySize || !ed25519.Verify(pub, sealed(sealN, want), sig) {
+	if len(pub) != ed25519.PublicKeySize || !ed25519.Verify(pub, sealed(want), sig) {
 		return errors.New("audit: the seal is not signed with this host's key")
 	}
-	if sealN != n || want != head {
-		return fmt.Errorf("audit: the log holds %d records that do not match the signed seal of %d: it was changed", n, sealN)
+	if want != head {
+		return fmt.Errorf("audit: the log's %d records do not match the signed seal: it was changed", n)
 	}
 	return nil
 }

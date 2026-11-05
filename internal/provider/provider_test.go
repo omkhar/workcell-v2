@@ -26,8 +26,6 @@ host = "api.example.com"
 header = "authorization"
 prefix = "Bearer "
 env = "DEMO_API_KEY"
-file = ".demo/auth.json"
-field = "key"
 `
 
 func TestEmbeddedProviders(t *testing.T) {
@@ -66,7 +64,7 @@ func TestAddProviderIsOneDataFile(t *testing.T) {
 	if err != nil || len(all) != 1 {
 		t.Fatalf("Load = %+v, %v", all, err)
 	}
-	want := Secret{"demo", "api.example.com", "authorization", "Bearer ", "DEMO_API_KEY", ".demo/auth.json", "key", 10}
+	want := Secret{"demo", "api.example.com", "authorization", "Bearer ", "DEMO_API_KEY", 10}
 	if p := all[0]; p.Name != "demo" || p.Install != (Install{"binary", "demo", ""}) || len(p.Hosts) != 2 || p.Secrets[0] != want {
 		t.Errorf("loaded %+v", p)
 	}
@@ -77,8 +75,8 @@ func TestLoadRefuses(t *testing.T) {
 	npm := func(install string) string { return sub("method = \"binary\"\npin = \"demo\"", install) }
 	for _, tc := range []struct{ name, text, want string }{
 		{"unknown key", sub("binary = \"demo\"", "binary = \"demo\"\ntier = \"x\""), "demo.toml:4: unknown key \"tier\" in [provider]"},
-		{"unknown table", good + "[flags]\n", "demo.toml:18: table [flags]"},
-		{"table twice", good + "[install]\n", "demo.toml:18: table [install] is defined twice, first on line 6"},
+		{"unknown table", good + "[flags]\n", "demo.toml:16: table [flags]"},
+		{"table twice", good + "[install]\n", "demo.toml:16: table [install] is defined twice, first on line 6"},
 		{"missing field", sub("binary = \"demo\"\n", ""), "demo.toml:1: [provider] needs a binary"},
 		{"missing table", sub("[install]\nmethod = \"binary\"\npin = \"demo\"\n", ""), "needs a [provider] and an [install]"},
 		{"hosts not an array", sub(`hosts = ["api.example.com", "login.example.com"]`, `hosts = "api.example.com"`), "demo.toml:4: hosts must be an array"},
@@ -94,11 +92,8 @@ func TestLoadRefuses(t *testing.T) {
 		{"header upper case", sub(`"authorization"`, `"Authorization"`), "demo.toml:10: [secret]: header \"Authorization\" must be lower-case"},
 		{"bad prefix", sub(`"Bearer "`, `"Token "`), "prefix must be"},
 		{"bad env", sub(`"DEMO_API_KEY"`, `"1BAD"`), "env \"1BAD\" is not a variable name"},
-		{"no env and no file", sub("env = \"DEMO_API_KEY\"\nfile = \".demo/auth.json\"\nfield = \"key\"\n", ""), "needs an env or a file"},
-		{"file without field", sub("field = \"key\"\n", ""), "file and field go together"},
-		{"absolute file", sub(`".demo/auth.json"`, `"/etc/auth.json"`), "file \"/etc/auth.json\" must be a clean path"},
-		{"escaping file", sub(`".demo/auth.json"`, `"../auth.json"`), "must be a clean path"},
-		{"duplicate credential", good + "\n" + good[strings.Index(good, "[[secret]]"):], "demo.toml:19: [secret]: header authorization on api.example.com is already bound on line 10"},
+		{"no env", sub("env = \"DEMO_API_KEY\"\n", ""), "needs an env"},
+		{"duplicate credential", good + "\n" + good[strings.Index(good, "[[secret]]"):], "demo.toml:17: [secret]: header authorization on api.example.com is already bound on line 10"},
 		{"version in a pin", npm("method = \"binary\"\npin = \"demo-1.2.3\""), "[install]: method binary wants a pin"},
 		{"version in a package", npm("method = \"npm\"\npackage = \"@x/demo@1.2.3\""), "[install]: method npm wants a package"},
 		{"unknown version key", sub("pin = \"demo\"", "pin = \"demo\"\nversion = \"1.2.3\""), "unknown key \"version\" in [install]"},
