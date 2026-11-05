@@ -131,7 +131,7 @@ with ADR-003 and ADR-004, they build on the proposal, and you can accept it at a
       accept: ported tests pass; no import outside the standard library, `x/sys` and `x/net`
 - [x] U-303 | flow:boundary | model:fable | env:kvm | deps:U-301,U-302,U-204b,U-005,H-011 | tries:0 | Wire the proxy in. Refuse UDP, QUIC, ICMP and unproxied IPv6
       accept: I2 added to `enforced.txt` and green
-- [ ] U-304 | flow:boundary | model:fable | env:kvm | deps:U-303,U-006 | tries:0 | Host resolver: allowed names only, no recursion for anything else
+- [x] U-304 | flow:boundary | model:fable | env:kvm | deps:U-303,U-006 | tries:0 | Host resolver: allowed names only, no recursion for anything else
       accept: I3 added to `enforced.txt` and green
 - [ ] U-305 | flow:boundary | model:sonnet | env:kvm | deps:U-304 | tries:0 | Resolve on the host, vet the address, dial that address. Rebinding guard
       accept: I4 added to `enforced.txt` and green
