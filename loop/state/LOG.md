@@ -704,3 +704,5 @@ Review: no findings; the accept clause is met. The reviewer ran eight extra spel
 Budget: product 13724 of 15000, test 25586 of 25586 (zero headroom, third unit running), direct dependencies 3 of 15, Markdown 590 of 2500, YAML 432 of 500, WORKCELL_* 1 of 12.
 Learned: the released Copilot CLI may exchange its GitHub token at api.github.com for a short-lived Copilot token rather than send it to api.githubcopilot.com; that could not be checked offline and is H-409's business or a later unit's (PARKED.md); the proxy refuses the token prefix, so a wrong binding denies the login and leaks nothing. Every unit that adds a test line must still cut one first.
 Next: U-407 (git over HTTPS; boundary, fable, env:kvm, deps U-401) and U-503 (deps U-402, U-009) are the next takeable units for the cloud; U-600, U-504 and U-602 are takeable too. U-408 waits on B-821 (done) and U-402 (done), so it is takeable as well. The claim was PR #104, which this run gives its final title.
+
+## 2026-11-05T13:05Z U-407 START mode=cloud
