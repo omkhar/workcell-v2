@@ -34,13 +34,15 @@ type fakeBroker struct {
 	calls []string
 	value string
 	err   error
+	last  []byte // the bytes of the last lookup, which the proxy must wipe
 }
 
-func (b *fakeBroker) Lookup(_ context.Context, host, header string) (string, error) {
+func (b *fakeBroker) Lookup(_ context.Context, host, header string) ([]byte, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	b.calls = append(b.calls, host+" "+header)
-	return b.value, b.err
+	b.last = []byte(b.value)
+	return b.last, b.err
 }
 
 func (b *fakeBroker) callCount() int {
@@ -51,7 +53,8 @@ func (b *fakeBroker) callCount() int {
 
 // terminateFixture runs an upstream that echoes the x-api-key and Authorization
 // it received and a proxy that terminates example.com, with a rule for each of
-// those headers, and a.example.com, with none.
+// those headers, a.example.com, with none, and n.example.com, with an x-api-key
+// rule narrowed to POST under /v1/.
 func terminateFixture(t *testing.T, broker Broker) (proxyAddr string, ca *SessionCA, upstreamRoots *x509.CertPool, p *Proxy, log *bytes.Buffer) {
 	t.Helper()
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -63,9 +66,9 @@ func terminateFixture(t *testing.T, broker Broker) (proxyAddr string, ca *Sessio
 	t.Cleanup(server.Close)
 	upstreamRoots = x509.NewCertPool()
 	upstreamRoots.AddCert(server.Certificate())
-	p, buf, _ := testProxy(t, "example.com:443 a.example.com:443", []netip.Addr{netip.MustParseAddr("8.8.8.8")}, server.Listener.Addr().String())
+	p, buf, _ := testProxy(t, "example.com:443 a.example.com:443 n.example.com:443", []netip.Addr{netip.MustParseAddr("8.8.8.8")}, server.Listener.Addr().String())
 	p.upstreamRoots = upstreamRoots
-	ca, err := NewSessionCA([]string{"example.com", "a.example.com"}, time.Now().Add(time.Hour))
+	ca, err := NewSessionCA([]string{"example.com", "a.example.com", "n.example.com"}, time.Now().Add(time.Hour))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -74,6 +77,7 @@ func terminateFixture(t *testing.T, broker Broker) (proxyAddr string, ca *Sessio
 	if err := p.Terminate(ca, broker, []TerminateRule{
 		{Host: "example.com", Header: "X-Api-Key", Placeholder: testPlaceholder},
 		{Host: "example.com", Header: "Authorization", Placeholder: testAuthPlaceholder},
+		{Host: "n.example.com", Header: "X-Api-Key", Placeholder: testPlaceholder, Method: "POST", Path: "/v1/"},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -364,27 +368,86 @@ func TestNewSessionCARefusesBadInput(t *testing.T) {
 	}
 }
 
-func TestParseTerminateRule(t *testing.T) {
+// TestNewTerminateRule: the host comes back canonical and the header lowercase,
+// each rule gets a placeholder of its own, and a bad host, header, method or
+// path is refused.
+func TestNewTerminateRule(t *testing.T) {
 	t.Parallel()
-	want := TerminateRule{"api.example.com", "x-api-key", testPlaceholder}
-	for _, host := range []string{"API.example.com", "api.example.com."} {
-		got, err := ParseTerminateRule(host + "=x-api-key=" + testPlaceholder)
-		if err != nil || got != want {
-			t.Fatalf("ParseTerminateRule(%q...) = (%+v, %v), want %+v", host, got, err, want)
+	cases := []struct {
+		host, header, method, path string
+		ok                         bool
+	}{
+		{"API.example.com", "X-Api-Key", "", "", true}, {"api.example.com.", "x-api-key", "POST", "/v1/", true}, {"api.example.com", "x-api-key", "GET", "/", true},
+		{"192.0.2.1", "x-api-key", "", "", false}, {"", "x-api-key", "", "", false}, {"example.com", "x api key", "", "", false}, {"example.com", "", "", "", false},
+		{"example.com", "x-api-key", "post", "", false}, {"example.com", "x-api-key", "P O", "", false},
+		{"example.com", "x-api-key", "", "v1/", false}, {"example.com", "x-api-key", "", "/v1?x", false}, {"example.com", "x-api-key", "", "/v1#f", false},
+		{"example.com", "x-api-key", "", "/v 1", false}, {"example.com", "x-api-key", "", "/caf\u00e9", false},
+	}
+	seen := map[string]bool{}
+	for _, tc := range cases {
+		got, err := NewTerminateRule(tc.host, tc.header, tc.method, tc.path)
+		if (err == nil) != tc.ok {
+			t.Errorf("NewTerminateRule(%q, %q, %q, %q) = %v, want ok %t", tc.host, tc.header, tc.method, tc.path, err, tc.ok)
+		}
+		if err != nil {
+			continue
+		}
+		if got.Host != "api.example.com" || got.Header != "x-api-key" || got.Method != tc.method || got.Path != tc.path || !IsPlaceholder(got.Placeholder) || seen[got.Placeholder] {
+			t.Errorf("NewTerminateRule(%q, %q, %q, %q) = %+v", tc.host, tc.header, tc.method, tc.path, got)
+		}
+		seen[got.Placeholder] = true
+	}
+}
+
+// TestTerminateNarrowedRule: a rule naming a method and a path prefix swaps a
+// placeholder only on a request of that method under that prefix, judged on
+// the path as sent and as decoded; any other request carrying the placeholder
+// in the bound header is refused before the broker hears of it, with nothing
+// forwarded, and a request carrying no placeholder passes as is. The bytes
+// the broker gave are wiped once the request carries them. Drop the check →
+// the broker is asked and the upstream sees the value → FAIL.
+func TestTerminateNarrowedRule(t *testing.T) {
+	t.Parallel()
+	broker := &fakeBroker{value: "real-secret"}
+	addr, ca, _, p, log := terminateFixture(t, broker)
+	c := clientVia(addr, caPool(t, ca))
+	cases := []struct {
+		name, method, target, key string
+		code                      int
+		body                      string
+	}{
+		{"method and path match", "POST", "/v1/messages", testPlaceholder, 200, "n.example.com real-secret"},
+		{"the prefix itself", "POST", "/v1/", testPlaceholder, 200, "n.example.com real-secret"},
+		{"bearer under the prefix with a query", "POST", "/v1/x?q=1", "Bearer " + testPlaceholder, 200, "n.example.com Bearer real-secret"},
+		{"other method", "GET", "/v1/messages", testPlaceholder, 403, ""},
+		{"method in another case", "post", "/v1/messages", testPlaceholder, 403, ""},
+		{"other path", "POST", "/v2/no", testPlaceholder, 403, ""},
+		{"the prefix without its slash", "POST", "/v1", testPlaceholder, 403, ""},
+		{"dot segments leading out", "POST", "/v1/../v2/no", testPlaceholder, 403, ""},
+		{"encoded dot segments", "POST", "/v1/%2e%2e/v2/no", testPlaceholder, 403, ""},
+		{"encoded slash", "POST", "/v1%2Fx", testPlaceholder, 403, ""},
+		{"no placeholder", "GET", "/v2/no", "user-key", 200, "n.example.com user-key"},
+	}
+	refused := 0
+	for _, tc := range cases {
+		req, err := http.NewRequest(tc.method, "https://n.example.com"+tc.target, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Header.Set("X-Api-Key", tc.key)
+		if code, body := do(t, c, req); code != tc.code || tc.body != "" && body != tc.body || code != 200 && strings.Contains(body, "real-secret") {
+			t.Errorf("%s: got (%d, %q), want (%d, %q)", tc.name, code, body, tc.code, tc.body)
+		}
+		if tc.code == 403 {
+			refused++
 		}
 	}
-	for _, text := range []string{
-		"example.com=x-api-key",
-		"example.com=x-api-key=" + testPlaceholder + "=x",
-		"192.0.2.1=x-api-key=" + testPlaceholder,
-		"=x-api-key=" + testPlaceholder,
-		"example.com=x api key=" + testPlaceholder,
-		"example.com=x-api-key=secret",
-		"example.com=x-api-key=wcph-0123",
-	} {
-		if _, err := ParseTerminateRule(text); err == nil {
-			t.Errorf("ParseTerminateRule(%q) succeeded, want refusal", text)
-		}
+	if n := broker.callCount(); n != 3 || !bytes.Equal(broker.last, make([]byte, len("real-secret"))) {
+		t.Errorf("broker calls = %d, want 3 (matching requests only); last value wiped = %t", n, n == 3)
+	}
+	want := denyLine{Host: "n.example.com", Port: 443, Reason: "binding_mismatch", Count: uint64(refused), Seq: uint64(refused)}
+	if d := denies(t, p, log); len(d) != refused || d[len(d)-1] != want {
+		t.Errorf("deny lines = %+v, want %d ending in %+v", d, refused, want)
 	}
 }
 
@@ -409,9 +472,6 @@ func TestNewPlaceholderIsFreshAndParses(t *testing.T) {
 	first, second := NewPlaceholder(), NewPlaceholder()
 	if !IsPlaceholder(first) || first == second {
 		t.Fatalf("NewPlaceholder() = %q then %q, want two distinct placeholders", first, second)
-	}
-	if _, err := ParseTerminateRule("example.com=x-api-key=" + first); err != nil {
-		t.Errorf("a new placeholder fails a terminate rule: %v", err)
 	}
 	for _, bad := range []string{"", "wcph-", first + "0", first[:len(first)-1], "WCPH-" + first[5:], " " + first, first + "\n"} {
 		if IsPlaceholder(bad) {

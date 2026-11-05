@@ -29,6 +29,18 @@ type Policy struct {
 	// port 443 by SNI, or "name:port", with the line it stands on. The entries are checked by
 	// the proxy's allowlist, not here. Nothing allowed means no TCP port is relayed.
 	Allow []Entry
+	// Secret is the [[secret]] rows, in file order. Each is checked by the proxy and the
+	// broker, not here, beyond what the file must say.
+	Secret []Secret
+}
+
+// Secret is one [[secret]] row: the secret Name, read on the host from Source, is sent only
+// in Header to Host. Env names the guest variable that carries its placeholder, Method and
+// Path narrow the swap to requests of that method under that path prefix; each is "" when the
+// row leaves it out. Line is the row's, for an error that names it.
+type Secret struct {
+	Name, Source, Host, Header, Env, Method, Path string
+	Line                                          int
 }
 
 // Entry is one string of an array and the line it stands on, for an error that names it.
@@ -58,7 +70,7 @@ func Read(path string) (Policy, error) {
 }
 
 // tables are the tables SPEC section 5 names, and whether each is an array of tables. Only
-// [network] is read today; the others are read past, since reading them costs nothing.
+// [network] and [[secret]] are read today; the others are read past, since reading them costs nothing.
 var tables = map[string]bool{"network": false, "secret": true, "workspace": false, "resources": false, "update": false}
 
 // Parse reads the policy in text; name labels the file in errors, as "name:line: what".
@@ -82,20 +94,49 @@ func Parse(text, name string) (Policy, error) {
 			return Policy{}, fmt.Errorf("%s:%d: table [%s] is defined twice, first on line %d", name, t.line, t.name, first[t.name])
 		}
 		first[t.name] = t.line
-		if t.name != "network" {
-			continue
-		}
-		for key, v := range t.keys {
-			if key != "allow" {
-				return Policy{}, fmt.Errorf("%s:%d: unknown key %q in [network]: allow is the only one", name, v.line, key)
+		switch t.name {
+		case "network":
+			for key, v := range t.keys {
+				if key != "allow" {
+					return Policy{}, fmt.Errorf("%s:%d: unknown key %q in [network]: allow is the only one", name, v.line, key)
+				}
+				if v.kind != kStrings {
+					return Policy{}, fmt.Errorf("%s:%d: allow must be an array of strings", name, v.line)
+				}
+				p.Allow = v.strs
 			}
-			if v.kind != kStrings {
-				return Policy{}, fmt.Errorf("%s:%d: allow must be an array of strings", name, v.line)
+		case "secret":
+			s, err := secretRow(t, name)
+			if err != nil {
+				return Policy{}, err
 			}
-			p.Allow = v.strs
+			p.Secret = append(p.Secret, s)
 		}
 	}
 	return p, nil
+}
+
+// secretRow reads one [[secret]] table: name, source, host and header, each a string, with env,
+// method and path optional, and nothing else. An empty string is as good as no key.
+func secretRow(t *table, name string) (Secret, error) {
+	s := Secret{Line: t.line}
+	fields := map[string]*string{"name": &s.Name, "source": &s.Source, "host": &s.Host, "header": &s.Header, "env": &s.Env, "method": &s.Method, "path": &s.Path}
+	for key, v := range t.keys {
+		field, ok := fields[key]
+		if !ok {
+			return Secret{}, fmt.Errorf("%s:%d: unknown key %q in [[secret]]: name, source, host, header, env, method and path are the keys", name, v.line, key)
+		}
+		if v.kind != kString {
+			return Secret{}, fmt.Errorf("%s:%d: %s must be a string", name, v.line, key)
+		}
+		*field = v.str
+	}
+	for _, key := range []string{"name", "source", "host", "header"} {
+		if *fields[key] == "" {
+			return Secret{}, fmt.Errorf("%s:%d: [[secret]] needs a %s", name, t.line, key)
+		}
+	}
+	return s, nil
 }
 
 // A parsed document: tables in file order, each with its keys. The subset has three value kinds.

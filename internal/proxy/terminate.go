@@ -6,6 +6,7 @@ package proxy
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
@@ -24,6 +25,7 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"path"
 	"regexp"
 	"strings"
 	"sync"
@@ -41,6 +43,7 @@ var discardLog = log.New(io.Discard, "", 0)
 
 var (
 	headerNamePattern  = regexp.MustCompile(`^[A-Za-z0-9-]+$`)
+	methodPattern      = regexp.MustCompile(`^[A-Z]+$`)
 	placeholderPattern = regexp.MustCompile(`^wcph-[0-9a-f]{32}$`)
 	// placeholderAnywhere matches any placeholder in case-folded text.
 	placeholderAnywhere = regexp.MustCompile(`wcph-[0-9a-f]{32}`)
@@ -58,36 +61,59 @@ func NewPlaceholder() string {
 func IsPlaceholder(text string) bool { return placeholderPattern.MatchString(text) }
 
 // Broker returns the real value of a brokered header. The credential broker
-// client implements it; the proxy never holds a real value between requests.
+// implements it; the proxy owns the bytes it gets, wipes them once the
+// request carries the value, and never holds a value between requests.
 type Broker interface {
-	Lookup(ctx context.Context, host, header string) (string, error)
+	Lookup(ctx context.Context, host, header string) ([]byte, error)
 }
 
 // TerminateRule names a host whose TLS the proxy terminates and the header
-// whose placeholder value it swaps for the brokered value.
+// whose placeholder value it swaps for the brokered value. Method, when set,
+// narrows the swap to requests of that method, and Path to requests under
+// that path prefix: a placeholder sent any other way to the host is refused.
 type TerminateRule struct {
 	Host        string
 	Header      string
 	Placeholder string
+	Method      string
+	Path        string
 }
 
-// ParseTerminateRule parses host=header=placeholder.
-func ParseTerminateRule(text string) (TerminateRule, error) {
-	parts := strings.Split(text, "=")
-	if len(parts) != 3 {
-		return TerminateRule{}, fmt.Errorf("terminate rule must be host=header=placeholder: %q", text)
-	}
-	r := TerminateRule{Host: canonicalHost(parts[0]), Header: parts[1], Placeholder: parts[2]}
+// NewTerminateRule mints a placeholder for the rule binding header on host,
+// narrowed to method and path when either is not "". The host comes back
+// canonical and the header lowercase, the forms the broker's grants use; the
+// method is capital letters and the path begins with "/" and holds printable
+// ASCII with no query or fragment, as a request target carries it.
+func NewTerminateRule(host, header, method, path string) (TerminateRule, error) {
+	r := TerminateRule{Host: canonicalHost(host), Header: strings.ToLower(header), Placeholder: NewPlaceholder(), Method: method, Path: path}
 	if _, err := ParseAllowlist(r.Host+":443", "terminate rule"); err != nil {
 		return TerminateRule{}, err
 	}
-	if !headerNamePattern.MatchString(r.Header) {
-		return TerminateRule{}, fmt.Errorf("terminate rule has an invalid header name: %q", r.Header)
-	}
-	if !placeholderPattern.MatchString(r.Placeholder) {
-		return TerminateRule{}, fmt.Errorf("terminate rule placeholder must be wcph-<32 hex>: %q", r.Placeholder)
+	switch {
+	case !headerNamePattern.MatchString(r.Header):
+		return TerminateRule{}, fmt.Errorf("terminate rule has an invalid header name: %q", header)
+	case method != "" && !methodPattern.MatchString(method):
+		return TerminateRule{}, fmt.Errorf("terminate rule method must be capital letters: %q", method)
+	case path != "" && (path[0] != '/' || strings.ContainsAny(path, "?#") || strings.IndexFunc(path, func(c rune) bool { return c < '!' || c > '~' }) >= 0):
+		return TerminateRule{}, fmt.Errorf("terminate rule path must begin with / and hold printable ASCII without ? or #: %q", path)
 	}
 	return r, nil
+}
+
+// admits reports whether the rule swaps on a request of method to u: the
+// rule's method when it names one, and a path under its prefix when it names
+// one. The path is judged as sent and as decoded with its dot segments
+// resolved, so that neither an encoded slash nor ".." leads out from under
+// the prefix on either reading.
+func (r TerminateRule) admits(method string, u *url.URL) bool {
+	if r.Method != "" && method != r.Method {
+		return false
+	}
+	if r.Path == "" {
+		return true
+	}
+	clean := path.Clean(u.Path)
+	return strings.HasPrefix(u.EscapedPath(), r.Path) && (strings.HasPrefix(clean, r.Path) || clean+"/" == r.Path)
 }
 
 // SessionCA issues leaf certificates for the terminated hosts only. Its key
@@ -303,8 +329,9 @@ func sameHost(host, sni string) bool {
 
 // serveTerminated terminates TLS for host with a session leaf and proxies
 // HTTP/1.1 requests to the real host, swapping the placeholder headers. It
-// refuses a request that names another host than the SNI did (I6), and one
-// that still carries a placeholder after the swap.
+// refuses a request that names another host than the SNI did (I6), one that
+// sends a placeholder outside the method and path its rule binds it to (I5),
+// and one that still carries a placeholder after the swap.
 func (p *Proxy) serveTerminated(client net.Conn, host string, replay []byte) {
 	rules := p.terminate[host]
 	tlsConn := tls.Server(&replayConn{Conn: client, r: io.MultiReader(bytes.NewReader(replay), client)}, &tls.Config{
@@ -348,13 +375,19 @@ func (p *Proxy) serveTerminated(client net.Conn, host string, replay []byte) {
 				if !ok {
 					continue
 				}
+				if !rule.admits(r.Method, r.URL) {
+					p.deny(host, tlsPort, "binding_mismatch")
+					http.Error(w, fmt.Sprintf("the credential in %s is bound to method %s under path %s", rule.Header, cmp.Or(rule.Method, "*"), cmp.Or(rule.Path, "/")), http.StatusForbidden)
+					return
+				}
 				value, err := p.broker.Lookup(r.Context(), host, rule.Header)
 				if err != nil {
 					p.deny(host, tlsPort, "broker_denied")
 					http.Error(w, "credential broker denied the request", http.StatusBadGateway)
 					return
 				}
-				r.Header.Set(rule.Header, prefix+value)
+				r.Header.Set(rule.Header, prefix+string(value)) // the one copy the request carries
+				clear(value)
 			}
 			if carriesPlaceholder(r) {
 				p.deny(host, tlsPort, "placeholder_unswapped")

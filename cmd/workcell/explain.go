@@ -15,7 +15,7 @@ import (
 
 // explain is `workcell explain [--mount] [--allow HOST]...`: it prints what a session started here by
 // `workcell run`, with the same flags or without, can reach. The output is the whole assurance
-// story (SPEC section 5): the workspace, then the network. No secret is bound yet (U-401).
+// story (SPEC section 5): the workspace, the network, then the secrets.
 func explain(args []string, stderr io.Writer) int {
 	fs := flag.NewFlagSet("explain", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
@@ -29,9 +29,10 @@ func explain(args []string, stderr io.Writer) int {
 	cwd, err := os.Getwd()
 	var file string
 	var allow *proxy.Allowlist
+	var secrets []binding
 	if err == nil {
 		if file, err = configFile(); err == nil {
-			allow, err = loadAllowlist(extra)
+			allow, secrets, err = loadPolicy(extra)
 		}
 	}
 	if err != nil {
@@ -39,8 +40,33 @@ func explain(args []string, stderr io.Writer) int {
 		return 2
 	}
 	_, statErr := os.Stat(file)
-	fmt.Print(explanation(*mount, cwd) + reach(file, statErr == nil, len(extra) > 0, allow) + "secrets: none bound yet\n")
+	fmt.Print(explanation(*mount, cwd) + reach(file, statErr == nil, len(extra) > 0, allow) + bound(secrets))
 	return 0
+}
+
+// bound is the secrets part: each by name, with the host and header it goes out in, the method
+// and path prefix it is narrowed to, and the guest variable that holds its placeholder. Never
+// its source or its value (I5).
+func bound(secrets []binding) string {
+	if len(secrets) == 0 {
+		return "secrets: none\n"
+	}
+	var b strings.Builder
+	b.WriteString("secrets: swapped in by the session proxy; the guest holds a placeholder\n")
+	for _, s := range secrets {
+		fmt.Fprintf(&b, "  %s: in %s to https://%s", s.grant.Name, s.rule.Header, s.rule.Host)
+		if s.rule.Method != "" {
+			fmt.Fprintf(&b, ", %s only", s.rule.Method)
+		}
+		if s.rule.Path != "" {
+			fmt.Fprintf(&b, ", under %s", s.rule.Path)
+		}
+		if s.env != "" {
+			fmt.Fprintf(&b, ", as $%s", s.env)
+		}
+		b.WriteString("\n")
+	}
+	return b.String()
 }
 
 // explanation is the text for a session of dir: what its guest sees as /workspace, in plain words.
