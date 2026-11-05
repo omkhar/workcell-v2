@@ -39,7 +39,12 @@ type control struct {
 	helpers   map[string]*exec.Cmd
 	ln        *net.UnixListener // the host end of the channel
 	relay     *naiveRelay       // the host end of the relay
+	resolver  *naiveResolver    // the resolver the guest's resolv.conf names
 }
+
+// controlLoader runs as pid 1 of the run's namespaces: $0 is the session's
+// resolv.conf, $1 the payload, the rest its arguments.
+const controlLoader = `mount --make-rprivate / && mount --bind "$0" /etc/resolv.conf || { echo "control: cannot bind the session's resolv.conf over /etc/resolv.conf" >&2; exit 125; }; exec "$@"`
 
 // helperNames are the session's helpers. Control starts them on first use,
 // each a payload that sleeps, and they enforce nothing.
@@ -74,6 +79,16 @@ func (c *control) Start(_ context.Context, cfg Config) (string, error) {
 	}
 	c.relay = &naiveRelay{ln: rl}
 	go c.relay.serve()
+	// The guest's resolv.conf names the naive resolver, whether or not it
+	// could bind (port 53 needs root): a query then goes there or nowhere,
+	// never to the host's own resolver (SPEC T8, S12).
+	if c.resolver, err = listenNaiveResolver(naiveResolverAddr); err != nil {
+		fmt.Fprintf(os.Stderr, "escape: control: no naive resolver at %s (%v): the guest's lookups will go unanswered\n", naiveResolverAddr, err)
+	}
+	host, _, _ := net.SplitHostPort(naiveResolverAddr)
+	if err := os.WriteFile(filepath.Join(dir, "resolv.conf"), []byte("nameserver "+host+"\n"), 0o644); err != nil {
+		return "", fmt.Errorf("control: write resolv.conf: %w", err)
+	}
 	if sec := cfg.Secret; sec != nil {
 		// The naive way: the real value in the environment, and in a dotenv
 		// file in the workspace for tools that read one.
@@ -120,7 +135,11 @@ func (c *control) Exec(ctx context.Context, args ...string) (Output, error) {
 	stderr := &bounded{limit: MaxStderr}
 	host := &naiveHost{stdout: stdout, stderr: stderr, cancel: cancel}
 	host.wg.Go(func() { host.accept(c.ln) })
-	cmd := exec.CommandContext(cctx, c.payload, args...)
+	// The payload starts behind a loader, as the product's does: in the
+	// run's own mount namespace it makes every mount private, so that
+	// nothing it mounts shows on the host, and binds the session's
+	// resolv.conf over /etc/resolv.conf, then becomes the payload.
+	cmd := exec.CommandContext(cctx, "/bin/sh", append([]string{"-c", controlLoader, filepath.Join(c.dir, "resolv.conf"), c.payload}, args...)...)
 	cmd.Dir = "/"
 	cmd.Env = c.env
 	cmd.ExtraFiles = []*os.File{end}
@@ -348,6 +367,9 @@ func (c *control) Stop() error {
 	}
 	if c.relay != nil {
 		c.relay.stop()
+	}
+	if c.resolver != nil {
+		c.resolver.stop()
 	}
 	return os.RemoveAll(c.dir)
 }

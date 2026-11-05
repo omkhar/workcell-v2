@@ -70,6 +70,20 @@ var All = []Test{
 	{ID: "I3", Name: "doh-post-tcp4", Probe: dohProbe(http.MethodPost), Host: dnsCanary(dnsOverHTTPS, queried)},
 	{ID: "I3", Name: "doh-get-tcp4", Probe: dohProbe(http.MethodGet), Host: dnsCanary(dnsOverHTTPS, queried)},
 	{ID: "I3", Name: "tunnel-txt-udp4", Probe: tunnelProbe, Host: dnsCanary(dnsOverUDP, tunnelled)},
+	// The resolver the guest is configured with must answer the allowed
+	// name, in any case and with EDNS0, and refuse every other name: one no
+	// policy names, a subdomain of the allowed name, a name that merely ends
+	// in it, a name that starts with it, and other types; promptly, with a
+	// DNS answer that carries no address. The same at any address on port
+	// 53, under a policy that allows nothing, after hostile datagrams (I12)
+	// and after a burst (I10).
+	{ID: "I3", Name: "resolver-answers-allowed", Probe: lookupProbe, Host: resolverJudge(resolvConf, allowedLookups), Want: reachable},
+	{ID: "I3", Name: "resolver-refuses-others", Probe: lookupProbe, Host: resolverJudge(resolvConf, deniedLookups), Want: reachable},
+	{ID: "I3", Name: "resolver-at-host-address", Probe: lookupProbe, Host: resolverJudge(hostAddr+":53", bothLookups), Want: reachable},
+	{ID: "I3", Name: "resolver-at-lan-address", Probe: lookupProbe, Host: onLoopback("10.255.255.254", resolverJudge("10.255.255.254:53", bothLookups)), Want: reachable},
+	{ID: "I3", Name: "resolver-empty-policy", Probe: lookupProbe, Host: resolverJudge(resolvConf, nothingLookups)},
+	{ID: "I3", Name: "resolver-after-garbage", Probe: garbageProbe, Host: resolverJudge(resolvConf, bothLookups), Want: reachable},
+	{ID: "I3", Name: "resolver-after-burst", Probe: burstProbe, Host: burstJudge(bothLookups), Want: reachable},
 	// A secret lies beside the export on the host. The guest goes for it, and
 	// for the directory holding it, by path, by link, by mount and by file
 	// handle, and for the host's disks by device node.

@@ -4,7 +4,9 @@
 package suite
 
 import (
+	"bytes"
 	"encoding/binary"
+	"net"
 	"strings"
 )
 
@@ -14,12 +16,19 @@ import (
 // trailing dot, every label 1 to 63 bytes of printable ASCII without a dot.
 
 const (
-	dnsTypeA   = 1
-	dnsTypeTXT = 16
-	dnsClassIN = 1
-	maxLabel   = 63
-	maxName    = 255
+	dnsTypeA    = 1
+	dnsTypePTR  = 12
+	dnsTypeTXT  = 16
+	dnsTypeAAAA = 28
+	dnsTypeOPT  = 41
+	dnsTypeANY  = 255
+	dnsClassIN  = 1
+	maxLabel    = 63
+	maxName     = 255
 )
+
+// Response codes (RFC 1035 section 4.1.1), as the resolver probes name them.
+var rcodeNames = map[uint16]string{0: "noerror", 1: "formerr", 2: "servfail", 3: "nxdomain", 4: "notimp", 5: "refused"}
 
 // dnsQuestion is the one question of a query.
 type dnsQuestion struct {
@@ -83,4 +92,88 @@ func parseDNSQuery(b []byte) (dnsQuestion, bool) {
 // section 4.2.2, RFC 7858).
 func dnsFrame(msg []byte) []byte {
 	return append(binary.BigEndian.AppendUint16(make([]byte, 0, 2+len(msg)), uint16(len(msg))), msg...)
+}
+
+// withEDNS0 adds an OPT pseudo-record (RFC 6891) to a query: ARCOUNT 1, root
+// name, type OPT, a 4096-byte UDP size in the class field, no options.
+func withEDNS0(msg []byte) []byte {
+	msg = bytes.Clone(msg)
+	binary.BigEndian.PutUint16(msg[10:], 1)
+	return append(msg, 0, 0, dnsTypeOPT, 0x10, 0, 0, 0, 0, 0, 0, 0)
+}
+
+// dnsReply is what a resolver's response says, as far as a probe judges it:
+// the id it answers, its rcode, and the type and data of each answer record.
+type dnsReply struct {
+	ID      uint16
+	Rcode   uint16
+	Answers []dnsRR
+}
+
+type dnsRR struct {
+	Type uint16
+	Data []byte
+}
+
+// parseDNSReply decodes a message as a response (QR 1) whose answer section
+// it can walk: names are skipped, compressed or not, and nothing is followed.
+// The bytes come from whatever answered the guest and are hostile, so the
+// parser is total: anything it cannot walk is not a reply.
+func parseDNSReply(b []byte) (dnsReply, bool) {
+	if len(b) < 12 || b[2]&0x80 == 0 {
+		return dnsReply{}, false
+	}
+	r := dnsReply{ID: binary.BigEndian.Uint16(b), Rcode: uint16(b[3] & 0x0F)}
+	qd, an := int(binary.BigEndian.Uint16(b[4:])), int(binary.BigEndian.Uint16(b[6:]))
+	i := 12
+	for range qd {
+		if i = skipName(b, i); i < 0 || i+4 > len(b) {
+			return dnsReply{}, false
+		}
+		i += 4
+	}
+	for range an {
+		if i = skipName(b, i); i < 0 || i+10 > len(b) {
+			return dnsReply{}, false
+		}
+		typ, n := binary.BigEndian.Uint16(b[i:]), int(binary.BigEndian.Uint16(b[i+8:]))
+		i += 10
+		if i+n > len(b) {
+			return dnsReply{}, false
+		}
+		r.Answers = append(r.Answers, dnsRR{Type: typ, Data: bytes.Clone(b[i : i+n])})
+		i += n
+	}
+	return r, true
+}
+
+// skipName returns the offset after the name at i, or -1 if it runs off the
+// message. A compression pointer ends the name where it stands.
+func skipName(b []byte, i int) int {
+	for {
+		if i >= len(b) {
+			return -1
+		}
+		n := int(b[i])
+		switch {
+		case n == 0:
+			return i + 1
+		case n&0xC0 == 0xC0:
+			return i + 2
+		case n&0xC0 != 0:
+			return -1
+		}
+		i += 1 + n
+	}
+}
+
+// addresses lists the A and AAAA records of a reply, as text.
+func (r dnsReply) addresses() []string {
+	var out []string
+	for _, rr := range r.Answers {
+		if (rr.Type == dnsTypeA && len(rr.Data) == 4) || (rr.Type == dnsTypeAAAA && len(rr.Data) == 16) {
+			out = append(out, net.IP(rr.Data).String())
+		}
+	}
+	return out
 }
