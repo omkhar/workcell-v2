@@ -204,23 +204,12 @@ func helperKilled(name string, atStart bool) Judge {
 		// the test host; the resolver answers both names with the address
 		// the canaries listen at.
 		var st stream
-		ln, _, err := bind(ctx, s, "tcp4", hostAddr+":443")
-		if err != nil {
-			return false, "", err
-		}
-		host, _, _ := net.SplitHostPort(ln.Addr().String())
-		_, pc, err := bind(ctx, s, "udp4", net.JoinHostPort(judgeResolver, "53"))
-		if err != nil {
-			ln.Close()
-			return false, "", err
-		}
-		ns := serveNamesOn(pc, rebind{a: []string{host}, names: []string{s.Allow[0] + ".", s.Deny[0] + "."}})
-		defer ns.stop()
 		allowed, denied := &canary{name: s.Allow[0], respond: st.serve}, &canary{name: s.Deny[0]}
-		stop, err := serveCanaries(ln, nil, allowed, denied)
+		ns, stop, err := serveTwo(ctx, s, nil, allowed, denied)
 		if err != nil {
 			return false, "", err
 		}
+		defer ns.stop()
 		defer stop()
 
 		// The guest's run, under a context of this judge's own, so that a

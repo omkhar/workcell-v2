@@ -81,9 +81,10 @@ type Judge func(ctx context.Context, s Session) (pass bool, detail string, err e
 // adapter is to state (zero: the adapter's default), the names the policy
 // allows and the names it does not, the resolver the host side of the
 // session is to use (the judge's, see sandbox.Config.Resolver), whether a
-// fresh secret is bound to the first allowed name, and the repo-local
-// policy (a workcell.toml the runner plants in the export before the
-// session starts) that the hostile repository brings.
+// fresh secret is bound to the first allowed name, and narrowed to one
+// method and path (NewSecret), and the repo-local policy (a workcell.toml
+// the runner plants in the export before the session starts) that the
+// hostile repository brings.
 type Want struct {
 	Workspace bool
 	Mount     bool
@@ -95,6 +96,7 @@ type Want struct {
 	Resolver  string
 	Isolated  bool // the host side in a network of its own (sandbox.Config.Isolated)
 	Secret    bool
+	Narrow    bool
 	Policy    string
 }
 

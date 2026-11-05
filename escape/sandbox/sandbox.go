@@ -86,10 +86,12 @@ type Config struct {
 // Secret is one [[secret]] table entry as a test wants it: Value is bound to
 // Host and goes in Header. The guest is to see the credential only as a
 // placeholder, in the environment variable Env, and only a terminated
-// connection to Host is to carry Value (SPEC A4, I5, I6). The control adapter
-// does what a naive sandbox does and stages Value itself.
+// connection to Host is to carry Value (SPEC A4, I5, I6). Method and Path,
+// when set, narrow the binding to requests of that method under that path
+// prefix. The control adapter does what a naive sandbox does and stages
+// Value itself, wherever the guest asks for it.
 type Secret struct {
-	Name, Value, Host, Header, Env string
+	Name, Value, Host, Header, Env, Method, Path string
 }
 
 // UpdateConfig is one run of the product's update client as a judge wants

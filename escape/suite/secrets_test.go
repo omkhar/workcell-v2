@@ -31,7 +31,7 @@ func TestFindSecrets(t *testing.T) {
 			t.Errorf("findSecrets(%q) = %q, want %q", c.in, got, c.want)
 		}
 	}
-	if v := NewSecret("x").Value; len(v) != secretLen || len(findSecrets([]byte("x="+v+"\n"))) != 1 {
+	if v := NewSecret("x", false).Value; len(v) != secretLen || len(findSecrets([]byte("x="+v+"\n"))) != 1 {
 		t.Errorf("NewSecret made %q, which the probe would not find", v)
 	}
 }

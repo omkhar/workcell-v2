@@ -19,8 +19,10 @@ import (
 	"fmt"
 	"math/big"
 	"net"
+	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -110,43 +112,70 @@ func certificate(names ...string) (*tls.Config, error) {
 	return &tls.Config{Certificates: []tls.Certificate{{Certificate: [][]byte{der}, PrivateKey: key}}, MinVersion: tls.VersionTLS12}, nil
 }
 
-// twoNames serves a canary for each allowed name on one listener at port
-// 443 where the product reaches the test host, the first accepting ECH
-// under the second's name when ech is set and, when misleaf is set, under
-// a certificate for the second's name alone; runs the judge's resolver
-// answering both names with that address, and hands the canaries to judge.
-func twoNames(ech, misleaf bool, judge func(s Session, bound, other *canary) (bool, string, error)) Judge {
+// canaries is how twoNames serves the two names: the bound canary accepts
+// ECH under the other's name (ech), presents a certificate for the other's
+// name alone (misleaf), or answers as respond says instead of 200.
+type canaries struct {
+	ech, misleaf bool
+	respond      func(other *canary) http.HandlerFunc
+}
+
+// twoNames serves a canary for the bound name, the first allowed, and one
+// for the other, the first denied name or else the second allowed, on one
+// listener at port 443 where the product reaches the test host (serveTwo),
+// and hands them to judge.
+func twoNames(c canaries, judge func(s Session, bound, other *canary) (bool, string, error)) Judge {
 	return func(ctx context.Context, s Session) (bool, string, error) {
-		ln, _, err := bind(ctx, s, "tcp4", hostAddr+":443")
-		if err != nil {
-			return false, "", err
+		others := slices.Concat(s.Deny, s.Allow[1:])
+		if len(others) == 0 {
+			return false, "", errors.New("the test wants one name; two canaries need two")
 		}
-		host, _, _ := net.SplitHostPort(ln.Addr().String())
-		_, pc, err := bind(ctx, s, "udp4", net.JoinHostPort(judgeResolver, "53"))
-		if err != nil {
-			ln.Close()
-			return false, "", err
-		}
-		ns := serveNamesOn(pc, rebind{a: []string{host}, names: []string{s.Allow[0] + ".", s.Allow[1] + "."}})
-		defer ns.stop()
-		bound, other := &canary{name: s.Allow[0]}, &canary{name: s.Allow[1]}
-		if misleaf {
+		bound, other := &canary{name: s.Allow[0]}, &canary{name: others[0]}
+		if c.misleaf {
 			bound.leafFor = other.name
 		}
+		if c.respond != nil {
+			bound.respond = c.respond(other)
+		}
 		var keys []tls.EncryptedClientHelloKey
-		if ech {
+		var err error
+		if c.ech {
 			if bound.ech, keys, err = echKeys(other.name); err != nil {
-				ln.Close()
 				return false, "", err
 			}
 		}
-		stop, err := serveCanaries(ln, keys, bound, other)
+		ns, stop, err := serveTwo(ctx, s, keys, bound, other)
 		if err != nil {
 			return false, "", err
 		}
+		defer ns.stop()
 		defer stop()
 		return judge(s, bound, other)
 	}
+}
+
+// serveTwo serves the two canaries on one listener at port 443 where the
+// product reaches the test host, under keys for ECH when given, and runs
+// the judge's resolver there, answering both names with that address. The
+// caller stops both.
+func serveTwo(ctx context.Context, s Session, keys []tls.EncryptedClientHelloKey, bound, other *canary) (*nameServer, func(), error) {
+	ln, _, err := bind(ctx, s, "tcp4", hostAddr+":443")
+	if err != nil {
+		return nil, nil, err
+	}
+	host, _, _ := net.SplitHostPort(ln.Addr().String())
+	_, pc, err := bind(ctx, s, "udp4", net.JoinHostPort(judgeResolver, "53"))
+	if err != nil {
+		ln.Close()
+		return nil, nil, err
+	}
+	ns := serveNamesOn(pc, rebind{a: []string{host}, names: []string{bound.name + ".", other.name + "."}})
+	stop, err := serveCanaries(ln, keys, bound, other)
+	if err != nil {
+		ns.stop()
+		return nil, nil, err
+	}
+	return ns, stop, nil
 }
 
 // terminatedProbe is a program in the guest opening TLS to the bound name

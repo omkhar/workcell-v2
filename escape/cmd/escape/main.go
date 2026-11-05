@@ -150,7 +150,7 @@ func runOne(ctx context.Context, fresh func() (sandbox.Sandbox, error), payload,
 		sessions = append(sessions, s)
 		cfg := sandbox.Config{Payload: payload, Mount: t.Want.Mount, CPUs: t.Want.CPUs, MemoryMiB: t.Want.MemoryMiB, DiskMiB: t.Want.DiskMiB, Allow: t.Want.Allow, Deny: t.Want.Deny, Resolver: t.Want.Resolver, Isolated: t.Want.Isolated, Roots: roots}
 		if t.Want.Secret {
-			sec := suite.NewSecret(t.Want.Allow[0])
+			sec := suite.NewSecret(t.Want.Allow[0], t.Want.Narrow)
 			cfg.Secret = &sec
 		}
 		if t.Want.Workspace {

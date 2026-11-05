@@ -298,10 +298,10 @@ func planted(ctx context.Context, s Session) (bool, string, error) {
 // and the judge of the invariant the widening would break.
 var (
 	// widened allows one name at user level; the repository allows the other.
-	widened = Want{Workspace: true, Allow: []string{"bound.escape.test"}, Deny: []string{"other.escape.test"}, Secret: true,
+	widened = Want{Workspace: true, Allow: []string{"bound.escape.test"}, Deny: []string{"other.escape.test"}, Resolver: judgeResolver, Isolated: true, Secret: true,
 		Policy: "[network]\nallow = [\"other.escape.test\"]\n"}
 	// rebound binds the user's secret, in the repository's policy, to the other allowed name as well.
-	rebound = Want{Workspace: true, Allow: withSecret.Allow, Secret: true,
+	rebound = Want{Workspace: true, Allow: withSecret.Allow, Resolver: judgeResolver, Isolated: true, Secret: true,
 		Policy: "[[secret]]\nname = \"escape\"\nhost = \"other.escape.test\"\nheader = \"x-api-key\"\n"}
 	// mounted asks for the user's tree live in the guest instead of a clone.
 	mounted = Want{Workspace: true, Policy: "[workspace]\nmode = \"mount\"\n"}
@@ -309,23 +309,6 @@ var (
 	uncapped = Want{Workspace: true, CPUs: capped.CPUs, MemoryMiB: capped.MemoryMiB, DiskMiB: capped.DiskMiB,
 		Policy: "[resources]\ncpus = 8\nmemory = \"4GiB\"\ndisk = \"20GiB\"\n"}
 )
-
-// reachJudge fails if the other name, which only the repository's policy
-// allows, served the guest. The bound name serving the probe's check shows
-// that the session worked at all.
-func reachJudge(s Session, bound, other *canary) (bool, string, error) {
-	r, err := run(s, bound, other)
-	if err != nil {
-		return false, "", err
-	}
-	if rs := other.requests(); len(rs) > 0 {
-		return false, fmt.Sprintf("the guest reached %s, which only the repository's policy allows: %s (guest says %s: %s)", other.name, other.served(), r.Status, r.Detail), nil
-	}
-	if len(bound.requests()) == 0 {
-		return false, "", fmt.Errorf("%s saw nothing, not even the check a correct product serves (guest says %s: %s)", bound.name, r.Status, r.Detail)
-	}
-	return true, fmt.Sprintf("%s; %s (guest says %s: %s)", bound.served(), other.served(), r.Status, r.Detail), nil
-}
 
 // liveProbe writes a file in the export, as an agent would.
 func liveProbe(args []string) Result {

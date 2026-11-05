@@ -44,9 +44,11 @@ var prepared struct {
 	xdg string // XDG_DATA_HOME holding workcell/{vmlinux,initrd.cpio,root.ext4} and, on Linux, firecracker
 }
 
-// workcell is one session of the product: a directory for its cwd when the
-// test exports nothing, the payload it carries in and the caps each of its
-// VMs gets. A VM lives only as long as one Exec or one Pull.
+// workcell is one session of the product: a directory holding its policy,
+// its secret and, as an empty subdirectory, its cwd when the test exports
+// nothing, so that the product exports none of the rest; the payload it
+// carries in; and the caps each of its VMs gets. A VM lives only as long
+// as one Exec or one Pull.
 type workcell struct {
 	dir     string
 	payload string
@@ -192,18 +194,28 @@ func (w *workcell) Start(_ context.Context, cfg Config) (string, error) {
 	if _, err := os.Stat(cfg.Payload); err != nil {
 		return "", fmt.Errorf("workcell: payload: %w", err)
 	}
-	policy, err := policyTOML(cfg)
-	if err != nil {
-		return "", fmt.Errorf("workcell: %w", err)
-	}
 	dir, err := os.MkdirTemp("", "escape-workcell-")
 	if err != nil {
 		return "", err
 	}
+	// The secret's value, where only the host reads it: a file of the
+	// session's own, mode 0600, beside the policy and outside any export.
+	source := filepath.Join(dir, "secret")
+	if cfg.Secret != nil {
+		if err := os.WriteFile(source, []byte(cfg.Secret.Value), 0o600); err != nil {
+			os.RemoveAll(dir)
+			return "", fmt.Errorf("workcell: write the secret: %w", err)
+		}
+	}
+	policy, err := policyTOML(cfg, source)
+	if err != nil {
+		os.RemoveAll(dir)
+		return "", fmt.Errorf("workcell: %w", err)
+	}
 	// The session's policy, where `workcell run` reads it with XDG_CONFIG_HOME
 	// at the session's config directory: <dir>/config/workcell/config.toml.
 	file := filepath.Join(dir, "config", policyFile)
-	if err := os.MkdirAll(filepath.Dir(file), 0o755); err == nil {
+	if err := errors.Join(os.MkdirAll(filepath.Dir(file), 0o755), os.Mkdir(filepath.Join(dir, "cwd"), 0o755)); err == nil {
 		err = os.WriteFile(file, policy, 0o644)
 	}
 	if err != nil {
@@ -298,7 +310,7 @@ func (w *workcell) cli(ctx context.Context, in io.Reader, args ...string) (Outpu
 		}
 	}
 	cmd := exec.CommandContext(ctx, argv[0], argv[1:]...)
-	cmd.Dir = w.dir
+	cmd.Dir = filepath.Join(w.dir, "cwd")
 	if w.cfg.Workspace != "" {
 		cmd.Dir = w.cfg.Workspace
 	}
