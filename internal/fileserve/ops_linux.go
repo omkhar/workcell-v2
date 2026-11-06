@@ -20,7 +20,7 @@ const openFlags = unix.O_ACCMODE | unix.O_TRUNC | unix.O_APPEND
 func (s *Server) op(r request) ([]byte, syscall.Errno) {
 	switch r.Opcode {
 	case opLookup:
-		p, e := s.dirAt(r.NodeID)
+		p, e := s.at(r.NodeID, syscall.ENOTDIR)
 		if e != 0 {
 			return nil, e
 		}
@@ -37,7 +37,7 @@ func (s *Server) op(r request) ([]byte, syscall.Errno) {
 			}
 			return attrOut(validity, attrOf(&st)), 0
 		}
-		l, e := s.at(r.NodeID)
+		l, e := s.at(r.NodeID, 0)
 		if e != 0 {
 			return nil, e
 		}
@@ -48,7 +48,7 @@ func (s *Server) op(r request) ([]byte, syscall.Errno) {
 	case opSetattr:
 		return s.setattr(r)
 	case opReadlink:
-		l, e := s.at(r.NodeID)
+		l, e := s.at(r.NodeID, 0)
 		if e != 0 {
 			return nil, e
 		}
@@ -62,7 +62,7 @@ func (s *Server) op(r request) ([]byte, syscall.Errno) {
 		}
 		return buf[:n], 0
 	case opSymlink, opMkdir:
-		p, e := s.dirAt(r.NodeID)
+		p, e := s.at(r.NodeID, syscall.ENOTDIR)
 		if e != 0 {
 			return nil, e
 		}
@@ -77,7 +77,7 @@ func (s *Server) op(r request) ([]byte, syscall.Errno) {
 		}
 		return s.lookup(p, r.Name)
 	case opUnlink, opRmdir:
-		p, e := s.dirAt(r.NodeID)
+		p, e := s.at(r.NodeID, syscall.ENOTDIR)
 		if e != 0 {
 			return nil, e
 		}
@@ -137,7 +137,7 @@ func (s *Server) op(r request) ([]byte, syscall.Errno) {
 		}
 		return writeOut(uint32(len(r.Data))), 0
 	case opStatfs:
-		l, e := s.at(rootID)
+		l, e := s.at(rootID, 0)
 		if e != 0 {
 			return nil, e
 		}
@@ -157,7 +157,7 @@ func (s *Server) op(r request) ([]byte, syscall.Errno) {
 		}
 		return nil, errno(unix.Fsync(h.fd))
 	case opOpendir:
-		l, e := s.dirAt(r.NodeID)
+		l, e := s.at(r.NodeID, syscall.ENOTDIR)
 		if e != 0 {
 			return nil, e
 		}
@@ -201,11 +201,11 @@ func (s *Server) lookup(p loc, name string) ([]byte, syscall.Errno) {
 // step, so a request racing it resolves against the old or the new shape, never a mix. A
 // directory never moves under itself, so the parent chain stays acyclic whatever the disk says.
 func (s *Server) rename(r request) syscall.Errno {
-	op, e := s.dirAt(r.NodeID)
+	op, e := s.at(r.NodeID, syscall.ENOTDIR)
 	if e != 0 {
 		return e
 	}
-	np, e := s.dirAt(r.NewDir)
+	np, e := s.at(r.NewDir, syscall.ENOTDIR)
 	if e != 0 {
 		return e
 	}
@@ -236,7 +236,7 @@ func (s *Server) rename(r request) syscall.Errno {
 }
 
 func (s *Server) open(r request) ([]byte, syscall.Errno) {
-	l, e := s.namedAt(r.NodeID)
+	l, e := s.at(r.NodeID, syscall.EISDIR)
 	switch {
 	case e != 0:
 	case l.mode == unix.S_IFLNK:
@@ -257,7 +257,7 @@ func (s *Server) open(r request) ([]byte, syscall.Errno) {
 }
 
 func (s *Server) create(r request) ([]byte, syscall.Errno) {
-	p, e := s.dirAt(r.NodeID)
+	p, e := s.at(r.NodeID, syscall.ENOTDIR)
 	if e != 0 {
 		return nil, e
 	}
@@ -298,7 +298,7 @@ func (s *Server) setattr(r request) ([]byte, syscall.Errno) {
 	}
 	if fd < 0 || a.Valid&times != 0 {
 		var e syscall.Errno
-		if l, e = s.at(r.NodeID); e != 0 {
+		if l, e = s.at(r.NodeID, 0); e != 0 {
 			return nil, e
 		}
 		if fd < 0 {
@@ -384,7 +384,7 @@ func (s *Server) readdir(r request) ([]byte, syscall.Errno) {
 	if !h.dir {
 		return nil, syscall.ENOTDIR
 	}
-	l, e := s.dirAt(r.NodeID)
+	l, e := s.at(r.NodeID, syscall.ENOTDIR)
 	switch {
 	case e != 0:
 		return nil, e

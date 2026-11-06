@@ -33,22 +33,20 @@ const (
 
 // Sizes in bytes, from fuse.h.
 const (
-	InHeaderLen   = 40
-	OutHeaderLen  = 16
-	attrLen       = 88
-	entryOutLen   = 128
-	attrOutLen    = 104
-	openOutLen    = 16
-	writeOutLen   = 8
-	kstatfsLen    = 80
-	initInLen     = 64
-	initOutLen    = 64
-	direntLen     = 24
-	setattrInLen  = 88
-	readInLen     = 40
-	writeInLen    = 40
-	releaseInLen  = 24
-	direntPlusLen = entryOutLen + direntLen
+	InHeaderLen  = 40
+	OutHeaderLen = 16
+	entryOutLen  = 128
+	attrOutLen   = 104
+	openOutLen   = 16
+	writeOutLen  = 8
+	kstatfsLen   = 80
+	initInLen    = 64
+	initOutLen   = 64
+	direntLen    = 24
+	setattrInLen = 88
+	readInLen    = 40
+	writeInLen   = 40
+	releaseInLen = 24
 )
 
 // What this server negotiates. MaxWrite is 15 pages, so one WRITE request or one READ reply
@@ -374,18 +372,17 @@ func (k kstatfs) bytes() []byte {
 
 // initOut is the reply to in: protocol 7.min(kernel minor, MaxMinor), the flags of this
 // server that the kernel offered, and the returned flags.
-func initOut(in initIn) ([]byte, uint32) {
+func initOut(in initIn) []byte {
 	b := make([]byte, initOutLen)
-	flags := in.Flags & initFlags
 	le.PutUint32(b, Major)
 	le.PutUint32(b[4:], min(in.Minor, MaxMinor))
 	le.PutUint32(b[8:], maxReadahead)
-	le.PutUint32(b[12:], flags)
+	le.PutUint32(b[12:], in.Flags&initFlags)
 	le.PutUint16(b[16:], 12) // max_background
 	le.PutUint16(b[18:], 9)  // congestion_threshold
 	le.PutUint32(b[20:], MaxWrite)
 	le.PutUint32(b[24:], 1) // time_gran
-	return b, flags
+	return b
 }
 
 // direntSize is the bytes one entry of name takes in a READDIR or READDIRPLUS reply.

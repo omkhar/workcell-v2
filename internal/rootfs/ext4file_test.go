@@ -48,7 +48,7 @@ func hostFile(t *testing.T, dir, name string, size int64) (*HostFile, []byte) {
 	return &HostFile{Path: path, Size: size, Dev: uint64(st.Dev), Ino: uint64(st.Ino)}, data
 }
 
-func imageFile(t *testing.T, tr *Tree, free int64) (string, FileStats) {
+func imageFile(t *testing.T, tr *Tree, free int64) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "workspace.ext4")
 	f, err := os.Create(path)
@@ -56,11 +56,10 @@ func imageFile(t *testing.T, tr *Tree, free int64) (string, FileStats) {
 		t.Fatal(err)
 	}
 	defer f.Close()
-	st, err := tr.WriteExt4File(f, time.Time{}, free)
-	if err != nil {
+	if err := tr.WriteExt4File(f, time.Time{}, free); err != nil {
 		t.Fatal(err)
 	}
-	return path, st
+	return path
 }
 
 // TestWriteExt4File checks that data taken from host files gives the image that the same
@@ -90,7 +89,7 @@ func TestWriteExt4File(t *testing.T) {
 				}
 			}
 			want := image(t, mem)
-			path, st := imageFile(t, host, 0)
+			path := imageFile(t, host, 0)
 			got, err := os.ReadFile(path)
 			if err != nil {
 				t.Fatal(err)
@@ -98,10 +97,6 @@ func TestWriteExt4File(t *testing.T) {
 			if !bytes.Equal(got, want) {
 				t.Errorf("the image from host files differs from the image from memory (%d and %d bytes)", len(got), len(want))
 			}
-			if st.Cloned+st.Copied != len(tc.sizes) {
-				t.Errorf("stats %+v, want %d files in all", st, len(tc.sizes))
-			}
-			t.Logf("stats %+v", st)
 		})
 	}
 }
@@ -137,7 +132,7 @@ func TestSourceChecks(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer f.Close()
-			if _, err := tr.WriteExt4File(f, time.Time{}, 0); (err == nil) != tc.ok {
+			if err := tr.WriteExt4File(f, time.Time{}, 0); (err == nil) != tc.ok {
 				t.Errorf("WriteExt4File: %v, want success %v", err, tc.ok)
 			}
 		})
@@ -172,7 +167,7 @@ func TestFreeSpace(t *testing.T) {
 			if err := tr.Put("/f", Node{Kind: File, Mode: 0o644, Source: h}); err != nil {
 				t.Fatal(err)
 			}
-			path, _ := imageFile(t, tr, tc.free)
+			path := imageFile(t, tr, tc.free)
 			e2fsck(t, path)
 			fi, err := os.Stat(path)
 			if err != nil {

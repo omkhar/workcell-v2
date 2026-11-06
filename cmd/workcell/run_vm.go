@@ -51,22 +51,18 @@ func run(args []string, stderr io.Writer) int {
 	if !ok {
 		return 2
 	}
-	allow, secrets, _, err := loadPolicy(extra, stderr)
+	allow, secrets, _, _, err := loadPolicy(extra, stderr)
 	if err != nil {
 		fmt.Fprintln(stderr, "workcell run:", err)
 		return 2
 	}
-	dir, err := dataDir()
-	var a artifacts
+	a, err := loadArtifacts()
 	if err == nil {
-		a, err = findArtifacts(dir)
-	}
-	if err == nil {
-		a.layers, err = findLayers(dir)
+		a.layers, err = findLayers(a.dir)
 	}
 	if err == nil {
 		var release func()
-		a.caches, release, err = openCaches(dir, caches, caps.disk())
+		a.caches, release, err = openCaches(a.dir, caches, caps.disk())
 		defer release() // the locks last as long as the session
 	}
 	code := 0
@@ -127,7 +123,8 @@ func session(argv []string, caps limits, mount bool, a artifacts, allow *proxy.A
 	defer b.close()
 	raw := b.conn
 
-	req := guest.Exec{Argv: argv, Env: []string{pathEnv(a.layers), "HOME=/root", "LANG=C.UTF-8"}, Dir: "/workspace", CA: b.ca}
+	_, path := layerArgs(a.layers, 0)
+	req := guest.Exec{Argv: argv, Env: []string{path, "HOME=/root", "LANG=C.UTF-8"}, Dir: "/workspace", CA: b.ca}
 	if b.ca != nil {
 		req.Env = append(req.Env, guest.TrustEnv(guest.TrustDir)...)
 	}
@@ -289,7 +286,8 @@ func boot(a artifacts, caps limits, sigs <-chan os.Signal, session string, log *
 		cmdline += " workcell.workspace=/dev/vdb"
 		first = 'c'
 	}
-	cmdline += layerArgs(a.layers, first) + cacheArgs(a.caches, first+rune(len(a.layers)))
+	args, _ := layerArgs(a.layers, first)
+	cmdline += args + cacheArgs(a.caches, first+rune(len(a.layers)))
 	var ports []uint16 // the TCP ports the guest relays and the proxy serves; UDP 53 is relayed regardless
 	var names []string // the names the resolver answers: every host the proxy would admit (I3)
 	if allow != nil {

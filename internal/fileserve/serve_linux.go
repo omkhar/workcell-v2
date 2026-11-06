@@ -207,7 +207,7 @@ func (s *Server) Serve(st wire.Stream) error {
 		case r.Opcode == opInit && r.Init.Major != Major:
 			e = syscall.EPROTO
 		case r.Opcode == opInit:
-			body, _ := initOut(r.Init)
+			body := initOut(r.Init)
 			inited = true
 			send(Out(r.Unique, 0, body))
 			continue
@@ -286,8 +286,11 @@ func (s *Server) loc(id uint64) (loc, syscall.Errno) {
 
 // at is the node's location, checked: every link from the export down to the directory the
 // syscall will use still names the inode it did. A directory the host moved out of the
-// export, or replaced, is ESTALE until the guest looks it up afresh (R6).
-func (s *Server) at(id uint64) (loc, syscall.Errno) {
+// export, or replaced, is ESTALE until the guest looks it up afresh (R6). need is what the
+// syscall needs the node to be: ENOTDIR a directory, for only a directory node has a
+// descriptor; EISDIR a node with a parent, anything but the root; 0 any node. A node that
+// is not that is the error need.
+func (s *Server) at(id uint64, need syscall.Errno) (loc, syscall.Errno) {
 	l, e := s.loc(id)
 	if e != 0 {
 		return l, e
@@ -302,25 +305,10 @@ func (s *Server) at(id uint64) (loc, syscall.Errno) {
 			return l, syscall.ESTALE
 		}
 	}
+	if need == syscall.ENOTDIR && l.fd < 0 || need == syscall.EISDIR && l.pfd < 0 {
+		return l, need
+	}
 	return l, 0
-}
-
-// dirAt is a directory's location; only a directory node has a descriptor.
-func (s *Server) dirAt(id uint64) (loc, syscall.Errno) {
-	l, e := s.at(id)
-	if e == 0 && l.fd < 0 {
-		e = syscall.ENOTDIR
-	}
-	return l, e
-}
-
-// namedAt is the location of a node that has a parent: anything but the root.
-func (s *Server) namedAt(id uint64) (loc, syscall.Errno) {
-	l, e := s.at(id)
-	if e == 0 && l.pfd < 0 {
-		e = syscall.EISDIR
-	}
-	return l, e
 }
 
 // child is the node of name in directory p, with one more lookup counted. A directory gets

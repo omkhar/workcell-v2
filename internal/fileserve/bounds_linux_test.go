@@ -68,7 +68,7 @@ func TestNodeCap(t *testing.T) {
 			break
 		}
 		for b := body; len(b) > 0; {
-			name := string(b[direntPlusLen : direntPlusLen+int(le.Uint32(b[entryOutLen+16:]))])
+			name := string(b[entryOutLen+direntLen : entryOutLen+direntLen+int(le.Uint32(b[entryOutLen+16:]))])
 			if le.Uint64(b) != 0 {
 				made++
 			} else {

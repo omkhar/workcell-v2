@@ -39,22 +39,15 @@ func findLayers(dir string) ([]vmm.Layer, error) {
 }
 
 // layerArgs is the init's workcell.layer=<agent>:<device> for each layer, in the order the
-// backend attaches the drives, the first of them at the drive letter first.
-func layerArgs(layers []vmm.Layer, first rune) string {
-	var s strings.Builder
+// backend attaches the drives, the first of them at the drive letter first, and the command's
+// PATH: the bin of each layer, in order, before the image's own.
+func layerArgs(layers []vmm.Layer, first rune) (args, path string) {
+	path = "PATH="
 	for i, l := range layers {
-		fmt.Fprintf(&s, " workcell.layer=%s:/dev/vd%c", l.Name, first+rune(i))
+		args += fmt.Sprintf(" workcell.layer=%s:/dev/vd%c", l.Name, first+rune(i))
+		path += "/opt/" + l.Name + "/bin:"
 	}
-	return s.String()
-}
-
-// pathEnv is the command's PATH: the bin of each layer, in order, before the image's own.
-func pathEnv(layers []vmm.Layer) string {
-	s := "PATH="
-	for _, l := range layers {
-		s += "/opt/" + l.Name + "/bin:"
-	}
-	return s + "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+	return args, path + "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 }
 
 // cacheArgs is the init's workcell.cache=<name>:<device>:<ro|rw> for each cache, in the order the

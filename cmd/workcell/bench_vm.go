@@ -18,11 +18,7 @@ import (
 // benchSamples times. A sample runs from just before the VMM starts to the guest's connection.
 // It runs nothing in the guest, and each VM is gone before the next boots (the CID is fixed).
 func benchStart(stdout, stderr io.Writer) int {
-	dir, err := dataDir()
-	var a artifacts
-	if err == nil {
-		a, err = findArtifacts(dir)
-	}
+	a, err := loadArtifacts()
 	if err != nil {
 		fmt.Fprintln(stderr, "workcell:", err)
 		return 1

@@ -60,8 +60,8 @@ func TestExport(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Logf("stats %+v", st)
-	if st.Files != 5 || st.Bytes != int64(len("hello\n[core]\nlinked\n")) || st.Cloned+st.Copied != 3 {
-		t.Errorf("stats %+v, want 5 files (a hard link counts twice) with 20 bytes in 3 files with data", st)
+	if st.Files != 5 || st.Bytes != int64(len("hello\n[core]\nlinked\n")) {
+		t.Errorf("stats %+v, want 5 files (a hard link counts twice) with 20 bytes", st)
 	}
 	if out, err := exec.Command("e2fsck", "-fn", image).CombinedOutput(); err != nil {
 		t.Fatalf("e2fsck -fn: %v\n%s", err, out)

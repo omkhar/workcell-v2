@@ -47,7 +47,6 @@ func TestSizes(t *testing.T) {
 	a := attr{Ino: 7, Size: 16, Mode: 0o100644, Nlink: 1, Blk: 4096}
 	entry := entryOut(42, 1500*time.Millisecond, a)
 	ao := attrOut(time.Second, a)
-	ini, _ := initOut(initIn{Major: 7, Minor: 37})
 	for _, tc := range []struct {
 		name      string
 		got, want int
@@ -63,12 +62,10 @@ func TestSizes(t *testing.T) {
 		{"fuse_attr_out", len(ao), attrOutLen},
 		{"fuse_attr_out.attr.size", int(le.Uint64(ao[16+8:])), 16},
 		{"fuse_attr_out.attr.nlink", int(le.Uint32(ao[16+64:])), 1},
-		{"fuse_attr", attrOutLen - 16, attrLen},
 		{"fuse_open_out", len(openOut(9)), openOutLen},
 		{"fuse_write_out", len(writeOut(5)), writeOutLen},
 		{"fuse_kstatfs", len(kstatfs{Bsize: 4096}.bytes()), kstatfsLen},
 		{"fuse_kstatfs.bsize", int(le.Uint32(kstatfs{Bsize: 4096}.bytes()[40:])), 4096},
-		{"fuse_init_out", len(ini), initOutLen},
 		{"fuse_out_header", len(Out(1, 0)), OutHeaderLen},
 		{"fuse_out_header.len with body", int(le.Uint32(Out(1, 0, make([]byte, 8)))), 24},
 		{"fuse_out_header.error", int(int32(le.Uint32(Out(1, syscall.ENOENT)[4:]))), -2},
@@ -101,12 +98,12 @@ func TestInitOut(t *testing.T) {
 		{"older kernel, fewer flags", initIn{Major: 7, Minor: 31, MaxReadahead: 131072, Flags: flagAsyncRead | flagBigWrites}, 31,
 			flagAsyncRead | flagBigWrites},
 	} {
-		b, flags := initOut(tc.in)
+		b := initOut(tc.in)
 		got := []uint32{le.Uint32(b), le.Uint32(b[4:]), le.Uint32(b[8:]), le.Uint32(b[12:]), uint32(le.Uint16(b[16:])),
 			uint32(le.Uint16(b[18:])), le.Uint32(b[20:]), le.Uint32(b[24:]), uint32(le.Uint16(b[28:]))}
 		want := []uint32{7, tc.wantMinor, maxReadahead, tc.wantFlg, 12, 9, MaxWrite, 1, 0}
-		if flags != tc.wantFlg || !bytes.Equal(u32(got...), u32(want...)) || !bytes.Equal(b[32:], make([]byte, 32)) {
-			t.Errorf("%s: %v flags %#x, want %v and %#x", tc.name, got, flags, want, tc.wantFlg)
+		if !bytes.Equal(u32(got...), u32(want...)) || !bytes.Equal(b[32:], make([]byte, 32)) {
+			t.Errorf("%s: %v, want %v", tc.name, got, want)
 		}
 	}
 }

@@ -107,25 +107,39 @@ func TestInit(t *testing.T) {
 		g := connect(t, in)
 		g.exec(guest.Exec{Argv: []string{probe, "sleep"}})
 		g.until("sleeping")
-		pid := g.m.cmd.Process.Pid
-		t0 := time.Now()
-		_ = g.raw.Close()
-		ctx, cancel := context.WithTimeout(context.Background(), bootLimit)
-		defer cancel()
-		if err := g.m.Wait(ctx); err != nil {
-			t.Fatalf("Wait after the host hung up on a running command: %v", err)
-		}
-		if !gone(pid) {
-			t.Fatalf("firecracker pid %d is still there", pid)
-		}
-		t.Logf("init disconnect_poweroff_ms=%d", time.Since(t0).Milliseconds())
-		if err := g.m.Close(); err != nil {
-			t.Fatalf("Close: %v", err)
-		}
-		if left := list(t, g.dir); len(left) != 0 {
-			t.Fatalf("after Close, Dir holds %q", left)
-		}
+		t.Logf("init disconnect_poweroff_ms=%d", g.hangUp("on a running command").Milliseconds())
+		g.closed()
 	})
+}
+
+// hangUp closes the host's end of the channel while the guest does what says, and holds the
+// guest to powering off and Firecracker to exiting: it returns how long that took.
+func (g *client) hangUp(what string) time.Duration {
+	g.t.Helper()
+	pid := g.m.cmd.Process.Pid
+	t0 := time.Now()
+	_ = g.raw.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), bootLimit)
+	defer cancel()
+	if err := g.m.Wait(ctx); err != nil {
+		g.t.Fatalf("Wait after the host hung up %s: %v", what, err)
+	}
+	took := time.Since(t0)
+	if !gone(pid) {
+		g.t.Fatalf("firecracker pid %d is still there", pid)
+	}
+	return took
+}
+
+// closed closes the machine and holds Dir to being empty after it.
+func (g *client) closed() {
+	g.t.Helper()
+	if err := g.m.Close(); err != nil {
+		g.t.Fatalf("Close: %v", err)
+	}
+	if left := list(g.t, g.dir); len(left) != 0 {
+		g.t.Fatalf("after Close, Dir holds %q", left)
+	}
 }
 
 // client is the host's end of the channel to one guest, with every frame seen kept

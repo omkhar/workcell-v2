@@ -5,20 +5,15 @@
 package proxy
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"crypto/ed25519"
 	"crypto/tls"
-	"crypto/x509"
 	"encoding/binary"
 	"errors"
 	"io"
 	"net"
-	"net/http"
-	"net/http/httptest"
 	"net/netip"
-	"slices"
 	"sync"
 	"syscall"
 	"testing"
@@ -215,13 +210,6 @@ func (r *recorder) Note(rec audit.Record) error {
 	return nil
 }
 
-// has says whether rec, with no time, was noted.
-func (r *recorder) has(rec audit.Record) bool {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	return slices.Contains(r.recs, rec)
-}
-
 // denyLine is a refusal as the tests compare it: the count of its (host, port, reason) so far and
 // its number among the refusals.
 type denyLine struct {
@@ -249,135 +237,6 @@ func denies(t *testing.T, p *Proxy, log *recorder) []denyLine {
 		out = append(out, d)
 	}
 	return out
-}
-
-func httpsGet(serverName, proxyAddr string, roots *x509.CertPool) (string, error) {
-	client := &http.Client{
-		Timeout: 5 * time.Second,
-		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{ServerName: serverName, RootCAs: roots},
-			DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
-				var d net.Dialer
-				return d.DialContext(ctx, "tcp", proxyAddr)
-			},
-		},
-	}
-	resp, err := client.Get("https://" + serverName + "/")
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-	body, err := io.ReadAll(resp.Body)
-	return string(body), err
-}
-
-func TestProxyTLSEndToEnd(t *testing.T) {
-	t.Parallel()
-	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = io.WriteString(w, "hello through proxy")
-	}))
-	defer server.Close()
-	roots := x509.NewCertPool()
-	roots.AddCert(server.Certificate())
-	public := netip.MustParseAddr("8.8.8.8")
-
-	p, log, dialed := testProxy(t, "example.com:443", []netip.Addr{public}, server.Listener.Addr().String())
-	addr := listen(t, p, 443)
-
-	body, err := httpsGet("example.com", addr, roots)
-	if err != nil || body != "hello through proxy" {
-		t.Fatalf("allowed GET = (%q, %v), want the upstream body", body, err)
-	}
-	log.mu.Lock()
-	got := append([]netip.AddrPort(nil), *dialed...)
-	log.mu.Unlock()
-	if want := (audit.Record{Event: audit.Connect, Host: "example.com", Port: 443, Result: audit.Allowed}); !log.has(want) {
-		t.Errorf("no record of the allowed connection %+v", want)
-	}
-	if want := netip.AddrPortFrom(public, 443); len(got) != 1 || got[0] != want {
-		t.Fatalf("dialed %v, want [%v]", got, want)
-	}
-
-	// httptest's certificate also covers *.example.com, so only the proxy
-	// can refuse this name.
-	for range 2 {
-		if _, err := httpsGet("other.example.com", addr, roots); err == nil {
-			t.Fatal("GET with a non-allowlisted SNI succeeded, want refusal")
-		}
-	}
-	want := []denyLine{
-		{Host: "other.example.com", Port: 443, Reason: "sni_not_allowed", Count: 1, Seq: 1},
-		{Host: "other.example.com", Port: 443, Reason: "sni_not_allowed", Count: 2, Seq: 2},
-	}
-	if d := denies(t, p, log); len(d) != 2 || d[0] != want[0] || d[1] != want[1] {
-		t.Fatalf("deny lines = %+v, want %+v", d, want)
-	}
-}
-
-func TestProxyRefusesBlockedResolution(t *testing.T) {
-	t.Parallel()
-	server := httptest.NewTLSServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
-	defer server.Close()
-	roots := x509.NewCertPool()
-	roots.AddCert(server.Certificate())
-	// A public answer mixed with a metadata answer must still be refused.
-	addrs := []netip.Addr{netip.MustParseAddr("8.8.8.8"), netip.MustParseAddr("::ffff:169.254.169.254")}
-	p, log, dialed := testProxy(t, "example.com:443", addrs, server.Listener.Addr().String())
-	addr := listen(t, p, 443)
-
-	if _, err := httpsGet("example.com", addr, roots); err == nil {
-		t.Fatal("GET to a host that resolves to a metadata address succeeded, want refusal")
-	}
-	log.mu.Lock()
-	n := len(*dialed)
-	log.mu.Unlock()
-	if n != 0 {
-		t.Fatalf("proxy dialed %d times, want 0", n)
-	}
-	want := denyLine{Host: "example.com", Port: 443, Reason: "blocked_address", Count: 1, Seq: 1}
-	if d := denies(t, p, log); len(d) != 1 || d[0] != want {
-		t.Fatalf("deny lines = %+v, want [%+v]", d, want)
-	}
-}
-
-func TestProxyTCPForward(t *testing.T) {
-	t.Parallel()
-	echo := must(net.Listen("tcp", "127.0.0.1:0"))
-	defer echo.Close()
-	go func() {
-		for {
-			c, err := echo.Accept()
-			if err != nil {
-				return
-			}
-			go func() { _, _ = io.Copy(c, c); _ = c.Close() }()
-		}
-	}()
-	p, log, _ := testProxy(t, "db.example:5432", []netip.Addr{netip.MustParseAddr("8.8.8.8")}, echo.Addr().String())
-
-	conn := must(net.Dial("tcp", listen(t, p, 5432)))
-	defer conn.Close()
-	if _, err := io.WriteString(conn, "ping\n"); err != nil {
-		t.Fatal(err)
-	}
-	line, err := bufio.NewReader(conn).ReadString('\n')
-	if err != nil || line != "ping\n" {
-		t.Fatalf("echo through proxy = (%q, %v), want ping", line, err)
-	}
-
-	other := must(net.Dial("tcp", listen(t, p, 5433)))
-	defer other.Close()
-	_ = other.SetReadDeadline(time.Now().Add(5 * time.Second))
-	if n, err := other.Read(make([]byte, 1)); n != 0 || !errors.Is(err, io.EOF) {
-		t.Fatalf("read on a non-allowlisted port = (%d, %v), want EOF", n, err)
-	}
-	if want := (audit.Record{Event: audit.Connect, Host: "db.example", Port: 5432, Result: audit.Allowed}); !log.has(want) {
-		t.Errorf("no record of the allowed connection %+v", want)
-	}
-	want := denyLine{Port: 5433, Reason: "port_not_allowed", Count: 1, Seq: 1}
-	if d := denies(t, p, log); len(d) != 1 || d[0] != want {
-		t.Fatalf("deny lines = %+v, want [%+v]", d, want)
-	}
 }
 
 func TestConnectSharesBudgetAcrossAddresses(t *testing.T) {

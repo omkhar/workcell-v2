@@ -25,15 +25,7 @@ func workspaceDevice(cmdline string) string { return device(cmdline, "workcell.w
 // mounted reports whether the last workcell.mount= on the command line is 1: mount mode
 // (ADR-005), in which /workspace is the host's own tree, served by the host over vsock, and
 // no workspace disk is passed.
-func mounted(cmdline string) bool {
-	on := false
-	for _, f := range strings.Fields(cmdline) {
-		if v, ok := strings.CutPrefix(f, "workcell.mount="); ok {
-			on = v == "1"
-		}
-	}
-	return on
-}
+func mounted(cmdline string) bool { return value(cmdline, "workcell.mount=") == "1" }
 
 // layer is one provider layer the host attached: the agent's name and the read-only drive
 // that holds its image, mounted read-only at /opt/<name> so that no session changes it (I7).
@@ -75,52 +67,50 @@ func caches(cmdline string) []cache {
 	return cs
 }
 
-func device(cmdline, key string) string {
-	dev := ""
+// value is what the last key on the kernel command line says, "" if there is none. The host
+// wrote the line (A1).
+func value(cmdline, key string) string {
+	v := ""
 	for _, f := range strings.Fields(cmdline) {
-		if v, ok := strings.CutPrefix(f, key); ok && strings.HasPrefix(v, "/dev/") {
-			dev = v
+		if s, ok := strings.CutPrefix(f, key); ok {
+			v = s
 		}
 	}
-	return dev
+	return v
+}
+
+func device(cmdline, key string) string {
+	if v := value(cmdline, key); strings.HasPrefix(v, "/dev/") {
+		return v
+	}
+	return ""
 }
 
 // diskMiB is the writable-space cap in the last workcell.disk= on the kernel command line, or 0
 // for none. It sizes the tmpfs mounts; it is a courtesy so that the guest sees ENOSPC at the
 // cap. The host's memory cap is what holds, since a tmpfs lives in guest RAM (A1).
 func diskMiB(cmdline string) int {
-	mib := 0
-	for _, f := range strings.Fields(cmdline) {
-		if v, ok := strings.CutPrefix(f, "workcell.disk="); ok {
-			if n, err := strconv.ParseUint(v, 10, 31); err == nil {
-				mib = int(n)
-			}
-		}
+	if n, err := strconv.ParseUint(value(cmdline, "workcell.disk="), 10, 31); err == nil {
+		return int(n)
 	}
-	return mib
+	return 0
 }
 
 // ports is the list in the last workcell.ports= on the kernel command line: the TCP ports the
 // init relays to the host (ADR-003), none when there is no list or it is empty. The host wrote
 // it (A1); an entry that is not a port is an error, so that the console says so.
 func ports(cmdline string) ([]uint16, error) {
+	v := value(cmdline, "workcell.ports=")
+	if v == "" {
+		return nil, nil
+	}
 	var ps []uint16
-	for _, f := range strings.Fields(cmdline) {
-		v, ok := strings.CutPrefix(f, "workcell.ports=")
-		if !ok {
-			continue
+	for _, s := range strings.Split(v, ",") {
+		n, err := strconv.ParseUint(s, 10, 16)
+		if err != nil || n == 0 {
+			return nil, fmt.Errorf("workcell.ports: %q is not a port", s)
 		}
-		ps = nil
-		if v == "" {
-			continue
-		}
-		for _, s := range strings.Split(v, ",") {
-			n, err := strconv.ParseUint(s, 10, 16)
-			if err != nil || n == 0 {
-				return nil, fmt.Errorf("workcell.ports: %q is not a port", s)
-			}
-			ps = append(ps, uint16(n))
-		}
+		ps = append(ps, uint16(n))
 	}
 	return ps, nil
 }

@@ -16,7 +16,6 @@ import (
 	"net/url"
 	"slices"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/omkhar/workcell/v2/internal/pins"
@@ -65,7 +64,7 @@ type vuln struct {
 // normal cool-off stays in force, and reports err (W8). A failure is never
 // (nil, nil). The error names the pin and echoes nothing the server sent.
 func Lookup(ctx context.Context, client *http.Client, db string, p pins.Pin) (*pins.Advisory, error) {
-	cur, ok := parseVersion(p.Version)
+	cur, ok := pins.ParseVersion(p.Version)
 	if p.Package == (pins.Package{}) || !ok {
 		return nil, nil
 	}
@@ -81,7 +80,7 @@ func Lookup(ctx context.Context, client *http.Client, db string, p pins.Pin) (*p
 	c.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 
 	var best *pins.Advisory
-	var bestFix version
+	var bestFix pins.Version
 	token := ""
 	for range maxPages {
 		q := map[string]any{"package": map[string]string{"ecosystem": p.Package.Ecosystem, "name": p.Package.Name}, "version": p.Version}
@@ -98,7 +97,7 @@ func Lookup(ctx context.Context, client *http.Client, db string, p pins.Pin) (*p
 			return fail("malformed answer")
 		}
 		for _, v := range a.Vulns {
-			if adv, fix, ok := v.match(p, cur); ok && (best == nil || compare(fix, bestFix) > 0) {
+			if adv, fix, ok := v.match(p, cur); ok && (best == nil || pins.Compare(fix, bestFix) > 0) {
 				best, bestFix = &adv, fix
 			}
 		}
@@ -143,18 +142,18 @@ func post(ctx context.Context, c *http.Client, db string, body []byte) ([]byte, 
 // match nothing. Within an affected entry the fix is the highest stable fix of
 // all its ranges, so a version at or above it lies outside every closed range,
 // and an entry with a range left open matches nothing.
-func (v vuln) match(p pins.Pin, cur version) (adv pins.Advisory, fix version, ok bool) {
+func (v vuln) match(p pins.Pin, cur pins.Version) (adv pins.Advisory, fix pins.Version, ok bool) {
 	if v.Withdrawn != "" || !plainID(v.ID) {
 		return
 	}
 	var listed pins.Advisory // the highest fix above cur, for a version the entry lists
-	var listedFix version
+	var listedFix pins.Version
 	for _, a := range v.Affected {
 		if a.Package.Ecosystem != p.Package.Ecosystem || a.Package.Name != p.Package.Name {
 			continue
 		}
 		isListed := slices.Contains(a.Versions, p.Version)
-		var top version // the highest stable fix of the entry
+		var top pins.Version // the highest stable fix of the entry
 		topText, hitFrom, hit, unclosed := "", "", false, false
 		for _, r := range a.Ranges {
 			if r.Type != "SEMVER" && r.Type != "ECOSYSTEM" {
@@ -170,18 +169,18 @@ func (v vuln) match(p pins.Pin, cur version) (adv pins.Advisory, fix version, ok
 					}
 				case e.Fixed != "" && open:
 					open = false
-					f, fok := parseVersion(e.Fixed)
+					f, fok := pins.ParseVersion(e.Fixed)
 					if !fok {
 						continue
 					}
-					if topText == "" || compare(f, top) > 0 {
+					if topText == "" || pins.Compare(f, top) > 0 {
 						top, topText = f, e.Fixed
 					}
-					lo, lok := version{}, true
+					lo, lok := pins.Version{}, true
 					if from != "" {
-						lo, lok = parseVersion(from)
+						lo, lok = pins.ParseVersion(from)
 					}
-					if compare(cur, f) < 0 && lok && compare(lo, cur) <= 0 && (!hit || compare(f, top) >= 0) {
+					if pins.Compare(cur, f) < 0 && lok && pins.Compare(lo, cur) <= 0 && (!hit || pins.Compare(f, top) >= 0) {
 						hit, hitFrom = true, from
 					}
 				case e.LastAffected != "":
@@ -193,13 +192,13 @@ func (v vuln) match(p pins.Pin, cur version) (adv pins.Advisory, fix version, ok
 			}
 			unclosed = unclosed || open
 		}
-		if unclosed || topText == "" || compare(cur, top) >= 0 {
+		if unclosed || topText == "" || pins.Compare(cur, top) >= 0 {
 			continue
 		}
 		switch {
-		case hit && (!ok || compare(top, fix) > 0):
+		case hit && (!ok || pins.Compare(top, fix) > 0):
 			adv, fix, ok = pins.Advisory{ID: v.ID, Introduced: hitFrom, Fixed: topText}, top, true
-		case !hit && isListed && (listed.ID == "" || compare(top, listedFix) > 0):
+		case !hit && isListed && (listed.ID == "" || pins.Compare(top, listedFix) > 0):
 			listed, listedFix = pins.Advisory{ID: v.ID, Fixed: topText}, top
 		}
 	}
@@ -221,26 +220,4 @@ func plainID(id string) bool {
 		}
 	}
 	return true
-}
-
-// version is a stable semantic version, compared as pins compares it.
-type version [3]uint64
-
-func compare(a, b version) int { return slices.Compare(a[:], b[:]) }
-
-// parseVersion reads X.Y.Z with an optional leading "v" and no leading zeros.
-// Anything else, a pre-release included, does not parse.
-func parseVersion(s string) (v version, ok bool) {
-	parts := strings.Split(strings.TrimPrefix(s, "v"), ".")
-	if len(parts) != len(v) {
-		return version{}, false
-	}
-	for i, p := range parts {
-		n, err := strconv.ParseUint(p, 10, 64)
-		if err != nil || (len(p) > 1 && p[0] == '0') {
-			return version{}, false
-		}
-		v[i] = n
-	}
-	return v, true
 }

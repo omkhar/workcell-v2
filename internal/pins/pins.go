@@ -134,22 +134,22 @@ func Select(cur Pin, cands []Candidate, adv *Advisory, extra time.Duration, now 
 	if !ok {
 		return Result{}, fmt.Errorf("pin %q: unknown class %q", cur.Name, cur.Class)
 	}
-	curV, hasCur := parseVersion(cur.Version)
+	curV, hasCur := ParseVersion(cur.Version)
 	if !hasCur && cur.Version != "" {
 		return Result{}, fmt.Errorf("pin %q: version %q is not a stable X.Y.Z", cur.Name, cur.Version)
 	}
 	fix, affected := adv.affects(curV, hasCur)
 	extra = max(extra, 0)
 	var r Result
-	var best version
+	var best Version
 	for i := range cands {
 		c := &cands[i]
-		v, stable := parseVersion(c.Version)
-		if stable && hasCur && compare(v, curV) <= 0 {
+		v, stable := ParseVersion(c.Version)
+		if stable && hasCur && Compare(v, curV) <= 0 {
 			continue // never backwards
 		}
 		wait := cool[0]
-		if affected && compare(v, fix) >= 0 {
+		if affected && Compare(v, fix) >= 0 {
 			wait = cool[1]
 		}
 		latest := latestOf(c.Timestamps)
@@ -172,7 +172,7 @@ func Select(cur Pin, cands []Candidate, adv *Advisory, extra time.Duration, now 
 		}
 		if why != "" {
 			r.Skipped = append(r.Skipped, Skip{c.Version, why})
-		} else if r.Chosen == nil || compare(v, best) > 0 {
+		} else if r.Chosen == nil || Compare(v, best) > 0 {
 			r.Chosen, best = c, v
 		}
 	}
@@ -180,23 +180,23 @@ func Select(cur Pin, cands []Candidate, adv *Advisory, extra time.Duration, now 
 		r.Why = "no eligible release newer than " + cmp.Or(cur.Version, "the empty pin")
 		return r, nil
 	}
-	r.Security = affected && compare(best, fix) >= 0
+	r.Security = affected && Compare(best, fix) >= 0
 	r.AutoMerge = !(r.Security && cur.Class == Trusted)
 	return r, nil
 }
 
 // affects reports whether a affects the pinned version cur, and returns the fix.
 // A nil advisory, or one whose versions do not parse, affects nothing.
-func (a *Advisory) affects(cur version, hasCur bool) (version, bool) {
+func (a *Advisory) affects(cur Version, hasCur bool) (Version, bool) {
 	if a == nil || !hasCur {
-		return version{}, false
+		return Version{}, false
 	}
-	fix, ok := parseVersion(a.Fixed)
-	from, okFrom := parseVersion(a.Introduced)
+	fix, ok := ParseVersion(a.Fixed)
+	from, okFrom := ParseVersion(a.Introduced)
 	if !ok || (!okFrom && a.Introduced != "") {
-		return version{}, false
+		return Version{}, false
 	}
-	return fix, compare(from, cur) <= 0 && compare(cur, fix) < 0
+	return fix, Compare(from, cur) <= 0 && Compare(cur, fix) < 0
 }
 
 func (c *Candidate) hasDigest(d string) bool {
@@ -219,23 +219,24 @@ func latestOf(ts []time.Time) time.Time {
 	return l
 }
 
-// version is a stable semantic version: major, minor, patch.
-type version [3]uint64
+// Version is a stable semantic version: major, minor, patch.
+type Version [3]uint64
 
-func compare(a, b version) int { return slices.Compare(a[:], b[:]) }
+// Compare orders two versions as slices.Compare does.
+func Compare(a, b Version) int { return slices.Compare(a[:], b[:]) }
 
-// parseVersion reads a plain stable version, X.Y.Z with an optional leading
+// ParseVersion reads a plain stable version, X.Y.Z with an optional leading
 // "v". Any other form, a pre-release or build suffix included, does not parse.
-func parseVersion(s string) (version, bool) {
-	var v version
+func ParseVersion(s string) (Version, bool) {
+	var v Version
 	parts := strings.Split(strings.TrimPrefix(s, "v"), ".")
 	if len(parts) != len(v) {
-		return version{}, false
+		return Version{}, false
 	}
 	for i, p := range parts {
 		n, err := strconv.ParseUint(p, 10, 64)
 		if err != nil || (len(p) > 1 && p[0] == '0') {
-			return version{}, false
+			return Version{}, false
 		}
 		v[i] = n
 	}

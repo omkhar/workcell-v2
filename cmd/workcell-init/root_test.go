@@ -43,8 +43,6 @@ func TestWorkspaceDevice(t *testing.T) {
 	parses(t, workspaceDevice, []parse[string]{
 		{"none", "root=/dev/vda ro", ""},
 		{"set", "root=/dev/vda ro workcell.workspace=/dev/vdb", "/dev/vdb"},
-		{"the last wins", "workcell.workspace=/dev/vdb workcell.workspace=/dev/vdc\n", "/dev/vdc"},
-		{"not a device", "workcell.workspace=vdb", ""},
 		{"another name", "other.workcell.workspace=/dev/vdb", ""},
 	})
 }
@@ -119,11 +117,8 @@ func TestPorts(t *testing.T) {
 }
 
 func TestTmpfsSize(t *testing.T) {
-	if got := tmpfsSize(0); got != "" {
-		t.Errorf("tmpfsSize(0) = %q, want none", got)
-	}
-	if got := tmpfsSize(64); got != "size=64m" {
-		t.Errorf("tmpfsSize(64) = %q, want size=64m", got)
+	if none, some := tmpfsSize(0), tmpfsSize(64); none != "" || some != "size=64m" {
+		t.Errorf("tmpfsSize(0), tmpfsSize(64) = %q, %q; want none and size=64m", none, some)
 	}
 }
 

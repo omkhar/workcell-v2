@@ -264,7 +264,8 @@ func (p *provider) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	var m map[string]any
 	if json.Unmarshal(body, &m) != nil {
 		m = map[string]any{}
-		for k, v := range mustParseQuery(string(body)) {
+		q, _ := url.ParseQuery(string(body))
+		for k, v := range q {
 			m[k] = v[0]
 		}
 	}
@@ -296,11 +297,6 @@ func (p *provider) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	default:
 		_, _ = io.WriteString(w, pair)
 	}
-}
-
-func mustParseQuery(s string) url.Values {
-	v, _ := url.ParseQuery(s)
-	return v
 }
 
 // signinFixture terminates api.example.com, where the rule binds the access token

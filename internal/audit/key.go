@@ -18,7 +18,7 @@ const keyName = "audit.key"
 
 // LoadKey returns the host's signing key from dir, making it on first use: the hex of a 32 byte
 // seed, in a file only the user can read. The key signs the seal beside each session's log and
-// is never written to a log. Two first uses at once end with the one key that was linked first.
+// is never written to a log. Of two first uses at once, the one that created the file writes the key.
 func LoadKey(dir string) (ed25519.PrivateKey, error) {
 	path := filepath.Join(dir, keyName)
 	if _, err := os.Lstat(path); errors.Is(err, fs.ErrNotExist) {
@@ -47,8 +47,8 @@ func LoadKey(dir string) (ed25519.PrivateKey, error) {
 	return ed25519.NewKeyFromSeed(seed), nil
 }
 
-// makeKey writes a new key to a private temporary file and links it to path, which fails if a key
-// is there, so a reader never sees half a key.
+// makeKey writes a new key to path, which fails if a key is there. A reader that comes before
+// the write is done finds no key, and fails.
 func makeKey(dir, path string) error {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
@@ -57,14 +57,10 @@ func makeKey(dir, path string) error {
 	if _, err := rand.Read(seed); err != nil {
 		return err
 	}
-	tmp, err := os.CreateTemp(dir, keyName+".*")
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 	if err != nil {
 		return err
 	}
-	defer os.Remove(tmp.Name())
-	_, err = tmp.WriteString(hex.EncodeToString(seed))
-	if err = errors.Join(err, tmp.Sync(), tmp.Close()); err != nil {
-		return err
-	}
-	return os.Link(tmp.Name(), path)
+	_, err = f.WriteString(hex.EncodeToString(seed))
+	return errors.Join(err, f.Sync(), f.Close())
 }

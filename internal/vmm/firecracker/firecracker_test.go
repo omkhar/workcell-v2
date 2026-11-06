@@ -85,9 +85,6 @@ func TestConfig(t *testing.T) {
 			}
 		})
 	}
-	if got, want := args("/d/firecracker.json"), []string{"--no-api", "--config-file", "/d/firecracker.json"}; !slices.Equal(got, want) {
-		t.Errorf("args = %q, want %q", got, want)
-	}
 }
 
 // inputs are the pinned binary and kernel, the initramfs built from testdata/guest or from

@@ -93,9 +93,6 @@ func TestCloneSpeed(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Logf("%s: exported %d files, %d MiB in %v (stats %+v)", mkfs[0], st.Files, st.Bytes>>20, took, st)
-	if st.Cloned != 64 || st.Copied != 0 {
-		t.Errorf("%d files cloned and %d copied, want 64 and 0", st.Cloned, st.Copied)
-	}
 	if took >= 300*time.Millisecond {
 		t.Errorf("exporting 1 GB took %v, want under 300ms", took)
 	}

@@ -42,6 +42,15 @@ func required() []string {
 	return names
 }
 
+// loadArtifacts is findArtifacts of the data directory.
+func loadArtifacts() (artifacts, error) {
+	dir, err := dataDir()
+	if err != nil {
+		return artifacts{}, err
+	}
+	return findArtifacts(dir)
+}
+
 // findArtifacts names the files in dir and says which one is missing, if any.
 func findArtifacts(dir string) (artifacts, error) {
 	a := artifacts{

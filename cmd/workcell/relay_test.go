@@ -12,7 +12,6 @@ import (
 	"os"
 	"runtime"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -40,32 +39,9 @@ func TestPortsArg(t *testing.T) {
 	}
 }
 
-// pipeListener stands in for the backend's relay listener: each stream is a net.Pipe, the
-// guest's end returned by dial, the host's end given to Accept.
-type pipeListener struct {
-	conns chan net.Conn
-	done  chan struct{}
-	once  sync.Once
-}
-
-func newPipeListener() *pipeListener {
-	return &pipeListener{conns: make(chan net.Conn), done: make(chan struct{})}
-}
-
-func (l *pipeListener) Accept() (net.Conn, error) {
-	select {
-	case c := <-l.conns:
-		return c, nil
-	case <-l.done:
-		return nil, net.ErrClosed
-	}
-}
-
-func (l *pipeListener) Close() error   { l.once.Do(func() { close(l.done) }); return nil }
-func (l *pipeListener) Addr() net.Addr { return &net.UnixAddr{Name: "relay", Net: "unix"} }
-
-// dial opens a stream and returns the guest's end once the relay has accepted the host's.
-func (l *pipeListener) dial(t *testing.T) net.Conn {
+// dial opens a stream through l, which stands in for the backend's relay listener: the stream
+// is a net.Pipe, and dial returns the guest's end once the relay has accepted the host's.
+func dial(t *testing.T, l *adapter) net.Conn {
 	t.Helper()
 	g, h := net.Pipe()
 	select {
@@ -142,13 +118,13 @@ func TestStreamDemultiplexes(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			ln := newPipeListener()
+			ln := newAdapters([]uint16{0})[0]
 			served := newAdapters([]uint16{8443})
 			denied := make(chan string, 2)
 			deny := func(host string, port uint16, reason string) { denied <- fmt.Sprintf("%s:%d %s", host, port, reason) }
 			go serveRelay(ln, served, resolver.New(nil, nil), deny, time.Second)
 			defer ln.Close()
-			guest := ln.dial(t)
+			guest := dial(t, ln)
 			defer guest.Close()
 			go func() { _, _ = guest.Write(append(tc.header, "payload"...)) }()
 			if tc.local == "" {
@@ -213,11 +189,11 @@ func TestStreamAnswersDNS(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			ln := newPipeListener()
+			ln := newAdapters([]uint16{0})[0]
 			served := newAdapters([]uint16{443})
 			go serveRelay(ln, served, resolver.New([]string{"allowed.example"}, nil), nopDeny, time.Second)
 			defer ln.Close()
-			guest := ln.dial(t)
+			guest := dial(t, ln)
 			defer guest.Close()
 			go func() { _, _ = guest.Write(append(header(1, 17, tc.dst), relay.Frame(tc.query)...)) }()
 			_ = guest.SetReadDeadline(time.Now().Add(5 * time.Second))
@@ -247,7 +223,7 @@ func TestStreamAnswersDNS(t *testing.T) {
 // TestRelayHoldsAtMostMaxStreams: the 1024th stream is held, the 1025th is closed at once, and
 // a slot is released when the guest ends a stream, or when the proxy closes a delivered one.
 func TestRelayHoldsAtMostMaxStreams(t *testing.T) {
-	ln := newPipeListener()
+	ln := newAdapters([]uint16{0})[0]
 	served := newAdapters([]uint16{8443})
 	go serveRelay(ln, served, resolver.New(nil, nil), nopDeny, 30*time.Second)
 	defer ln.Close()
@@ -258,16 +234,16 @@ func TestRelayHoldsAtMostMaxStreams(t *testing.T) {
 		}
 	}()
 	for range maxStreams {
-		guests = append(guests, ln.dial(t))
+		guests = append(guests, dial(t, ln))
 	}
 	held(t, guests[maxStreams-1], "the 1024th stream")
-	readEOF(t, ln.dial(t), "the 1025th stream")
+	readEOF(t, dial(t, ln), "the 1025th stream")
 
 	// dialHeld dials until a stream is held: the release of a slot is asynchronous.
 	dialHeld := func(what string) net.Conn {
 		t.Helper()
 		for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); {
-			g := ln.dial(t)
+			g := dial(t, ln)
 			_ = g.SetReadDeadline(time.Now().Add(200 * time.Millisecond))
 			if _, err := g.Read(make([]byte, 1)); errors.Is(err, os.ErrDeadlineExceeded) {
 				return g
@@ -281,16 +257,16 @@ func TestRelayHoldsAtMostMaxStreams(t *testing.T) {
 
 	go func() { _, _ = guests[1].Write(header(1, 6, "203.0.113.5:8443")) }()
 	c := must(acceptOne(t, served[8443])) // delivered: the proxy holds the stream and its slot
-	readEOF(t, ln.dial(t), "a stream while the proxy holds the 1024th")
+	readEOF(t, dial(t, ln), "a stream while the proxy holds the 1024th")
 	_ = c.Close() // the proxy is done with it
 	guests = append(guests, dialHeld("after the proxy closed a stream"))
 }
 
 func TestRelayDropsAnIncompleteHeader(t *testing.T) {
-	ln := newPipeListener()
+	ln := newAdapters([]uint16{0})[0]
 	go serveRelay(ln, newAdapters(nil), resolver.New(nil, nil), nopDeny, 100*time.Millisecond)
 	defer ln.Close()
-	guest := ln.dial(t)
+	guest := dial(t, ln)
 	defer guest.Close()
 	start := time.Now()
 	if _, err := guest.Write(header(1, 6, "203.0.113.5:8443")[:10]); err != nil {
@@ -306,13 +282,13 @@ func TestRelayDropsAnIncompleteHeader(t *testing.T) {
 // net.ErrClosed, which is what the proxy's Serve returns on, and leaves no goroutine behind.
 func TestRelayCloseEndsAdapters(t *testing.T) {
 	before := runtime.NumGoroutine()
-	ln := newPipeListener()
+	ln := newAdapters([]uint16{0})[0]
 	served := newAdapters([]uint16{443, 8443})
 	go serveRelay(ln, served, resolver.New(nil, nil), nopDeny, 200*time.Millisecond)
-	delivered := ln.dial(t)
+	delivered := dial(t, ln)
 	go func() { _, _ = delivered.Write(header(1, 6, "203.0.113.5:8443")) }()
 	c := must(acceptOne(t, served[8443]))
-	headless := ln.dial(t) // held for its header when the session ends
+	headless := dial(t, ln) // held for its header when the session ends
 	_ = ln.Close()
 	for port, l := range served {
 		if _, err := acceptOne(t, l); !errors.Is(err, net.ErrClosed) {

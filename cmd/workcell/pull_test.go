@@ -15,10 +15,10 @@ func TestManifestAdd(t *testing.T) {
 	dir := func(p string) guest.Entry { return guest.Entry{Kind: guest.KindDir, Path: p} }
 	file := func(p string, size int64) guest.Entry { return guest.Entry{Kind: guest.KindFile, Path: p, Size: size} }
 	link := func(p, target string) guest.Entry { return guest.Entry{Kind: guest.KindLink, Path: p, Target: target} }
-	small := bounds{entries: 3, names: 20, bytes: 100}
+	small := int64(100)
 	tests := []struct {
 		name  string
-		limit bounds
+		limit int64
 		in    []guest.Entry
 		want  string // what the error of the last entry says; "" for none
 	}{
@@ -41,9 +41,8 @@ func TestManifestAdd(t *testing.T) {
 		{"link without a target", small, []guest.Entry{link("l", "")}, "target"},
 		{"link target with NUL", small, []guest.Entry{link("l", "a\x00")}, "target"},
 		{"link target may be absolute or dotdot", small, []guest.Entry{link("l", "/../x")}, ""},
-		{"too many entries", small, []guest.Entry{dir("a"), dir("b"), dir("c"), dir("d")}, "more than 3 entries"},
-		{"too many bytes of names", small, []guest.Entry{link("l", strings.Repeat("t", 20))}, "more than 20 bytes of names"},
-		{"path over MaxPath", bounds{10, guest.MaxPath * 2, 1}, []guest.Entry{dir(strings.Repeat("p", guest.MaxPath+1))}, "longer than"},
+		{"too many bytes of names", small, []guest.Entry{link("l", strings.Repeat("t", guest.MaxNames))}, "bytes of names"},
+		{"path over MaxPath", small, []guest.Entry{dir(strings.Repeat("p", guest.MaxPath+1))}, "longer than"},
 		{"more bytes than the image", small, []guest.Entry{file("a", 60), file("b", 41)}, "image cannot hold"},
 		{"a size that would wrap the sum", small, []guest.Entry{file("a", 1), file("b", math.MaxInt64)}, "image cannot hold"},
 		{"exactly the image", small, []guest.Entry{file("a", 60), file("b", 40)}, ""},
@@ -68,6 +67,10 @@ func TestManifestAdd(t *testing.T) {
 				t.Errorf("%d entries kept, want all but a refused one", kept)
 			}
 		})
+	}
+	full := &manifest{entries: make([]guest.Entry, guest.MaxEntries)}
+	if err := full.add(dir("a")); err == nil || !strings.Contains(err.Error(), "entries") {
+		t.Errorf("entry %d: %v, want too many entries", guest.MaxEntries+1, err)
 	}
 }
 

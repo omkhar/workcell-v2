@@ -48,19 +48,19 @@ const repoFile = "workcell.toml"
 // added (I13: the operator typed them on the host, and the repository may not undo that). A
 // repository file that is not a regular file is ignored, with a line on stderr. A nil allowlist means
 // the policy allows nothing: no TCP port is relayed. An error names the file and line, or the flag.
-// note is a line for `explain` about what the repository file took away or asked for in vain, "" for none.
-func loadPolicy(extra []string, stderr io.Writer) (allow *proxy.Allowlist, secrets []binding, note string, err error) {
-	file, err := configFile()
-	if err != nil {
-		return nil, nil, "", err
+// note is a line for `explain` about what the repository file took away or asked for in vain, "" for none;
+// file is the user's policy file.
+func loadPolicy(extra []string, stderr io.Writer) (allow *proxy.Allowlist, secrets []binding, note, file string, err error) {
+	if file, err = configFile(); err != nil {
+		return nil, nil, "", "", err
 	}
 	p, err := policy.Read(file)
 	if err != nil {
-		return nil, nil, "", err
+		return nil, nil, "", "", err
 	}
 	cwd, err := os.Getwd()
 	if err != nil {
-		return nil, nil, "", err
+		return nil, nil, "", "", err
 	}
 	repo, err := policy.ReadRepo(filepath.Join(cwd, repoFile))
 	if errors.Is(err, policy.ErrNotRegular) {
@@ -68,7 +68,7 @@ func loadPolicy(extra []string, stderr io.Writer) (allow *proxy.Allowlist, secre
 		repo, err = policy.Policy{}, nil
 	}
 	if err != nil {
-		return nil, nil, "", err
+		return nil, nil, "", "", err
 	}
 	narrowed, asked := policy.Narrow(p, repo)
 	asked = slices.DeleteFunc(asked, func(s string) bool {
@@ -80,10 +80,10 @@ func loadPolicy(extra []string, stderr io.Writer) (allow *proxy.Allowlist, secre
 		p.Allow = append(p.Allow, policy.Entry{Text: text}) // line 0: it comes from a flag
 	}
 	if allow, err = allowlist(p, file); err != nil {
-		return nil, nil, "", err
+		return nil, nil, "", "", err
 	}
 	secrets, err = bindings(p, allow, file)
-	return allow, secrets, note, err
+	return allow, secrets, note, file, err
 }
 
 // repoNote is the line `explain` adds about the repository's workcell.toml, "" when it changed nothing.

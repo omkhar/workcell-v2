@@ -169,26 +169,9 @@ sync && rm -f sparse fill && echo done`
 		g.until("looping")
 		h.stream.hold()
 		time.Sleep(300 * time.Millisecond) // the loop's next request is in the host's hands by now
-		pid := g.m.cmd.Process.Pid
-		t0 := time.Now()
-		_ = g.raw.Close()
-		ctx, cancel := context.WithTimeout(context.Background(), bootLimit)
-		defer cancel()
-		if err := g.m.Wait(ctx); err != nil {
-			t.Fatalf("Wait after the channel ended with a command stuck on the mount: %v", err)
-		}
-		took := time.Since(t0)
-		if !gone(pid) {
-			t.Fatalf("firecracker pid %d is still there", pid)
-		}
-		t.Logf("mount channel_end_poweroff_ms=%d", took.Milliseconds())
+		t.Logf("mount channel_end_poweroff_ms=%d", g.hangUp("with a command stuck on the mount").Milliseconds())
 		h.stream.release()
-		if err := g.m.Close(); err != nil {
-			t.Fatalf("Close: %v", err)
-		}
-		if left := list(t, g.dir); len(left) != 0 {
-			t.Fatalf("after Close, Dir holds %q", left)
-		}
+		g.closed()
 	})
 }
 
