@@ -300,7 +300,7 @@ the loop has ended.
 
 - [x] U-900 | flow:doc | model:sonnet | env:kvm | deps:U-603 | tries:0 | `README.md`: what it is, install, first session, how it works in one diagram, limits. The session commands run in a Go test under `spikes/readme/` on the `try: ` pull request, and its log supplies the output. Keep the lines "This is not ready to use" and "This repository never publishes a release", and the section "If you open this repository in Claude Code", at the top as they are; H-905 removes them
       accept: at most 150 lines; every command except the install lines was executed; the install lines are marked as untested until v2.0.0
-- [ ] U-901 | flow:doc | model:opus | env:any | deps:U-601 | tries:0 | `docs/threat-model.md`, from `SPEC.md` sections 2 and 3, each invariant linked to its test
+- [x] U-901 | flow:doc | model:opus | env:any | deps:U-601 | tries:0 | `docs/threat-model.md`, from `SPEC.md` sections 2 and 3, each invariant linked to its test
       accept: at most 150 lines
 - [ ] U-902 | flow:doc | model:haiku | env:any | deps:U-503 | tries:0 | `docs/policy.md` and `docs/providers.md`
       accept: at most 200 lines together
