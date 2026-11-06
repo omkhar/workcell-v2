@@ -7,6 +7,7 @@ package main
 
 import (
 	"bytes"
+	"cmp"
 	"errors"
 	"fmt"
 	"io"
@@ -91,11 +92,7 @@ type source func(n int) ([]byte, error)
 // the Exit after it, or the result is an error. SIGINT and SIGTERM end the VM, as in run,
 // and give a code of 128 plus the signal.
 func fetch(use func(*manifest, source) error) (int, error) {
-	dir, err := dataDir()
-	var a artifacts
-	if err == nil {
-		a, err = findArtifacts(dir)
-	}
+	a, err := loadArtifacts()
 	if err != nil {
 		return 0, err
 	}
@@ -138,16 +135,15 @@ func fetch(use func(*manifest, source) error) (int, error) {
 		}
 	}()
 	p := &pulled{frames: frames, sigs: sigs}
-	m, err := p.manifest(bounds{entries: guest.MaxEntries, names: guest.MaxNames, bytes: st.Size()})
+	m, err := p.manifest(st.Size())
 	if err == nil {
 		err = use(m, p.data)
 	}
 	if err == nil {
 		err = p.end()
 	}
-	var sig interrupted
-	if errors.As(err, &sig) {
-		return 128 + int(sig), nil
+	if p.sig != 0 {
+		return 128 + int(p.sig), nil
 	}
 	return 0, err
 }
@@ -177,13 +173,9 @@ type framed struct {
 type pulled struct {
 	frames <-chan framed
 	sigs   <-chan os.Signal
-	rest   []byte // the unread bytes of the last Data frame
+	rest   []byte         // the unread bytes of the last Data frame
+	sig    syscall.Signal // the signal that ended the wait for the guest, if one did
 }
-
-// interrupted is the error of a signal that ended the wait for the guest.
-type interrupted syscall.Signal
-
-func (s interrupted) Error() string { return "interrupted by " + syscall.Signal(s).String() }
 
 func (p *pulled) frame() (wire.Frame, error) {
 	select {
@@ -193,14 +185,15 @@ func (p *pulled) frame() (wire.Frame, error) {
 		}
 		return fr.f, nil
 	case s := <-p.sigs:
-		return wire.Frame{}, interrupted(s.(syscall.Signal))
+		p.sig = s.(syscall.Signal)
+		return wire.Frame{}, fmt.Errorf("interrupted by %s", s)
 	case <-time.After(stallLimit):
 		return wire.Frame{}, fmt.Errorf("no frame from the guest in %s", stallLimit)
 	}
 }
 
 // manifest reads the entries up to the empty one that ends them, judging each as it arrives.
-func (p *pulled) manifest(limit bounds) (*manifest, error) {
+func (p *pulled) manifest(limit int64) (*manifest, error) {
 	m := &manifest{limit: limit}
 	for {
 		f, err := p.frame()
@@ -267,21 +260,11 @@ func (p *pulled) end() error {
 		return long
 	}
 	f, err := p.frame()
-	if err != nil {
-		return err
+	if err != nil || f.Type == guest.TypeData {
+		return cmp.Or(err, long)
 	}
-	switch f.Type {
-	case guest.TypeData:
-		return long
-	case guest.TypeExit:
-		e, err := guest.DecodeExit(f.Payload)
-		if err != nil {
-			return err
-		}
-		if e.Err == "" && e.Code == 0 && e.Signal == 0 {
-			return nil
-		}
-		return fmt.Errorf("the guest could not read its tree: %q", e.Err)
+	if e, err := guest.DecodeExit(f.Payload); f.Type == guest.TypeExit && err == nil && e == (guest.Exit{}) {
+		return nil
 	}
 	return p.odd(f)
 }

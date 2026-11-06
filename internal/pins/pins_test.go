@@ -169,25 +169,25 @@ func TestFourHourly(t *testing.T) {
 func TestParseVersion(t *testing.T) {
 	tests := []struct {
 		in   string
-		want version
+		want Version
 		ok   bool
 	}{
-		{"1.2.3", version{1, 2, 3}, true},
-		{"v0.0.0", version{0, 0, 0}, true},
-		{"1.10.0", version{1, 10, 0}, true},
-		{"18446744073709551615.0.0", version{1<<64 - 1, 0, 0}, true},
-		{"18446744073709551616.0.0", version{}, false},
-		{"01.2.3", version{}, false},
-		{"1.2.3.4", version{}, false},
-		{"1.2.-3", version{}, false},
-		{"1.2.+3", version{}, false},
-		{" 1.2.3", version{}, false},
-		{"vv1.2.3", version{}, false},
-		{"1..3", version{}, false},
-		{"", version{}, false},
+		{"1.2.3", Version{1, 2, 3}, true},
+		{"v0.0.0", Version{0, 0, 0}, true},
+		{"1.10.0", Version{1, 10, 0}, true},
+		{"18446744073709551615.0.0", Version{1<<64 - 1, 0, 0}, true},
+		{"18446744073709551616.0.0", Version{}, false},
+		{"01.2.3", Version{}, false},
+		{"1.2.3.4", Version{}, false},
+		{"1.2.-3", Version{}, false},
+		{"1.2.+3", Version{}, false},
+		{" 1.2.3", Version{}, false},
+		{"vv1.2.3", Version{}, false},
+		{"1..3", Version{}, false},
+		{"", Version{}, false},
 	}
 	for _, tt := range tests {
-		if got, ok := parseVersion(tt.in); got != tt.want || ok != tt.ok {
+		if got, ok := ParseVersion(tt.in); got != tt.want || ok != tt.ok {
 			t.Errorf("parseVersion(%q) = %v, %v, want %v, %v", tt.in, got, ok, tt.want, tt.ok)
 		}
 	}
@@ -200,7 +200,7 @@ func FuzzParseVersion(f *testing.F) {
 		f.Add(s)
 	}
 	f.Fuzz(func(t *testing.T, s string) {
-		if v, ok := parseVersion(s); ok && fmt.Sprintf("%d.%d.%d", v[0], v[1], v[2]) != strings.TrimPrefix(s, "v") {
+		if v, ok := ParseVersion(s); ok && fmt.Sprintf("%d.%d.%d", v[0], v[1], v[2]) != strings.TrimPrefix(s, "v") {
 			t.Fatalf("parseVersion(%q) = %v is not canonical", s, v)
 		}
 	})

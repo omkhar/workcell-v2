@@ -40,7 +40,7 @@ func from(b []byte) source {
 
 func judged(t *testing.T, entries []guest.Entry) *manifest {
 	t.Helper()
-	m := &manifest{limit: bounds{entries: 100, names: 1000, bytes: 1000}}
+	m := &manifest{limit: 1000}
 	for _, e := range entries {
 		must(0, m.add(e))
 	}

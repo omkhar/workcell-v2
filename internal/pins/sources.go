@@ -38,15 +38,7 @@ func Candidates(ctx context.Context, client *http.Client, p Pin) ([]Candidate, e
 	ctx, cancel := context.WithTimeout(ctx, fetchTimeout)
 	defer cancel()
 	c := *client
-	c.CheckRedirect = func(req *http.Request, via []*http.Request) error {
-		if len(via) > maxRedirects {
-			return errors.New("too many redirects")
-		}
-		if req.URL.Host != via[0].URL.Host {
-			req.Header.Del("Authorization")
-		}
-		return httpsURL(req.URL.String())
-	}
+	c.CheckRedirect = Redirect
 	g := getter{ctx, &c}
 	var cands []Candidate
 	var err error
@@ -92,7 +84,7 @@ func (g getter) get(rawURL, accept string) ([]byte, http.Header, error) {
 	if !errors.As(err, &se) || se.code != http.StatusUnauthorized {
 		return body, h, err
 	}
-	params := bearerParams(se.header.Get("WWW-Authenticate"))
+	params := BearerParams(se.header.Get("WWW-Authenticate"))
 	realm, err := url.Parse(params["realm"])
 	if err != nil || httpsURL(realm.String()) != nil {
 		return nil, nil, fmt.Errorf("%w; the challenge realm %q is not an https URL", se, params["realm"])
@@ -115,9 +107,9 @@ func (g getter) get(rawURL, accept string) ([]byte, http.Header, error) {
 	return g.fetch(rawURL, accept, cmp.Or(tok.Token, tok.AccessToken))
 }
 
-// bearerParams reads the quoted key="value" pairs of a Bearer challenge. A
+// BearerParams reads the quoted key="value" pairs of a Bearer challenge. A
 // header of another scheme yields none.
-func bearerParams(h string) map[string]string {
+func BearerParams(h string) map[string]string {
 	m := map[string]string{}
 	rest, ok := strings.CutPrefix(h, "Bearer ")
 	for ok {
@@ -178,8 +170,40 @@ func (g getter) json(rawURL, accept string, v any) (http.Header, error) {
 	return h, nil
 }
 
-func httpsURL(s string) error {
+// Redirect is the redirect policy of every fetch of upstream bytes: at most three, https only,
+// and the credential dropped when the host changes.
+func Redirect(req *http.Request, via []*http.Request) error {
+	if len(via) > maxRedirects {
+		return errors.New("too many redirects")
+	}
+	if req.URL.Host != via[0].URL.Host {
+		req.Header.Del("Authorization")
+	}
+	return HTTPSURL(req.URL.String())
+}
+
+// Bare maps a transport error to a fixed phrase after prefix, so that an error names the
+// failure and nothing upstream sent: no URL, status line or certificate name.
+func Bare(prefix string, err error) error {
+	switch {
+	case errors.Is(err, context.DeadlineExceeded):
+		return errors.New(prefix + ": timed out")
+	case errors.Is(err, context.Canceled):
+		return errors.New(prefix + ": cancelled")
+	}
+	return errors.New(prefix + ": transport failure")
+}
+
+// HTTPSURL refuses a URL that is not https, in a fixed phrase.
+func HTTPSURL(s string) error {
 	if u, err := url.Parse(s); err != nil || u.Scheme != "https" || u.Host == "" {
+		return errors.New("not an https URL")
+	}
+	return nil
+}
+
+func httpsURL(s string) error {
+	if HTTPSURL(s) != nil {
 		return fmt.Errorf("%q is not an https URL", s)
 	}
 	return nil
@@ -239,7 +263,7 @@ func (g getter) npm(p Pin) ([]Candidate, error) {
 			return nil, fmt.Errorf("version %s: tarball: %w", v, err)
 		}
 		a := Artifact{URL: e.Dist.Tarball, Integrity: e.Dist.Integrity}
-		_, stable := parseVersion(v)
+		_, stable := ParseVersion(v)
 		cands = append(cands, Candidate{
 			Release:    Release{Version: v, Artifacts: map[string]Artifact{"amd64": a, "arm64": a}},
 			PreRelease: !stable, Deprecated: e.Deprecated != "", Timestamps: ts,
@@ -341,7 +365,7 @@ func (g getter) vendor(p Pin) ([]Candidate, error) {
 		return nil, err
 	}
 	v := strings.TrimSpace(string(body))
-	if _, ok := parseVersion(v); !ok {
+	if _, ok := ParseVersion(v); !ok {
 		return nil, fmt.Errorf("latest is %q, not a version", v)
 	}
 	var m struct {
@@ -397,14 +421,14 @@ func (g getter) oci(p Pin) ([]Candidate, error) {
 	}
 	var tags []string
 	for _, t := range list.Tags {
-		if _, ok := parseVersion(t); ok {
+		if _, ok := ParseVersion(t); ok {
 			tags = append(tags, t)
 		}
 	}
 	slices.SortFunc(tags, func(a, b string) int {
-		va, _ := parseVersion(a)
-		vb, _ := parseVersion(b)
-		return compare(vb, va)
+		va, _ := ParseVersion(a)
+		vb, _ := ParseVersion(b)
+		return Compare(vb, va)
 	})
 	cands := []Candidate{}
 	for _, tag := range tags[:min(len(tags), maxOCITags)] {

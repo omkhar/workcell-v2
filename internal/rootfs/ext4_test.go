@@ -138,12 +138,7 @@ func e2fsck(t *testing.T, path string) {
 	if err != nil {
 		t.Fatalf("e2fsck -fn: %v\n%s", err, out)
 	}
-	t.Logf("e2fsck: %s", lastLine(out))
-}
-
-func lastLine(b []byte) string {
-	lines := strings.Split(strings.TrimSpace(string(b)), "\n")
-	return lines[len(lines)-1]
+	t.Logf("e2fsck: %s", strings.TrimSpace(string(out)))
 }
 
 func writeImage(t *testing.T, tr *Tree) string {

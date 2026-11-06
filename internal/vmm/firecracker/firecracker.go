@@ -101,7 +101,7 @@ func (m *Machine) Start(ctx context.Context) error {
 	if err := os.WriteFile(m.configPath(), b, 0o600); err != nil {
 		return err
 	}
-	cmd := exec.Command(m.cfg.Binary, args(m.configPath())...)
+	cmd := exec.Command(m.cfg.Binary, "--no-api", "--config-file", m.configPath()) // no API server, one config file
 	if m.cfg.Console != nil {
 		cmd.Stdout, cmd.Stderr = m.cfg.Console, m.cfg.Console
 	}
@@ -139,11 +139,7 @@ func (m *Machine) Wait(ctx context.Context) error {
 	case <-ctx.Done():
 		return ctx.Err()
 	}
-	var exit *exec.ExitError
-	if errors.As(m.exitErr, &exit) {
-		return fmt.Errorf("firecracker: %w", exit) // "signal: killed" or "exit status N"
-	}
-	return m.exitErr
+	return m.exitErr // an *exec.ExitError: "signal: killed" or "exit status N"
 }
 
 // Kill sends SIGKILL to Firecracker if it is still running.
@@ -152,11 +148,6 @@ func (m *Machine) Kill() error {
 	defer m.mu.Unlock()
 	if m.cmd == nil {
 		return nil
-	}
-	select {
-	case <-m.exited:
-		return nil
-	default:
 	}
 	if err := m.cmd.Process.Kill(); err != nil && !errors.Is(err, os.ErrProcessDone) {
 		return err
@@ -182,11 +173,6 @@ func (m *Machine) Close() error {
 		}
 	}
 	return err
-}
-
-// args is Firecracker's command line: no API server, one config file.
-func args(configPath string) []string {
-	return []string{"--no-api", "--config-file", configPath}
 }
 
 // The subset of Firecracker's config file this backend writes. There is never a

@@ -13,6 +13,7 @@ package workspace
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -24,10 +25,9 @@ import (
 
 // Stats is what an export did.
 type Stats struct {
-	Files          int   // regular files, each name of a hard link counted
-	Bytes          int64 // their data, a hard-linked file once
-	Cloned, Copied int   // files whose data was shared with the image, and files whose data was copied
-	Elapsed        time.Duration
+	Files   int   // regular files, each name of a hard link counted
+	Bytes   int64 // their data, a hard-linked file once
+	Elapsed time.Duration
 }
 
 // Export writes the directory dir to a new file at imagePath as an ext4 image with free
@@ -49,10 +49,7 @@ func Export(ctx context.Context, dir, imagePath string, free int64) (st Stats, e
 		return st, err
 	}
 	defer func() {
-		if cerr := img.Close(); err == nil {
-			err = cerr
-		}
-		if err != nil {
+		if err = errors.Join(err, img.Close()); err != nil {
 			_ = os.Remove(imagePath)
 		}
 	}()
@@ -71,11 +68,10 @@ func Export(ctx context.Context, dir, imagePath string, free int64) (st Stats, e
 	if err := w.dir(fd, ""); err != nil {
 		return st, err
 	}
-	fs, err := w.tree.WriteExt4File(img, time.Now(), free)
-	if err != nil {
+	if err := w.tree.WriteExt4File(img, time.Now(), free); err != nil {
 		return st, err
 	}
-	return Stats{w.files, w.bytes, fs.Cloned, fs.Copied, time.Since(start)}, nil
+	return Stats{w.files, w.bytes, time.Since(start)}, nil
 }
 
 type walker struct {

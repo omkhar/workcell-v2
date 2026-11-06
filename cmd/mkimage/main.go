@@ -59,10 +59,7 @@ func run(ctx context.Context, pinFile, arch, out string) error {
 		return err
 	}
 	res, err := rootfs.Build(ctx, http.DefaultClient, img, f)
-	if cerr := f.Close(); err == nil {
-		err = cerr
-	}
-	if err != nil {
+	if err = errors.Join(err, f.Close()); err != nil {
 		os.Remove(out)
 		return err
 	}

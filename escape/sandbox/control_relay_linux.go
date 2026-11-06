@@ -8,7 +8,6 @@ import (
 	"io"
 	"net"
 	"strconv"
-	"sync"
 )
 
 // naiveRelay is the host end of the control sandbox's relay, the deliberately
@@ -18,12 +17,7 @@ import (
 // the proto says so and as TCP otherwise, and splices. It is what a relay
 // that trusted the guest would be. Only the suite's own probes name an
 // address, and they name canaries on the test host (SPEC T8, S12).
-type naiveRelay struct {
-	ln    net.Listener
-	mu    sync.Mutex
-	conns []net.Conn
-	wg    sync.WaitGroup
-}
+type naiveRelay struct{ ln net.Listener }
 
 func (r *naiveRelay) serve() {
 	for {
@@ -31,10 +25,7 @@ func (r *naiveRelay) serve() {
 		if err != nil {
 			return
 		}
-		r.mu.Lock()
-		r.conns = append(r.conns, c)
-		r.mu.Unlock()
-		r.wg.Go(func() { r.one(c) })
+		go r.one(c)
 	}
 }
 
@@ -76,12 +67,4 @@ func (r *naiveRelay) one(c net.Conn) {
 	io.Copy(c, up)
 }
 
-func (r *naiveRelay) stop() {
-	r.ln.Close()
-	r.mu.Lock()
-	for _, c := range r.conns {
-		c.Close()
-	}
-	r.mu.Unlock()
-	r.wg.Wait()
-}
+func (r *naiveRelay) stop() { r.ln.Close() }

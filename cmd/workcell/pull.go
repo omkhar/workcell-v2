@@ -14,21 +14,15 @@ import (
 	"github.com/omkhar/workcell/v2/internal/guest"
 )
 
-// bounds is how much of a work tree the host takes: entries, bytes of names and bytes of
-// data. The data can be no more than the session's image holds, so that is its bound.
-type bounds struct {
-	entries int
-	names   int
-	bytes   int64
-}
-
 // manifest is what the guest says its work tree holds, judged entry by entry before any of
 // it is written or compared (I8). The guest chose every path, so each is refused unless it
 // is a plain relative path of sound components, and two paths that are the same under case
 // folding are refused together: a launch host folds case (P6), and there the second would
 // land on the first. Nothing the guest says beyond this is trusted; the bytes come later.
+// The entries and their names are bounded by guest.MaxEntries and guest.MaxNames, the bytes of
+// the files by limit: they can be no more than the session's image holds.
 type manifest struct {
-	limit   bounds
+	limit   int64
 	entries []guest.Entry
 	folded  map[string]bool
 	names   int
@@ -37,8 +31,8 @@ type manifest struct {
 
 // add judges one entry and keeps it.
 func (m *manifest) add(e guest.Entry) error {
-	if len(m.entries) >= m.limit.entries {
-		return fmt.Errorf("more than %d entries", m.limit.entries)
+	if len(m.entries) >= guest.MaxEntries {
+		return fmt.Errorf("more than %d entries", guest.MaxEntries)
 	}
 	if err := checkPath(e.Path); err != nil {
 		return fmt.Errorf("path %s: %w", shown(e.Path), err)
@@ -46,11 +40,11 @@ func (m *manifest) add(e guest.Entry) error {
 	if e.Kind == guest.KindLink && (e.Target == "" || strings.IndexByte(e.Target, 0) >= 0) {
 		return fmt.Errorf("link %s: the target is empty or holds NUL", shown(e.Path))
 	}
-	if m.names += len(e.Path) + len(e.Target); m.names > m.limit.names {
-		return fmt.Errorf("more than %d bytes of names", m.limit.names)
+	if m.names += len(e.Path) + len(e.Target); m.names > guest.MaxNames {
+		return fmt.Errorf("more than %d bytes of names", guest.MaxNames)
 	}
-	if e.Size > m.limit.bytes-m.bytes { // never a sum: with sizes up to MaxInt64 one would wrap
-		return fmt.Errorf("more than %d bytes of files, which the session's image cannot hold", m.limit.bytes)
+	if e.Size > m.limit-m.bytes { // never a sum: with sizes up to MaxInt64 one would wrap
+		return fmt.Errorf("more than %d bytes of files, which the session's image cannot hold", m.limit)
 	}
 	m.bytes += e.Size
 	key := fold(e.Path)

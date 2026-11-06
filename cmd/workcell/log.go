@@ -40,10 +40,7 @@ func logs(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "workcell log:", err)
 		return 2
 	}
-	cfg, err := configFile()
-	if err != nil {
-		cfg = "config.toml"
-	}
+	cfg, _ := configFile() // "config.toml" when there is no config directory
 	if err := showDenies(dir, cfg, *follow, *format == "ocsf", stdout, stderr); err != nil {
 		fmt.Fprintln(stderr, "workcell log:", err)
 		return 1
@@ -145,7 +142,10 @@ func (r *denyReader) feed(data []byte, out io.Writer) {
 // The host is guest-chosen bytes for a TLS name, so it is shown only in a form safe to copy.
 func denyMessage(d audit.Record, cfg string) string {
 	host := audit.SafeHost(d.Host)
-	named := host != "" && host != "(invalid)"
+	if host == "" { // as printed when it is no remedy
+		host = "(invalid)"
+	}
+	named := host != "(invalid)"
 	allow := func(entry string) string {
 		return fmt.Sprintf("allow it with  workcell run --allow %s  or add %q to [network] allow in %s", entry, entry, cfg)
 	}
@@ -153,7 +153,7 @@ func denyMessage(d audit.Record, cfg string) string {
 	case "name_not_allowed", "sni_not_allowed":
 		via := map[string]string{"name_not_allowed": "dns", "sni_not_allowed": "tls"}[d.Result]
 		if !named {
-			return fmt.Sprintf("denied %s (%s): not a host name, so there is nothing to allow", hostText(host), via)
+			return fmt.Sprintf("denied %s (%s): not a host name, so there is nothing to allow", host, via)
 		}
 		return fmt.Sprintf("denied %s (%s): %s", host, via, allow(host))
 	case "no_sni":
@@ -161,17 +161,9 @@ func denyMessage(d audit.Record, cfg string) string {
 	case "port_not_allowed":
 		return fmt.Sprintf("denied port %d (tcp): a bare name allows 443 only, and host:%d forwards this port: %s", d.Port, d.Port, allow(fmt.Sprintf("host:%d", d.Port)))
 	case "host_mismatch":
-		return fmt.Sprintf("denied %s (tls): the request named another host than its TLS name", hostText(host))
+		return fmt.Sprintf("denied %s (tls): the request named another host than its TLS name", host)
 	}
-	return fmt.Sprintf("denied %s port %d: %s", hostText(host), d.Port, d.Result)
-}
-
-// hostText is a host as printed when it is no remedy: "(invalid)" for none.
-func hostText(host string) string {
-	if host == "" {
-		return "(invalid)"
-	}
-	return host
+	return fmt.Sprintf("denied %s port %d: %s", host, d.Port, d.Result)
 }
 
 // verify is `workcell verify [id]`: it says whether the session's audit.log is exactly what this

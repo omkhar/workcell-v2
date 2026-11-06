@@ -95,7 +95,7 @@ func TestClone(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Logf("clone: fs=%s files=%d bytes=%d cloned=%d copied=%d elapsed_ms=%d", fsName, st.Files, st.Bytes, st.Cloned, st.Copied, took.Milliseconds())
+	t.Logf("clone: fs=%s files=%d bytes=%d elapsed_ms=%d", fsName, st.Files, st.Bytes, took.Milliseconds())
 	if _, err := exec.LookPath("e2fsck"); err != nil {
 		t.Logf("clone: e2fsck not on PATH, image not checked")
 		return

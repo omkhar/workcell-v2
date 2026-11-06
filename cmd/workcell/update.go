@@ -188,7 +188,7 @@ func (in installer) fetch(ctx context.Context, dir, name, binary string, a pins.
 	}
 	defer os.Remove(img.Name())
 	defer img.Close()
-	if _, err := t.WriteExt4File(img, time.Time{}, 0); err != nil {
+	if err := t.WriteExt4File(img, time.Time{}, 0); err != nil {
 		return err
 	}
 	if err := img.Sync(); err != nil {
@@ -287,13 +287,7 @@ func (in installer) record(agent, version, digest, result string) error {
 		return err
 	}
 	_, err = f.Write(append(line, '\n'))
-	if err == nil {
-		err = f.Sync()
-	}
-	if cerr := f.Close(); err == nil {
-		err = cerr
-	}
-	return err
+	return errors.Join(err, f.Sync(), f.Close())
 }
 
 // imageName is the file name of a release's layer: its version and the first 16 hex of its digest.
@@ -329,11 +323,10 @@ func marker(dir, which string) string {
 func writeMarker(dir, which, name string) error {
 	path := filepath.Join(dir, which)
 	if name == "" {
-		err := os.Remove(path)
-		if errors.Is(err, os.ErrNotExist) {
-			return nil
+		if err := os.Remove(path); !errors.Is(err, os.ErrNotExist) {
+			return err
 		}
-		return err
+		return nil
 	}
 	if err := os.WriteFile(path+".tmp", []byte(name+"\n"), 0o600); err != nil {
 		return err

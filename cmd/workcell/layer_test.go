@@ -27,11 +27,8 @@ func TestLayerArgsAndPath(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := layerArgs(tc.layers, tc.first); got != tc.args {
-				t.Errorf("layerArgs = %q, want %q", got, tc.args)
-			}
-			if got := pathEnv(tc.layers); got != tc.path {
-				t.Errorf("pathEnv = %q, want %q", got, tc.path)
+			if args, path := layerArgs(tc.layers, tc.first); args != tc.args || path != tc.path {
+				t.Errorf("layerArgs = %q, %q; want %q, %q", args, path, tc.args, tc.path)
 			}
 		})
 	}

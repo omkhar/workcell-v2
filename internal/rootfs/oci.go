@@ -17,14 +17,15 @@ import (
 	"net/url"
 	"slices"
 	"strings"
+
+	"github.com/omkhar/workcell/v2/internal/pins"
 )
 
 const (
-	maxManifest  = 64 << 10 // one manifest or index; real ones are a few KiB
-	maxBlob      = 512 << 20
-	maxToken     = 64 << 10
-	maxRedirects = 3
-	maxLayers    = 128
+	maxManifest = 64 << 10 // one manifest or index; real ones are a few KiB
+	maxBlob     = 512 << 20
+	maxToken    = 64 << 10
+	maxLayers   = 128
 	// maxRaw bounds the bytes of tar stream, and of file data, that all layers of one
 	// image may expand to. The tree lives in memory, so a gzip bomb ends here.
 	maxRaw = 2 << 30
@@ -78,18 +79,18 @@ type document struct {
 // Pull fetches img over https, resolves an index to the manifest for img.OS and
 // img.Arch, and applies the manifest's layers to t in order. Every manifest and
 // blob is checked against the digest it was requested by, and every size against a
-// cap, before it is trusted. It returns the digest of the image manifest it used.
+// cap, before it is trusted.
 // Registry content is data only (I8): nothing is run, and nothing is written to disk.
 // On error t may be partly changed and must be dropped.
-func Pull(ctx context.Context, client *http.Client, img Image, t *Tree) (string, error) {
+func Pull(ctx context.Context, client *http.Client, img Image, t *Tree) error {
 	if err := img.check(); err != nil {
-		return "", err
+		return err
 	}
 	g := &registry{client: cmp.Or(client, http.DefaultClient), base: img.Registry, repo: img.Repository}
 	digest := img.Digest
 	doc, err := g.document(ctx, digest)
 	if err != nil {
-		return "", err
+		return err
 	}
 	if indexTypes[doc.MediaType] {
 		digest = ""
@@ -100,32 +101,32 @@ func Pull(ctx context.Context, client *http.Client, img Image, t *Tree) (string,
 			}
 		}
 		if digest == "" {
-			return "", fmt.Errorf("registry: the index has no manifest for %s/%s", img.OS, img.Arch)
+			return fmt.Errorf("registry: the index has no manifest for %s/%s", img.OS, img.Arch)
 		}
 		if doc, err = g.document(ctx, digest); err != nil {
-			return "", err
+			return err
 		}
 		if !manifestTypes[doc.MediaType] {
-			return "", errors.New("registry: the index entry is not an image manifest")
+			return errors.New("registry: the index entry is not an image manifest")
 		}
 	}
 	if len(doc.Layers) > maxLayers {
-		return "", errors.New("registry: too many layers")
+		return errors.New("registry: too many layers")
 	}
 	budget := int64(maxRaw)
 	for i, l := range doc.Layers {
 		used, err := g.layer(ctx, l, t, budget)
 		if err != nil {
-			return "", fmt.Errorf("registry: layer %d: %w", i, err)
+			return fmt.Errorf("registry: layer %d: %w", i, err)
 		}
 		budget -= used
 	}
-	return digest, nil
+	return nil
 }
 
 func (img Image) check() error {
 	u, err := url.Parse(img.Registry)
-	if err != nil || httpsURL(img.Registry) != nil || u.Path != "" || u.RawQuery != "" || u.User != nil {
+	if err != nil || pins.HTTPSURL(img.Registry) != nil || u.Path != "" || u.RawQuery != "" || u.User != nil {
 		return errors.New("registry: the registry must be a bare https://host[:port]")
 	}
 	for c := range strings.SplitSeq(img.Repository, "/") {
@@ -153,7 +154,7 @@ func (g *registry) document(ctx context.Context, digest string) (*document, erro
 	defer body.Close()
 	b, err := io.ReadAll(io.LimitReader(body, maxManifest+1))
 	if err != nil {
-		return nil, bare(err)
+		return nil, pins.Bare("registry", err)
 	}
 	if sum := sha256.Sum256(b); len(b) > maxManifest || "sha256:"+hex.EncodeToString(sum[:]) != digest {
 		return nil, errors.New("registry: the manifest does not match its digest")
@@ -248,9 +249,9 @@ func (g *registry) get(ctx context.Context, kind, digest, accept string, limit i
 }
 
 func (g *registry) fetchToken(ctx context.Context, challenge string) (string, error) {
-	p := bearerParams(challenge)
+	p := pins.BearerParams(challenge)
 	realm, err := url.Parse(p["realm"])
-	if err != nil || httpsURL(p["realm"]) != nil {
+	if err != nil || pins.HTTPSURL(p["realm"]) != nil {
 		return "", errors.New("registry: HTTP 401 without an https Bearer challenge")
 	}
 	q := realm.Query()
@@ -287,56 +288,12 @@ func (g *registry) do(ctx context.Context, rawURL, accept, bearer string) (*http
 		req.Header.Set("Authorization", "Bearer "+bearer)
 	}
 	c := *g.client
-	c.CheckRedirect = func(req *http.Request, via []*http.Request) error {
-		if len(via) > maxRedirects {
-			return errors.New("too many redirects")
-		}
-		if req.URL.Host != via[0].URL.Host {
-			req.Header.Del("Authorization")
-		}
-		return httpsURL(req.URL.String())
-	}
+	c.CheckRedirect = pins.Redirect
 	resp, err := c.Do(req)
 	if err != nil {
-		return nil, bare(err)
+		return nil, pins.Bare("registry", err)
 	}
 	return resp, nil
-}
-
-// bearerParams reads the quoted key="value" pairs of a Bearer challenge. A header
-// of another scheme yields none.
-func bearerParams(h string) map[string]string {
-	m := map[string]string{}
-	rest, ok := strings.CutPrefix(h, "Bearer ")
-	for ok {
-		var k, v string
-		if k, rest, ok = strings.Cut(strings.TrimLeft(rest, ", "), `="`); !ok {
-			break
-		}
-		if v, rest, ok = strings.Cut(rest, `"`); ok {
-			m[k] = v
-		}
-	}
-	return m
-}
-
-func httpsURL(s string) error {
-	if u, err := url.Parse(s); err != nil || u.Scheme != "https" || u.Host == "" {
-		return errors.New("not an https URL")
-	}
-	return nil
-}
-
-// bare maps a transport error to a fixed phrase, so that an error names the failure
-// and nothing the registry sent.
-func bare(err error) error {
-	switch {
-	case errors.Is(err, context.DeadlineExceeded):
-		return errors.New("registry: timed out")
-	case errors.Is(err, context.Canceled):
-		return errors.New("registry: cancelled")
-	}
-	return errors.New("registry: transport failure")
 }
 
 var errCap = errors.New("over the size cap")

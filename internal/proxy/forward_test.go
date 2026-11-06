@@ -61,7 +61,13 @@ func TestForwardStaysSplicedBesideTermination(t *testing.T) {
 				t.Fatal(err)
 			}
 			tlsAddr, fwdAddr := listen(t, p, 443), listen(t, p, 8443)
-			body, err := httpsGet("example.com", tlsAddr, caPool(t, ca))
+			resp, err := clientVia(tlsAddr, caPool(t, ca)).Get("https://example.com/")
+			body := ""
+			if err == nil {
+				b, _ := io.ReadAll(resp.Body)
+				resp.Body.Close()
+				body = string(b)
+			}
 			if served := err == nil && body == "example.com"; served != (tc.tls == "terminated") {
 				t.Errorf("443: got (%q, %v), want %s", body, err, tc.tls)
 			}

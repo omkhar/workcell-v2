@@ -137,7 +137,7 @@ func (f *fixture) manifest(doc map[string]any) {
 	f.img = Image{Registry: "https://registry.test", Repository: "lib/x", Digest: id, OS: "linux", Arch: "arm64"}
 }
 
-func (f *fixture) pull(tree *Tree) (string, error) {
+func (f *fixture) pull(tree *Tree) error {
 	return Pull(context.Background(), f.client, f.img, tree)
 }
 
@@ -174,12 +174,8 @@ func TestPullLayers(t *testing.T) {
 	)
 	f := newFixture(t, base, top)
 	tree := NewTree()
-	got, err := f.pull(tree)
-	if err != nil {
+	if err := f.pull(tree); err != nil {
 		t.Fatal(err)
-	}
-	if want := f.img.Digest; got == want || !strings.HasPrefix(got, "sha256:") {
-		t.Fatalf("returned digest %q should be the manifest's, not the index %q", got, want)
 	}
 	for _, c := range []struct {
 		path string
@@ -246,7 +242,7 @@ func TestPullRefusals(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			f := newFixture(t, good)
 			c.set(f)
-			if _, err := f.pull(NewTree()); err == nil || !strings.Contains(err.Error(), c.want) {
+			if err := f.pull(NewTree()); err == nil || !strings.Contains(err.Error(), c.want) {
 				t.Fatalf("got %v, want %q", err, c.want)
 			}
 		})
@@ -257,7 +253,7 @@ func TestPullNoBearerChallenge(t *testing.T) {
 	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(401) }))
 	t.Cleanup(srv.Close)
 	img := Image{Registry: srv.URL, Repository: "lib/x", Digest: dg(nil), OS: "linux", Arch: "arm64"}
-	if _, err := Pull(context.Background(), srv.Client(), img, NewTree()); err == nil || !strings.Contains(err.Error(), "Bearer challenge") {
+	if err := Pull(context.Background(), srv.Client(), img, NewTree()); err == nil || !strings.Contains(err.Error(), "Bearer challenge") {
 		t.Fatalf("got %v", err)
 	}
 }
@@ -266,7 +262,7 @@ func TestPullTokenStaysWithRegistry(t *testing.T) {
 	f := newFixture(t, tarOf(reg("f", "x")))
 	f.redir["registry.test/v2/lib/x/blobs/"+f.blobs[0]] = "https://cdn.test/blob"
 	f.routes["cdn.test/blob"] = f.routes["registry.test/v2/lib/x/blobs/"+f.blobs[0]]
-	if _, err := f.pull(NewTree()); err != nil {
+	if err := f.pull(NewTree()); err != nil {
 		t.Fatal(err)
 	}
 	if got := f.seen["cdn.test"]; len(got) != 1 || got[0] != "" {
@@ -276,7 +272,7 @@ func TestPullTokenStaysWithRegistry(t *testing.T) {
 		t.Errorf("token went to the wrong place: %v", f.seen)
 	}
 	f.redir["registry.test/v2/lib/x/blobs/"+f.blobs[0]] = "http://cdn.test/blob"
-	if _, err := f.pull(NewTree()); err == nil {
+	if err := f.pull(NewTree()); err == nil {
 		t.Error("a redirect to http was followed")
 	}
 }

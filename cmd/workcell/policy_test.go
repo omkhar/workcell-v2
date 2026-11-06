@@ -228,7 +228,7 @@ func TestProviderPolicy(t *testing.T) {
 				t.Setenv("XDG_CONFIG_HOME", dir)
 				text := "[network]\nallow = " + strings.ReplaceAll(tc.allow, "HOST", pv.host) + "\n\n[[secret]]\nname = \"" + pv.secret + "\"\nsource = \"file:" + keyFile + "\"\n"
 				must(0, cmp.Or(os.MkdirAll(filepath.Join(dir, "workcell"), 0o700), os.WriteFile(filepath.Join(dir, "workcell", "config.toml"), []byte(text), 0o600), os.WriteFile(keyFile, []byte(key+"\n"), 0o600)))
-				_, got, _, err := loadPolicy(strings.Fields(strings.ReplaceAll(tc.flags, "HOST", pv.host)), io.Discard)
+				_, got, _, _, err := loadPolicy(strings.Fields(strings.ReplaceAll(tc.flags, "HOST", pv.host)), io.Discard)
 				if tc.deny {
 					want := `secret "` + pv.secret + `": host "` + pv.host + `" is not a bare name in [network] allow: add "` + pv.host + `" there, or pass --allow ` + pv.host
 					if err == nil || !strings.HasSuffix(err.Error(), want) || strings.Contains(err.Error(), "\n") {
@@ -278,7 +278,7 @@ func TestRepoPolicy(t *testing.T) {
 			if tc.repo != "" {
 				must(0, os.WriteFile(filepath.Join(work, "workcell.toml"), []byte(tc.repo), 0o600))
 			}
-			allow, _, note, err := loadPolicy(tc.flags, io.Discard)
+			allow, _, note, _, err := loadPolicy(tc.flags, io.Discard)
 			if tc.note == "!" {
 				if err == nil || !strings.Contains(err.Error(), "workcell.toml:2:") {
 					t.Fatalf("loadPolicy = %v, want an error naming workcell.toml:2", err)

@@ -40,9 +40,7 @@ func explain(args []string, stderr io.Writer) int {
 		held, err = cacheText(caches)
 	}
 	if err == nil {
-		if file, err = configFile(); err == nil {
-			allow, secrets, note, err = loadPolicy(extra, stderr)
-		}
+		allow, secrets, note, file, err = loadPolicy(extra, stderr)
 	}
 	if err != nil {
 		fmt.Fprintln(stderr, "workcell explain:", err)

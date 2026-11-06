@@ -38,7 +38,6 @@ const (
 	MaxArtifact     = 512 << 20
 	maxBundle       = 64 << 10
 	maxAttestations = 1 << 20
-	maxRedirects    = 3
 	inTotoType      = "application/vnd.in-toto+json"
 )
 
@@ -255,7 +254,7 @@ func (v Verifier) root() *sigstore.Root {
 // a fixed phrase. Redirects follow the pins policy: at most three, https only.
 // It is the one bounded reader of upstream bytes on the host (B8).
 func Fetch(ctx context.Context, client *http.Client, rawURL string, limit int64) (io.ReadCloser, error) {
-	if err := httpsURL(rawURL); err != nil {
+	if err := pins.HTTPSURL(rawURL); err != nil {
 		return nil, err
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
@@ -263,18 +262,10 @@ func Fetch(ctx context.Context, client *http.Client, rawURL string, limit int64)
 		return nil, errors.New("not a usable URL")
 	}
 	c := *cmp.Or(client, http.DefaultClient)
-	c.CheckRedirect = func(req *http.Request, via []*http.Request) error {
-		if len(via) > maxRedirects {
-			return errors.New("too many redirects")
-		}
-		if req.URL.Host != via[0].URL.Host {
-			req.Header.Del("Authorization")
-		}
-		return httpsURL(req.URL.String())
-	}
+	c.CheckRedirect = pins.Redirect
 	resp, err := c.Do(req)
 	if err != nil {
-		return nil, bare(err)
+		return nil, pins.Bare("download", err)
 	}
 	if resp.StatusCode != http.StatusOK {
 		resp.Body.Close()
@@ -379,28 +370,9 @@ func (b *body) Read(p []byte) (int, error) {
 		return 0, errCap
 	}
 	if err != nil && err != io.EOF {
-		err = bare(err)
+		err = pins.Bare("download", err)
 	}
 	return n, err
-}
-
-// bare maps a transport error to a fixed phrase, so that an error names the
-// failure and nothing upstream sent: no URL, status line or certificate name.
-func bare(err error) error {
-	switch {
-	case errors.Is(err, context.DeadlineExceeded):
-		return errors.New("download: timed out")
-	case errors.Is(err, context.Canceled):
-		return errors.New("download: cancelled")
-	}
-	return errors.New("download: transport failure")
-}
-
-func httpsURL(s string) error {
-	if u, err := url.Parse(s); err != nil || u.Scheme != "https" || u.Host == "" {
-		return errors.New("not an https URL")
-	}
-	return nil
 }
 
 // plain reports whether s is non-empty ASCII letters and digits plus extra.

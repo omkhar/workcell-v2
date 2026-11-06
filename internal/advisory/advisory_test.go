@@ -266,7 +266,7 @@ func FuzzAnswer(f *testing.F) {
 	for _, d := range docs {
 		f.Add([]byte(d))
 	}
-	cur, _ := parseVersion(testPin.Version)
+	cur, _ := pins.ParseVersion(testPin.Version)
 	f.Fuzz(func(t *testing.T, data []byte) {
 		var a answer
 		if json.Unmarshal(data, &a) != nil {
@@ -277,9 +277,9 @@ func FuzzAnswer(f *testing.F) {
 			if !ok {
 				continue
 			}
-			from, fromOK := parseVersion(adv.Introduced)
-			if got, fixOK := parseVersion(adv.Fixed); !fixOK || got != fix || compare(cur, fix) >= 0 ||
-				(adv.Introduced != "" && (!fromOK || compare(from, cur) > 0)) {
+			from, fromOK := pins.ParseVersion(adv.Introduced)
+			if got, fixOK := pins.ParseVersion(adv.Fixed); !fixOK || got != fix || pins.Compare(cur, fix) >= 0 ||
+				(adv.Introduced != "" && (!fromOK || pins.Compare(from, cur) > 0)) {
 				t.Fatalf("match returned %+v for %s", adv, testPin.Version)
 			}
 		}

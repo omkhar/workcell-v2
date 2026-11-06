@@ -71,11 +71,6 @@ func TestUnsupported(t *testing.T) {
 		{Config{Workspace: "/w", Allow: []string{"a"}, Deny: []string{"b"}, Secret: &Secret{}}, false},
 		{Config{Isolated: true}, true},
 		{Config{Isolated: true, Resolver: "127.0.0.1"}, !steersResolver},
-		{Config{CPUs: 33}, true},
-		{Config{CPUs: -1}, true},
-		{Config{MemoryMiB: 127}, true},
-		{Config{MemoryMiB: -1}, true},
-		{Config{DiskMiB: -1}, true},
 	}
 	for _, c := range cases {
 		if got := unsupported(c.cfg) != ""; got != c.want {

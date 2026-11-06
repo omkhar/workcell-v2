@@ -11,7 +11,6 @@ import (
 	"net"
 	"os"
 	"path/filepath"
-	"strings"
 	"syscall"
 	"testing"
 	"time"
@@ -315,5 +314,3 @@ func exists(path string) bool {
 	_, err := os.Lstat(path)
 	return err == nil
 }
-
-func joined(names []string) string { return strings.Join(names, ",") }

@@ -334,7 +334,7 @@ func TestAdversarial(t *testing.T) {
 		t.Errorf("Serve: %v", err)
 	}
 	fx.checkSecret(t)
-	if got := fx.beside(t); joined(got) != "export,hl2,other,p-moved,secret,sub-moved" {
+	if got := fx.beside(t); strings.Join(got, ",") != "export,hl2,other,p-moved,secret,sub-moved" {
 		t.Errorf("beside the export: %v", got)
 	}
 	for _, p := range []string{"hlx", "dev", "t4096", "x/f"} {
