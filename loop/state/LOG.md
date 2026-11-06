@@ -930,3 +930,4 @@ Next: U-905a must keep spikes/install or move TestInstallToFirstSession and repo
 PR #136 (branch claude/U-907-20261106T053244Z, head a704993) had been open 221 minutes with no push; its checks guard, gate-arm64, gate-macos, gate and merge all ended green more than 215 minutes earlier and the title never lost its try: prefix, so this run closed it. Nothing from that branch was read or kept.
 tries stays 0: U-907 has no earlier result line, so the run most likely died of a usage limit after the gate was green, not of the unit.
 Next: U-907 (SECURITY.md proposal; doc, opus, env:any, sign:you, deps U-901 and W-801 both [x]) is still the next takeable unit for the cloud; the run that takes it should give its pull request the final title as soon as the local gate and guard are green, because the dead run had every check green and still never delivered. B-826d still waits for adopt.sh of B-826c.
+## 2026-11-06T09:25Z U-907 START mode=cloud
