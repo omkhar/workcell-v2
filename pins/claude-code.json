@@ -20,8 +20,8 @@
   "Version": "2.1.318",
   "Artifacts": {
     "amd64": {
-      "URL": "https://storage.googleapis.com/claude-code-dist-86c565f3-f756-42ad-8dfa-d59b1c096819/claude-code-releases/2.1.318/linux-arm64/claude",
-      "SHA256": "53a0d7e219d7b0804ecba5dbc002745e89f786cc946d2de85a6470d5b2d1fb06",
+      "URL": "https://storage.googleapis.com/claude-code-dist-86c565f3-f756-42ad-8dfa-d59b1c096819/claude-code-releases/2.1.318/linux-x64/claude",
+      "SHA256": "708c77b204db30086ff6f1ed34577bda03e1be74ced80557cbf7b54249ebf0bd",
       "Integrity": "",
       "Bundle": ""
     },
