@@ -114,6 +114,7 @@ type Result struct {
 	Skipped   []Skip     // releases newer than the pin that are not eligible, in input order
 	Security  bool       // the advisory affects the pin and Chosen fixes it (B4)
 	AutoMerge bool       // the bump may merge once the gate is green; false when it waits for the maintainer
+	Since     time.Time  // when the oldest eligible release was published
 }
 
 // Cooloff holds the normal and the security-lane cool-off of each class.
@@ -136,7 +137,6 @@ func Select(cur Pin, cands []Candidate, adv *Advisory, extra time.Duration, now 
 		return Result{}, fmt.Errorf("pin %q: version %q is not a stable X.Y.Z", cur.Name, cur.Version)
 	}
 	fix, affected := adv.affects(curV, hasCur)
-	extra = max(extra, 0)
 	var r Result
 	var best Version
 	for i := range cands {
@@ -166,8 +166,11 @@ func Select(cur Pin, cands []Candidate, adv *Advisory, extra time.Duration, now 
 			why = "no timestamp"
 		case latest.After(now):
 			why = "timestamp in the future"
-		case now.Sub(latest)-wait < extra: // not age < wait+extra, which overflows
+		case now.Sub(latest)-wait < max(extra, 0): // not age < wait+extra, which overflows
 			why = "cooling off"
+		}
+		if why == "" && (r.Since.IsZero() || latest.Before(r.Since)) {
+			r.Since = latest
 		}
 		if why != "" {
 			r.Skipped = append(r.Skipped, Skip{c.Version, why})

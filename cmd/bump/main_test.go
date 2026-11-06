@@ -373,6 +373,16 @@ func TestNewest(t *testing.T) {
 	}{
 		{"pinned is the newest", func(f *fixture) { tool(f); f.pins[0].Version = "1.3.0" }, 0, []string{"tool guest 1.3.0 none none 0s backwards"}, map[string]string{"tool.json": "1.3.0"}},
 		{"past cool-off plus slack: lag printed, exit 1, row rewritten", tool, 1, []string{stale, missed}, map[string]string{"tool.json": "1.3.0"}},
+		{"two eligible releases: lag counts from the oldest, unrounded", func(f *fixture) { // P7 missed by 29 minutes
+			tool(f)
+			f.args = append(f.args, "-dry-run")
+			f.pins[0].Source, f.pins[0].Assets = pins.GitHubReleases, map[string]string{"amd64": "tool"}
+			rel := `{"tag_name":%q,"created_at":%[2]q,"published_at":%[2]q,"assets":[{"name":"tool","browser_download_url":"{up}/dl","digest":"sha256:%x"}]}`
+			sum := sha256.Sum256([]byte("artifact"))
+			f.upstream["/tool"] = "[" + fmt.Sprintf(rel, "1.4.0", now.Add(-49*time.Hour).Format(time.RFC3339), sum) + "," +
+				fmt.Sprintf(rel, "1.3.0", now.Add(-72*time.Hour-29*time.Minute).Format(time.RFC3339), sum) + "]"
+			f.upstream["/dl"] = "artifact"
+		}, 1, []string{"tool guest 1.2.0 1.4.0 1.4.0 24h0m0s eligible", missed}, map[string]string{"tool.json": "1.2.0"}},
 		{"dry run writes nothing", func(f *fixture) { tool(f); f.args = append(f.args, "-dry-run") }, 1, []string{stale, missed}, map[string]string{"tool.json": "1.2.0"}},
 		{"still cooling off: rewritten", func(f *fixture) { tool(f); release(f, "tool", "1.3.0", now.Add(-6*time.Hour), false) }, 0,
 			[]string{"tool guest 1.2.0 none 1.3.0 0s cool-off"}, map[string]string{"tool.json": "1.3.0"}},
@@ -472,7 +482,7 @@ func runFixture(t *testing.T, f fixture, dry bool) (string, int, *standIn, map[s
 				}
 			}
 		default:
-			io.WriteString(w, body)
+			io.WriteString(w, strings.ReplaceAll(body, "{up}", "https://"+r.Host))
 		}
 	}))
 	t.Cleanup(up.Close)
