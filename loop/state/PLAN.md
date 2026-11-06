@@ -306,7 +306,7 @@ the loop has ended.
       accept: at most 200 lines together
 - [x] U-903 | flow:doc | model:sonnet | env:any | deps:U-900 | tries:0 | `docs/migrating-from-v1.md`: flag map, what was removed and why, how to remove v1 state
       accept: every v1 flag listed in `_legacy/flags.txt` has a row
-- [ ] U-904 | flow:build | model:sonnet | env:any | deps:W-801,W-802b | tries:0 | sign:you | Homebrew formula, a checksum-verifying install script, and the P2 install-timing job in `nightly.yml`
+- [S] U-904 | flow:build | model:sonnet | env:any | deps:W-801,W-802b | tries:0 | sign:you | Homebrew formula, a checksum-verifying install script, and the P2 install-timing job in `nightly.yml`
       accept: the script refuses a download with a wrong checksum, shown against a local server; it has at most 90 lines, because `gate.sh` joins the 300-line shell budget at cutover; `nightly.yml` stays within 80 lines
 - [ ] U-905a | flow:mech | model:sonnet | env:any | deps:U-903,U-502a,U-600,U-400,U-402,U-302,U-205,U-701,U-702,B-823,B-826b,B-827,B-828 | tries:0 | Delete `_legacy/` and `spikes/`
       accept: gate green; budgets met
