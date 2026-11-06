@@ -59,29 +59,43 @@ Every command below was run by `spikes/readme/readme_test.go` on a Linux host wi
 
 ```
 $ workcell --version
-<output: pending hosted run>
+workcell v2-dev
 
 $ workcell run -- sh -c 'echo hello from the guest; id -u; uname -m'
-<output: pending hosted run>
+hello from the guest
+0
+x86_64
 
 $ workcell run -- sh -c 'exit 7'
-<output: pending hosted run>
+(exit 7)
 
 $ workcell explain
-<output: pending hosted run>
+workspace: a copy of $TMP/project
+  The agent works in the copy; the real tree does not change until workcell pull brings
+  the work back, and workcell diff lists it first.
+network: no config file at $TMP/config/workcell/config.toml
+  The guest has no network.
+secrets: none
 
 $ workcell run -- sh -c 'getent hosts example.invalid || echo denied'
-<output: pending hosted run>
+denied
 
 $ workcell log
-<output: pending hosted run>
+{"time":"2026-11-06T04:02:24.741723186Z","event":"session_start"}
+denied example.invalid (dns): allow it with  workcell run --allow example.invalid  or add "example.invalid" to [network] allow in $TMP/config/workcell/config.toml
+{"time":"2026-11-06T04:02:25.158077373Z","event":"session_end","result":"exit 0"}
 
 $ workcell ls
-<output: pending hosted run>
+20261106T040223.795024353Z-fd3abe57  exited   $TMP/project
+20261106T040224.344508319Z-f9a6658c  exited   $TMP/project
+20261106T040224.740527524Z-27161481  exited   $TMP/project
 
-$ workcell rm <id>
-<output: pending hosted run>
+$ workcell rm 20261106T040223.795024353Z-fd3abe57
 ```
+
+In these blocks `$TMP` stands for the test's temporary directory (`/tmp/TestFirstSession.../001`). The `denied` line
+of `workcell log` appeared four times, because the guest resolver retried; it is shown once. `workcell rm` printed
+nothing and exited 0; a second `workcell ls` then listed the other two sessions. `(exit 7)` is the exit code the test logs. A blocked name is reported in one line that names the exact host to allow.
 
 `workcell run` exits with the command's exit code. It exits 125 when the session itself fails. To allow a host, use
 `workcell run --allow HOST ...` or list it under `[network] allow` in `config.toml`. `workcell explain` prints the
