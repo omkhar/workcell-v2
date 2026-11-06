@@ -14,7 +14,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"slices"
+	"regexp"
 	"strconv"
 	"time"
 
@@ -42,8 +42,7 @@ type vuln struct {
 			Ecosystem string `json:"ecosystem"`
 			Name      string `json:"name"`
 		} `json:"package"`
-		Versions []string `json:"versions"`
-		Ranges   []struct {
+		Ranges []struct {
 			Type   string `json:"type"`
 			Events []struct {
 				Introduced   string `json:"introduced"`
@@ -123,9 +122,6 @@ func post(ctx context.Context, c *http.Client, db string, body []byte) ([]byte, 
 	if resp.StatusCode != http.StatusOK {
 		return nil, "status " + strconv.Itoa(resp.StatusCode)
 	}
-	if resp.ContentLength > maxBody {
-		return nil, "answer too large"
-	}
 	data, err := io.ReadAll(io.LimitReader(resp.Body, maxBody+1))
 	if len(data) > maxBody {
 		return nil, "answer too large"
@@ -143,16 +139,13 @@ func post(ctx context.Context, c *http.Client, db string, body []byte) ([]byte, 
 // all its ranges, so a version at or above it lies outside every closed range,
 // and an entry with a range left open matches nothing.
 func (v vuln) match(p pins.Pin, cur pins.Version) (adv pins.Advisory, fix pins.Version, ok bool) {
-	if v.Withdrawn != "" || !plainID(v.ID) {
+	if v.Withdrawn != "" || !plainID.MatchString(v.ID) {
 		return
 	}
-	var listed pins.Advisory // the highest fix above cur, for a version the entry lists
-	var listedFix pins.Version
 	for _, a := range v.Affected {
 		if a.Package.Ecosystem != p.Package.Ecosystem || a.Package.Name != p.Package.Name {
 			continue
 		}
-		isListed := slices.Contains(a.Versions, p.Version)
 		var top pins.Version // the highest stable fix of the entry
 		topText, hitFrom, hit, unclosed := "", "", false, false
 		for _, r := range a.Ranges {
@@ -195,29 +188,12 @@ func (v vuln) match(p pins.Pin, cur pins.Version) (adv pins.Advisory, fix pins.V
 		if unclosed || topText == "" || pins.Compare(cur, top) >= 0 {
 			continue
 		}
-		switch {
-		case hit && (!ok || pins.Compare(top, fix) > 0):
+		if hit && (!ok || pins.Compare(top, fix) > 0) {
 			adv, fix, ok = pins.Advisory{ID: v.ID, Introduced: hitFrom, Fixed: topText}, top, true
-		case !hit && isListed && (listed.ID == "" || pins.Compare(top, listedFix) > 0):
-			listed, listedFix = pins.Advisory{ID: v.ID, Fixed: topText}, top
 		}
-	}
-	if !ok && listed.ID != "" {
-		return listed, listedFix, true
 	}
 	return
 }
 
-// plainID reports whether id is 1 to 64 bytes of letters, digits, "." and "-".
-func plainID(id string) bool {
-	if id == "" || len(id) > 64 {
-		return false
-	}
-	for i := range len(id) {
-		c := id[i]
-		if c != '.' && c != '-' && (c < '0' || c > '9') && (c < 'A' || c > 'Z') && (c < 'a' || c > 'z') {
-			return false
-		}
-	}
-	return true
-}
+// plainID is 1 to 64 bytes of letters, digits, "." and "-".
+var plainID = regexp.MustCompile(`^[A-Za-z0-9.-]{1,64}$`)

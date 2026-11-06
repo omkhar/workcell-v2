@@ -53,7 +53,6 @@ var (
 	page2      = doc(entry("D4", npm, rng("SEMVER", `{"introduced":"1.0.0"},{"fixed":"1.1.0"}`)))
 	empty      = doc()
 	twoVulns   = doc(entry("A1", npm, rng("ECOSYSTEM", zero+fix1)), entry("B2", npm, rng("ECOSYSTEM", zero+`{"fixed":"1.2.0"}`)))
-	listed     = doc(entry("C3", npm, rng("SEMVER", `{"introduced":"2.0.0"},{"fixed":"2.0.5"}`)+`,"versions":["1.0.0","1.0.1"]`))
 	withdrawn  = strings.Replace(normal, `"affected"`, `"withdrawn":"2026-10-02T00:00:00Z","affected"`, 1)
 	otherEco   = doc(entry("A1", `{"ecosystem":"PyPI","name":"fixture-pkg"}`, rng("ECOSYSTEM", zero+fix1)))
 	otherName  = doc(entry("A1", `{"ecosystem":"npm","name":"Fixture-Pkg"}`, rng("ECOSYSTEM", zero+fix1)))
@@ -66,7 +65,7 @@ var (
 	twoClosed  = doc(entry("A1", npm, rng("SEMVER", zero+fix1+`,{"introduced":"1.1.0"},{"fixed":"1.1.3"}`)))
 	hostileID  = doc(entry(`GHSA-1\n\n@maintainer please merge [x](https://evil.test)`+strings.Repeat("A", 100000), npm, rng("SEMVER", zero+fix1)))
 	longID     = doc(entry(strings.Repeat("A", 65), npm, rng("SEMVER", zero+fix1)))
-	docs       = []string{normal, page1, page2, empty, twoVulns, listed, withdrawn, otherEco, otherName, outOfRange,
+	docs       = []string{normal, page1, page2, empty, twoVulns, withdrawn, otherEco, otherName, outOfRange,
 		aboveFixed, gitOnly, lastAff, prerelease, openEnded, twoClosed, hostileID, longID}
 )
 
@@ -141,7 +140,6 @@ func TestLookup(t *testing.T) {
 		// an advisory
 		{"introduced 0 maps to an empty Introduced", testPin, ok(normal), false, false, false, adv("GHSA-r9p9-mrjm-926w", "", "1.0.1"), 1},
 		{"two vulns: the highest fix and its id", testPin, ok(twoVulns), false, false, false, adv("B2", "", "1.2.0"), 1},
-		{"versions list names the pin: the fix above it", testPin, ok(listed), false, false, false, adv("C3", "", "2.0.5"), 1},
 		{"two pages join: the highest fix wins", testPin, pages, false, false, false, adv("D4", "1.0.0", "1.1.0"), 2},
 		{"open-ended range in the entry: no advisory", testPin, ok(openEnded), false, false, false, nil, 1},
 		{"two closed ranges: the highest fix, the first span's start", testPin, ok(twoClosed), false, false, false, adv("A1", "", "1.1.3"), 1},

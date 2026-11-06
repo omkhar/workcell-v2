@@ -14,6 +14,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"regexp"
 	"slices"
 	"strings"
 	"time"
@@ -220,10 +221,7 @@ func parseTimes(raw ...string) ([]time.Time, error) {
 }
 
 // IsSHA256 reports whether s is 64 lowercase hex digits.
-func IsSHA256(s string) bool {
-	b, err := hex.DecodeString(s)
-	return err == nil && len(b) == sha256.Size && s == strings.ToLower(s)
-}
+var IsSHA256 = regexp.MustCompile(`^[0-9a-f]{64}$`).MatchString
 
 // npm reads a package document: every version in versions, with its time entry.
 // The tarball is the same file for every architecture. npm publishes no SHA-256.

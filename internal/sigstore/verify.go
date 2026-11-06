@@ -57,8 +57,6 @@ func (i *int64s) UnmarshalJSON(b []byte) error {
 			return err
 		}
 		b = []byte(s)
-	} else if string(b) == "null" {
-		return nil
 	}
 	v, err := strconv.ParseInt(string(b), 10, 64)
 	*i = int64s(v)
@@ -120,12 +118,6 @@ type envelope struct {
 
 type envSig struct {
 	Sig []byte `json:"sig"`
-}
-
-// hashRef is a Rekor body hash: algorithm name and hex value.
-type hashRef struct {
-	Algorithm string `json:"algorithm"`
-	Value     string `json:"value"`
 }
 
 // Verify checks a Sigstore bundle against root: the leaf certificate chains to
@@ -317,7 +309,7 @@ func bindBody(raw []byte, kind string, leaf *x509.Certificate, sig, hash []byte)
 		Kind       string `json:"kind"`
 		Spec       struct {
 			Data struct {
-				Hash hashRef `json:"hash"`
+				Hash struct{ Algorithm, Value string } `json:"hash"`
 			} `json:"data"`
 			Signature struct {
 				Content   []byte `json:"content"`
@@ -325,7 +317,7 @@ func bindBody(raw []byte, kind string, leaf *x509.Certificate, sig, hash []byte)
 					Content []byte `json:"content"`
 				} `json:"publicKey"`
 			} `json:"signature"`
-			PayloadHash hashRef `json:"payloadHash"`
+			PayloadHash struct{ Algorithm, Value string } `json:"payloadHash"`
 			Signatures  []struct {
 				Signature []byte `json:"signature"`
 				Verifier  []byte `json:"verifier"`
@@ -357,12 +349,11 @@ func bindBody(raw []byte, kind string, leaf *x509.Certificate, sig, hash []byte)
 // chain verifies the leaf at time at against every CA whose window holds the
 // leaf's NotBefore; the bundle's extra certificates may only be intermediates.
 func chain(root *Root, certs []*x509.Certificate, at time.Time) error {
-	leaf, windowed := certs[0], false
+	leaf := certs[0]
 	for _, ca := range root.cas {
 		if !ca.validFor.has(leaf.NotBefore) {
 			continue
 		}
-		windowed = true
 		inter := ca.intermediates.Clone()
 		for _, c := range certs[1:] {
 			inter.AddCert(c)
@@ -372,9 +363,6 @@ func chain(root *Root, certs []*x509.Certificate, at time.Time) error {
 		if err == nil {
 			return nil
 		}
-	}
-	if !windowed {
-		return errors.New("leaf: issued outside every CA window")
 	}
 	return errors.New("leaf: does not chain to a trusted CA at the integrated time")
 }

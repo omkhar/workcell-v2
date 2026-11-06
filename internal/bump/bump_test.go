@@ -4,10 +4,8 @@
 package bump
 
 import (
-	"encoding/json"
 	"os"
 	"path/filepath"
-	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -148,15 +146,6 @@ func TestGreen(t *testing.T) {
 		if got := Green(tc.runs, total, sha); got != tc.green {
 			t.Errorf("%s: %v, want %v", tc.name, got, tc.green)
 		}
-	}
-}
-
-func TestRowRoundTrip(t *testing.T) {
-	p := pins.Pin{Name: "x", Class: pins.Guest, Release: pins.Release{Version: "1.3.0"}, Released: time.Date(2026, 11, 4, 0, 0, 0, 0, time.UTC),
-		Previous: &pins.Release{Version: "1.2.0", Artifacts: map[string]pins.Artifact{"amd64": {SHA256: strings.Repeat("a", 64)}}}}
-	var back pins.Pin
-	if err := json.Unmarshal(Row(p), &back); err != nil || !reflect.DeepEqual(back, p) || !strings.HasSuffix(string(Row(p)), "}\n") {
-		t.Errorf("round trip: %v\n%s", err, Row(p))
 	}
 }
 

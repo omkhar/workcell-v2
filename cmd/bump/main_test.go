@@ -88,6 +88,7 @@ type fixture struct {
 	extra    map[string]string // more files in the pins directory
 	upstream map[string]string // path to body; "/osv" answers the advisory query
 	routes   map[string]reply
+	args     []string // more flags
 }
 
 // release records a vendor-manifest release of name under /name; a wrong
@@ -299,12 +300,7 @@ func TestRun(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			f := fixture{pins: []pins.Pin{pin("kit", pins.Trusted, "2.0.0"), pin("tool", pins.Guest, "1.2.0")},
-				extra: map[string]string{}, upstream: map[string]string{"/osv": `{"vulns":[]}`},
-				routes: map[string]reply{listPRs: {body: "[]"}, "GET /repos/o/r/git/ref/heads/main": {body: `{"object":{"sha":"` + head + `"}}`},
-					"GET /repos/o/r/issues?state=open&per_page=100": {body: "[]"}}}
-			release(&f, "kit", "2.1.0", now.Add(-19*24*time.Hour), false)
-			release(&f, "tool", "1.3.0", now.Add(-120*time.Hour), false)
+			f := baseFixture()
 			if tc.edit != nil {
 				tc.edit(&f)
 			}
@@ -347,6 +343,69 @@ func TestRun(t *testing.T) {
 			}
 			if tc.check != nil && len(ws) > 0 {
 				tc.check(t, ws)
+			}
+		})
+	}
+}
+
+// baseFixture is trusted kit at 2.0.0 and guest tool at 1.2.0, each with a newer release upstream.
+func baseFixture() fixture {
+	f := fixture{pins: []pins.Pin{pin("kit", pins.Trusted, "2.0.0"), pin("tool", pins.Guest, "1.2.0")},
+		extra: map[string]string{}, upstream: map[string]string{"/osv": `{"vulns":[]}`},
+		routes: map[string]reply{listPRs: {body: "[]"}, "GET /repos/o/r/git/ref/heads/main": {body: `{"object":{"sha":"` + head + `"}}`},
+			"GET /repos/o/r/issues?state=open&per_page=100": {body: "[]"}}}
+	release(&f, "kit", "2.1.0", now.Add(-19*24*time.Hour), false)
+	release(&f, "tool", "1.3.0", now.Add(-120*time.Hour), false)
+	return f
+}
+
+// TestNewest: the freshness report, the guest rows rewritten at the newest stable release, and the P7 exit.
+func TestNewest(t *testing.T) {
+	tool := func(f *fixture) { f.pins = f.pins[1:] }
+	stale := "tool guest 1.2.0 1.3.0 1.3.0 72h0m0s eligible"
+	missed := "bump: stopped: P7 missed or verification failed: tool"
+	cases := []struct {
+		name string
+		edit func(*fixture)
+		code int
+		out  []string          // lines the output holds
+		rows map[string]string // every file left in the pins directory, and its version
+	}{
+		{"pinned is the newest", func(f *fixture) { tool(f); f.pins[0].Version = "1.3.0" }, 0, []string{"tool guest 1.3.0 none none 0s backwards"}, map[string]string{"tool.json": "1.3.0"}},
+		{"past cool-off plus slack: lag printed, exit 1, row rewritten", tool, 1, []string{stale, missed}, map[string]string{"tool.json": "1.3.0"}},
+		{"dry run writes nothing", func(f *fixture) { tool(f); f.args = append(f.args, "-dry-run") }, 1, []string{stale, missed}, map[string]string{"tool.json": "1.2.0"}},
+		{"still cooling off: rewritten", func(f *fixture) { tool(f); release(f, "tool", "1.3.0", now.Add(-6*time.Hour), false) }, 0,
+			[]string{"tool guest 1.2.0 none 1.3.0 0s cool-off"}, map[string]string{"tool.json": "1.3.0"}},
+		{"trusted is reported, never written", func(f *fixture) { f.pins = f.pins[:1]; release(f, "kit", "2.1.0", now.Add(-8*24*time.Hour), false) }, 0,
+			[]string{"kit trusted 2.0.0 2.1.0 2.1.0 24h0m0s eligible"}, map[string]string{"kit.json": "2.0.0"}},
+		{"source error is reported", func(f *fixture) { tool(f); delete(f.upstream, "/tool/latest") }, 0, []string{"tool guest 1.2.0 none none 0s source-error"}, map[string]string{"tool.json": "1.2.0"}},
+		{"verification fails: exit 1, nothing written", func(f *fixture) { tool(f); release(f, "tool", "1.3.0", now.Add(-120*time.Hour), true) }, 1,
+			[]string{"tool guest 1.2.0 1.3.0 1.3.0 0s verify-failed", missed}, map[string]string{"tool.json": "1.2.0"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			f := baseFixture()
+			f.args = []string{"-newest"}
+			tc.edit(&f)
+			out, code, _, before, after := runFixture(t, f, false)
+			if lines := strings.Split(out, "\n"); code != tc.code || slices.ContainsFunc(tc.out, func(l string) bool { return !slices.Contains(lines, l) }) {
+				t.Errorf("exit %d, want %d; output lacks %q:\n%s", code, tc.code, tc.out, out)
+			}
+			got := map[string]string{}
+			for name, text := range after {
+				var p pins.Pin
+				if err := json.Unmarshal([]byte(text), &p); err != nil {
+					t.Fatal(err)
+				}
+				got[name] = p.Version
+				sum := sha256.Sum256([]byte("artifact of tool 1.3.0"))
+				if text != before[name] && (!p.Released.Equal(now) || p.Previous.Version != "1.2.0" || p.Artifacts["amd64"].SHA256 != hex.EncodeToString(sum[:]) ||
+					!strings.HasSuffix(p.Artifacts["amd64"].URL, "/tool/1.3.0/linux-x64/tool")) {
+					t.Errorf("rewritten row %s", text)
+				}
+			}
+			if !maps.Equal(got, tc.rows) {
+				t.Errorf("rows %v, want %v", got, tc.rows)
 			}
 		})
 	}
@@ -436,7 +495,7 @@ func runFixture(t *testing.T, f fixture, dry bool) (string, int, *standIn, map[s
 	tool.GitHub.Client = &http.Client{Timeout: 300 * time.Millisecond}
 	var out, stderr bytes.Buffer
 	tool.Out = &out
-	args := []string{"-api", gh.URL, "-repo", "o/r"}
+	args := append([]string{"-api", gh.URL, "-repo", "o/r"}, f.args...)
 	if dry {
 		args = append(args, "-dry-run")
 	}
