@@ -11,13 +11,11 @@ import (
 
 // naiveResolver is the resolver the control sandbox gives its guest, the
 // deliberately weak counterpart of the product's host resolver (SPEC T2,
-// I3): it answers every query, whatever the name, type or class, with one
-// record, as an open resolver that knew every name would. An A question
-// gets the test host's own address, an AAAA its loopback, anything else a
-// TXT. It stands in for the resolver a plain container would hand on, the
-// host's, so that no query of the suite's ever reaches that one (SPEC T8,
-// S12). The guest finds it where any program looks, in /etc/resolv.conf,
-// which Exec binds over the host's for the run.
+// I3): it answers every query with one record, as an open resolver that knew
+// every name would: an A gets the test host's own address, an AAAA its
+// loopback, anything else a TXT. It stands in for the host's resolver, so
+// that no query of the suite's reaches that one (SPEC T8, S12). The guest
+// finds it in /etc/resolv.conf, which Exec binds over the host's.
 type naiveResolver struct {
 	pc   net.PacketConn
 	host net.IP

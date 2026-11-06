@@ -102,13 +102,12 @@ func sign(context.Context, string, string) error { return nil }
 const steersResolver = true
 
 // isolatedAddr is the one address the test host holds in a session's own
-// network namespace. It is in 192.175.48.0/24, the AS112 range (RFC 7534):
-// an IANA special-purpose range that is global unicast, so the product's
-// vetting accepts it where it refuses every loopback, private, link-local,
-// documentation and benchmarking range, and no operator's allocation. The
-// namespace has a loopback device and nothing else: a packet to this
-// address is delivered inside it, and one to any other address has no
-// route, so nothing can leave the test host (SPEC T8, S12).
+// network namespace, in 192.175.48.0/24, the AS112 range (RFC 7534): global
+// unicast, so the product's vetting accepts it where it refuses every
+// loopback, private, link-local and documentation range, and no operator's
+// allocation. The namespace has a loopback device and nothing else: a packet
+// to this address is delivered inside it, any other has no route, so nothing
+// can leave the test host (SPEC T8, S12).
 const isolatedAddr = "192.175.48.1"
 
 // holder is a session's own network namespace: the payload that made it
@@ -298,14 +297,13 @@ func productProcess(root int, bin string) (int, bool) {
 	return found, depth >= 0
 }
 
-// resolverLoader runs as the product's own process, in a mount namespace of
-// its own: it makes every mount private, so that nothing it binds shows on
-// the host, binds the session's resolv.conf ($1) over /etc/resolv.conf,
-// becomes the user the suite runs as ($2, $3; the loader itself runs as
-// root, since binding needs that), and becomes the product with exactly the
-// environment the suite gives it (the K=V words after the ids, then the
-// command). The product then resolves every name with the resolver that
-// file names, as any program on the host would, and knows nothing else.
+// resolverLoader runs in a mount namespace of its own: it makes every mount
+// private, so that nothing it binds shows on the host, binds the session's
+// resolv.conf ($1) over /etc/resolv.conf, becomes the user the suite runs as
+// ($2, $3; the loader runs as root, since binding needs that), and becomes
+// the product with exactly the environment the suite gives it (the K=V words
+// after the ids, then the command). The product then resolves every name
+// with the resolver that file names, as any program on the host would.
 const resolverLoader = `mount --make-rprivate / && mount --bind "$1" /etc/resolv.conf || { echo "workcell adapter: cannot bind the session's resolv.conf over /etc/resolv.conf" >&2; exit 125; }; u=$2 g=$3; shift 3; exec setpriv --reuid="$u" --regid="$g" --init-groups -- env -i "$@"`
 
 // steered returns the argv that runs argv under a /etc/resolv.conf naming

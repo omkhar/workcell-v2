@@ -50,9 +50,8 @@ var prepared struct {
 
 // workcell is one session of the product: a directory holding its policy,
 // its secret and, as an empty subdirectory, its cwd when the test exports
-// nothing, so that the product exports none of the rest; the payload it
-// carries in; and the caps each of its VMs gets. A VM lives only as long
-// as one Exec or one Pull.
+// nothing; the payload it carries in; and the caps each VM gets. A VM lives
+// only as long as one Exec or one Pull.
 type workcell struct {
 	dir     string
 	bin     string // the product with the suite's row compiled in, once Install ran; "" is prepared.bin
@@ -271,7 +270,7 @@ func (w *workcell) Pull(ctx context.Context, dest string) error {
 	if err := os.MkdirAll(dest, 0o755); err != nil {
 		return err
 	}
-	out, err := w.cli(ctx, nil, pullArgs(dest)...)
+	out, err := w.cli(ctx, nil, "pull", dest)
 	if err != nil {
 		return err
 	}
@@ -292,12 +291,11 @@ func (w *workcell) Bench(ctx context.Context) (Output, error) {
 }
 
 // cli runs the product once with the prepared artifacts, the session's
-// policy and its trust store, in the session's export when it has one,
-// stdin from in, both streams bounded, and, when the session names a
-// resolver, under a /etc/resolv.conf of the session's own (steered). An exit status is
-// reported in Output, not as an error. On cancel the product gets SIGTERM,
-// which it forwards, and a little while to take its VM down; then its
-// process group is killed.
+// policy and its trust store, in the session's export when it has one, stdin
+// from in, both streams bounded, and, when the session names a resolver,
+// under a /etc/resolv.conf of its own (steered). An exit status is reported
+// in Output, not as an error. On cancel the product gets SIGTERM, which it
+// forwards, and a little while to take its VM down; then its group is killed.
 func (w *workcell) cli(ctx context.Context, in io.Reader, args ...string) (Output, error) {
 	env := append(os.Environ(), "XDG_DATA_HOME="+prepared.xdg, "XDG_CONFIG_HOME="+filepath.Join(w.dir, "config"))
 	if w.cfg.Roots != "" {
@@ -358,16 +356,15 @@ func (w *workcell) cli(ctx context.Context, in io.Reader, args ...string) (Outpu
 }
 
 // A session of the suite, Start to Stop, is several of the product's: one
-// per `workcell run` (SPEC A2), each with a directory of its own under the
-// data directory's sessions/, holding its record as audit.log, one JSON
-// line per record. The record of the suite's session is theirs, in order.
-// The judges edit the file at the path Audit returns and have the guest
-// go for it, so the path is the product's own file, never a copy.
+// per `workcell run` (SPEC A2), each with a directory under the data
+// directory's sessions/ holding its record as audit.log, one JSON line per
+// record. The suite's record is theirs, in order. The judges edit the file
+// at the path Audit returns and have the guest go for it, so the path is the
+// product's own file, never a copy.
 
 // sessions lists the product's sessions of this one, oldest first: those
-// seen before keep their order, and any new one, found under the data
-// directory on the host, comes after them by the age of its record. Only a
-// session with a record counts.
+// seen before keep their order, and a new one comes after them by the age of
+// its record. Only a session with a record counts.
 func (w *workcell) sessions() ([]string, error) {
 	dir := filepath.Join(prepared.xdg, "workcell", "sessions")
 	entries, err := os.ReadDir(dir)
@@ -402,11 +399,10 @@ func record(id string) string {
 }
 
 // Audit reads every record of the product's sessions of this one, oldest
-// first, from the files the product keeps, and returns the newest file's
-// path, as `workcell log` with no id would take it. A record begins with a
-// run, so with no session yet Audit runs one that does nothing in the
-// guest, under the session's own policy and caps: its start and end are
-// the record's first lines, as the control sandbox's are.
+// first, and returns the newest file's path, as `workcell log` with no id
+// would take it. A record begins with a run, so with no session yet Audit
+// runs one that does nothing in the guest, under the session's own policy
+// and caps: its start and end are the record's first lines.
 func (w *workcell) Audit(ctx context.Context) (string, []string, error) {
 	if w.dir == "" {
 		return "", nil, errors.New("workcell: Audit before Start")
@@ -517,17 +513,20 @@ func (w *workcell) Helper(ctx context.Context, name string) (int, error) {
 // rows maps a provider to its pin row, as the product's install table does.
 var rows = map[string]string{"claude": "claude-code", "codex": "codex", "copilot": "copilot-cli"}
 
-// Install builds the product once more with the row l needs in place of
-// the file under pins/ that would hold it, a build overlay, so that the
-// tree is untouched and the product has no hook (SPEC A11); has it run
-// `workcell update --to <version> <agent>` with the session's trust store;
-// and names the image `current` then points at. The runs use that binary.
+// Install builds the product once more with the row l needs in place of the
+// file under pins/, by a build overlay, so that the tree is untouched and the
+// product has no hook (SPEC A11); has it run `workcell update --to <version>
+// <agent>`; and names the image `current` then points at. Runs use that binary.
 func (w *workcell) Install(ctx context.Context, l Layer) (string, error) {
 	name, ok := rows[l.Agent]
 	if w.dir == "" || !ok {
 		return "", fmt.Errorf("workcell: Install before Start, or no pin row for agent %q", l.Agent)
 	}
-	row := fmt.Sprintf(`{"Name":%q,"Class":"guest","Version":%q,"Artifacts":{%q:{"URL":%q,"SHA256":"%x"}}}`, name, l.Version, runtime.GOARCH, l.URL, sha256.Sum256(l.Artifact))
+	sum := l.Digest
+	if l.Artifact != nil {
+		sum = fmt.Sprintf("%x", sha256.Sum256(l.Artifact))
+	}
+	row := fmt.Sprintf(`{"Name":%q,"Class":"guest","Version":%q,"Artifacts":{%q:{"URL":%q,"SHA256":%q}}}`, name, l.Version, runtime.GOARCH, l.URL, sum)
 	dir := filepath.Join(w.dir, "overlay")
 	file, bin := filepath.Join(dir, name+".json"), filepath.Join(dir, "workcell")
 	swap := fmt.Sprintf(`{"Replace":{%q:%q}}`, filepath.Join(prepared.repo, "pins", name+".json"), file)
@@ -542,7 +541,13 @@ func (w *workcell) Install(ctx context.Context, l Layer) (string, error) {
 		return "", fmt.Errorf("workcell: build with the row %s: %w", name, err)
 	}
 	w.bin = bin
-	out, err := w.cli(ctx, nil, "update", "--to", l.Version, l.Agent)
+	// The update is the host's own, never steered into the session's network:
+	// a served artifact is trusted through the suite's roots, an upstream's through the host's.
+	host := &workcell{dir: w.dir, bin: bin}
+	if l.Artifact != nil {
+		host.cfg.Roots = w.cfg.Roots
+	}
+	out, err := host.cli(ctx, nil, "update", "--to", l.Version, l.Agent)
 	if err == nil && out.Exit != 0 {
 		err = fmt.Errorf("exit %d: %s", out.Exit, bytes.TrimSpace(out.Stderr))
 	}

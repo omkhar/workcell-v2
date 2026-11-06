@@ -21,11 +21,10 @@ import (
 // which a forged frame is indistinguishable from the init's own, and as fresh
 // connections to the same host port. The host answers no guest frame, so the
 // evidence is all on the host side: what `workcell run` returned for the
-// hostile run, its exit status, its stderr and how long it took, and whether
-// a plain run afterwards still works. A host end holds I12 only if the run
-// ends within hangBound, the host process did not crash, it wrote no control
-// bytes to its stderr, and it reported the command's own status or a clean
-// refusal of the session, never a status the forged frame named.
+// hostile run (exit status, stderr, time taken) and whether a plain run
+// afterwards still works. I12 holds only if the run ends within hangBound,
+// the host did not crash, wrote no control bytes to its stderr, and reported
+// the command's own status or a clean refusal, never one the frame named.
 //
 // Frames: a 6-byte header of version 1, a type and a big-endian length of at
 // most 65536, then the payload. Guest-to-host types are Stdout 5, Stderr 6,
@@ -159,39 +158,44 @@ func drip(ch *rawConn, f []byte) Result {
 	return Result{Status: "sent", Detail: fmt.Sprintf("%d bytes dripped over %s", sent, longLinger)}
 }
 
-// storm opens stormSize fresh connections to the host end at once, sends a
-// forged Exit on each, holds them open, and counts.
-func storm(addr string) Result {
+// swarm opens n fresh connections to the host end at once, has each handled
+// by each (which returns a count), holds them for wait, and says how many
+// opened, the counts' sum and the last dial error as a suffix.
+func swarm(addr string, n int, wait time.Duration, each func(c *rawConn) int) (opened, sum int, last string) {
 	var mu sync.Mutex
 	var wg sync.WaitGroup
-	opened, sent := 0, 0
-	var last error
-	for range stormSize {
+	for range n {
 		wg.Go(func() {
 			c, err := dialChannel(addr)
 			if err != nil {
 				mu.Lock()
-				last = err
+				last = "; last error: " + err.Error()
 				mu.Unlock()
 				return
 			}
 			defer c.close()
-			_, err = c.write(frame(typeExit, exitTag(forgedCode)), sendWait)
+			k := each(c)
 			mu.Lock()
 			opened++
-			if err == nil {
-				sent++
-			}
+			sum += k
 			mu.Unlock()
-			time.Sleep(stormHold)
+			time.Sleep(wait)
 		})
 	}
 	wg.Wait()
-	detail := fmt.Sprintf("%d of %d connections opened, %d forged Exit frames sent", opened, stormSize, sent)
-	if last != nil {
-		detail += "; last error: " + last.Error()
-	}
-	return Result{Status: "stormed", Detail: detail}
+	return
+}
+
+// storm opens stormSize fresh connections to the host end at once, sends a
+// forged Exit on each, holds them open, and counts.
+func storm(addr string) Result {
+	opened, sent, last := swarm(addr, stormSize, stormHold, func(c *rawConn) int {
+		if _, err := c.write(frame(typeExit, exitTag(forgedCode)), sendWait); err != nil {
+			return 0
+		}
+		return 1
+	})
+	return Result{Status: "stormed", Detail: fmt.Sprintf("%d of %d connections opened, %d forged Exit frames sent%s", opened, stormSize, sent, last)}
 }
 
 // flood opens floodSize fresh connections at once and offers the host side
@@ -201,34 +205,11 @@ func storm(addr string) Result {
 func flood(addr string) Result {
 	chunk := frame(typeStdout, make([]byte, floodBytes-6))
 	binary.BigEndian.PutUint32(chunk[2:], 0xffffffff)
-	var mu sync.Mutex
-	var wg sync.WaitGroup
-	opened, taken := 0, 0
-	var last error
-	for range floodSize {
-		wg.Go(func() {
-			c, err := dialChannel(addr)
-			if err != nil {
-				mu.Lock()
-				last = err
-				mu.Unlock()
-				return
-			}
-			defer c.close()
-			n, _ := c.write(chunk, floodWait)
-			mu.Lock()
-			opened++
-			taken += n
-			mu.Unlock()
-			time.Sleep(hold)
-		})
-	}
-	wg.Wait()
-	detail := fmt.Sprintf("%d of %d connections opened, the host side took %d MiB", opened, floodSize, taken>>20)
-	if last != nil {
-		detail += "; last error: " + last.Error()
-	}
-	return Result{Status: "flooded", Detail: detail}
+	opened, taken, last := swarm(addr, floodSize, hold, func(c *rawConn) int {
+		n, _ := c.write(chunk, floodWait)
+		return n
+	})
+	return Result{Status: "flooded", Detail: fmt.Sprintf("%d of %d connections opened, the host side took %d MiB%s", opened, floodSize, taken>>20, last)}
 }
 
 // allowed is the exit status each kind lets a sound host report: 0, the

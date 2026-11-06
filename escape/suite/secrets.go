@@ -52,7 +52,7 @@ const (
 // the row has no value: the endpoint the source names issues the tokens,
 // and the access one goes in the Authorization header, as a bearer token does.
 func NewSecret(w Want) sandbox.Secret {
-	sec := sandbox.Secret{Name: "escape", Value: secretPrefix + newToken()[:secretHex], Host: w.Allow[0], Header: boundHeader, Env: "ESCAPE_API_KEY"}
+	sec := sandbox.Secret{Name: "escape", Value: secretPrefix + newToken()[:secretHex], Host: w.Allow[0], Header: cmp.Or(w.Header, boundHeader), Env: "ESCAPE_API_KEY"}
 	if w.Narrow {
 		sec.Method, sec.Path = narrowMethod, narrowPath
 	}

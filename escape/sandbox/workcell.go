@@ -14,18 +14,14 @@ import (
 )
 
 // The workcell adapter drives the product through its CLI alone: one
-// `workcell run` per Exec, each a fresh microVM, with the payload carried in
-// through stdin (SPEC T1, A8), with the test's export as the product's
-// working directory, and one `workcell pull` per Pull, which brings the
-// newest session's work tree back. It runs on Linux and on macOS, the two
-// hosts with a hypervisor the product drives; elsewhere every operation
-// reports ErrNotImplemented. The session policy goes in as the product's
-// own file (SPEC section 5): the adapter writes config.toml under a
-// directory of the session's own and points XDG_CONFIG_HOME at it, and a
-// secret's value into a file of the session's own, outside any export,
-// which the policy names as the secret's source. What the CLI cannot
-// honour yet, a cap outside its range, is refused at Start with
-// ErrNotImplemented, so that such a test is never a false pass.
+// `workcell run` per Exec, each a fresh microVM carrying the payload in
+// through stdin (SPEC T1, A8), with the test's export as its working
+// directory, and one `workcell pull` per Pull. It runs on Linux and macOS;
+// elsewhere every operation reports ErrNotImplemented. The session policy
+// goes in as the product's own config.toml under a directory of the
+// session's own (XDG_CONFIG_HOME), a secret's value in a file beside it,
+// outside any export. What the CLI cannot honour yet is refused at Start
+// with ErrNotImplemented, so that such a test is never a false pass.
 
 // Prepare does the one-time setup the named adapter needs, under dir, which
 // the caller removes when the process ends. For workcell that is the four
@@ -68,24 +64,16 @@ func unsupported(cfg Config) string {
 const policyFile = "workcell/config.toml"
 
 // policyTOML is the session policy of SPEC section 5 for cfg: a [network]
-// table whose allow array holds each of cfg.Allow as a TOML basic string,
-// and, for cfg.Secret, one [[secret]] table binding it to its host and
-// header, with its value in the file source (or the source the entry
-// names itself, such as a sign-in flow) and the guest's placeholder in
-// its variable, narrowed to a method, a path prefix and an array of
-// repositories when it names them.
-// A bare name is port 443 by SNI; `name:port` is a forward entry for that
-// one port. Every entry comes from the test table, but a quote, a backslash
-// or a byte outside printable ASCII would change what the file says, so
-// such an entry is refused. With no entry the file says so, which relays no
-// port, as no file would; it is written all the same so that nothing the
-// runner's user keeps under ~/.config reaches a session.
-//
-// cfg.Deny names hosts the policy must not allow. A file that does not name
-// them is all the product needs, so Deny writes nothing; a name in both
-// lists is a mistake in the table and is refused. Making an allowed or a
-// denied name resolve to the test host, for a positive path, is the host
-// resolver's (U-304, U-305), not this adapter's: it only writes the policy.
+// table whose allow array holds each of cfg.Allow (a bare name is port 443
+// by SNI; `name:port` a forward entry), and, for cfg.Secret, one [[secret]]
+// table binding it to its host and header, with its value in the file source
+// (or the source the entry names, such as a sign-in flow), the guest's
+// placeholder in its variable, and any method, path prefix and repositories.
+// A quote, a backslash or a byte outside printable ASCII would change what
+// the file says, so such an entry is refused. It is written even with no
+// entry, so that nothing under the runner's ~/.config reaches a session.
+// cfg.Deny writes nothing, since a file that does not name a host is all the
+// product needs; a name in both lists is a mistake in the table, and refused.
 func policyTOML(cfg Config, source string) ([]byte, error) {
 	for _, name := range cfg.Allow {
 		if slices.Contains(cfg.Deny, name) {
@@ -164,10 +152,6 @@ func runArgs(cfg Config, loader string, args ...string) []string {
 	argv = append(argv, "--", "/bin/sh", "-c", loader, "sh")
 	return append(argv, args...)
 }
-
-// pullArgs is the argv of one `workcell pull` into dest, run in the export
-// the session's runs started from, so that the newest session is theirs.
-func pullArgs(dest string) []string { return []string{"pull", dest} }
 
 // cpioEntry writes one newc ("070701") cpio entry: a header of the magic and
 // thirteen 8-digit hex fields, the name with its NUL, and the data, each of

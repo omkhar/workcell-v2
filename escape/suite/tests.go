@@ -27,7 +27,7 @@ import (
 // loopback, its own interface address (hostAddr), or an address the judge adds
 // to loopback for the test's duration (onLoopback). No packet leaves the host
 // (SPEC T8, S12). The guest gets a literal address, never a name.
-var All = []Test{
+var All = append([]Test{
 	// The first row runs under a policy that opens one port (forwarded), so
 	// that an allowlist is shown to open no other port.
 	{ID: "I2", Name: "raw-ip-odd-port-tcp4", Probe: dialProbe, Host: tcpCanary("tcp4", hostAddr+":0", ""), Want: forwarded},
@@ -135,16 +135,14 @@ var All = []Test{
 	// served live, so a byte the guest writes under it is the host's at once,
 	// and so is a size the guest sets without writing.
 	{ID: "I10", Name: "mount-disk-flood", Probe: mountDiskProbe, Host: mountDiskJudge, Want: cappedLive},
-	// A secret is bound to one allowed name, both names terminated on the
-	// host. The guest hunts for the real value in every process, on disk
-	// and in memory; sends the credential it was given, alone and as a
-	// bearer token, in the bound header to the bound name, which must
-	// reach the canary as the real value; replays it at the other allowed
-	// name; and sends it in another header, in the path and in the query
-	// of the bound name, none of which may reach a canary. Under a binding
-	// narrowed to one method and path, only that method under that path
-	// is swapped. And a redirect from the bound host carries the
-	// credential on to the other.
+	// A secret is bound to one allowed name, both terminated on the host.
+	// The guest hunts for the real value in every process, on disk and in
+	// memory; sends its credential, alone and as a bearer token, in the
+	// bound header to the bound name, which must reach the canary as the
+	// real value; replays it at the other name, in another header, in the
+	// path and in the query, none of which may reach a canary. Under a
+	// binding narrowed to one method and path, only that is swapped. A
+	// redirect from the bound host carries the credential on to the other.
 	{ID: "I5", Name: "secret-in-guest", Probe: secretProbe, Host: secretJudge, Want: withSecret},
 	{ID: "I5", Name: "placeholder-swapped", Probe: exchangeProbe, Host: twoNames(canaries{}, swapJudge("GET,bound,/check,header", "GET,bound,/bearer,bearer")), Want: withSecret},
 	{ID: "I5", Name: "placeholder-replay", Probe: exchangeProbe, Host: twoNames(canaries{}, swapJudge("GET,bound,/check,header", "GET,other,/replay,header")), Want: withSecret},
@@ -158,16 +156,13 @@ var All = []Test{
 	{ID: "I5", Name: "repo-token-elsewhere", Probe: exchangeProbe, Host: twoNames(canaries{}, swapJudge("GET,bound,/octo/allowed.git/info/refs?service=git-upload-pack,basic", "GET,bound,/octo/other.git/info/refs?service=git-upload-pack,basic", "POST,bound,/octo/other.git/git-receive-pack,basic", "GET,bound,/other/allowed.git/info/refs,basic", "GET,bound,/octo/allowed-x.git/info/refs,basic", "GET,bound,/octo/allowed.git-x/info/refs,basic", "GET,bound,/Octo/Allowed.git/info/refs,basic", "GET,bound,/octo/allowed.git/../other.git/info/refs,basic", "GET,bound,/octo/allowed.git%2F..%2Fother.git/info/refs,basic", "GET,bound,//octo/allowed.git/info/refs,basic", "GET,bound,/octo/other.git/git-upload-pack,auth", "GET,other,/octo/allowed.git/info/refs,basic")), Want: scoped},
 	// A secret whose source is a sign-in flow: the token endpoint on one
 	// allowed name issues an access and a refresh token, the access one
-	// bound to the API on the other (signin.go). The guest signs in and
-	// reads the body it got; uses the access token it holds at the API,
-	// which must see the real one; refreshes with the refresh token it
-	// holds, as a form and as JSON, which must reach the endpoint real,
-	// and uses the new access token; hunts for the real tokens as
-	// secret-in-guest does, after a refresh; replays what it holds at the
-	// other name, in the wrong header, as a bearer, in a query and at the
-	// wrong host or path; and meets a token response in two chunks split
-	// inside a token, one gzipped, and a 4xx that echoes the refresh token
-	// the endpoint was given.
+	// bound to the API on the other (signin.go). The guest signs in; uses
+	// the access token at the API, which must see the real one; refreshes
+	// as a form and as JSON, which must reach the endpoint real, and uses
+	// the new token; hunts for the real tokens as secret-in-guest does;
+	// replays what it holds in the wrong header, as a bearer, in a query
+	// and at the wrong host or path; and meets a token response split
+	// inside a token, one gzipped, and a 4xx that echoes the refresh token.
 	{ID: "I5", Name: "signin-exchange", Probe: signinProbe, Host: signedIn("", "signin", "api"), Want: signedInWant},
 	{ID: "I5", Name: "signin-refresh", Probe: signinProbe, Host: signedIn("", "signin", "api", "refresh", "api"), Want: signedInWant},
 	{ID: "I5", Name: "signin-refresh-json", Probe: signinProbe, Host: signedIn("", "signin", "refresh-json", "api"), Want: signedInWant},
@@ -178,13 +173,11 @@ var All = []Test{
 	{ID: "I5", Name: "signin-error-echo", Probe: signinProbe, Host: signedIn("", "signin", "refresh-bad", "api"), Want: signedInWant},
 	// Two allowed names, both terminated on the host. On a connection whose
 	// TLS names one, the request names the other, in the Host header, in
-	// :authority, or hidden from the SNI by ECH: the canary under the SNI's
-	// name must see no request for the other, and the other must see none at
-	// all. And a plain client in the guest must meet the host's own leaf for
-	// the name, trusted through the environment the product set, never the
-	// canary's: the connection was terminated, not spliced. And the canary
-	// under one name presents a certificate for the other: the host, which
-	// verifies the upstream as itself, must carry no request to it.
+	// :authority, or hidden from the SNI by ECH: neither canary may see a
+	// request for the other. A plain client in the guest must meet the host's
+	// own leaf, trusted through the environment the product set, never the
+	// canary's: terminated, not spliced. And a canary presenting a
+	// certificate for the other name must be carried no request.
 	{ID: "I6", Name: "sni-host-mismatch-h1", Probe: mismatchProbe(false), Host: twoNames(canaries{}, strictJudge), Want: terminating},
 	{ID: "I6", Name: "sni-authority-mismatch-h2", Probe: mismatchProbe(true), Host: twoNames(canaries{}, strictJudge), Want: terminating},
 	{ID: "I6", Name: "ech-hidden-sni", Probe: echProbe, Host: twoNames(canaries{ech: true}, strictJudge), Want: terminating},
@@ -202,13 +195,12 @@ var All = []Test{
 	{ID: "I8", Name: "pull-case-collision", Probe: repoProbe, Host: collided, Want: exported},
 	{ID: "I8", Name: "pull-writes-dotgit", Probe: repoProbe, Host: planted, Want: exported},
 	// A workcell.toml in the repository tries to widen the policy: the
-	// allowlist, plainly, by another spelling of the name or through a
-	// symbolic link out of the repository; the secret's binding, to another
-	// host, header or source, or free of its method and path; the workspace
-	// mode; and the caps. For the names the guest replays its credential at
-	// the other name, which only the repository allows, or binds; it must
-	// see nothing. One file narrows the allowlist instead and the guest, with
-	// no credential, must not reach the name it dropped. One is a pipe.
+	// allowlist, by another spelling of a name or through a symlink out of
+	// the repository; the secret's binding, to another host, header or
+	// source, or free of its method and path; the workspace mode; the caps.
+	// The guest replays its credential at the name only the repository
+	// allows or binds, and must see nothing. One file narrows the allowlist
+	// and the guest must not reach the name it dropped. One is a pipe.
 	{ID: "I13", Name: "repo-policy-widens-allowlist", Probe: exchangeProbe, Host: twoNames(canaries{}, swapJudge("GET,bound,/check,header", "GET,other,/replay,header")), Want: widened},
 	{ID: "I13", Name: "repo-policy-respells-name", Probe: exchangeProbe, Host: twoNames(canaries{}, swapJudge("GET,bound,/check,header", "GET,other,/replay,header", "GET,other,/plain,none")), Want: respelled},
 	{ID: "I13", Name: "repo-policy-through-symlink", Probe: exchangeProbe, Host: twoNames(canaries{}, swapJudge("GET,bound,/check,header", "GET,other,/plain,none")), Want: linked},
@@ -279,7 +271,7 @@ var All = []Test{
 	// The product's own start benchmark, run on the host: twenty warm boots,
 	// and the median must be under the hosted budget.
 	{ID: "P1", Name: "warm-start", Probe: idleProbe, Host: benchJudge, Bound: benchBound},
-}
+}, pinSmoke()...) // and B6, a smoke test of each guest pin that changed (smoke.go)
 
 // hostAddr, in a canary address, stands for the host's own first non-loopback
 // IPv4 address: what a real guest sees as the host.

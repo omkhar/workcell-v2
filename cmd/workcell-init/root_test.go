@@ -6,12 +6,29 @@
 package main
 
 import (
+	"fmt"
 	"slices"
 	"testing"
 )
 
+// parse is one row of a cmdline reader's table: the kernel command line, and what is read from it.
+type parse[T any] struct {
+	name, cmdline string
+	want          T
+}
+
+func parses[T any](t *testing.T, read func(string) T, tests []parse[T]) {
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := read(tc.cmdline); fmt.Sprint(got) != fmt.Sprint(tc.want) {
+				t.Errorf("(%q) = %v, want %v", tc.cmdline, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestRootDevice(t *testing.T) {
-	tests := []struct{ name, cmdline, want string }{
+	parses(t, rootDevice, []parse[string]{
 		{"none", "console=ttyS0 reboot=k panic=-1 pci=off quiet", ""},
 		{"empty", "", ""},
 		{"set", "console=ttyS0 root=/dev/vda ro", "/dev/vda"},
@@ -19,38 +36,21 @@ func TestRootDevice(t *testing.T) {
 		{"the last wins", "root=/dev/vdb root=/dev/vda ro", "/dev/vda"},
 		{"not a device", "root=UUID=1234 ro", ""},
 		{"a name that only ends in root=", "chroot=/dev/vda ro", ""},
-	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			if got := rootDevice(tc.cmdline); got != tc.want {
-				t.Errorf("rootDevice(%q) = %q, want %q", tc.cmdline, got, tc.want)
-			}
-		})
-	}
+	})
 }
 
 func TestWorkspaceDevice(t *testing.T) {
-	tests := []struct{ name, cmdline, want string }{
+	parses(t, workspaceDevice, []parse[string]{
 		{"none", "root=/dev/vda ro", ""},
 		{"set", "root=/dev/vda ro workcell.workspace=/dev/vdb", "/dev/vdb"},
 		{"the last wins", "workcell.workspace=/dev/vdb workcell.workspace=/dev/vdc\n", "/dev/vdc"},
 		{"not a device", "workcell.workspace=vdb", ""},
 		{"another name", "other.workcell.workspace=/dev/vdb", ""},
-	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			if got := workspaceDevice(tc.cmdline); got != tc.want {
-				t.Errorf("workspaceDevice(%q) = %q, want %q", tc.cmdline, got, tc.want)
-			}
-		})
-	}
+	})
 }
 
 func TestLayers(t *testing.T) {
-	tests := []struct {
-		name, cmdline string
-		want          []layer
-	}{
+	parses(t, layers, []parse[[]layer]{
 		{"none", "root=/dev/vda ro workcell.workspace=/dev/vdb", nil},
 		{"one", "root=/dev/vda workcell.layer=claude:/dev/vdc\n", []layer{{"claude", "/dev/vdc"}}},
 		{"two, in order", "workcell.layer=codex:/dev/vdc workcell.layer=claude:/dev/vdd", []layer{{"codex", "/dev/vdc"}, {"claude", "/dev/vdd"}}},
@@ -59,21 +59,11 @@ func TestLayers(t *testing.T) {
 		{"no name", "workcell.layer=:/dev/vdc", nil},
 		{"a name with a slash or a dot", "workcell.layer=../etc:/dev/vdc workcell.layer=a/b:/dev/vdd", nil},
 		{"another name", "other.workcell.layer=claude:/dev/vdc", nil},
-	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			if got := layers(tc.cmdline); !slices.Equal(got, tc.want) {
-				t.Errorf("layers(%q) = %v, want %v", tc.cmdline, got, tc.want)
-			}
-		})
-	}
+	})
 }
 
 func TestMounted(t *testing.T) {
-	tests := []struct {
-		name, cmdline string
-		want          bool
-	}{
+	parses(t, mounted, []parse[bool]{
 		{"none", "root=/dev/vda ro", false},
 		{"set", "root=/dev/vda ro workcell.mount=1", true},
 		{"newline", "ro workcell.mount=1\n", true},
@@ -83,21 +73,11 @@ func TestMounted(t *testing.T) {
 		{"the last wins when on", "workcell.mount=0 workcell.mount=1", true},
 		{"another name", "other.workcell.mount=1", false},
 		{"no value", "workcell.mount", false},
-	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			if got := mounted(tc.cmdline); got != tc.want {
-				t.Errorf("mounted(%q) = %t, want %t", tc.cmdline, got, tc.want)
-			}
-		})
-	}
+	})
 }
 
 func TestDiskMiB(t *testing.T) {
-	tests := []struct {
-		name, cmdline string
-		want          int
-	}{
+	parses(t, diskMiB, []parse[int]{
 		{"none", "root=/dev/vda ro", 0},
 		{"set", "root=/dev/vda ro workcell.disk=64", 64},
 		{"newline", "ro workcell.disk=20480\n", 20480},
@@ -106,14 +86,7 @@ func TestDiskMiB(t *testing.T) {
 		{"negative", "workcell.disk=-5", 0},
 		{"too large", "workcell.disk=99999999999", 0},
 		{"another name", "other.workcell.disk=64", 0},
-	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			if got := diskMiB(tc.cmdline); got != tc.want {
-				t.Errorf("diskMiB(%q) = %d, want %d", tc.cmdline, got, tc.want)
-			}
-		})
-	}
+	})
 }
 
 func TestPorts(t *testing.T) {
@@ -155,10 +128,7 @@ func TestTmpfsSize(t *testing.T) {
 }
 
 func TestCaches(t *testing.T) {
-	tests := []struct {
-		name, cmdline string
-		want          []cache
-	}{
+	parses(t, caches, []parse[[]cache]{
 		{"none", "root=/dev/vda ro workcell.layer=claude:/dev/vdc", nil},
 		{"two, in order", "workcell.cache=go:/dev/vdd:ro workcell.cache=npm:/dev/vde:rw\n", []cache{{"go", "/dev/vdd", false}, {"npm", "/dev/vde", true}}},
 		{"not a device", "workcell.cache=go:vdd:ro", nil},
@@ -166,12 +136,5 @@ func TestCaches(t *testing.T) {
 		{"no name", "workcell.cache=:/dev/vdd:ro", nil},
 		{"a name with a slash or a dot", "workcell.cache=../etc:/dev/vdd:ro workcell.cache=a/b:/dev/vdd:rw", nil},
 		{"another name", "other.workcell.cache=go:/dev/vdd:ro", nil},
-	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			if got := caches(tc.cmdline); !slices.Equal(got, tc.want) {
-				t.Errorf("caches(%q) = %v, want %v", tc.cmdline, got, tc.want)
-			}
-		})
-	}
+	})
 }

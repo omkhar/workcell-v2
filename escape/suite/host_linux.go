@@ -147,15 +147,7 @@ func descendants(pid int) ([]int, error) {
 	if err := sandbox.EachProcess(func(p, ppid, _ int) { children[ppid] = append(children[ppid], p) }); err != nil {
 		return nil, err
 	}
-	var out []int
-	queue := []int{pid}
-	for len(queue) > 0 {
-		p := queue[0]
-		queue = queue[1:]
-		out = append(out, children[p]...)
-		queue = append(queue, children[p]...)
-	}
-	return out, nil
+	return below(children, pid), nil
 }
 
 // groupMembers lists the processes of the group pgid.

@@ -19,19 +19,15 @@ import (
 	"time"
 )
 
-// The resolver tests (I3) ask the resolver the guest was configured with,
-// the one named in its /etc/resolv.conf, what it does with a name: an
-// allowed name must come back with an address, and every other name must be
-// refused, promptly, with a DNS answer that carries no address. A resolver
-// that answers nothing at all, so that every lookup times out, passes the
+// The resolver tests (I3) ask the resolver named in the guest's
+// /etc/resolv.conf what it does with a name: an allowed name must come back
+// with an address, and every other name must be refused, promptly, with a DNS
+// answer that carries no address. A resolver that answers nothing passes the
 // leak tests above and fails here: the invariant says the host resolver
-// answers. The probe speaks the wire format itself (dns.go) so that nothing
-// in the guest's libc stands between it and the resolver; what the resolver
-// said is the evidence, and a response that never came is a failure too.
-//
-// The control sandbox (SPEC T2) gives its guest a resolv.conf naming a naive
-// resolver that answers every name, as an open resolver would; every row
-// here fails there because a name no policy allows gets an address.
+// answers. The probe speaks the wire format itself (dns.go), so nothing in
+// the guest's libc stands between it and the resolver; a response that never
+// came is a failure too. The control sandbox (SPEC T2) names a naive resolver
+// that answers every name, so every row here fails there.
 
 // A lookup is one question a judge has the guest ask, and what the
 // invariant demands of the answer: "addr", an address; "refused", a DNS

@@ -41,20 +41,19 @@ type Run func(args ...string) (Result, error)
 // Session is one running sandbox, as the host knows it.
 type Session struct {
 	Run Run
-	// Exec runs the test's probe inside the sandbox as Run does, but gives
-	// back the run itself, exit status and streams unparsed, under ctx: the
-	// evidence for a judge that holds the host end of a run to account
-	// (SPEC I12). A status the host could not run the command under is a
-	// result here, not an error.
+	// Exec runs the test's probe as Run does, but gives back the run itself,
+	// exit status and streams unparsed, under ctx: the evidence for a judge
+	// that holds the host end of a run to account (SPEC I12). A status the
+	// host could not run the command under is a result here, not an error.
 	Exec func(ctx context.Context, args ...string) (sandbox.Output, error)
-	// Workspace is the host directory exported into the guest, "" when the
-	// test wanted none. The runner made its parent for this test alone and
-	// removes it afterwards, so a judge may plant files beside Workspace.
+	// Workspace is the host directory exported into the guest, "" for none.
+	// Its parent is the test's alone and removed afterwards, so a judge may
+	// plant files beside it.
 	Workspace string
 	Guest     string // where the guest sees Workspace
 	// Allow and Secret are the session's policy as the runner made it from
-	// Want: the allowed names, and the credential bound to the first when the
-	// test wanted one, with its real value, which the guest must never hold.
+	// Want: the allowed names, and the credential bound to the first, with
+	// its real value, which the guest must never hold.
 	Allow  []string
 	Deny   []string // names that resolve for the session but no policy allows
 	Secret sandbox.Secret
@@ -73,7 +72,7 @@ type Session struct {
 }
 
 // Judge runs on the host. It may start canaries (on loopback only, SPEC T8),
-// runs the probe through s.Run, and says whether the invariant held.
+// run the probe through s.Run, and says whether the invariant held.
 type Judge func(ctx context.Context, s Session) (pass bool, detail string, err error)
 
 // Want is the sandbox a test needs: an export, whether it is the user's
@@ -96,6 +95,7 @@ type Want struct {
 	Resolver  string
 	Isolated  bool // the host side in a network of its own (sandbox.Config.Isolated)
 	Secret    bool
+	Header    string // the header the secret is bound to, when not x-api-key (NewSecret)
 	Narrow    bool
 	Source    string   // the secret's source in the product's words, such as a sign-in flow (sandbox.Secret.Source)
 	Repos     []string // the repositories a git token is scoped to (sandbox.Secret.Repos)
