@@ -38,6 +38,7 @@ func TestParseDNSQuery(t *testing.T) {
 		{"label too long", dnsQuery(dnsQuestion{Name: strings.Repeat("y", maxLabel+1) + ".", Type: 1}), dnsQuestion{}, false},
 		{"trailing bytes", append(good, 1, 2, 3), q, true},
 		{"truncated", good[:len(good)-1], dnsQuestion{}, false},
+		{"truncated in name", good[:20], dnsQuestion{}, false},
 		{"response", response, dnsQuestion{}, false},
 		{"no question", noQuestion, dnsQuestion{}, false},
 		{"class CH", chaos, dnsQuestion{}, false},

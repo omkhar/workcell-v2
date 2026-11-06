@@ -37,9 +37,9 @@ import (
 // installs that artifact from upstream by URL and digest (B8) and the real
 // agent runs in the guest: --version, then the smoke command below with
 // the placeholder in the provider's variable. Only the real key makes the
-// fake answer. It speaks Anthropic's API alone, so a changed pin of another
-// provider fails here until its fake is written.
-var smokeCommands = map[string][]string{"claude": {"-p", "hi", "--output-format", "text"}, "codex": {"exec", "hi"}, "copilot": {"-p", "hi"}}
+// fake answer. A provider with no command is smoked by --version and the
+// probe's own call, as the fixture is.
+var smokeCommands = map[string][]string{"claude": {"-p", "hi", "--output-format", "text"}}
 
 const smokeVersion = "5.5.5"
 

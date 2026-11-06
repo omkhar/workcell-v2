@@ -117,6 +117,7 @@ func TestPolicyTOML(t *testing.T) {
 		{Config{Allow: []string{`a\b`}}, ""},
 		{Config{Allow: []string{"a\nb"}}, ""},
 		{Config{Allow: []string{"a\x7fb"}}, ""},
+		{Config{Allow: []string{"ok", "a\tb"}}, ""},
 	}
 	for _, c := range cases {
 		got, err := policyTOML(c.cfg, "/s/secret")
