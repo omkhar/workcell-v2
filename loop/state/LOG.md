@@ -903,3 +903,10 @@ Proved: local gate green in 78 s (product 15000 of 15000, test 27487 of 27500 un
 Learned: tests.go is the single table of rows (Name: "<row>"), so a doc can be checked against it with grep alone; packets.go and priv_linux.go are helpers that prove no invariant on their own.
 Next: U-902 (docs/policy.md and docs/providers.md; doc, haiku, env:any) and U-903 (migrating-from-v1; doc, sonnet, env:any, deps U-900) are takeable; B-826d still waits for adopt.sh of B-826c; U-904 waits for W-802 and B-828 to be adopted; U-907 (sign:you) depends on this unit and W-801. The claim was PR #132, which this run gives its final title.
 ## 2026-11-06T04:30Z U-902 START mode=cloud
+## 2026-11-06T04:39Z U-902 PASS mode=cloud model=haiku tries=0
+Added docs/policy.md (119 lines) and docs/providers.md (76 lines), 195 together, limit 200.
+policy.md: the config tables, the TOML subset and its refusals, narrowing (I13), --allow, workcell explain, secret sources, placeholders.
+providers.md: the four provider files, binding a secret to a provider, install from pins by digest (B8), what is not installed yet.
+Every quoted command output was produced by running the command; no link points into loop/, which cutover deletes.
+The reader does not yet check keys under [workspace], [resources] or [update]; the docs say so. Markdown budget now about 1006 of 2500.
+The scribe hit its turn limit once before reporting; a doc unit should ask for a short report early.

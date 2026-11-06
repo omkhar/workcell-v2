@@ -302,7 +302,7 @@ the loop has ended.
       accept: at most 150 lines; every command except the install lines was executed; the install lines are marked as untested until v2.0.0
 - [x] U-901 | flow:doc | model:opus | env:any | deps:U-601 | tries:0 | `docs/threat-model.md`, from `SPEC.md` sections 2 and 3, each invariant linked to its test
       accept: at most 150 lines
-- [ ] U-902 | flow:doc | model:haiku | env:any | deps:U-503 | tries:0 | `docs/policy.md` and `docs/providers.md`
+- [x] U-902 | flow:doc | model:haiku | env:any | deps:U-503 | tries:0 | `docs/policy.md` and `docs/providers.md`
       accept: at most 200 lines together
 - [ ] U-903 | flow:doc | model:sonnet | env:any | deps:U-900 | tries:0 | `docs/migrating-from-v1.md`: flag map, what was removed and why, how to remove v1 state
       accept: every v1 flag listed in `_legacy/flags.txt` has a row
