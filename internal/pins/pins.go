@@ -8,6 +8,7 @@ package pins
 import (
 	"cmp"
 	"fmt"
+	"maps"
 	"slices"
 	"strconv"
 	"strings"
@@ -18,10 +19,8 @@ import (
 type Class string
 
 const (
-	// Guest is anything that runs only inside the guest, such as a provider CLI.
-	Guest Class = "guest"
-	// Trusted is Go modules, actions, the VMM, the guest kernel, the base image and build tools.
-	Trusted Class = "trusted"
+	Guest   Class = "guest"   // anything that runs only inside the guest, such as a provider CLI
+	Trusted Class = "trusted" // Go modules, actions, the VMM, the guest kernel, the base image and build tools
 )
 
 // Source is the kind of place an upstream publishes in. Adding an upstream of a
@@ -200,23 +199,12 @@ func (a *Advisory) affects(cur Version, hasCur bool) (Version, bool) {
 }
 
 func (c *Candidate) hasDigest(d string) bool {
-	for _, a := range c.Artifacts {
-		if d != "" && a.SHA256 == d {
-			return true
-		}
-	}
-	return false
+	return d != "" && slices.ContainsFunc(slices.Collect(maps.Values(c.Artifacts)), func(a Artifact) bool { return a.SHA256 == d })
 }
 
 // latestOf returns the latest non-zero timestamp, or the zero time if there is none.
 func latestOf(ts []time.Time) time.Time {
-	var l time.Time
-	for _, t := range ts {
-		if t.After(l) {
-			l = t
-		}
-	}
-	return l
+	return slices.MaxFunc(append([]time.Time{{}}, ts...), time.Time.Compare)
 }
 
 // Version is a stable semantic version: major, minor, patch.

@@ -15,7 +15,6 @@ import (
 	"fmt"
 	"io"
 	"slices"
-	"strings"
 	"time"
 
 	"github.com/omkhar/workcell/v2/internal/pins"
@@ -78,16 +77,8 @@ func pae(body []byte) []byte {
 	return fmt.Appendf(nil, "DSSEv1 %d %s %d %s", len(PayloadType), PayloadType, len(body), body)
 }
 
-// Sign marshals m and signs it with every key, in order, each under its own ID.
-func Sign(m Manifest, keys []ed25519.PrivateKey) ([]byte, error) {
-	body, err := json.Marshal(m)
-	if err != nil {
-		return nil, err
-	}
-	return seal(body, keys)
-}
-
-func seal(body []byte, keys []ed25519.PrivateKey) ([]byte, error) {
+// Sign signs the marshalled manifest with every key, in order, each under its own ID.
+func Sign(body []byte, keys []ed25519.PrivateKey) ([]byte, error) {
 	env := envelope{PayloadType: PayloadType, Payload: body}
 	for _, k := range keys {
 		env.Signatures = append(env.Signatures, signature{Key{Public: k.Public().(ed25519.PublicKey)}.ID(), ed25519.Sign(k, pae(body))})
@@ -147,19 +138,17 @@ func Verify(raw []byte, keys []Key, now time.Time, lastSerial int64) (*Manifest,
 	for _, set := range []map[string]map[string]Pin{m.Pins, m.Previous} {
 		for _, arches := range set {
 			for _, p := range arches {
-				if !digest(p.SHA256) || pins.HTTPSURL(p.URL) != nil {
+				if !pins.IsSHA256(p.SHA256) || pins.HTTPSURL(p.URL) != nil {
 					return nil, errPin
 				}
 			}
 		}
 	}
-	if slices.ContainsFunc(m.Withdrawn, func(d string) bool { return !digest(d) }) {
+	if slices.ContainsFunc(m.Withdrawn, func(d string) bool { return !pins.IsSHA256(d) }) {
 		return nil, errPin
 	}
 	return &m, nil
 }
-
-func digest(d string) bool { return len(d) == 64 && strings.Trim(d, "0123456789abcdef") == "" }
 
 // Select picks what to install for name and arch: the current pin unless it is
 // withdrawn, else the kept previous one, so a rollback stays inside I14 (B9, B10).
@@ -179,6 +168,9 @@ func Build(rows []pins.Pin, now time.Time) Manifest {
 	m := Manifest{Serial: now.Unix(), Expires: now.Unix() + lifetime,
 		Pins: map[string]map[string]Pin{}, Previous: map[string]map[string]Pin{}}
 	for _, r := range rows {
+		if r.Version == "" {
+			continue // an unpinned row has nothing to deliver
+		}
 		m.Pins[r.Name] = entry(r.Release, r.Released.Unix())
 		if r.Previous != nil {
 			m.Previous[r.Name] = entry(*r.Previous, 0)

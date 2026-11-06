@@ -86,7 +86,7 @@ func (g getter) get(rawURL, accept string) ([]byte, http.Header, error) {
 	}
 	params := BearerParams(se.header.Get("WWW-Authenticate"))
 	realm, err := url.Parse(params["realm"])
-	if err != nil || httpsURL(realm.String()) != nil {
+	if err != nil || HTTPSURL(realm.String()) != nil {
 		return nil, nil, fmt.Errorf("%w; the challenge realm %q is not an https URL", se, params["realm"])
 	}
 	q := realm.Query()
@@ -125,7 +125,7 @@ func BearerParams(h string) map[string]string {
 }
 
 func (g getter) fetch(rawURL, accept, bearer string) ([]byte, http.Header, error) {
-	if err := httpsURL(rawURL); err != nil {
+	if err := HTTPSURL(rawURL); err != nil {
 		return nil, nil, err
 	}
 	req, err := http.NewRequestWithContext(g.ctx, http.MethodGet, rawURL, nil)
@@ -145,9 +145,6 @@ func (g getter) fetch(rawURL, accept, bearer string) ([]byte, http.Header, error
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		return nil, nil, &statusError{rawURL, resp.Status, resp.StatusCode, resp.Header}
-	}
-	if resp.ContentLength > maxBytes {
-		return nil, nil, fmt.Errorf("GET %s: body exceeds %d bytes", rawURL, maxBytes)
 	}
 	body, err := io.ReadAll(io.LimitReader(resp.Body, maxBytes+1))
 	if err != nil {
@@ -202,13 +199,6 @@ func HTTPSURL(s string) error {
 	return nil
 }
 
-func httpsURL(s string) error {
-	if HTTPSURL(s) != nil {
-		return fmt.Errorf("%q is not an https URL", s)
-	}
-	return nil
-}
-
 // parseTimes reads RFC 3339 timestamps, skips empty ones, and fails on a bad
 // one or when none is left.
 func parseTimes(raw ...string) ([]time.Time, error) {
@@ -229,7 +219,8 @@ func parseTimes(raw ...string) ([]time.Time, error) {
 	return ts, nil
 }
 
-func isSHA256(s string) bool {
+// IsSHA256 reports whether s is 64 lowercase hex digits.
+func IsSHA256(s string) bool {
 	b, err := hex.DecodeString(s)
 	return err == nil && len(b) == sha256.Size && s == strings.ToLower(s)
 }
@@ -259,7 +250,7 @@ func (g getter) npm(p Pin) ([]Candidate, error) {
 		if err != nil {
 			return nil, fmt.Errorf("version %s: %w", v, err)
 		}
-		if err := httpsURL(e.Dist.Tarball); err != nil {
+		if err := HTTPSURL(e.Dist.Tarball); err != nil {
 			return nil, fmt.Errorf("version %s: tarball: %w", v, err)
 		}
 		a := Artifact{URL: e.Dist.Tarball, Integrity: e.Dist.Integrity}
@@ -323,17 +314,17 @@ next:
 				continue next // an old release with a renamed asset does not block the rest
 			}
 			a := r.Assets[i]
-			if err := httpsURL(a.URL); err != nil {
+			if err := HTTPSURL(a.URL); err != nil {
 				return nil, fmt.Errorf("release %s: %w", r.Tag, err)
 			}
 			sum, hasSum := strings.CutPrefix(a.Digest, "sha256:")
-			if a.Digest != "" && (!hasSum || !isSHA256(sum)) {
+			if a.Digest != "" && (!hasSum || !IsSHA256(sum)) {
 				return nil, fmt.Errorf("release %s: asset %q: bad digest %q", r.Tag, name, a.Digest)
 			}
 			art := Artifact{URL: a.URL, SHA256: sum}
 			if bundle, ok := p.Signing.Bundles[arch]; ok {
 				if j := slices.IndexFunc(r.Assets, func(a ghAsset) bool { return a.Name == bundle }); j >= 0 {
-					if err := httpsURL(r.Assets[j].URL); err != nil {
+					if err := HTTPSURL(r.Assets[j].URL); err != nil {
 						return nil, fmt.Errorf("release %s: %w", r.Tag, err)
 					}
 					art.Bundle = r.Assets[j].URL
@@ -389,7 +380,7 @@ func (g getter) vendor(p Pin) ([]Candidate, error) {
 	arts := map[string]Artifact{}
 	for arch, platform := range p.Assets {
 		pl := m.Platforms[platform]
-		if !isSHA256(pl.Checksum) {
+		if !IsSHA256(pl.Checksum) {
 			return nil, fmt.Errorf("manifest of %s: no SHA-256 for platform %q", v, platform)
 		}
 		if pl.Binary == "" || strings.ContainsAny(pl.Binary, "/?#") {
@@ -419,12 +410,7 @@ func (g getter) oci(p Pin) ([]Candidate, error) {
 	if list.Name == "" {
 		return nil, errors.New("the tag list has no name")
 	}
-	var tags []string
-	for _, t := range list.Tags {
-		if _, ok := ParseVersion(t); ok {
-			tags = append(tags, t)
-		}
-	}
+	tags := slices.DeleteFunc(list.Tags, func(t string) bool { _, ok := ParseVersion(t); return !ok })
 	slices.SortFunc(tags, func(a, b string) int {
 		va, _ := ParseVersion(a)
 		vb, _ := ParseVersion(b)

@@ -52,7 +52,11 @@ func TestVerify(t *testing.T) {
 	keys := []Key{k1}
 	published := now.Add(-time.Hour)
 	good := sample(2, published)
-	sign := func(m Manifest, s ...ed25519.PrivateKey) []byte { b, _ := Sign(m, s); return b }
+	sign := func(m Manifest, s ...ed25519.PrivateKey) []byte {
+		body, _ := json.Marshal(m)
+		b, _ := Sign(body, s)
+		return b
+	}
 	// mut signs a copy of good changed by f; edit signs a copy of the good envelope changed by f.
 	mut := func(f func(*Manifest)) []byte {
 		var m Manifest
@@ -72,7 +76,7 @@ func TestVerify(t *testing.T) {
 		return func(m *Manifest) { p := m.Pins["provider1"]["arm64"]; f(&p); m.Pins["provider1"]["arm64"] = p }
 	}
 	body, _ := json.Marshal(good)
-	extra, _ := seal(bytes.Replace(body, []byte(`{"serial"`), []byte(`{"extra":{"x":1},"serial"`), 1), []ed25519.PrivateKey{s1})
+	extra, _ := Sign(bytes.Replace(body, []byte(`{"serial"`), []byte(`{"extra":{"x":1},"serial"`), 1), []ed25519.PrivateKey{s1})
 	installed := good.Pins["provider0"]["amd64"]
 	for _, tc := range []struct {
 		name string
@@ -144,6 +148,7 @@ func TestBuild(t *testing.T) {
 		{Name: "b", Release: release("2.0", "b"), Released: now.Add(-48 * time.Hour), Previous: ptr(release("1.9", "b")),
 			Withdrawn: []string{sum("b2.0arm64"), sum("b1.8amd64")}},
 		{Name: "a", Release: release("5", "a"), Released: now.Add(-time.Hour), Withdrawn: []string{sum("b1.8amd64")}},
+		{Name: "c", Released: now}, // unpinned: no entry
 	}
 	first, _ := json.Marshal(Build(rows, now))
 	again, _ := json.Marshal(Build(rows, now))
@@ -162,13 +167,16 @@ func TestBuild(t *testing.T) {
 		t.Fatalf("pins b/arm64 = %+v, want %+v", m.Pins["b"]["arm64"], wantPin)
 	case m.Previous["b"]["amd64"] != wantPrev:
 		t.Fatalf("previous b/amd64 = %+v, want %+v", m.Previous["b"]["amd64"], wantPrev)
+	case len(m.Pins) != 2:
+		t.Fatalf("pins %v, want a and b only", m.Pins)
 	case len(m.Previous["a"]) != 0 || m.Pins["a"]["amd64"].Version != "5":
 		t.Fatalf("row a: previous %+v pins %+v", m.Previous["a"], m.Pins["a"])
 	case !slices.Equal(m.Withdrawn, wantGone):
 		t.Fatalf("withdrawn %v, want %v sorted and deduplicated", m.Withdrawn, wantGone)
 	}
 	s1, k1 := signer("2026-a")
-	env, err := Sign(m, []ed25519.PrivateKey{s1})
+	body, _ := json.Marshal(m)
+	env, err := Sign(body, []ed25519.PrivateKey{s1})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -184,7 +192,8 @@ func ptr[T any](v T) *T { return &v }
 
 func FuzzVerify(f *testing.F) {
 	s1, k1 := signer("2026-a")
-	good, _ := Sign(sample(1, now.Add(-time.Hour)), []ed25519.PrivateKey{s1})
+	body, _ := json.Marshal(sample(1, now.Add(-time.Hour)))
+	good, _ := Sign(body, []ed25519.PrivateKey{s1})
 	for _, seed := range [][]byte{good, nil, []byte("{}"),
 		[]byte(`{"payloadType":"` + PayloadType + `","payload":"e30=","signatures":[]}`)} {
 		f.Add(seed)
