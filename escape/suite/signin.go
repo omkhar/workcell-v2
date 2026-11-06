@@ -23,11 +23,10 @@ import (
 // The sign-in rows of I5. A secret's source is a sign-in flow: a token
 // endpoint on one allowed name issues an access token and a refresh token,
 // and the access token is bound to the API on the other name. The judge is
-// the provider, serving both names from the one listener where the product
-// reaches the test host (serveTwo); the guest is an agent that signs in,
-// takes the tokens the body gave it and uses them as the row's steps say.
-// The provider chose every real token, so it knows them where the guest
-// shows its hand (its word, its scan) and where a canary saw them.
+// the provider, serving both names from the one listener (serveTwo); the
+// guest is an agent that signs in and uses the tokens as the row's steps
+// say. The provider chose every real token, so it knows them where the
+// guest shows its hand (its word, its scan) and where a canary saw them.
 
 const (
 	tokenPath   = "/oauth/token"

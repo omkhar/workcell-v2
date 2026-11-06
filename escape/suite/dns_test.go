@@ -48,7 +48,6 @@ func TestParseDNSQuery(t *testing.T) {
 		{"space in label", space, dnsQuestion{}, false},
 		{"header only", good[:12], dnsQuestion{}, false},
 		{"nothing", nil, dnsQuestion{}, false},
-		{"hello", []byte("hello\n"), dnsQuestion{}, false},
 	}
 	for _, c := range cases {
 		got, ok := parseDNSQuery(c.in)

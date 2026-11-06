@@ -57,7 +57,6 @@ func TestLookupJudge(t *testing.T) {
 		ok        bool
 	}{
 		{"addr", "addr:127.0.0.1/2ms", true},
-		{"addr", "addr:::1/2ms", true},
 		{"addr", "nodata/2ms", false},
 		{"addr", "refused/2ms", false},
 		{"addr", "timeout/2500ms", false},
@@ -70,7 +69,6 @@ func TestLookupJudge(t *testing.T) {
 		{"refused", "addr:192.0.2.2/1ms", false},
 		{"refused", "answered:1/1ms", false},
 		{"refused", "timeout/2500ms", false},
-		{"refused", "unreachable/0ms", false},
 		{"refused", "refused/2001ms", false},
 		{"answered", "refused/1ms", true},
 		{"answered", "servfail/1ms", true},

@@ -37,37 +37,38 @@ func TestExec(t *testing.T) {
 	}
 }
 
+// decoded is one row of a decoder's table: the bytes, and what they decode to or that they must not.
+type decoded[T comparable] struct {
+	name string
+	in   []byte
+	want T
+	ok   bool
+}
+
+func decodes[T comparable](t *testing.T, decode func([]byte) (T, error), tests []decoded[T]) {
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := decode(tc.in)
+			if (err == nil) != tc.ok || got != tc.want {
+				t.Errorf("decode(%.32x) = %+v, %v; want %+v, ok=%t", tc.in, got, err, tc.want, tc.ok)
+			}
+		})
+	}
+}
+
 func TestResize(t *testing.T) {
-	tests := []struct {
-		name string
-		in   []byte
-		want Resize
-		ok   bool
-	}{
+	decodes(t, DecodeResize, []decoded[Resize]{
 		{"round trip", EncodeResize(Resize{Rows: 30, Cols: 100}), Resize{Rows: 30, Cols: 100}, true},
 		{"max", []byte{0xff, 0xff, 0xff, 0xff}, Resize{Rows: 65535, Cols: 65535}, true},
 		{"zero", []byte{0, 0, 0, 0}, Resize{}, true},
 		{"short", []byte{0, 24, 0}, Resize{}, false},
 		{"long", []byte{0, 24, 0, 80, 0}, Resize{}, false},
 		{"empty", nil, Resize{}, false},
-	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			got, err := DecodeResize(tc.in)
-			if (err == nil) != tc.ok || got != tc.want {
-				t.Errorf("DecodeResize(%x) = %+v, %v; want %+v, ok=%t", tc.in, got, err, tc.want, tc.ok)
-			}
-		})
-	}
+	})
 }
 
 func TestSignal(t *testing.T) {
-	tests := []struct {
-		name string
-		in   []byte
-		want int
-		ok   bool
-	}{
+	decodes(t, DecodeSignal, []decoded[int]{
 		{"term", EncodeSignal(15), 15, true},
 		{"one", []byte{1}, 1, true},
 		{"sixty-four", []byte{64}, 64, true},
@@ -75,25 +76,12 @@ func TestSignal(t *testing.T) {
 		{"sixty-five", []byte{65}, 0, false},
 		{"two bytes", []byte{15, 0}, 0, false},
 		{"empty", nil, 0, false},
-	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			got, err := DecodeSignal(tc.in)
-			if (err == nil) != tc.ok || got != tc.want {
-				t.Errorf("DecodeSignal(%x) = %d, %v; want %d, ok=%t", tc.in, got, err, tc.want, tc.ok)
-			}
-		})
-	}
+	})
 }
 
 func TestExit(t *testing.T) {
 	long := strings.Repeat("e", MaxErr+1)
-	tests := []struct {
-		name string
-		in   []byte
-		want Exit
-		ok   bool
-	}{
+	decodes(t, DecodeExit, []decoded[Exit]{
 		{"code 7", EncodeExit(Exit{Code: 7}), Exit{Code: 7}, true},
 		{"code 0", EncodeExit(Exit{}), Exit{}, true},
 		{"code 255", []byte{0, 255}, Exit{Code: 255}, true},
@@ -112,24 +100,11 @@ func TestExit(t *testing.T) {
 		{"error too long", append([]byte{2}, long...), Exit{}, false},
 		{"unknown kind", []byte{3, 0}, Exit{}, false},
 		{"kind 255", []byte{255, 0}, Exit{}, false},
-	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			got, err := DecodeExit(tc.in)
-			if (err == nil) != tc.ok || got != tc.want {
-				t.Errorf("DecodeExit(%.8x) = %+v, %v; want %+v, ok=%t", tc.in, got, err, tc.want, tc.ok)
-			}
-		})
-	}
+	})
 }
 
 func TestAck(t *testing.T) {
-	tests := []struct {
-		name string
-		in   []byte
-		want int
-		ok   bool
-	}{
+	decodes(t, DecodeAck, []decoded[int]{
 		{"zero, the end of a pipe", EncodeAck(0), 0, true},
 		{"one byte", EncodeAck(1), 1, true},
 		{"a full frame", EncodeAck(MaxStdin), MaxStdin, true},
@@ -138,27 +113,14 @@ func TestAck(t *testing.T) {
 		{"empty", nil, 0, false},
 		{"three bytes", []byte{0, 0, 1}, 0, false},
 		{"five bytes", []byte{0, 0, 0, 1, 0}, 0, false},
-	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			got, err := DecodeAck(tc.in)
-			if (err == nil) != tc.ok || got != tc.want {
-				t.Errorf("DecodeAck(%x) = %d, %v; want %d, ok=%t", tc.in, got, err, tc.want, tc.ok)
-			}
-		})
-	}
+	})
 }
 
 func TestEntry(t *testing.T) {
 	file := Entry{Kind: KindFile, Exec: true, Size: 1 << 40, Path: "bin/run"}
 	link := Entry{Kind: KindLink, Path: "l", Target: "../x"}
 	long := strings.Repeat("p", MaxPath)
-	tests := []struct {
-		name string
-		in   []byte
-		want Entry
-		ok   bool
-	}{
+	decodes(t, DecodeEntry, []decoded[Entry]{
 		{"file", EncodeEntry(file), file, true},
 		{"dir", EncodeEntry(Entry{Kind: KindDir, Path: "a/b"}), Entry{Kind: KindDir, Path: "a/b"}, true},
 		{"link", EncodeEntry(link), link, true},
@@ -180,15 +142,7 @@ func TestEntry(t *testing.T) {
 		{"truncated", EncodeEntry(file)[:14], Entry{}, false},
 		{"trailing byte", append(EncodeEntry(file), 0), Entry{}, false},
 		{"empty", nil, Entry{}, false},
-	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			got, err := DecodeEntry(tc.in)
-			if (err == nil) != tc.ok || got != tc.want {
-				t.Errorf("DecodeEntry(%.32x) = %+v, %v; want %+v, ok=%t", tc.in, got, err, tc.want, tc.ok)
-			}
-		})
-	}
+	})
 }
 
 // FuzzDecode runs every decoder on arbitrary bytes. What decodes must be in bounds and

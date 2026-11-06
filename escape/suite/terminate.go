@@ -31,11 +31,9 @@ import (
 // The I6 rows. A bare allowed name is one the product terminates: the guest
 // is to meet a leaf for the name from a per-session authority whose key is
 // the host's alone, and the host is to carry the request on to the name the
-// SNI gave, verifying the upstream's certificate as itself. The canaries for
-// both allowed names share one listener at port 443 where the product
-// reaches the test host, told apart by the name the connection's SNI
-// carried; their certificate chains to the suite's own authority, which the
-// runner gives the host side of every session as its trust store
+// SNI gave, verifying the upstream's certificate as itself. Both canaries
+// share one listener at port 443, told apart by SNI; their certificate
+// chains to the suite's own authority, the host side's trust store
 // (sandbox.Config.Roots). A guest that validates a canary's leaf was spliced
 // through, not terminated.
 

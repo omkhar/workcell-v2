@@ -17,12 +17,11 @@ import (
 // to the guest: its kernel completes a TCP handshake to a listed port and the
 // init carries the stream to the host as its own vsock stream, behind a
 // 20-byte header that names the destination. Root in the guest (A1) can skip
-// the init and speak that header itself, to the host end the adapter names,
-// with any address, port, proto or version. The host must dial none of it:
-// the canary's catch is the evidence of reach, and what the guest says is
-// detail. A stream whose header never completes must be dropped: a host that
-// holds it past headerWait holds a slot of a bounded relay for a guest that
-// sent ten bytes, and the guest's side of that stream is the only witness.
+// the init and speak that header itself, with any address, port, proto or
+// version. The host must dial none of it: the canary's catch is the evidence
+// of reach. A stream whose header never completes must be dropped, or a guest
+// that sent ten bytes holds a slot of a bounded relay; the guest's side is
+// the only witness.
 const (
 	relayVersion = 1
 	protoTCP     = 6

@@ -18,17 +18,15 @@ import (
 
 // The rebinding rows (I4). The policy allows one name, and the judge is the
 // resolver the host side of the session asks about it (sandbox.Config
-// .Resolver, at judgeResolver port 53 on the test host): it answers the
-// allowed name with an address the host must never dial, the host's own
-// loopback, a LAN address, the metadata address, in one spelling or
-// another, with TTL 0, and refuses every other name. The guest connects to
-// the allowed name as a program would, through its own resolver, by the
-// forward port or by SNI at 443, and once more after the first attempt. A
-// canary listens at the answer. The host must resolve the name itself (the
-// judge sees the question; a host that never asked vetted nothing, which is
-// an error, never a pass) and the canary must see nothing. What the guest
-// says is detail. On control the guest resolves and dials for itself, with
-// the judge as its resolver, so the canary sees it on every row.
+// .Resolver, at judgeResolver port 53): it answers the allowed name with an
+// address the host must never dial, the host's own loopback, a LAN address,
+// the metadata address, in one spelling or another, with TTL 0, and refuses
+// every other name. The guest connects to the allowed name as a program
+// would, by the forward port or by SNI at 443, twice. A canary listens at
+// the answer. The host must resolve the name itself (a host that never asked
+// vetted nothing: an error, never a pass) and the canary must see nothing.
+// On control the guest resolves and dials for itself, so the canary sees it
+// on every row.
 //
 // Missing, and said so in the report: the row where the first answer is an
 // address the host may dial and the second is not, and the row where one

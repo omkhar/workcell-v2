@@ -24,14 +24,13 @@ import (
 
 // The I11 rows. The product has no helper process of its own (SPEC A9): the
 // proxy and the resolver are parts of the one supervisor that owns the
-// session's VM, and a broker is yet to come. So "the proxy dies" is that
-// process dying as a crash kills it, SIGKILL, while the guest holds a
-// connection the proxy served it. The adapter names the process
-// (sandbox.Observe.Helper); the judge kills it and holds the host to the
-// invariant: every process of the session goes with it, the connection the
-// guest held closes, no canary and no resolver hears from the guest again,
-// and the run ends. What the guest says afterwards can count against the
-// product, never for it.
+// session's VM. So "the proxy dies" is that process dying as a crash kills
+// it, SIGKILL, while the guest holds a connection the proxy served it. The
+// adapter names the process (sandbox.Observe.Helper); the judge kills it and
+// holds the host to the invariant: every process of the session goes with
+// it, the held connection closes, no canary and no resolver hears from the
+// guest again, and the run ends. What the guest says afterwards can count
+// against the product, never for it.
 
 // servable is the sandbox the rows want: an allowed name, bare, so that the
 // host terminates the guest's connections to it and carries each request
@@ -356,6 +355,16 @@ func helperKilled(name string, atStart bool) Judge {
 		}
 		return true, fmt.Sprintf("the %s (pid %d) died and took the session's %d other processes with it; %s; no canary and no resolver heard from the guest again%s", name, pid, len(kin), closed, say), nil
 	}
+}
+
+// below lists the processes under pid in the tree children describes.
+func below(children map[int][]int, pid int) []int {
+	var out []int
+	for queue := []int{pid}; len(queue) > 0; queue = queue[1:] {
+		out = append(out, children[queue[0]]...)
+		queue = append(queue, children[queue[0]]...)
+	}
+	return out
 }
 
 // survivors lists what is left of a session after its helper's death: the

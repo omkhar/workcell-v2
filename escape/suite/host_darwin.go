@@ -145,15 +145,7 @@ func descendants(pid int) ([]int, error) {
 	for _, kp := range ps {
 		children[int(kp.Eproc.Ppid)] = append(children[int(kp.Eproc.Ppid)], int(kp.Proc.P_pid))
 	}
-	var out []int
-	queue := []int{pid}
-	for len(queue) > 0 {
-		p := queue[0]
-		queue = queue[1:]
-		out = append(out, children[p]...)
-		queue = append(queue, children[p]...)
-	}
-	return out, nil
+	return below(children, pid), nil
 }
 
 // groupMembers lists the processes of the group pgid.

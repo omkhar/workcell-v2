@@ -14,14 +14,13 @@ import (
 )
 
 // forkProbe runs itself again as a child that forks args[1] processes at
-// once, holds them, and reaps them, so that a guest which kills the child,
-// or the parent's bound on the child, still reports. The child marks itself,
-// and so every process it forks, as the first to kill when memory runs out,
-// so that the parent survives to report. Each forked process waits for one
-// byte on a pipe and exits; it makes raw system calls only, since a forked
-// copy of a Go process can call nothing else safely, and it dies with the
-// child. A forked copy of a Go process costs the kernel about 190 KiB, most
-// of it page tables, which is what bounds the count.
+// once, holds them, and reaps them, so that a guest which kills the child
+// still reports. The child marks itself, and so every process it forks, as
+// the first to kill when memory runs out, so that the parent survives to
+// report. Each forked process waits for one byte on a pipe and exits, with
+// raw system calls only, since a forked copy of a Go process can call nothing
+// else safely. Such a copy costs the kernel about 190 KiB, mostly page
+// tables, which is what bounds the count.
 func forkProbe(args []string) Result {
 	if len(args) != 2 {
 		return Result{Status: "error", Detail: "want parent|child and count"}

@@ -24,14 +24,11 @@ import (
 // file beside the export (written-*) or at a listener the judge started. The
 // judge pulls, then looks. Nothing the guest says counts.
 //
-// The guest has no git, so each shape writes .git itself (gitdir.go): the
-// shapes git's own tools refuse, a tree named ".." or ".git", come the same
-// way as the ones they allow. Each shape starts from a fresh .git, since
-// each run of the product starts from a fresh copy of the export.
-//
-// Each shape is given where the guest sees its export, the host directory
-// beside the export (an attacker knows the host's layout), a token, and one
-// extra argument: the submodule URL for the submodule shape.
+// The guest has no git, so each shape writes .git itself (gitdir.go), from a
+// fresh .git, as each run starts from a fresh copy of the export. A shape is
+// given where the guest sees its export, the host directory beside the
+// export (an attacker knows the host's layout), a token, and for the
+// submodule shape its URL.
 
 // repoProbe makes the shape args[0] in the guest's workspace.
 func repoProbe(args []string) Result {

@@ -4,11 +4,9 @@
 // Payload runs one escape probe inside the guest, as root, and prints its
 // result as a single line for the runner on the host to parse. It is also
 // every helper of the control sandbox (SPEC T2), a process that enforces
-// nothing and whose death changes nothing.
-//
-// And it is the judge's hand on the test host for what needs root there
-// (suite.Bind), run through sudo, and the holder of a session's own network
-// namespace (suite.Hold).
+// nothing, the judge's hand on the test host for what needs root there
+// (suite.Bind), and the holder of a session's own network namespace
+// (suite.Hold).
 //
 //	payload <test name> [args...]
 //	payload helper <name>

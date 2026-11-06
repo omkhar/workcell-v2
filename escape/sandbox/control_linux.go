@@ -363,7 +363,13 @@ func (c *control) Update(ctx context.Context, u UpdateConfig) ([]byte, error) {
 // It takes the shapes real upstreams serve as the product does: a bare
 // executable, or a tar whose root holds one regular file and no bin/, is
 // bin/<agent>.
-func (c *control) Install(_ context.Context, l Layer) (string, error) {
+func (c *control) Install(ctx context.Context, l Layer) (string, error) {
+	if l.Artifact == nil { // a real pin: fetched as it is, digest checked
+		var err error
+		if l.Artifact, err = fetch(ctx, l.URL, l.Digest); err != nil {
+			return "", err
+		}
+	}
 	put := func(name string, mode os.FileMode, b []byte) error {
 		p := filepath.Join(prefix, name)
 		return errors.Join(os.MkdirAll(filepath.Dir(p), 0o755), os.WriteFile(p, b, mode))

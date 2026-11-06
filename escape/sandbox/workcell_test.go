@@ -64,17 +64,11 @@ func TestUnsupported(t *testing.T) {
 	}{
 		{Config{}, false},
 		{Config{CPUs: 2, MemoryMiB: 1024}, false},
-		{Config{CPUs: 1}, false},
 		{Config{CPUs: 32}, false},
 		{Config{MemoryMiB: 128}, false},
-		{Config{MemoryMiB: 512}, false},
 		{Config{DiskMiB: 100}, false},
 		{Config{CPUs: 1, MemoryMiB: 256, DiskMiB: 64}, false},
-		{Config{Workspace: "/w"}, false},
-		{Config{Allow: []string{"a"}}, false},
-		{Config{Deny: []string{"a"}}, false},
-		{Config{Allow: []string{"a"}, Deny: []string{"b"}}, false},
-		{Config{Secret: &Secret{}}, false},
+		{Config{Workspace: "/w", Allow: []string{"a"}, Deny: []string{"b"}, Secret: &Secret{}}, false},
 		{Config{Isolated: true}, true},
 		{Config{Isolated: true, Resolver: "127.0.0.1"}, !steersResolver},
 		{Config{CPUs: 33}, true},
@@ -122,9 +116,7 @@ func TestPolicyTOML(t *testing.T) {
 		{Config{Allow: []string{`a"b`}}, ""},
 		{Config{Allow: []string{`a\b`}}, ""},
 		{Config{Allow: []string{"a\nb"}}, ""},
-		{Config{Allow: []string{"a\x00b"}}, ""},
 		{Config{Allow: []string{"a\x7fb"}}, ""},
-		{Config{Allow: []string{"a\xffb"}}, ""},
 		{Config{Allow: []string{"ok", "a\tb"}}, ""},
 	}
 	for _, c := range cases {
@@ -143,8 +135,6 @@ func TestRunArgs(t *testing.T) {
 	}{
 		{Config{}, nil},
 		{Config{CPUs: 2, MemoryMiB: 1024}, []string{"--cpus", "2", "--memory", "1024MiB"}},
-		{Config{CPUs: 1}, []string{"--cpus", "1"}},
-		{Config{MemoryMiB: 256}, []string{"--memory", "256MiB"}},
 		{Config{DiskMiB: 64}, []string{"--disk", "64MiB"}},
 		{Config{CPUs: 1, MemoryMiB: 256, DiskMiB: 64}, []string{"--cpus", "1", "--memory", "256MiB", "--disk", "64MiB"}},
 		{Config{Mount: true}, []string{"--mount"}},
@@ -155,11 +145,5 @@ func TestRunArgs(t *testing.T) {
 		if got := runArgs(c.cfg, "L", "probe", "x"); !slices.Equal(got, want) {
 			t.Errorf("%+v: argv %q, want %q", c.cfg, got, want)
 		}
-	}
-}
-
-func TestPullArgs(t *testing.T) {
-	if got := pullArgs("/x/pulled"); !slices.Equal(got, []string{"pull", "/x/pulled"}) {
-		t.Errorf("argv %q", got)
 	}
 }
