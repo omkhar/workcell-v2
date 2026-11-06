@@ -910,3 +910,4 @@ providers.md: the four provider files, binding a secret to a provider, install f
 Every quoted command output was produced by running the command; no link points into loop/, which cutover deletes.
 The reader does not yet check keys under [workspace], [resources] or [update]; the docs say so. Markdown budget now about 1006 of 2500.
 The scribe hit its turn limit once before reporting; a doc unit should ask for a short report early.
+## 2026-11-06T04:48Z U-903 START mode=cloud
