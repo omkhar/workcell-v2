@@ -312,7 +312,7 @@ the loop has ended.
       accept: gate green; budgets met
 - [ ] U-906 | flow:mech | model:sonnet | env:kvm | deps:above | tries:0 | wait:nightly.yml | Record P1 to P7 in `docs/benchmarks.md`, each with its number and the run it came from
       accept: P2 comes from `nightly.yml`. P7 cannot be met before cutover, because nothing merges a bump here. In its place stand the dry run that B-826b read, and the lag per pin that `nightly.yml` reports. P5 is the p50 over the last 10 pull requests, each counted by the slower of `gate` and `gate-macos`; P1 and P6 include H-703 and H-704. If another target is missed, mark this unit `[!]`
-- [ ] U-907 | flow:doc | model:opus | env:any | deps:U-901,W-801 | tries:1 | sign:you | `SECURITY.md` for v2, starting from v1's. The text of v1's policy is public at `github.com/omkhar/workcell`, and this repository's history holds `SECURITY.md` as it was before the kit arrived. Propose the file as `proposed/SECURITY.md.txt`
+- [S] U-907 | flow:doc | model:opus | env:any | deps:U-901,W-801 | tries:1 | sign:you | `SECURITY.md` for v2, starting from v1's. The text of v1's policy is public at `github.com/omkhar/workcell`, and this repository's history holds `SECURITY.md` as it was before the kit arrived. Propose the file as `proposed/SECURITY.md.txt`
       accept: it covers supported versions, private reporting, response times, scope, and how to verify a release and the update channel, all as they are in v2; until H-905 a first paragraph says that this repository is a building site that publishes no release, and points to `loop/REFERENCE.md` section 9; H-905 removes it; the rest names nothing under `loop/` and does not speak of a building site; at most 130 lines
 
 ## Phase 10: final security review (SPEC section 11)
