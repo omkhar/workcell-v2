@@ -935,3 +935,4 @@ PR #138 (branch claude/U-907-20261106T092514Z, head 5a7897a) had been open 229 m
 tries is now 1: the previous result line for U-907 is also an abandoned run, so this is the second run in a row that claimed the unit, went green and never delivered.
 Learned: two consecutive runs of U-907 died after the claim with nothing pushed beyond it, so the cause is most likely not the unit but a run that ends before it hands over; the next run should write the proposal and the final title early, and push a commit as soon as there is anything to push.
 Next: U-907 (SECURITY.md proposal; doc, opus, env:any, sign:you, deps U-901 and W-801 both [x]) is still the next takeable unit for the cloud, at tries:1, so the scribe goes one tier up to fable. B-826d still waits for adopt.sh of B-826c.
+## 2026-11-06T13:24Z U-907 START mode=cloud
