@@ -25,6 +25,7 @@ import (
 	"net/http"
 	"net/url"
 	"path"
+	"regexp"
 	"slices"
 	"strings"
 
@@ -72,7 +73,7 @@ func (v Verifier) Verify(ctx context.Context, p pins.Pin, c pins.Candidate) (pin
 		if p.Source == pins.NPM && len(s.Bundles)+len(s.Members) > 0 {
 			return pins.Release{}, fmt.Errorf("pin %q: npm provenance names no bundle asset or member", p.Name)
 		}
-		if !plain(c.Version, ".-+") {
+		if !versionRE.MatchString(c.Version) {
 			return pins.Release{}, fmt.Errorf("pin %q: the release version is not plain", p.Name)
 		}
 		for arch, m := range s.Members {
@@ -164,7 +165,7 @@ func (v Verifier) provenance(ctx context.Context, locator, version string, id si
 	if !scoped {
 		scope, base = "@x", scope
 	}
-	if !plain(base, ".-_") || len(scope) < 2 || scope[0] != '@' || !plain(scope[1:], ".-_") {
+	if !nameRE.MatchString(base) || len(scope) < 2 || scope[0] != '@' || !nameRE.MatchString(scope[1:]) {
 		return errors.New("provenance: the locator does not name a package")
 	}
 	att := u.Scheme + "://" + u.Host + "/-/npm/v1/attestations/" + strings.ReplaceAll(name, "/", "%2f") + "@" + version
@@ -375,12 +376,8 @@ func (b *body) Read(p []byte) (int, error) {
 	return n, err
 }
 
-// plain reports whether s is non-empty ASCII letters and digits plus extra.
-func plain(s, extra string) bool {
-	for _, r := range s {
-		if !('a' <= r && r <= 'z' || 'A' <= r && r <= 'Z' || '0' <= r && r <= '9' || strings.ContainsRune(extra, r)) {
-			return false
-		}
-	}
-	return s != ""
-}
+// versionRE and nameRE are non-empty ASCII letters and digits plus ".-+" and ".-_".
+var (
+	versionRE = regexp.MustCompile(`^[A-Za-z0-9.+-]+$`)
+	nameRE    = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
+)

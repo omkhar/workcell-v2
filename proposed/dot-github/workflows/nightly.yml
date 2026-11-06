@@ -1,21 +1,14 @@
 name: Nightly
-
-# Until cutover this runs only on `schedule`; H-905 switches the triggers to `schedule` and `workflow_dispatch`.
-# Never a required check, and no other workflow needs it (W8): a red run opens or updates one issue.
-# This workflow names no environment and reads no secret, now or later.
-on:
-  schedule:
-    - cron: '47 4 * * *'
-
+# Until cutover this runs only on `schedule`; H-905 switches the triggers to `schedule` and `workflow_dispatch`. Never a
+# required check, and no other workflow needs it (W8): a red run opens or updates one issue. No environment, no secret, ever.
+on: { schedule: [{ cron: '47 4 * * *' }] }
 permissions: {}
 jobs:
-  # Builds the Linux artifacts twice, each time into a new directory with a new build cache.
-  repro:
+  repro: # Builds the Linux artifacts twice, each time into a new directory with a new build cache.
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     permissions: { contents: read }
-    env:
-      LDFLAGS: -s -w -buildid= -X github.com/omkhar/workcell/v2/internal/version.Version=nightly
+    env: { LDFLAGS: "-s -w -buildid= -X github.com/omkhar/workcell/v2/internal/version.Version=nightly" }
     steps:
       - { uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1, with: { persist-credentials: false } } # v7.0.1
       - { uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e, with: { go-version-file: go.mod, cache: false } } # v7.0.0
@@ -28,10 +21,8 @@ jobs:
               go run ./cmd/mkimage -arch "${a}" -o "${out}/guest-${a}.img"
             done
             (cd "${out}" && sha256sum -- *) | tee "${sums}/${run}"
-          done
-          diff -u "${sums}/a" "${sums}/b" && echo reproducible
-  # One fuzz job per target, listed at run time. Packages ported from v1 are fuzzed on the Mac only (S14).
-  plan:
+          done; diff -u "${sums}/a" "${sums}/b" && echo reproducible
+  plan: # One fuzz job per target, listed at run time. Packages ported from v1 are fuzzed on the Mac only (S14).
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions: { contents: read }
@@ -60,20 +51,29 @@ jobs:
       - { uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e, with: { go-version-file: go.mod, cache: false } } # v7.0.0
       - env: { PKG: "${{ matrix.pkg }}", TARGET: "${{ matrix.target }}", MINUTES: "${{ needs.plan.outputs.minutes }}" }
         run: go test -run '^$' -fuzz "^${TARGET}\$" -fuzztime "${MINUTES}m" "${PKG}"
-      - if: failure() # Print each crasher's input.
-        run: git ls-files -z --others -- '*/testdata/fuzz/*' | xargs -0 -r tail -v -n +1 --
+      - { if: failure(), run: "git ls-files -z --others -- '*/testdata/fuzz/*' | xargs -0 -r tail -v -n +1 --" } # Print each crasher's input.
+  upstream: # B12: the freshness report, red when P7 is missed; then B11: the B6 smoke rows on the newest stable release, whatever its age, which -newest wrote over the guest rows.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions: { contents: read }
+    env: { GATE_BASE: HEAD } # HEAD: the rewritten rows are the changed pins.
+    steps:
+      - { uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1, with: { persist-credentials: false } } # v7.0.1
+      - { uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e, with: { go-version-file: go.mod, cache: false } } # v7.0.0
+      - run: go run ./cmd/bump -newest
+      - if: ${{ !cancelled() }} # The smoke runs whatever the report said.
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm.rules >/dev/null
+          sudo udevadm control --reload-rules && sudo udevadm trigger --name-match=kvm --settle && test -w /dev/kvm
+          go run ./escape/cmd/escape -sandbox workcell -only B6
   issue:
-    needs: [repro, plan, fuzz]
+    needs: [repro, plan, fuzz, upstream]
     if: failure()
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions: { issues: write } # The only write permission in this file. No checkout here (F20).
     steps:
-      - env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-          TITLE: "nightly: red"
-          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      - env: { GH_TOKEN: "${{ github.token }}", GH_REPO: "${{ github.repository }}", TITLE: "nightly: red", RUN_URL: "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" }
         run: |
           n="$(gh issue list --state open --search "\"${TITLE}\" in:title" --json number,title --jq "[.[] | select(.title == \"${TITLE}\")][0].number // empty")"
           if [ -n "${n}" ]; then gh issue comment "${n}" --body "Red again: ${RUN_URL}"

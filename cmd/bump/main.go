@@ -46,14 +46,18 @@ func run(ctx context.Context, args []string, getenv func(string) string, t bump.
 	fs.BoolVar(&t.DryRun, "dry-run", false, "print the plan; post and write nothing")
 	fs.StringVar(&t.GitHub.API, "api", cmp.Or(getenv("GITHUB_API_URL"), "https://api.github.com"), "the GitHub API root")
 	fs.StringVar(&t.GitHub.Repo, "repo", getenv("GITHUB_REPOSITORY"), "the repository, owner/name")
+	newest := fs.Bool("newest", false, "print the freshness report, rewrite each guest row at upstream's newest stable release, and exit 1 when P7 is missed")
 	out := fs.String("channel", "", "write the signed channel.json here; the arguments are ed25519 PKCS#8 PEM key files")
 	if fs.Parse(args) != nil || (*out == "") != (fs.NArg() == 0) {
 		return 2
 	}
 	t.GitHub.Token = getenv("GITHUB_TOKEN")
 	step := t.Run
-	if *out != "" {
+	switch {
+	case *out != "":
 		step = func(context.Context) error { return publish(*out, fs.Args(), t) }
+	case *newest:
+		step = t.Newest
 	}
 	err := step(ctx)
 	if err == nil {

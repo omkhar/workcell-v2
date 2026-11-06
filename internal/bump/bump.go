@@ -79,6 +79,7 @@ type Tool struct {
 type Change struct {
 	Old, New pins.Pin
 	Security bool
+	Since    time.Time // when the oldest eligible release was published
 }
 
 // Load reads every row of dir, sorted by name. A file or pin name outside the
@@ -127,7 +128,7 @@ func (t Tool) Run(ctx context.Context) error {
 	changes := map[pins.Class][]Change{}
 	var failed []string
 	for _, p := range ps {
-		c, token, err := t.plan(ctx, p)
+		c, token, err := t.plan(ctx, p, t.Now)
 		if err != nil {
 			return err
 		}
@@ -175,9 +176,49 @@ func (t Tool) Run(ctx context.Context) error {
 	return nil
 }
 
-// plan decides one pin. Only a hostile chosen version is an error; anything an
+// p7 is how long past its normal cool-off a release may wait (P7).
+var p7 = map[pins.Class]time.Duration{pins.Guest: 24 * time.Hour, pins.Trusted: 72 * time.Hour}
+
+// Newest prints per pin the freshness report (B12), rewrites each guest row at the
+// newest stable release whatever its age (B11), and fails naming each pin that
+// misses P7 or fails verification (B5). Lag is the time the oldest eligible release has
+// outlived its normal cool-off; the security lane understates a fast-lane lag.
+func (t Tool) Newest(ctx context.Context) error {
+	ps, err := Load(t.Pins)
+	if err != nil {
+		return err
+	}
+	var bad []string
+	for _, p := range ps {
+		cool := pins.Cooloff[p.Class][0]
+		c, token, err := t.plan(ctx, p, t.Now)
+		n, newest, err2 := t.plan(ctx, p, t.Now.Add(cool)) // every stable release is old enough
+		if err != nil || err2 != nil {
+			return cmp.Or(err, err2)
+		}
+		var lag time.Duration
+		if token == "eligible" {
+			lag = max(0, t.Now.Sub(c.Since)-cool)
+		}
+		fmt.Fprintln(t.Out, p.Name, p.Class, cmp.Or(p.Version, "-"), cmp.Or(c.New.Version, "none"), cmp.Or(n.New.Version, "none"), lag.Round(time.Hour), token)
+		if lag > p7[p.Class] || newest == "verify-failed" {
+			bad = append(bad, p.Name)
+		}
+		if newest == "eligible" && p.Class == pins.Guest && !t.DryRun {
+			if os.WriteFile(filepath.Join(t.Pins, p.Name+".json"), Row(n.New), 0o644) != nil {
+				return Stopped("write pins")
+			}
+		}
+	}
+	if bad != nil {
+		return Stopped("P7 missed or verification failed: " + strings.Join(bad, " "))
+	}
+	return nil
+}
+
+// plan decides one pin as of now. Only a hostile chosen version is an error; anything an
 // upstream fails at is a reason token, so one upstream never blocks the rest (W8).
-func (t Tool) plan(ctx context.Context, p pins.Pin) (Change, string, error) {
+func (t Tool) plan(ctx context.Context, p pins.Pin, now time.Time) (Change, string, error) {
 	ctx, cancel := context.WithTimeout(ctx, t.PinTime)
 	defer cancel()
 	cands, err := pins.Candidates(ctx, t.Upstream, p)
@@ -188,7 +229,7 @@ func (t Tool) plan(ctx context.Context, p pins.Pin) (Change, string, error) {
 	if err != nil {
 		fmt.Fprintln(t.Out, "advisory unavailable:", p.Name)
 	}
-	r, err := pins.Select(p, cands, adv, 0, t.Now)
+	r, err := pins.Select(p, cands, adv, 0, now)
 	switch {
 	case err != nil:
 		return Change{}, "not-semver", nil
@@ -207,7 +248,7 @@ func (t Tool) plan(ctx context.Context, p pins.Pin) (Change, string, error) {
 	}
 	n := p
 	n.Release, n.Previous, n.Timestamps, n.Released = rel, &p.Release, r.Chosen.Timestamps, t.Now.UTC().Truncate(time.Second)
-	return Change{Old: p, New: n, Security: !r.AutoMerge}, "eligible", nil
+	return Change{Old: p, New: n, Security: !r.AutoMerge, Since: r.Since}, "eligible", nil
 }
 
 // Row is the file a pin is stored in: the same bytes as pins/debian.json.
@@ -220,8 +261,7 @@ func Row(p pins.Pin) []byte {
 func body(cs []Change, now time.Time) string {
 	var b strings.Builder
 	for _, c := range cs {
-		fmt.Fprintf(&b, "- %s: %s to %s, age %dh", c.Old.Name, cmp.Or(c.Old.Version, "-"), c.New.Version,
-			int(now.Sub(slices.MaxFunc(append(c.New.Timestamps, time.Time{}), time.Time.Compare)).Hours()))
+		fmt.Fprintf(&b, "- %s: %s to %s, age %dh", c.Old.Name, cmp.Or(c.Old.Version, "-"), c.New.Version, int(now.Sub(pins.Latest(c.New.Timestamps)).Hours()))
 		if c.Security {
 			b.WriteString(", " + securityNote) // the merge reads it if the label is lost
 		}

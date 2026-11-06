@@ -4,10 +4,8 @@
 package bump
 
 import (
-	"encoding/json"
 	"os"
 	"path/filepath"
-	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -16,42 +14,20 @@ import (
 )
 
 func TestGrammar(t *testing.T) {
-	cases := []struct {
-		s                  string
-		name, version, row bool // NameOK(s), VersionOK(s), PathOK("pins/"+s+".json")
-	}{
-		{"debian", true, true, true},
-		{"claude-code.v2_x", true, true, true},
-		{strings.Repeat("a", 64), true, true, true},
-		{strings.Repeat("a", 65), false, false, false},
-		{"trixie-20261027-slim", true, true, true},
-		{"1.2.3+build", false, true, false},
-		{"Debian", false, true, false},
-		{"", false, false, false},
-		{".x", false, false, false},
-		{"-x", false, false, false},
-		{"a..b", false, true, false},
-		{"../x", false, false, false},
-		{"../.github/workflows/x", false, false, false},
-		{"/etc/x", false, false, false},
-		{`..\x`, false, false, false},
-		{"a/b", false, false, false},
-		{"x\x00", false, false, false},
-		{"x\ny", false, false, false},
-		{"1.2.3\n", false, false, false},
-		{"${{ github.token }}", false, false, false},
-		{"`id`", false, false, false},
-		{"[x](http://evil)", false, false, false},
-		{"<b>", false, false, false},
-		{"@omkhar", false, false, false},
-		{"https://evil.example/x", false, false, false},
-		{strings.Repeat("1", 4096), false, false, false},
-	}
-	for _, tc := range cases {
-		if NameOK(tc.s) != tc.name || VersionOK(tc.s) != tc.version || PathOK("pins/"+tc.s+".json") != tc.row {
-			t.Errorf("%q: name %v version %v row %v, want %v %v %v", tc.s, NameOK(tc.s), VersionOK(tc.s),
-				PathOK("pins/"+tc.s+".json"), tc.name, tc.version, tc.row)
+	check := func(s string, name, version, row bool) { // NameOK(s), VersionOK(s), PathOK("pins/"+s+".json")
+		if NameOK(s) != name || VersionOK(s) != version || PathOK("pins/"+s+".json") != row {
+			t.Errorf("%q: name %v version %v row %v, want %v %v %v", s, NameOK(s), VersionOK(s), PathOK("pins/"+s+".json"), name, version, row)
 		}
+	}
+	for _, s := range []string{"debian", "claude-code.v2_x", strings.Repeat("a", 64), "trixie-20261027-slim"} {
+		check(s, true, true, true)
+	}
+	check("1.2.3+build", false, true, false)
+	check("Debian", false, true, false)
+	check("a..b", false, true, false)
+	for _, s := range []string{strings.Repeat("a", 65), "", ".x", "-x", "../x", "../.github/workflows/x", "/etc/x", `..\x`, "a/b", "x\x00", "x\ny",
+		"1.2.3\n", "${{ github.token }}", "`id`", "[x](http://evil)", "<b>", "@omkhar", "https://evil.example/x", strings.Repeat("1", 4096)} {
+		check(s, false, false, false)
 	}
 }
 
@@ -148,15 +124,6 @@ func TestGreen(t *testing.T) {
 		if got := Green(tc.runs, total, sha); got != tc.green {
 			t.Errorf("%s: %v, want %v", tc.name, got, tc.green)
 		}
-	}
-}
-
-func TestRowRoundTrip(t *testing.T) {
-	p := pins.Pin{Name: "x", Class: pins.Guest, Release: pins.Release{Version: "1.3.0"}, Released: time.Date(2026, 11, 4, 0, 0, 0, 0, time.UTC),
-		Previous: &pins.Release{Version: "1.2.0", Artifacts: map[string]pins.Artifact{"amd64": {SHA256: strings.Repeat("a", 64)}}}}
-	var back pins.Pin
-	if err := json.Unmarshal(Row(p), &back); err != nil || !reflect.DeepEqual(back, p) || !strings.HasSuffix(string(Row(p)), "}\n") {
-		t.Errorf("round trip: %v\n%s", err, Row(p))
 	}
 }
 

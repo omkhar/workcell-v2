@@ -6,7 +6,6 @@
 package pins
 
 import (
-	"cmp"
 	"fmt"
 	"maps"
 	"slices"
@@ -112,14 +111,14 @@ type Skip struct {
 // Result is what the selector decided.
 type Result struct {
 	Chosen    *Candidate // the release to pin; nil when the pin stays
-	Why       string     // why the pin stays; empty when it changes
 	Skipped   []Skip     // releases newer than the pin that are not eligible, in input order
 	Security  bool       // the advisory affects the pin and Chosen fixes it (B4)
 	AutoMerge bool       // the bump may merge once the gate is green; false when it waits for the maintainer
+	Since     time.Time  // when the oldest eligible release was published
 }
 
-// cooloff holds the normal and the security-lane cool-off of each class.
-var cooloff = map[Class][2]time.Duration{
+// Cooloff holds the normal and the security-lane cool-off of each class.
+var Cooloff = map[Class][2]time.Duration{
 	Guest:   {48 * time.Hour, 12 * time.Hour},
 	Trusted: {7 * 24 * time.Hour, 0},
 }
@@ -129,7 +128,7 @@ var cooloff = map[Class][2]time.Duration{
 // before now. extra lengthens the cool-off and never shortens it (B10). A pin
 // never moves backwards. It reads nothing but its arguments (B3).
 func Select(cur Pin, cands []Candidate, adv *Advisory, extra time.Duration, now time.Time) (Result, error) {
-	cool, ok := cooloff[cur.Class]
+	cool, ok := Cooloff[cur.Class]
 	if !ok {
 		return Result{}, fmt.Errorf("pin %q: unknown class %q", cur.Name, cur.Class)
 	}
@@ -138,7 +137,6 @@ func Select(cur Pin, cands []Candidate, adv *Advisory, extra time.Duration, now 
 		return Result{}, fmt.Errorf("pin %q: version %q is not a stable X.Y.Z", cur.Name, cur.Version)
 	}
 	fix, affected := adv.affects(curV, hasCur)
-	extra = max(extra, 0)
 	var r Result
 	var best Version
 	for i := range cands {
@@ -151,7 +149,7 @@ func Select(cur Pin, cands []Candidate, adv *Advisory, extra time.Duration, now 
 		if affected && Compare(v, fix) >= 0 {
 			wait = cool[1]
 		}
-		latest := latestOf(c.Timestamps)
+		latest := Latest(c.Timestamps)
 		why := ""
 		switch {
 		case !stable || c.PreRelease:
@@ -160,14 +158,19 @@ func Select(cur Pin, cands []Candidate, adv *Advisory, extra time.Duration, now 
 			why = "yanked"
 		case c.Deprecated:
 			why = "deprecated"
-		case slices.ContainsFunc(cur.Withdrawn, c.hasDigest):
+		case slices.ContainsFunc(cur.Withdrawn, func(d string) bool {
+			return d != "" && slices.ContainsFunc(slices.Collect(maps.Values(c.Artifacts)), func(a Artifact) bool { return a.SHA256 == d })
+		}):
 			why = "withdrawn"
 		case latest.IsZero():
 			why = "no timestamp"
 		case latest.After(now):
 			why = "timestamp in the future"
-		case now.Sub(latest)-wait < extra: // not age < wait+extra, which overflows
+		case now.Sub(latest)-wait < max(extra, 0): // not age < wait+extra, which overflows
 			why = "cooling off"
+		}
+		if why == "" && (r.Since.IsZero() || latest.Before(r.Since)) {
+			r.Since = latest
 		}
 		if why != "" {
 			r.Skipped = append(r.Skipped, Skip{c.Version, why})
@@ -176,7 +179,6 @@ func Select(cur Pin, cands []Candidate, adv *Advisory, extra time.Duration, now 
 		}
 	}
 	if r.Chosen == nil {
-		r.Why = "no eligible release newer than " + cmp.Or(cur.Version, "the empty pin")
 		return r, nil
 	}
 	r.Security = affected && Compare(best, fix) >= 0
@@ -198,12 +200,8 @@ func (a *Advisory) affects(cur Version, hasCur bool) (Version, bool) {
 	return fix, Compare(from, cur) <= 0 && Compare(cur, fix) < 0
 }
 
-func (c *Candidate) hasDigest(d string) bool {
-	return d != "" && slices.ContainsFunc(slices.Collect(maps.Values(c.Artifacts)), func(a Artifact) bool { return a.SHA256 == d })
-}
-
-// latestOf returns the latest non-zero timestamp, or the zero time if there is none.
-func latestOf(ts []time.Time) time.Time {
+// Latest returns the latest non-zero timestamp, or the zero time if there is none.
+func Latest(ts []time.Time) time.Time {
 	return slices.MaxFunc(append([]time.Time{{}}, ts...), time.Time.Compare)
 }
 
