@@ -20,7 +20,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
-	"slices"
 	"strings"
 	"sync"
 	"syscall"
@@ -60,7 +59,6 @@ type workcell struct {
 	mu      sync.Mutex
 	run     *exec.Cmd // the product, while one run of it is in flight
 	ns      *holder   // the session's own network namespace, when isolated
-	seen    []string  // the product's sessions of this one, oldest first, as sessions found them
 }
 
 // prepareWorkcell fetches, builds and assembles under dir what `workcell run`
@@ -362,35 +360,21 @@ func (w *workcell) cli(ctx context.Context, in io.Reader, args ...string) (Outpu
 // at the path Audit returns and have the guest go for it, so the path is the
 // product's own file, never a copy.
 
-// sessions lists the product's sessions of this one, oldest first: those
-// seen before keep their order, and a new one comes after them by the age of
-// its record. Only a session with a record counts.
+// sessions lists the product's sessions of this one, oldest first: an id
+// begins with the session's UTC start time, so the directory's order is the
+// sessions' age. Only a session with a record counts.
 func (w *workcell) sessions() ([]string, error) {
-	dir := filepath.Join(prepared.xdg, "workcell", "sessions")
-	entries, err := os.ReadDir(dir)
+	entries, err := os.ReadDir(filepath.Join(prepared.xdg, "workcell", "sessions"))
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return nil, fmt.Errorf("workcell: sessions: %w", err)
 	}
-	type found struct {
-		id   string
-		when time.Time
-	}
-	var fresh []found
+	var ids []string
 	for _, e := range entries {
-		if !e.IsDir() || slices.Contains(w.seen, e.Name()) {
-			continue
+		if _, err := os.Stat(record(e.Name())); e.IsDir() && err == nil {
+			ids = append(ids, e.Name())
 		}
-		fi, err := os.Stat(filepath.Join(dir, e.Name(), "audit.log"))
-		if err != nil {
-			continue
-		}
-		fresh = append(fresh, found{e.Name(), fi.ModTime()})
 	}
-	slices.SortFunc(fresh, func(a, b found) int { return cmp.Or(a.when.Compare(b.when), strings.Compare(a.id, b.id)) })
-	for _, f := range fresh {
-		w.seen = append(w.seen, f.id)
-	}
-	return w.seen, nil
+	return ids, nil
 }
 
 // record is the host path of the product's record of the session id.

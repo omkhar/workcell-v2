@@ -220,26 +220,16 @@ func lookupProbe(args []string) Result {
 	default:
 		return Result{Status: "error", Detail: "want plain, garbage or burst, not " + args[2]}
 	}
-	out, err := lookups(addr, args[1], args[3:])
-	if err != nil {
-		return Result{Status: "error", Detail: err.Error()}
-	}
-	return Result{Status: "asked", Detail: addr + " " + first + out}
-}
-
-// lookups runs every "label=spec" against addr concurrently and returns
-// "label=outcome/ms" for each, in order.
-func lookups(addr, token string, specs []string) (string, error) {
-	out := make([]string, len(specs))
+	out := make([]string, len(args)-3)
 	var wg sync.WaitGroup
-	for i, s := range specs {
+	for i, s := range args[3:] {
 		label, spec, ok := strings.Cut(s, "=")
 		if !ok {
-			return "", fmt.Errorf("%q is not label=spec", s)
+			return Result{Status: "error", Detail: fmt.Sprintf("%q is not label=spec", s)}
 		}
-		msg, id, err := encode(spec, token)
+		msg, id, err := encode(spec, args[1])
 		if err != nil {
-			return "", err
+			return Result{Status: "error", Detail: err.Error()}
 		}
 		wg.Go(func() {
 			got, took := ask(addr, msg, id, lookupWait)
@@ -247,7 +237,7 @@ func lookups(addr, token string, specs []string) (string, error) {
 		})
 	}
 	wg.Wait()
-	return strings.Join(out, " "), nil
+	return Result{Status: "asked", Detail: addr + " " + first + strings.Join(out, " ")}
 }
 
 // burst sends burstSize queries for distinct names under token.invalid to

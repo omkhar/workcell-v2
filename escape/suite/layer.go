@@ -241,15 +241,13 @@ func mountOf(point string) (string, bool) {
 	return "", false
 }
 
-// output is what the command printed, in one word: a version, or an error.
+// output is what the command printed, in one word: a version, or how it failed.
 func output(name string, args ...string) string {
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-	defer cancel()
-	b, err := exec.CommandContext(ctx, name, args...).CombinedOutput()
-	if err != nil && len(bytes.TrimSpace(b)) == 0 {
-		return short(err)
+	how, out := ran(3*time.Second, nil, name, args...)
+	if out == "" && how != "0" {
+		return how
 	}
-	return strings.Join(strings.Fields(string(b)), "_")
+	return out
 }
 
 // treeSum hashes every regular file and symlink below root, by relative

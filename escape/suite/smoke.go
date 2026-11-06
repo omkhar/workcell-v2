@@ -189,6 +189,7 @@ func smokeProbe(args []string) Result {
 	var sexit, sout string
 	if len(cmd) > 0 {
 		sexit, sout = ran(90*time.Second, []string{to + "=" + placeholder}, bin, cmd...)
+		sout = sout[max(0, len(sout)-100):] // the tail
 	} else { // the fixture's call
 		req, _ := http.NewRequest(http.MethodPost, "https://"+name+":"+port(addr)+"/v1/messages", strings.NewReader(`{"model":"fake","max_tokens":1,"stream":true,"messages":[{"role":"user","content":"hi"}]}`))
 		req.Header.Set(header, prefix+placeholder)
@@ -208,7 +209,7 @@ func smokeProbe(args []string) Result {
 }
 
 // ran runs name for at most wait with env added: how it ended ("0" for
-// success) and the tail of what it printed, one word.
+// success) and what it printed, one word.
 func ran(wait time.Duration, env []string, name string, args ...string) (string, string) {
 	ctx, cancel := context.WithTimeout(context.Background(), wait)
 	defer cancel()
@@ -225,6 +226,5 @@ func ran(wait time.Duration, env []string, name string, args ...string) (string,
 	case err != nil:
 		how = strings.ReplaceAll(short(err), " ", "_")
 	}
-	out := strings.Join(strings.Fields(string(b)), "_")
-	return how, out[max(0, len(out)-100):] // the tail
+	return how, strings.Join(strings.Fields(string(b)), "_")
 }

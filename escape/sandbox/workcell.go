@@ -39,22 +39,15 @@ func Prepare(ctx context.Context, name, dir string) error {
 var prefix string
 
 // unsupported says why the CLI cannot honour cfg today, "" when it can: it
-// takes an export, a network policy, a secret, a CPU count of 1 to 32,
-// memory of at least 128 MiB and any disk cap, a zero meaning the CLI's
-// default, and on Linux a resolver of the test's own and, with one, a
-// network of its own.
+// takes an export, a network policy, a secret, any caps (a zero meaning the
+// CLI's default; one outside its bounds it refuses itself), and on Linux a
+// resolver of the test's own and, with one, a network of its own.
 func unsupported(cfg Config) string {
 	switch {
 	case cfg.Resolver != "" && !steersResolver:
 		return "a resolver of its own"
 	case cfg.Isolated && (cfg.Resolver == "" || !steersResolver):
 		return "a network of its own"
-	case cfg.CPUs < 0 || cfg.CPUs > 32:
-		return fmt.Sprintf("%d CPUs", cfg.CPUs)
-	case cfg.MemoryMiB < 0 || (cfg.MemoryMiB > 0 && cfg.MemoryMiB < 128):
-		return fmt.Sprintf("%d MiB of memory", cfg.MemoryMiB)
-	case cfg.DiskMiB < 0:
-		return fmt.Sprintf("%d MiB of disk", cfg.DiskMiB)
 	}
 	return ""
 }

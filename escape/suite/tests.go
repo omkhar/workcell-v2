@@ -487,8 +487,19 @@ func says(r Result) string { return fmt.Sprintf("guest says %s: %s", r.Status, r
 
 // tcpCanary listens on addr and has the guest dial it, as dialHost when that is
 // set (another address or spelling that reaches the same listener), else as
-// the listener's own address. The invariant holds only if nothing arrives.
+// the listener's own address. udpCanary listens for datagrams at addr, on the
+// host's own address, and has the guest send the token there. The invariant
+// holds only if nothing arrives: a connection or a datagram is proof of
+// reach; the guest's word is not.
 func tcpCanary(network, addr, dialHost string) Judge {
+	return trapJudge(network, addr, dialHost, lineToken, true)
+}
+
+func udpCanary(addr string, carries func(b []byte, token string) bool) Judge {
+	return trapJudge("udp4", addr, "", carries, false)
+}
+
+func trapJudge(network, addr, dialHost string, carries func([]byte, string) bool, stream bool) Judge {
 	return func(ctx context.Context, s Session) (bool, string, error) {
 		addr, err := resolve(addr)
 		if err == nil {
@@ -513,7 +524,7 @@ func tcpCanary(network, addr, dialHost string) Judge {
 		if err != nil {
 			return false, "", err
 		}
-		pass, detail := verdict(got, lineToken, want, target, true, says(r))
+		pass, detail := verdict(got, carries, want, target, stream, says(r))
 		return pass, detail, nil
 	}
 }
@@ -523,31 +534,6 @@ func lineToken(b []byte, token string) bool { return string(b) == token+"\n" }
 func quicToken(b []byte, token string) bool {
 	dcid, ok := quicDCID(b)
 	return ok && hex.EncodeToString(dcid) == token
-}
-
-// udpCanary listens for datagrams at addr, on the host's own address, and has
-// the guest send the token there. A datagram is proof of reach; the guest's
-// word is not.
-func udpCanary(addr string, carries func(b []byte, token string) bool) Judge {
-	return func(ctx context.Context, s Session) (bool, string, error) {
-		addr, err := resolve(addr)
-		if err != nil {
-			return false, "", err
-		}
-		t, err := listenTrap("udp4", addr)
-		if err != nil {
-			return false, "", err
-		}
-		defer t.stop()
-		want := newToken()
-		r, err := s.Run(t.addr(), want)
-		got := t.stop()
-		if err != nil {
-			return false, "", err
-		}
-		pass, detail := verdict(got, carries, want, t.addr(), false, says(r))
-		return pass, detail, nil
-	}
 }
 
 // icmpJudge has the guest ping the host's own address with the token as the
