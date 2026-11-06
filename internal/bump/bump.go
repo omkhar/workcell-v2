@@ -90,6 +90,9 @@ func Load(dir string) ([]pins.Pin, error) {
 	}
 	var ps []pins.Pin
 	for _, e := range ents {
+		if strings.HasSuffix(e.Name(), ".go") {
+			continue // the package that embeds the rows lives in the same directory
+		}
 		name, ok := strings.CutSuffix(e.Name(), ".json")
 		if !ok || !NameOK(name) || !e.Type().IsRegular() {
 			return nil, Refused("pin name")

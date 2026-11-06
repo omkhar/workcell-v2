@@ -5,6 +5,8 @@ package bump
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -49,6 +51,22 @@ func TestGrammar(t *testing.T) {
 		if NameOK(tc.s) != tc.name || VersionOK(tc.s) != tc.version || PathOK("pins/"+tc.s+".json") != tc.row {
 			t.Errorf("%q: name %v version %v row %v, want %v %v %v", tc.s, NameOK(tc.s), VersionOK(tc.s),
 				PathOK("pins/"+tc.s+".json"), tc.name, tc.version, tc.row)
+		}
+	}
+}
+
+func TestLoad(t *testing.T) {
+	for _, c := range []struct {
+		file string
+		ok   bool
+	}{{"pins.go", true}, {"pins_test.go", true}, {"notes.txt", false}} {
+		dir := t.TempDir()
+		for name, body := range map[string]string{"tool.json": `{"Name":"tool","Class":"guest"}`, c.file: "x"} {
+			_ = os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644) // a failed write fails the row below
+		}
+		rows, err := Load(dir)
+		if (err == nil) != c.ok || (c.ok && len(rows) != 1) {
+			t.Errorf("%s beside a row: %d rows, %v", c.file, len(rows), err)
 		}
 	}
 }
