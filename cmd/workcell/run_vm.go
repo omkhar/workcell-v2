@@ -26,7 +26,6 @@ import (
 	"github.com/omkhar/workcell/v2/internal/audit"
 	"github.com/omkhar/workcell/v2/internal/fileserve"
 	"github.com/omkhar/workcell/v2/internal/guest"
-	"github.com/omkhar/workcell/v2/internal/provider"
 	"github.com/omkhar/workcell/v2/internal/proxy"
 	"github.com/omkhar/workcell/v2/internal/relay"
 	"github.com/omkhar/workcell/v2/internal/resolver"
@@ -58,9 +57,8 @@ func run(args []string, stderr io.Writer) int {
 	}
 	a, err := loadArtifacts()
 	var in installer
-	var provs []provider.Provider
 	if err == nil {
-		in, provs = startup(stderr)
+		in = startup(stderr)
 		a.layers, err = findLayers(a.dir)
 	}
 	if err == nil {
@@ -68,47 +66,47 @@ func run(args []string, stderr io.Writer) int {
 		a.caches, release, err = openCaches(a.dir, caches, caps.disk())
 		defer release() // the locks last as long as the session
 	}
-	code := 0
+	r := result{err: err}
 	if err == nil {
-		code, err = session(args, caps, mount, a, allow, secrets)
-		if errors.Is(err, errNoExec) {
-			in.fail(provs, filepath.Base(args[0]), stderr)
+		r = session(args, caps, mount, a, allow, secrets)
+		if r.first { // the init's own word that it could not start the command, before anything ran in the guest (I12)
+			in.fail(filepath.Base(args[0]), stderr)
 		}
 	}
-	if err != nil {
-		fmt.Fprintln(stderr, "workcell:", err)
-		if code == 0 {
-			code = 125 // the session itself failed, not the command
+	if r.err != nil {
+		fmt.Fprintln(stderr, "workcell:", r.err)
+		if r.code == 0 {
+			r.code = 125 // the session itself failed, not the command
 		}
 	}
-	return code
+	return r.code
 }
 
 // session boots a guest and runs argv in it, with the current directory copied in, or served live when mount holds, with the network allow names (nil for none)
-// and the secret bindings, of which the guest gets each placeholder alone, in the variable its row names (I5, A4). It returns the command's exit code. A
-// nonzero code with an error means the command could not run; an error alone means the session failed.
-func session(argv []string, caps limits, mount bool, a artifacts, allow *proxy.Allowlist, secrets []binding) (code int, err error) {
+// and the secret bindings, of which the guest gets each placeholder alone, in the variable its row names (I5, A4). It returns how the session ended: the
+// command's code, or with an error, which alone means the session failed and with a nonzero code that the command could not run.
+func session(argv []string, caps limits, mount bool, a artifacts, allow *proxy.Allowlist, secrets []binding) (r result) {
 	sigs := make(chan os.Signal, 4)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
 	defer signal.Stop(sigs)
 	signal.Ignore(syscall.SIGHUP) // a closed terminal detaches the session; it does not end it
 	cwd, err := os.Getwd()
 	if err != nil {
-		return 0, err
+		return result{err: err}
 	}
 	dir, lock, err := newSession(a, cwd) // the lock is held until the session ends
 	if err != nil {
-		return 0, err
+		return result{err: err}
 	}
 	defer lock.Close()
 	log, err := openAudit(a.dir, dir)
 	if err != nil {
 		os.RemoveAll(dir)
-		return 0, err
+		return result{err: err}
 	}
 	defer func() { // the last record of the session, whatever way it ended
-		end := "exit " + strconv.Itoa(code)
-		if err != nil && code == 0 {
+		end := "exit " + strconv.Itoa(r.code)
+		if r.err != nil && r.code == 0 {
 			end = "failed"
 		}
 		_ = log.Record(audit.Record{Event: audit.SessionEnd, Result: end})
@@ -118,11 +116,11 @@ func session(argv []string, caps limits, mount bool, a artifacts, allow *proxy.A
 	if mount {
 		live = cwd // the record alone: the work lands in cwd itself
 	} else if image, err = export(dir, caps, cwd); err != nil {
-		return 0, err
+		return result{err: err}
 	}
 	b, code, err := boot(a, caps, sigs, dir, log, image, live, allow, secrets)
 	if b == nil {
-		return code, err
+		return result{code: code, err: err}
 	}
 	defer b.close()
 	raw := b.conn
@@ -146,11 +144,11 @@ func session(argv []string, caps limits, mount bool, a artifacts, allow *proxy.A
 	c := wire.New(raw, frameLimit)
 	ln, err := net.Listen("unix", filepath.Join(b.dir, "attach")) // closeAll removes it with the directory
 	if err != nil {
-		return 0, err
+		return result{err: err}
 	}
 	defer ln.Close()
 	if err := c.WriteFrame(wire.Frame{Type: guest.TypeExec, Payload: guest.EncodeExec(req)}); err != nil {
-		return 0, err
+		return result{err: err}
 	}
 	s := &seat{window: make(chan struct{}, guest.StdinWindow), in: make(chan wire.Frame)}
 	go func() {
@@ -177,17 +175,17 @@ func session(argv []string, caps limits, mount bool, a artifacts, allow *proxy.A
 			err = c.WriteFrame(f)
 		case sig := <-sigs:
 			if signalled { // the command ignored the first one: stop waiting for it
-				return 128 + int(sig.(syscall.Signal)), nil
+				return result{code: 128 + int(sig.(syscall.Signal))}
 			}
 			signalled = true
 			err = c.WriteFrame(wire.Frame{Type: guest.TypeSignal, Payload: guest.EncodeSignal(int(sig.(syscall.Signal)))})
-		case r := <-done:
+		case r = <-done:
 			theirs.Close() // when no Exit came, nothing else ends the client; after one it has read it already
 			<-shown        // the last output reaches the terminal first
-			return r.code, r.err
+			return r
 		}
 		if err != nil {
-			return 0, fmt.Errorf("guest channel: %w", err)
+			return result{err: fmt.Errorf("guest channel: %w", err)}
 		}
 	}
 }
@@ -434,15 +432,18 @@ func accept(ln net.Listener, m vmm.Machine, sigs <-chan os.Signal, console *tail
 	return nil, 0, fmt.Errorf("guest did not boot (%s)\n%s", why, lastLines(console.bytes(), 10))
 }
 
-// result is how the session ended: the command's code, or an error.
+// result is how the session ended: the command's code, or an error. first holds for an Exit with Err that was the guest's first frame: the init could not start
+// the command, so nothing ran in the guest; a process there that forged one spoke before it (I12, A1). Only that ends the command's layer (fail).
 type result struct {
-	code int
-	err  error
+	code  int
+	err   error
+	first bool
 }
 
 // output passes the guest's output to the seat and gives back a window slot for every Ack, until the command's Exit or an error ends the session. It decodes
 // bytes the guest chose, so every payload is checked.
 func output(c *wire.Conn, s *seat, done chan<- result) {
+	first := true
 	for {
 		f, err := c.ReadFrame()
 		if err != nil {
@@ -463,26 +464,27 @@ func output(c *wire.Conn, s *seat, done chan<- result) {
 			}
 		case guest.TypeExit:
 			s.send(f)
-			done <- exitResult(f.Payload)
+			done <- exitResult(f.Payload, first)
 			return
 		default:
 			done <- result{err: fmt.Errorf("frame type %d from the guest", f.Type)}
 			return
 		}
+		first = false
 	}
 }
 
-// errNoExec is the guest's word that the command could not run: exit status 126, and the end of its layer when it is a provider's binary (fail).
+// errNoExec is the guest's word that the command could not run: exit status 126.
 var errNoExec = errors.New("the command could not run")
 
-// exitResult is how the command ended, from the payload of its Exit frame.
-func exitResult(payload []byte) result {
+// exitResult is how the command ended, from the payload of its Exit frame; first says that frame was the guest's first (result).
+func exitResult(payload []byte, first bool) result {
 	e, err := guest.DecodeExit(payload)
 	switch {
 	case err != nil:
 		return result{err: err}
 	case e.Err != "":
-		return result{code: 126, err: fmt.Errorf("%w: %q", errNoExec, e.Err)}
+		return result{code: 126, err: fmt.Errorf("%w: %q", errNoExec, e.Err), first: first}
 	case e.Signal != 0:
 		return result{code: 128 + e.Signal}
 	}
@@ -590,7 +592,7 @@ func client(raw net.Conn, restore func(), tty bool) (int, error) {
 			case guest.TypeStderr:
 				_, err = os.Stderr.Write(f.Payload)
 			case guest.TypeExit:
-				r := exitResult(f.Payload)
+				r := exitResult(f.Payload, false)
 				return r.code, r.err
 			}
 		}

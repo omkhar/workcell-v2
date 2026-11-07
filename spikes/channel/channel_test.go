@@ -30,6 +30,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -177,22 +178,28 @@ func TestDailyChannel(t *testing.T) {
 		}
 	}()
 	p50 := regexp.MustCompile(`p50=(\d+)ms`)
-	for _, c := range []struct{ name, channel string }{
+	cases := []struct{ name, channel string }{
 		{"no [update] table", ""},
 		{"channel unreachable (closed port)", "https://" + closedAddr + "/channel.json"},
 		{"channel hangs (accepts, never answers)", "https://" + hang.Addr().String() + "/channel.json"},
-	} {
-		config(c.channel)
-		newDay()
-		out, code := run("bench", "start")
-		m := p50.FindStringSubmatch(out)
-		ms := -1
-		if m != nil {
-			ms, _ = strconv.Atoi(m[1])
+	}
+	for pass := 1; pass <= 2; pass++ { // twice, the second pass in reverse order: the runner's noise and the channel's cost tell apart
+		if pass == 2 {
+			slices.Reverse(cases)
 		}
-		t.Logf("B9 bench start, %s: %s", c.name, strings.TrimSpace(out))
-		if code != 0 || ms < 0 || time.Duration(ms)*time.Millisecond > p50Limit {
-			t.Errorf("bench start with %s: exit %d, p50 %d ms; want 0 and at most %v", c.name, code, ms, p50Limit)
+		for _, c := range cases {
+			config(c.channel)
+			newDay()
+			out, code := run("bench", "start")
+			m := p50.FindStringSubmatch(out)
+			ms := -1
+			if m != nil {
+				ms, _ = strconv.Atoi(m[1])
+			}
+			t.Logf("B9 bench start, pass %d, %s: %s", pass, c.name, strings.TrimSpace(out))
+			if code != 0 || ms < 0 || time.Duration(ms)*time.Millisecond > p50Limit {
+				t.Errorf("bench start with %s (pass %d): exit %d, p50 %d ms; want 0 and at most %v", c.name, pass, code, ms, p50Limit)
+			}
 		}
 	}
 	mu.Lock()

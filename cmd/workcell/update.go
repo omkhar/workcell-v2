@@ -277,22 +277,23 @@ func (in installer) apply(provs []provider.Provider, stderr io.Writer) {
 	}
 }
 
-// fail is the self-rollback (B10): the command's binary is a provider's whose layer is current, and it could not run, so that image is named in
+// fail is the self-rollback (B10): the command's binary is a provider's whose layer is current, and the init could not start it, so that image is named in
 // layers/<agent>/failed, which apply skips until its pin changes, and current goes back to the previous layer by itself, nothing fetched and no manifest read;
-// with no previous, the next session boots without the layer.
-func (in installer) fail(provs []provider.Provider, binary string, stderr io.Writer) {
+// with no previous, the next session boots without the layer. One record line, "failed", names the layer set aside. With no installer (startup), nothing.
+func (in installer) fail(binary string, stderr io.Writer) {
+	provs, _ := provider.All() // startup reported an error here already
 	for _, p := range provs {
 		dir := filepath.Join(in.dir, "layers", p.Name)
 		cur := marker(dir, "current")
-		if p.Binary != binary || cur == "" {
+		if in.dir == "" || p.Binary != binary || cur == "" {
 			continue
 		}
 		v, d := parse(cur)
-		err := errors.Join(writeMarker(dir, "failed", cur), in.record(p.Name, v, d, "failed"))
+		err := writeMarker(dir, "failed", cur)
 		if err == nil {
-			_, err = in.point(p.Name, dir, marker(dir, "previous"), "", "rolled_back")
+			_, err = in.point(p.Name, dir, marker(dir, "previous"), "", "")
 		}
-		if err != nil {
+		if err = errors.Join(err, in.record(p.Name, v, d, "failed")); err != nil {
 			fmt.Fprintln(stderr, "workcell: update:", err)
 		}
 		fmt.Fprintf(stderr, "workcell: update: %s %s could not run, so its layer is set aside; workcell update %s installs it again\n", p.Name, v, p.Name)
@@ -300,17 +301,17 @@ func (in installer) fail(provs []provider.Provider, binary string, stderr io.Wri
 }
 
 // startup is the channel's part of a session start (B9), each step best-effort and an error one line on stderr: the manifest the last daily check kept is
-// applied, then the day's check starts. It returns what fail needs after the session.
-func startup(stderr io.Writer) (installer, []provider.Provider) {
+// applied, then the day's check starts. It returns the installer, for fail after the session.
+func startup(stderr io.Writer) installer {
 	in, err := newInstaller()
 	provs, perr := provider.All()
 	if err = errors.Join(err, perr); err != nil {
 		fmt.Fprintln(stderr, "workcell: channel:", err)
-		return installer{}, nil
+		return installer{}
 	}
 	in.apply(provs, stderr)
 	in.daily(time.Now())
-	return in, provs
+	return in
 }
 
 // choose is the candidate to install: with to, the one of that version, any other version refused; without, the first, or the previous one while the user's
@@ -395,7 +396,7 @@ func unpack(f *os.File, binary string) (*rootfs.Tree, error) {
 	return t, errors.Join(t.Put("bin", rootfs.Node{Kind: rootfs.Dir, Mode: 0o755}), t.Link(files[0], want), t.Remove(files[0]))
 }
 
-// point makes the complete image current, keeps previous to roll back to, removes any other image, records and reports.
+// point makes the complete image current, keeps previous to roll back to, removes any other image, records the result when there is one and reports.
 func (in installer) point(agent, dir, current, previous, result string) (string, error) {
 	if err := writeMarker(dir, "previous", previous); err != nil {
 		return "", err
@@ -410,8 +411,10 @@ func (in installer) point(agent, dir, current, previous, result string) (string,
 		}
 	}
 	v, d := parse(current)
-	if err := in.record(agent, v, d, result); err != nil {
-		return "", err
+	if result != "" {
+		if err := in.record(agent, v, d, result); err != nil {
+			return "", err
+		}
 	}
 	return agent + " " + v + " " + d[:min(16, len(d))], nil
 }
