@@ -36,11 +36,8 @@ func TestClientsValidateSessionLeaf(t *testing.T) {
 		os.WriteFile(filepath.Join(dir, "ca-certificates.crt"), bundle, 0o644)
 	}
 	must(0, guest.WriteTrust(dir, ca.CertPEM(), time.Now()))
-	ln, err := tls.Listen("tcp", ":0", &tls.Config{MinVersion: tls.VersionTLS12,
-		GetCertificate: func(*tls.ClientHelloInfo) (*tls.Certificate, error) { return ca.leaf("localhost") }})
-	if err != nil {
-		t.Fatal(err)
-	}
+	ln := must(tls.Listen("tcp", ":0", &tls.Config{MinVersion: tls.VersionTLS12,
+		GetCertificate: func(*tls.ClientHelloInfo) (*tls.Certificate, error) { return ca.leaf("localhost") }}))
 	defer ln.Close()
 	go func() {
 		_ = http.Serve(ln, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = io.WriteString(w, "ok") }))

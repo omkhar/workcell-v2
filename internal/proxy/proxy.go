@@ -80,7 +80,7 @@ type Proxy struct {
 	lookup func(ctx context.Context, host string) ([]netip.Addr, error)
 	dial   func(ctx context.Context, addr netip.AddrPort) (net.Conn, error)
 
-	// TLS termination; set by Terminate. upstreamRoots nil means system roots.
+	// TLS termination; set by Terminate, upstreamRoots from the system roots and SSL_CERT_FILE.
 	terminate     map[string][]TerminateRule
 	signin        map[string][]TerminateRule // by token host: the rules whose endpoint it serves
 	ca            *SessionCA
@@ -115,7 +115,7 @@ func New(allow *Allowlist, rec Recorder) *Proxy {
 	}
 	go func() {
 		for port := range p.shed {
-			p.deny("", port, "overloaded")
+			p.Deny("", port, "overloaded")
 		}
 	}()
 	return p
@@ -155,21 +155,21 @@ func (p *Proxy) handle(client net.Conn, port uint16) {
 	defer client.Close()
 	host, replay, reason := p.route(client, port)
 	if reason != "" {
-		p.deny(host, port, reason)
+		p.Deny(host, port, reason)
 		return
 	}
 	if _, ok := p.terminate[host]; ok && port == tlsPort {
-		p.allowed(host, port)
+		p.Deny(host, port, audit.Allowed)
 		p.serveTerminated(client, host, replay)
 		return
 	}
 	upstream, reason := p.connect(host, port)
 	if reason != "" {
-		p.deny(host, port, reason)
+		p.Deny(host, port, reason)
 		return
 	}
 	defer upstream.Close()
-	p.allowed(host, port)
+	p.Deny(host, port, audit.Allowed)
 	if _, err := upstream.Write(replay); err != nil {
 		return
 	}
@@ -224,18 +224,14 @@ func (p *Proxy) connect(host string, port uint16) (net.Conn, string) {
 		if share <= 0 {
 			break
 		}
-		if conn, err := p.dialOne(share, netip.AddrPortFrom(a.Unmap(), port)); err == nil {
+		dctx, stop := context.WithTimeout(context.Background(), share)
+		conn, err := p.dial(dctx, netip.AddrPortFrom(a.Unmap(), port))
+		stop()
+		if err == nil {
 			return conn, ""
 		}
 	}
 	return nil, "dial_failed"
-}
-
-// dialOne dials addr with its own timeout.
-func (p *Proxy) dialOne(timeout time.Duration, addr netip.AddrPort) (net.Conn, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
-	return p.dial(ctx, addr)
 }
 
 // recordingConn records what the TLS stack reads and drops what it writes, so
@@ -252,10 +248,7 @@ func (r *recordingConn) Read(b []byte) (int, error) {
 	if room <= 0 {
 		return 0, errHelloTooLarge
 	}
-	if len(b) > room {
-		b = b[:room]
-	}
-	n, err := r.Conn.Read(b)
+	n, err := r.Conn.Read(b[:min(len(b), room)])
 	r.buf.Write(b[:n])
 	return n, err
 }
@@ -300,13 +293,8 @@ func splice(client, upstream net.Conn) {
 	<-done
 }
 
-// Deny records a refusal that happens outside the proxy (the resolver's, the relay's) through
-// the same writer, so that the log keeps one order.
-func (p *Proxy) Deny(host string, port uint16, reason string) { p.deny(host, port, reason) }
-
-func (p *Proxy) deny(host string, port uint16, reason string) {
+// Deny records one connection attempt, admitted or refused, the proxy's own or one from outside
+// it (the resolver's, the relay's), through the same writer, so that the log keeps one order.
+func (p *Proxy) Deny(host string, port uint16, reason string) {
 	_ = p.rec.Note(audit.Record{Event: audit.Connect, Host: host, Port: port, Result: reason})
 }
-
-// allowed records a connection that the policy admitted and that went through.
-func (p *Proxy) allowed(host string, port uint16) { p.deny(host, port, audit.Allowed) }

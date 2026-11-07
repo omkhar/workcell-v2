@@ -180,7 +180,7 @@ func (p *Proxy) tokenResponse(resp *http.Response) error {
 		body, err = p.learn(rule, resp.StatusCode, body)
 	}
 	if err != nil {
-		p.deny(rule.SignIn.Host, tlsPort, "token_answer_refused")
+		p.Deny(rule.SignIn.Host, tlsPort, "token_answer_refused")
 		return err
 	}
 	resp.Body = io.NopCloser(bytes.NewReader(body))

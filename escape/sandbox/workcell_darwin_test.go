@@ -42,3 +42,18 @@ func TestSign(t *testing.T) {
 		t.Fatalf("the signed copy does not run: %v: %s", err, out)
 	}
 }
+
+// With this Mac's setup steered passes the product's argv through as it
+// is; a resolver the setup does not name is refused (SPEC T8).
+func TestSteered(t *testing.T) {
+	argv := []string{"workcell", "run"}
+	got, err := steered("", "127.5.3.53", nil, argv, 0)
+	if err != nil || len(got) != 2 || got[0] != argv[0] || got[1] != argv[1] {
+		t.Fatalf("steered = %v, %v; want %v", got, err, argv)
+	}
+	for _, bad := range []string{"127.5.3.54", "127.0.0.1"} {
+		if _, err := steered("", bad, nil, argv, 0); err == nil {
+			t.Fatalf("steered to %s: no error", bad)
+		}
+	}
+}
