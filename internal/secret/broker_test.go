@@ -43,8 +43,7 @@ func (l *fakeLedger) results() string {
 
 func (l *fakeLedger) String() string { return fmt.Sprint(l.recs) }
 
-// testGrants sends one secret in either of two headers and another secret to
-// a second host, matching the ledger tests' known.
+// testGrants sends one secret in either of two headers and another secret to a second host, matching the ledger tests' known.
 func testGrants(t *testing.T) []Grant {
 	a := "file:" + writeFile(t, "a", []byte("sk-a\n"), 0o600)
 	return []Grant{
@@ -91,12 +90,9 @@ func TestLookupReleasesOnlyGrantedPairs(t *testing.T) {
 	}
 }
 
-// TestSignInGrant: a grant whose source is a sign-in flow releases nothing
-// before a sign-in, then the access token to Lookup and the refresh token
-// to Refresh; a refresh that issues an access token alone keeps the refresh
-// token; a replaced token is zeroed where it was held; Tokens hands out
-// copies; and the ledger holds the sign-in, the refresh and each release,
-// never a byte of a token.
+// TestSignInGrant: a grant whose source is a sign-in flow releases nothing before a sign-in, then the access token to Lookup and the refresh token to Refresh;
+// a refresh that issues an access token alone keeps the refresh token; a replaced token is zeroed where it was held; Tokens hands out copies; and the ledger
+// holds the sign-in, the refresh and each release, never a byte of a token.
 func TestSignInGrant(t *testing.T) {
 	log := &fakeLedger{}
 	grants := append(testGrants(t), Grant{Name: "oauth", Source: "signin:login.example/oauth/token", Host: "api.example", Header: "authorization"})
@@ -203,8 +199,7 @@ func TestRateLimitIsAFixedWindow(t *testing.T) {
 	}
 }
 
-// TestDenialsSpendTheirOwnBudget bounds the denial records per window; an
-// over-long lookup, unlike a not_granted one, leaves the grant quota alone.
+// TestDenialsSpendTheirOwnBudget bounds the denial records per window; an over-long lookup, unlike a not_granted one, leaves the grant quota alone.
 func TestDenialsSpendTheirOwnBudget(t *testing.T) {
 	for _, tc := range []struct {
 		host      string

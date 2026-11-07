@@ -33,8 +33,7 @@ var (
 	token = "tok-do-not-print"
 )
 
-// drip is an upstream body sent one byte at a time after the headers, for ten
-// seconds, far past the planning time of a pin.
+// drip is an upstream body sent one byte at a time after the headers, for ten seconds, far past the planning time of a pin.
 const drip = "\x00drip"
 
 type reply struct {
@@ -46,8 +45,7 @@ type reply struct {
 
 type call struct{ method, uri, body string }
 
-// standIn is GitHub's REST API for repository o/r: routes keyed "METHOD /uri".
-// A write that has no route answers 201 and pull request number 7.
+// standIn is GitHub's REST API for repository o/r: routes keyed "METHOD /uri". A write that has no route answers 201 and pull request number 7.
 type standIn struct {
 	mu     sync.Mutex
 	routes map[string]reply
@@ -91,8 +89,7 @@ type fixture struct {
 	args     []string // more flags
 }
 
-// release records a vendor-manifest release of name under /name; a wrong
-// digest publishes a checksum that is not the artifact's.
+// release records a vendor-manifest release of name under /name; a wrong digest publishes a checksum that is not the artifact's.
 func release(f *fixture, name, version string, built time.Time, wrongDigest bool) {
 	art := "artifact of " + name + " " + version
 	sum := sha256.Sum256([]byte(art))
@@ -137,8 +134,7 @@ const (
 	rowPatch = `[{"filename":"pins/tool.json","status":"modified","patch":"@@ -16 +16 @@\n-  \"Version\": \"1.2.0\",\n+  \"Version\": \"1.3.0\","}]`
 )
 
-// openTrusted records open trusted bump pull request 5 with the labels, one row
-// changed and a green gate.
+// openTrusted records open trusted bump pull request 5 with the labels, one row changed and a green gate.
 func openTrusted(f *fixture, labels ...string) {
 	openGuest(f)
 	f.routes[listPRs] = reply{body: "[" + pullJSON(5, "bump/trusted-20261119", "o/r", false, 1, labels...) + "]"}
@@ -421,8 +417,7 @@ func TestNewest(t *testing.T) {
 	}
 }
 
-// securityNote checks whether the body of the pull request, the third write,
-// holds the security note.
+// securityNote checks whether the body of the pull request, the third write, holds the security note.
 func securityNote(want bool) func(*testing.T, []call) {
 	return func(t *testing.T, cs []call) {
 		var pr map[string]string
@@ -462,9 +457,8 @@ func checkOpened(t *testing.T, cs []call) {
 	}
 }
 
-// runFixture writes the pins directory, starts the recorded upstream and the
-// stand-in, and runs the command; it returns the output and the directory's
-// files before and after.
+// runFixture writes the pins directory, starts the recorded upstream and the stand-in, and runs the command; it returns the output and the directory's files
+// before and after.
 func runFixture(t *testing.T, f fixture, dry bool) (string, int, *standIn, map[string]string, map[string]string) {
 	up := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, ok := f.upstream[r.URL.Path]

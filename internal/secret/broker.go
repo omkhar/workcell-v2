@@ -21,24 +21,20 @@ const (
 	rateWindow = time.Minute
 )
 
-// Grant is one [[secret]] row: the secret Name, read from Source, may be sent
-// only in Header to Host.
+// Grant is one [[secret]] row: the secret Name, read from Source, may be sent only in Header to Host.
 type Grant struct {
 	Name, Source, Host, Header string
 }
 
-// Ledger takes one record per lookup and returns once it is durable. A value
-// is released only after Record returns nil: a *audit.Log is one, and a
-// ledger that cannot be written is not.
+// Ledger takes one record per lookup and returns once it is durable. A value is released only after Record returns nil: a *audit.Log is one, and a ledger that
+// cannot be written is not.
 type Ledger interface{ Record(audit.Record) error }
 
 // maxLineBytes bounds the host and header of one lookup that the broker records.
 const maxLineBytes = 4096
 
-// Ledger results: each grant, and each denial, the broker records. A grant
-// names its credential: a value released for its header, its refresh token
-// released for its token endpoint, or the tokens its sign-in flow issued,
-// at the sign-in and at each refresh.
+// Ledger results: each grant, and each denial, the broker records. A grant names its credential: a value released for its header, its refresh token released
+// for its token endpoint, or the tokens its sign-in flow issued, at the sign-in and at each refresh.
 const (
 	resultGranted        = "granted"
 	resultRefreshGranted = "refresh_granted"
@@ -52,13 +48,11 @@ const (
 
 type pair struct{ host, header string }
 
-// tokens is what a grant whose source is a sign-in flow holds: the tokens
-// its endpoint issued last, none before a sign-in. They live here alone,
-// and a replaced one is zeroed.
+// tokens is what a grant whose source is a sign-in flow holds: the tokens its endpoint issued last, none before a sign-in. They live here alone, and a replaced
+// one is zeroed.
 type tokens struct{ access, refresh []byte }
 
-// Broker releases a secret only for the (host, header) pair of its grant, and
-// only after the ledger holds a durable record of the release.
+// Broker releases a secret only for the (host, header) pair of its grant, and only after the ledger holds a durable record of the release.
 type Broker struct {
 	grants map[pair]Grant
 	tokens map[pair]*tokens // the grants whose source is a sign-in flow
@@ -68,14 +62,12 @@ type Broker struct {
 	log         Ledger
 	windowStart time.Time
 	count       int
-	// Denials have their own window so they can neither spend the grant
-	// quota beyond their own lookups nor fill the ledger.
+	// Denials have their own window so they can neither spend the grant quota beyond their own lookups nor fill the ledger.
 	rejectStart time.Time
 	rejected    int
 }
 
-// NewBroker builds a broker from the session's [[secret]] rows. Each field
-// of a row is required, and no two rows share a (host, header) pair.
+// NewBroker builds a broker from the session's [[secret]] rows. Each field of a row is required, and no two rows share a (host, header) pair.
 func NewBroker(grants []Grant, log Ledger) (*Broker, error) {
 	if log == nil {
 		return nil, errors.New("secret ledger is required")
@@ -98,18 +90,14 @@ func NewBroker(grants []Grant, log Ledger) (*Broker, error) {
 	return &Broker{grants: table, tokens: held, now: time.Now, log: log}, nil
 }
 
-// Lookup returns the value granted for header on host: its source read now,
-// or the access token its sign-in flow holds. A denial is recorded while
-// the denial window allows; a grant is always recorded, and withheld when
-// its record is not durable. The caller owns the value and wipes it with
-// Zero.
+// Lookup returns the value granted for header on host: its source read now, or the access token its sign-in flow holds. A denial is recorded while the denial
+// window allows; a grant is always recorded, and withheld when its record is not durable. The caller owns the value and wipes it with Zero.
 func (b *Broker) Lookup(ctx context.Context, host, header string) ([]byte, error) {
 	return b.release(ctx, host, header, false)
 }
 
-// Refresh returns the refresh token the sign-in flow granted for header on
-// host holds, for the token endpoint alone, recorded as Lookup records a
-// release. The caller owns the value and wipes it with Zero.
+// Refresh returns the refresh token the sign-in flow granted for header on host holds, for the token endpoint alone, recorded as Lookup records a release. The
+// caller owns the value and wipes it with Zero.
 func (b *Broker) Refresh(ctx context.Context, host, header string) ([]byte, error) {
 	return b.release(ctx, host, header, true)
 }
@@ -142,8 +130,7 @@ func (b *Broker) release(ctx context.Context, host, header string, refresh bool)
 	} else {
 		value = v
 	}
-	// The record is the ledger of every release: a value whose record is not
-	// durable is withheld, so the ledger never under-reports what left.
+	// The record is the ledger of every release: a value whose record is not durable is withheld, so the ledger never under-reports what left.
 	if err := b.record(p, g.Name, result); err != nil {
 		Zero(value)
 		return nil, err
@@ -165,11 +152,9 @@ func (b *Broker) held(t *tokens, refresh bool) []byte {
 	return bytes.Clone(v)
 }
 
-// Issue takes the tokens the sign-in flow granted for header on host was
-// issued, which the broker owns from here: each replaces the one held, which
-// is zeroed, and an empty one leaves the one held in place. The sign-in, or
-// the refresh when tokens were held, is recorded; one whose record is not
-// durable is refused, and from then on nothing is released.
+// Issue takes the tokens the sign-in flow granted for header on host was issued, which the broker owns from here: each replaces the one held, which is zeroed,
+// and an empty one leaves the one held in place. The sign-in, or the refresh when tokens were held, is recorded; one whose record is not durable is refused,
+// and from then on nothing is released.
 func (b *Broker) Issue(host, header string, access, refresh []byte) error {
 	p := pair{host, header}
 	g, ok := b.grants[p]
@@ -196,9 +181,8 @@ func (b *Broker) Issue(host, header string, access, refresh []byte) error {
 	return b.record(p, g.Name, result)
 }
 
-// Tokens returns copies of the access and the refresh token the sign-in
-// flow granted for header on host holds, nil for one it does not. Nothing
-// is released: the caller hides them, and wipes the copies with Zero.
+// Tokens returns copies of the access and the refresh token the sign-in flow granted for header on host holds, nil for one it does not. Nothing is released:
+// the caller hides them, and wipes the copies with Zero.
 func (b *Broker) Tokens(host, header string) (access, refresh []byte) {
 	t := b.tokens[pair{host, header}]
 	if t == nil {
@@ -229,8 +213,7 @@ func (b *Broker) allow(start *time.Time, count *int) bool {
 	return true
 }
 
-// record puts one lookup in the ledger and makes it durable before it returns, so a
-// caller can withhold a value whose record did not reach it.
+// record puts one lookup in the ledger and makes it durable before it returns, so a caller can withhold a value whose record did not reach it.
 func (b *Broker) record(p pair, name, result string) error {
 	if err := b.log.Record(audit.Record{Event: audit.Secret, Host: p.host, Header: p.header, Name: name, Result: result}); err != nil {
 		return fmt.Errorf("secret ledger failed; no grant: %w", err)

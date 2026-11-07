@@ -26,6 +26,7 @@ import (
 	"github.com/omkhar/workcell/v2/internal/audit"
 	"github.com/omkhar/workcell/v2/internal/fileserve"
 	"github.com/omkhar/workcell/v2/internal/guest"
+	"github.com/omkhar/workcell/v2/internal/provider"
 	"github.com/omkhar/workcell/v2/internal/proxy"
 	"github.com/omkhar/workcell/v2/internal/relay"
 	"github.com/omkhar/workcell/v2/internal/resolver"
@@ -41,11 +42,10 @@ const (
 	frameLimit = 5 * time.Second  // one frame, once it has begun
 )
 
-// run is `workcell run [--mount] [--cpus N] [--memory SIZE] [--disk SIZE] [--allow HOST]... [--cache NAME[:rw]]... [--] <cmd> [args...]`: it boots a guest
-// with a copy of the current directory in it, or with the directory itself served live (`--mount`, A5), runs the
-// command there and exits as the command did. This process is the session's supervisor (A9): it owns the VM,
-// the channel and the proxy, and the VM dies with it. The policy (SPEC section 5) is read first: a file it
-// cannot take is refused like a bad argument, before anything boots.
+// run is `workcell run [--mount] [--cpus N] [--memory SIZE] [--disk SIZE] [--allow HOST]... [--cache NAME[:rw]]... [--] <cmd> [args...]`: it boots a guest with
+// a copy of the current directory in it, or with the directory itself served live (`--mount`, A5), runs the command there and exits as the command did. This
+// process is the session's supervisor (A9): it owns the VM, the channel and the proxy, and the VM dies with it. The policy (SPEC section 5) is read first: a
+// file it cannot take is refused like a bad argument, before anything boots.
 func run(args []string, stderr io.Writer) int {
 	caps, mount, extra, caches, args, ok := parseRun(args, stderr)
 	if !ok {
@@ -57,7 +57,10 @@ func run(args []string, stderr io.Writer) int {
 		return 2
 	}
 	a, err := loadArtifacts()
+	var in installer
+	var provs []provider.Provider
 	if err == nil {
+		in, provs = startup(stderr)
 		a.layers, err = findLayers(a.dir)
 	}
 	if err == nil {
@@ -68,6 +71,9 @@ func run(args []string, stderr io.Writer) int {
 	code := 0
 	if err == nil {
 		code, err = session(args, caps, mount, a, allow, secrets)
+		if errors.Is(err, errNoExec) {
+			in.fail(provs, filepath.Base(args[0]), stderr)
+		}
 	}
 	if err != nil {
 		fmt.Fprintln(stderr, "workcell:", err)
@@ -78,11 +84,9 @@ func run(args []string, stderr io.Writer) int {
 	return code
 }
 
-// session boots a guest and runs argv in it, with the current directory copied in, or served
-// live when mount holds, with the network allow names (nil for none) and the secret bindings,
-// of which the guest gets each placeholder alone, in the variable its row names (I5, A4). It
-// returns the command's exit code. A nonzero code with an error means the command could not
-// run; an error alone means the session failed.
+// session boots a guest and runs argv in it, with the current directory copied in, or served live when mount holds, with the network allow names (nil for none)
+// and the secret bindings, of which the guest gets each placeholder alone, in the variable its row names (I5, A4). It returns the command's exit code. A
+// nonzero code with an error means the command could not run; an error alone means the session failed.
 func session(argv []string, caps limits, mount bool, a artifacts, allow *proxy.Allowlist, secrets []binding) (code int, err error) {
 	sigs := make(chan os.Signal, 4)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
@@ -188,8 +192,8 @@ func session(argv []string, caps limits, mount bool, a artifacts, allow *proxy.A
 	}
 }
 
-// booted is a guest whose init has connected. close ends the VM and removes its files; it
-// returns only once the VMM process is gone, so the next boot may reuse the CID.
+// booted is a guest whose init has connected. close ends the VM and removes its files; it returns only once the VMM process is gone, so the next boot may reuse
+// the CID.
 type booted struct {
 	conn  net.Conn
 	dir   string        // holds the VMM's sockets and the session's attach socket; close removes it
@@ -198,11 +202,9 @@ type booted struct {
 	close func()
 }
 
-// newSession records a session of the directory repo: <data>/sessions/<id>/ holding a file repo
-// that names the directory, so that diff and pull find the newest session of a directory
-// later. A mount session leaves this record alone, so that pull and diff know the work went
-// into the directory itself; a clone session adds its image. rm removes it (I7). The returned
-// file holds the session's lock until it is closed, which ls and stop read as "running".
+// newSession records a session of the directory repo: <data>/sessions/<id>/ holding a file repo that names the directory, so that diff and pull find the newest
+// session of a directory later. A mount session leaves this record alone, so that pull and diff know the work went into the directory itself; a clone session
+// adds its image. rm removes it (I7). The returned file holds the session's lock until it is closed, which ls and stop read as "running".
 func newSession(a artifacts, repo string) (string, *os.File, error) {
 	var r [4]byte
 	if _, err := rand.Read(r[:]); err != nil {
@@ -224,8 +226,8 @@ func newSession(a artifacts, repo string) (string, *os.File, error) {
 	return dir, lock, nil
 }
 
-// openAudit makes the session's record in the session directory dir, signed with the host's key in
-// data, and writes its first line. A session that cannot be recorded does not start (I9).
+// openAudit makes the session's record in the session directory dir, signed with the host's key in data, and writes its first line. A session that cannot be
+// recorded does not start (I9).
 func openAudit(data, dir string) (*audit.Log, error) {
 	key, err := audit.LoadKey(data)
 	if err != nil {
@@ -242,11 +244,9 @@ func openAudit(data, dir string) (*audit.Log, error) {
 	return log, nil
 }
 
-// export copies the directory repo into the new session directory dir: the image the guest gets as /workspace.
-// The image lives in the data directory, not under TMPDIR, because a reflink only works
-// within one filesystem and the data directory shares the home filesystem with most
-// repositories. It is as big as the repository plus the room the guest may write, which is
-// --disk or 1 GiB (I10). It stays when the session ends, for diff and pull.
+// export copies the directory repo into the new session directory dir: the image the guest gets as /workspace. The image lives in the data directory, not under
+// TMPDIR, because a reflink only works within one filesystem and the data directory shares the home filesystem with most repositories. It is as big as the
+// repository plus the room the guest may write, which is --disk or 1 GiB (I10). It stays when the session ends, for diff and pull.
 func export(dir string, caps limits, repo string) (string, error) {
 	image := filepath.Join(dir, "workspace.ext4")
 	if _, err := workspace.Export(context.Background(), repo, image, caps.disk()); err != nil {
@@ -256,17 +256,13 @@ func export(dir string, caps limits, repo string) (string, error) {
 	return image, nil
 }
 
-// boot starts a guest and waits for its init to dial in. The guest's /workspace is the ext4
-// image at image (clone mode), or the directory mount itself, served live over vsock (mount
-// mode, ADR-005), or empty when both are "". The guest's network is the proxy for allow, or
-// none when allow is nil (A3); every name allowed on port 443 is terminated with a CA made
-// here, for this session alone (I6, A9), and each secret binding is swapped in there (bind).
-// close ends the VM and removes its files; the image stays, and
-// the mounted directory is never anything but the user's own tree. A nil result means the
-// session goes no further: code and err say how it ended (see accept).
-// The VMM's sockets and config live in a directory under TMPDIR, since a unix socket path has
-// 108 bytes and the data directory may be deep. The path is recorded in session, a session
-// directory ("" for none), so that rm removes it even after the supervisor was killed (I7).
+// boot starts a guest and waits for its init to dial in. The guest's /workspace is the ext4 image at image (clone mode), or the directory mount itself, served
+// live over vsock (mount mode, ADR-005), or empty when both are "". The guest's network is the proxy for allow, or none when allow is nil (A3); every name
+// allowed on port 443 is terminated with a CA made here, for this session alone (I6, A9), and each secret binding is swapped in there (bind). close ends the VM
+// and removes its files; the image stays, and the mounted directory is never anything but the user's own tree. A nil result means the session goes no further:
+// code and err say how it ended (see accept). The VMM's sockets and config live in a directory under TMPDIR, since a unix socket path has 108 bytes and the
+// data directory may be deep. The path is recorded in session, a session directory ("" for none), so that rm removes it even after the supervisor was killed
+// (I7).
 func boot(a artifacts, caps limits, sigs <-chan os.Signal, session string, log *audit.Log, image, mount string, allow *proxy.Allowlist, secrets []binding) (*booted, int, error) {
 	dir, err := os.MkdirTemp("", "wc") // short names: see above
 	if err != nil {
@@ -359,10 +355,9 @@ func boot(a artifacts, caps limits, sigs <-chan os.Signal, session string, log *
 	return &booted{conn: raw, dir: dir, took: time.Since(start), ca: ca, close: func() { raw.Close(); closeAll() }}, 0, nil
 }
 
-// bind makes p terminate every allowed name with ca and swap each binding's placeholder for the
-// value its broker releases on the host, which it does only once the use is durable in the
-// session's audit log (I9): the host, header and name of each use, never a byte of the value.
-// With no binding there is no broker and nothing is swapped.
+// bind makes p terminate every allowed name with ca and swap each binding's placeholder for the value its broker releases on the host, which it does only once
+// the use is durable in the session's audit log (I9): the host, header and name of each use, never a byte of the value. With no binding there is no broker and
+// nothing is swapped.
 func bind(p *proxy.Proxy, ca *proxy.SessionCA, secrets []binding, log *audit.Log) error {
 	if len(secrets) == 0 {
 		return p.Terminate(ca, nil, nil)
@@ -381,9 +376,8 @@ func bind(p *proxy.Proxy, ca *proxy.SessionCA, secrets []binding, log *audit.Log
 	return p.Terminate(ca, broker, rules)
 }
 
-// once is the channel's listener: it takes exactly one connection, the init's, then closes,
-// so the backend refuses every later guest connection to the port instead of queuing each
-// one, and whatever the guest writes on it, for the whole session (I12).
+// once is the channel's listener: it takes exactly one connection, the init's, then closes, so the backend refuses every later guest connection to the port
+// instead of queuing each one, and whatever the guest writes on it, for the whole session (I12).
 type once struct{ net.Listener }
 
 func (l once) Accept() (net.Conn, error) {
@@ -394,15 +388,14 @@ func (l once) Accept() (net.Conn, error) {
 	return c, err
 }
 
-// mountService is the host side of mount mode (ADR-005): it answers the guest's FUSE stream from the
-// export. openMount makes one where the OS has it.
+// mountService is the host side of mount mode (ADR-005): it answers the guest's FUSE stream from the export. openMount makes one where the OS has it.
 type mountService interface {
 	Serve(wire.Stream) error
 	Close()
 }
 
-// serveMount answers the guest's FUSE stream, the one connection to fileserve.Port, from the
-// export until either side ends. Nothing is left to release but what close releases.
+// serveMount answers the guest's FUSE stream, the one connection to fileserve.Port, from the export until either side ends. Nothing is left to release but what
+// close releases.
 func serveMount(ln net.Listener, s mountService) {
 	c, err := ln.Accept()
 	if err != nil {
@@ -412,8 +405,8 @@ func serveMount(ln net.Listener, s mountService) {
 	_ = s.Serve(c)
 }
 
-// accept waits for the guest to dial in. A guest that never does is reported with the end
-// of its console. A non-nil conn means the session goes on; otherwise code and err are the result.
+// accept waits for the guest to dial in. A guest that never does is reported with the end of its console. A non-nil conn means the session goes on; otherwise
+// code and err are the result.
 func accept(ln net.Listener, m vmm.Machine, sigs <-chan os.Signal, console *tail) (net.Conn, int, error) {
 	type accepted struct {
 		c   net.Conn
@@ -447,9 +440,8 @@ type result struct {
 	err  error
 }
 
-// output passes the guest's output to the seat and gives back a window slot for every Ack,
-// until the command's Exit or an error ends the session. It decodes bytes the guest chose,
-// so every payload is checked.
+// output passes the guest's output to the seat and gives back a window slot for every Ack, until the command's Exit or an error ends the session. It decodes
+// bytes the guest chose, so every payload is checked.
 func output(c *wire.Conn, s *seat, done chan<- result) {
 	for {
 		f, err := c.ReadFrame()
@@ -480,6 +472,9 @@ func output(c *wire.Conn, s *seat, done chan<- result) {
 	}
 }
 
+// errNoExec is the guest's word that the command could not run: exit status 126, and the end of its layer when it is a provider's binary (fail).
+var errNoExec = errors.New("the command could not run")
+
 // exitResult is how the command ended, from the payload of its Exit frame.
 func exitResult(payload []byte) result {
 	e, err := guest.DecodeExit(payload)
@@ -487,17 +482,16 @@ func exitResult(payload []byte) result {
 	case err != nil:
 		return result{err: err}
 	case e.Err != "":
-		return result{code: 126, err: fmt.Errorf("the command could not run: %q", e.Err)}
+		return result{code: 126, err: fmt.Errorf("%w: %q", errNoExec, e.Err)}
 	case e.Signal != 0:
 		return result{code: 128 + e.Signal}
 	}
 	return result{code: e.Code}
 }
 
-// seat is the supervisor's end of the terminal: the one client that holds it, or nobody, in
-// which case the output is dropped and the command goes on. A client that sits down turns out
-// the one before. Clients speak the guest's frames (Stdin and Resize to the guest; Stdout,
-// Stderr and Exit from it), so the guest channel stays the supervisor's alone.
+// seat is the supervisor's end of the terminal: the one client that holds it, or nobody, in which case the output is dropped and the command goes on. A client
+// that sits down turns out the one before. Clients speak the guest's frames (Stdin and Resize to the guest; Stdout, Stderr and Exit from it), so the guest
+// channel stays the supervisor's alone.
 type seat struct {
 	mu     sync.Mutex
 	raw    net.Conn
@@ -543,13 +537,11 @@ func (s *seat) send(f wire.Frame) {
 	}
 }
 
-// attachLimit is how long a client may wait to hand over a frame: the supervisor takes none
-// while the command has not read the input it was sent.
+// attachLimit is how long a client may wait to hand over a frame: the supervisor takes none while the command has not read the input it was sent.
 const attachLimit = time.Hour
 
-// client shows the session's terminal over raw until the command ends, the terminal goes away or
-// another client takes the seat. restore puts the terminal back; tty says there is one. Without a
-// terminal the end of input closes the command's stdin; with one it means the terminal is gone.
+// client shows the session's terminal over raw until the command ends, the terminal goes away or another client takes the seat. restore puts the terminal back;
+// tty says there is one. Without a terminal the end of input closes the command's stdin; with one it means the terminal is gone.
 func client(raw net.Conn, restore func(), tty bool) (int, error) {
 	defer raw.Close()
 	defer restore()
@@ -610,8 +602,8 @@ func client(raw net.Conn, restore func(), tty bool) (int, error) {
 	}
 }
 
-// attach is `workcell attach [id]`: it takes the terminal of a running session, by default the newest run
-// in this directory, from whoever has it. Closing the terminal detaches; the session goes on.
+// attach is `workcell attach [id]`: it takes the terminal of a running session, by default the newest run in this directory, from whoever has it. Closing the
+// terminal detaches; the session goes on.
 func attach(args []string, stderr io.Writer) int {
 	dir, err := logSession(strings.Join(args, " ")) // two words name no session
 	var listed []byte
@@ -643,8 +635,7 @@ func attach(args []string, stderr io.Writer) int {
 	return code
 }
 
-// tail keeps the end of the guest's console: enough to say why a boot failed, and bounded
-// however much the guest writes (I10).
+// tail keeps the end of the guest's console: enough to say why a boot failed, and bounded however much the guest writes (I10).
 type tail struct {
 	mu sync.Mutex
 	b  []byte
@@ -666,8 +657,8 @@ func (t *tail) bytes() []byte {
 	return slices.Clone(t.b)
 }
 
-// lastLines is the last n lines of console output, safe to print on a terminal: the guest
-// chose these bytes, so anything but printable ASCII becomes '?', and carriage returns go.
+// lastLines is the last n lines of console output, safe to print on a terminal: the guest chose these bytes, so anything but printable ASCII becomes '?', and
+// carriage returns go.
 func lastLines(b []byte, n int) string {
 	s := strings.Map(func(r rune) rune {
 		switch {
@@ -685,8 +676,8 @@ func lastLines(b []byte, n int) string {
 // minFree is the room doctor asks of the data directory's volume: its images, and a session's clone at the default 1GiB cap.
 const minFree = 4 << 30
 
-// doctor is `workcell doctor`: "ok" or "FAIL" and a fix line for the hypervisor, the artifacts and the
-// disk space a session needs. It exits 1 if any fails, and only reports: `workcell update` fills the data directory.
+// doctor is `workcell doctor`: "ok" or "FAIL" and a fix line for the hypervisor, the artifacts and the disk space a session needs. It exits 1 if any fails, and
+// only reports: `workcell update` fills the data directory.
 func doctor(args []string, stdout, stderr io.Writer) int {
 	dir, err := dataDir()
 	if err != nil || len(args) != 0 {

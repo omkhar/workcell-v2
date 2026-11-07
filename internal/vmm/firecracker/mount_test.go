@@ -29,11 +29,9 @@ const (
 	busyLoop  = "echo looping; while cat seed.txt >/dev/null; do :; done; exit 9"
 )
 
-// TestMount boots cmd/workcell-init with the Debian image in mount mode (ADR-005): /workspace
-// is a directory of this host, served by internal/fileserve over the guest's FUSE stream. Each
-// operation of the unit's acceptance is done through the guest's shell and checked on the host
-// tree at once, git copied from this host runs `git status` in the mounted repository, and the
-// two ways a host goes away each leave no process waiting on the mount.
+// TestMount boots cmd/workcell-init with the Debian image in mount mode (ADR-005): /workspace is a directory of this host, served by internal/fileserve over
+// the guest's FUSE stream. Each operation of the unit's acceptance is done through the guest's shell and checked on the host tree at once, git copied from this
+// host runs `git status` in the mounted repository, and the two ways a host goes away each leave no process waiting on the mount.
 func TestMount(t *testing.T) {
 	needKVM(t)
 	binary, kernel := pinned(t)
@@ -111,11 +109,9 @@ func TestMount(t *testing.T) {
 		}
 	})
 
-	// The caps of I10 in mount mode, as the escape row mount-disk-flood runs them: one vCPU, so
-	// the init has one P, 256 MiB, and 64 MiB of growth. The command is started with /workspace
-	// as its directory by a vfork whose child waits on the mount for the init's own copier, so the
-	// init must keep a second P (mountFUSE). It takes a payload-sized stdin as the escape loader
-	// does, floods the export past the cap, and its exit is reported.
+	// The caps of I10 in mount mode, as the escape row mount-disk-flood runs them: one vCPU, so the init has one P, 256 MiB, and 64 MiB of growth. The command is
+	// started with /workspace as its directory by a vfork whose child waits on the mount for the init's own copier, so the init must keep a second P (mountFUSE).
+	// It takes a payload-sized stdin as the escape loader does, floods the export past the cap, and its exit is reported.
 	t.Run("capped", func(t *testing.T) {
 		capped := in
 		capped.cpus, capped.memoryMiB, capped.cmdline = 1, 256, in.cmdline+" workcell.disk=64"
@@ -144,8 +140,7 @@ sync && rm -f sparse fill && echo done`
 		}
 	})
 
-	// The file service goes away under a command that is using the mount: the command gets an
-	// error, not a wait with no end.
+	// The file service goes away under a command that is using the mount: the command gets an error, not a wait with no end.
 	t.Run("stream-end", func(t *testing.T) {
 		g, h := connectMount(t, in, repository(t), uncapped)
 		g.exec(guest.Exec{Argv: []string{"sh", "-c", busyLoop}, Dir: "/workspace", Env: []string{guestPath}})
@@ -160,9 +155,8 @@ sync && rm -f sparse fill && echo done`
 		t.Logf("mount stream_end_error_ms=%d stderr=%q serve=%v", took.Milliseconds(), strings.TrimSpace(g.errs.String()), h.wait())
 	})
 
-	// The channel ends while the host holds a request of a command without answering, so the
-	// command waits in the kernel where no signal reaches it: the init must still get the guest
-	// powered off promptly, which takes aborting the mount before killing.
+	// The channel ends while the host holds a request of a command without answering, so the command waits in the kernel where no signal reaches it: the init must
+	// still get the guest powered off promptly, which takes aborting the mount before killing.
 	t.Run("channel-end", func(t *testing.T) {
 		g, h := connectMount(t, in, repository(t), uncapped)
 		g.exec(guest.Exec{Argv: []string{"sh", "-c", busyLoop}, Dir: "/workspace", Env: []string{guestPath}})
@@ -198,8 +192,7 @@ func hostGone(path string) error {
 	return nil
 }
 
-// repository is a small tree to export: two files, a repository git init made, and this
-// host's git, which the image lacks, to run in the guest.
+// repository is a small tree to export: two files, a repository git init made, and this host's git, which the image lacks, to run in the guest.
 func repository(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
@@ -228,8 +221,7 @@ func repository(t *testing.T) string {
 	return dir
 }
 
-// mountHost is the host side of one mount session: the guest's FUSE stream, served from the
-// export until Serve returns, which wait reports.
+// mountHost is the host side of one mount session: the guest's FUSE stream, served from the export until Serve returns, which wait reports.
 type mountHost struct {
 	stream *held
 	done   chan error
@@ -288,9 +280,8 @@ func connectMount(t *testing.T, in inputs, export string, limit int64) (*client,
 	return newClient(t, m, raw, dir), h
 }
 
-// held is a net.Conn whose writes can be held back: the host then has the guest's requests and
-// answers none, as a wedged host would, so a guest process waits in the kernel on a reply that
-// never comes, where no signal reaches it.
+// held is a net.Conn whose writes can be held back: the host then has the guest's requests and answers none, as a wedged host would, so a guest process waits
+// in the kernel on a reply that never comes, where no signal reaches it.
 type held struct {
 	net.Conn
 	mu   sync.Mutex

@@ -35,14 +35,17 @@ import (
 	rows "github.com/omkhar/workcell/v2/pins"
 )
 
-// maxLayer bounds the bytes of tar stream, and of file data, that one provider CLI's artifact may unpack to in memory.
-const maxLayer = 1 << 30
+// maxLayer bounds the bytes of tar stream, and of file data, that one provider CLI's artifact may unpack to in memory; channelBound is how long a fetch at a
+// session start may take: the day's check, and the install of what it kept.
+const (
+	maxLayer     = 1 << 30
+	channelBound = 10 * time.Minute
+)
 
-// update is `workcell update [--to VERSION | --rollback] [AGENT]`: the host side of a provider CLI's install (A10).
-// What may be installed is a pin of the signed channel manifest (I14), or of the row under pins/ when the channel
-// is held or no key is trusted: fetched on the host by its URL, refused unless its sha256 is the pin's (B8), and
-// unpacked into a layer, an ext4 image under the data directory that a session attaches read-only. A `current`
-// marker names the layer once the image is complete; the one it replaces stays as `previous`, which --rollback goes back to without fetching.
+// update is `workcell update [--to VERSION | --rollback] [AGENT]`: the host side of a provider CLI's install (A10). What may be installed is a pin of the
+// signed channel manifest (I14), or of the row under pins/ when the channel is held or no key is trusted: fetched on the host by its URL, refused unless its
+// sha256 is the pin's (B8), and unpacked into a layer, an ext4 image under the data directory that a session attaches read-only. A `current` marker names the
+// layer once the image is complete; the one it replaces stays as `previous`, which --rollback goes back to without fetching.
 func update(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("update", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
@@ -65,7 +68,7 @@ func update(args []string, stdout, stderr io.Writer) int {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute) // one bound for the invocation: a stalled upstream cannot hang it
 	defer cancel()
-	manifest := sync.OnceValues(func() (*channel.Manifest, error) { return in.manifest(ctx) }) // channel.json is fetched and verified once, however many providers install
+	manifest := sync.OnceValues(func() (*channel.Manifest, error) { _, m, err := in.manifest(ctx); return m, err }) // channel.json is fetched and verified once, however many providers install
 	rc := 0
 	for _, p := range provs {
 		if _, err := in.row(p); err != nil && fs.NArg() == 0 {
@@ -82,8 +85,8 @@ func update(args []string, stdout, stderr io.Writer) int {
 	return rc
 }
 
-// installer is what update works with: the data directory, the rows under pins/, the client that fetches (an artifact
-// through pins.Redirect, channel.json following no redirect), the channel's URL, "" when nothing is fetched, the keys trusted to sign it and the user's cool-off (B10).
+// installer is what update works with: the data directory, the rows under pins/, the client that fetches (an artifact through pins.Redirect, channel.json
+// following no redirect), the channel's URL, "" when nothing is fetched, the keys trusted to sign it and the user's cool-off (B10).
 type installer struct {
 	dir     string
 	rows    []pins.Pin
@@ -93,8 +96,8 @@ type installer struct {
 	cooloff time.Duration
 }
 
-// newInstaller reads the user's [update] table (B10): the channel is fetched unless it is "hold" or no
-// key is trusted, the table's alone when it gives one, else the built-in ones; ca's certificates alone are the roots.
+// newInstaller reads the user's [update] table (B10): the channel is fetched unless it is "hold" or no key is trusted, the table's alone when it gives one,
+// else the built-in ones; ca's certificates alone are the roots.
 func newInstaller() (in installer, err error) {
 	in = installer{client: &http.Client{}, keys: channel.Keys}
 	file, err := configFile()
@@ -136,8 +139,8 @@ func newInstaller() (in installer, err error) {
 	return in, nil
 }
 
-// update brings the provider p to its current pin, to the pin to names, or back to the layer kept from before, and
-// returns the result line: agent, version, digest prefix. The pins come from the channel manifest, fetched by manifest when there is one to fetch, else from the row's own.
+// update brings the provider p to its current pin, to the pin to names, or back to the layer kept from before, and returns the result line: agent, version,
+// digest prefix. The pins come from the channel manifest, fetched by manifest when there is one to fetch, else from the row's own.
 func (in installer) update(ctx context.Context, p provider.Provider, manifest func() (*channel.Manifest, error), to string, rollback bool) (string, error) {
 	dir := filepath.Join(in.dir, "layers", p.Name)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
@@ -193,10 +196,9 @@ func (in installer) row(p provider.Provider) (pins.Pin, error) {
 	return in.rows[i], nil
 }
 
-// manifest fetches channel.json, at most channel.MaxBytes and following no redirect (a 3xx is a refusal), and
-// verifies it against the keys and the last serial seen, kept in <data>/channel.serial, which advances only
-// once a manifest verified (I14) and on any failure is untouched.
-func (in installer) manifest(ctx context.Context) (*channel.Manifest, error) {
+// manifest fetches channel.json, at most channel.MaxBytes and following no redirect (a 3xx is a refusal), and verifies it (verify); it returns the bytes too,
+// for the daily check to keep.
+func (in installer) manifest(ctx context.Context) ([]byte, *channel.Manifest, error) {
 	c := http.Client{Transport: in.client.Transport, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	body, err := artifact.Fetch(ctx, &c, in.channel, channel.MaxBytes)
 	var raw []byte
@@ -204,19 +206,115 @@ func (in installer) manifest(ctx context.Context) (*channel.Manifest, error) {
 		raw, err = io.ReadAll(body)
 		body.Close()
 	}
-	last, _ := strconv.ParseInt(marker(in.dir, "channel.serial"), 10, 64) // absent, or not a number, is 0
 	var m *channel.Manifest
 	if err == nil {
-		m, err = channel.Verify(raw, in.keys, time.Now(), last)
+		m, err = in.verify(raw, time.Now())
 	}
 	if err != nil {
-		return nil, fmt.Errorf("channel: %w", err)
+		return nil, nil, fmt.Errorf("channel: %w", err)
+	}
+	return raw, m, nil
+}
+
+// verify is channel.Verify of raw at now against the keys and the last serial seen, kept in <data>/channel.serial, which advances only once a manifest verified
+// (I14) and on any failure is untouched.
+func (in installer) verify(raw []byte, now time.Time) (*channel.Manifest, error) {
+	last, _ := strconv.ParseInt(marker(in.dir, "channel.serial"), 10, 64) // absent, or not a number, is 0
+	m, err := channel.Verify(raw, in.keys, now, last)
+	if err != nil {
+		return nil, err
 	}
 	return m, writeMarker(in.dir, "channel.serial", strconv.FormatInt(m.Serial, 10))
 }
 
-// choose is the candidate to install: with to, the one of that version, any other version refused; without,
-// the first, or the previous one while the user's cool-off (B10) still holds the first at now, or a refusal when there is none.
+// daily is the day's channel check (B9) at a session start: the first of a UTC day, by <data>/channel.day, fetches channel.json once, in a goroutine the
+// session never awaits (A9: it dies with the process), and keeps a manifest that verifies as <data>/channel.next for the next start to apply; later starts that
+// day, and a held channel, fetch nothing. It says whether a check started.
+func (in installer) daily(now time.Time) bool {
+	day := now.UTC().Format("2006-01-02")
+	if in.channel == "" || marker(in.dir, "channel.day") == day || writeMarker(in.dir, "channel.day", day) != nil {
+		return false
+	}
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), channelBound)
+		defer cancel()
+		if raw, _, err := in.manifest(ctx); err == nil {
+			_ = writeMarker(in.dir, "channel.next", string(raw))
+		}
+	}()
+	return true
+}
+
+// apply is what a session start makes of the manifest the last daily check kept (B9): <data>/channel.next, removed first whatever follows, is verified again
+// and its pin installed for each provider with a row, as the verb does, except that a pin whose image is the one marked failed is skipped (B10); each result or
+// error is one line on stderr, and the session goes on.
+func (in installer) apply(provs []provider.Provider, stderr io.Writer) {
+	raw := marker(in.dir, "channel.next")
+	if os.Remove(filepath.Join(in.dir, "channel.next")); raw == "" || in.channel == "" {
+		return
+	}
+	m, err := in.verify([]byte(raw), time.Now())
+	if err != nil {
+		fmt.Fprintln(stderr, "workcell: channel:", err)
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), channelBound)
+	defer cancel()
+	for _, p := range provs {
+		row, err := in.row(p)
+		if err != nil {
+			continue
+		}
+		pin, err := choose(channel.Select(m, row.Name, runtime.GOARCH), "", in.cooloff, time.Now())
+		if err == nil && pin.Version+"-"+pin.SHA256+".ext4" == marker(filepath.Join(in.dir, "layers", p.Name), "failed") {
+			continue
+		}
+		line, err := in.update(ctx, p, func() (*channel.Manifest, error) { return m, nil }, "", false)
+		if err != nil {
+			line = err.Error()
+		}
+		fmt.Fprintln(stderr, "workcell: update:", line)
+	}
+}
+
+// fail is the self-rollback (B10): the command's binary is a provider's whose layer is current, and it could not run, so that image is named in
+// layers/<agent>/failed, which apply skips until its pin changes, and current goes back to the previous layer by itself, nothing fetched and no manifest read;
+// with no previous, the next session boots without the layer.
+func (in installer) fail(provs []provider.Provider, binary string, stderr io.Writer) {
+	for _, p := range provs {
+		dir := filepath.Join(in.dir, "layers", p.Name)
+		cur := marker(dir, "current")
+		if p.Binary != binary || cur == "" {
+			continue
+		}
+		v, d := parse(cur)
+		err := errors.Join(writeMarker(dir, "failed", cur), in.record(p.Name, v, d, "failed"))
+		if err == nil {
+			_, err = in.point(p.Name, dir, marker(dir, "previous"), "", "rolled_back")
+		}
+		if err != nil {
+			fmt.Fprintln(stderr, "workcell: update:", err)
+		}
+		fmt.Fprintf(stderr, "workcell: update: %s %s could not run, so its layer is set aside; workcell update %s installs it again\n", p.Name, v, p.Name)
+	}
+}
+
+// startup is the channel's part of a session start (B9), each step best-effort and an error one line on stderr: the manifest the last daily check kept is
+// applied, then the day's check starts. It returns what fail needs after the session.
+func startup(stderr io.Writer) (installer, []provider.Provider) {
+	in, err := newInstaller()
+	provs, perr := provider.All()
+	if err = errors.Join(err, perr); err != nil {
+		fmt.Fprintln(stderr, "workcell: channel:", err)
+		return installer{}, nil
+	}
+	in.apply(provs, stderr)
+	in.daily(time.Now())
+	return in, provs
+}
+
+// choose is the candidate to install: with to, the one of that version, any other version refused; without, the first, or the previous one while the user's
+// cool-off (B10) still holds the first at now, or a refusal when there is none.
 func choose(cands []channel.Pin, to string, cooloff time.Duration, now time.Time) (channel.Pin, error) {
 	if to != "" {
 		if i := slices.IndexFunc(cands, func(c channel.Pin) bool { return c.Version == to }); i >= 0 {
@@ -233,8 +331,8 @@ func choose(cands []channel.Pin, to string, cooloff time.Duration, now time.Time
 	return cands[0], nil
 }
 
-// fetch downloads the pin into dir as the image name, through its digest check (B8): the bytes go to a temporary
-// file as they are hashed, and are unpacked only once the digest is the pin's, a mismatch leaving nothing behind; the image, written over the download, takes its name once complete and durable.
+// fetch downloads the pin into dir as the image name, through its digest check (B8): the bytes go to a temporary file as they are hashed, and are unpacked only
+// once the digest is the pin's, a mismatch leaving nothing behind; the image, written over the download, takes its name once complete and durable.
 func (in installer) fetch(ctx context.Context, dir, name, binary string, pin channel.Pin) error {
 	body, err := artifact.Fetch(ctx, in.client, pin.URL, artifact.MaxArtifact)
 	if err != nil {
@@ -264,10 +362,9 @@ func (in installer) fetch(ctx context.Context, dir, name, binary string, pin cha
 	return os.Rename(tmp.Name(), filepath.Join(dir, name))
 }
 
-// unpack reads the artifact f into the tree of a layer, its shape told by content and never by
-// URL: a gzip stream or a tar is applied as a layer, anything else is one bare file. Then, once, a
-// tree without bin/<binary> whose root holds exactly one regular file and no bin/ entry has that
-// file become bin/<binary>, mode 0755; the bare file is that case. Any other shape is refused.
+// unpack reads the artifact f into the tree of a layer, its shape told by content and never by URL: a gzip stream or a tar is applied as a layer, anything else
+// is one bare file. Then, once, a tree without bin/<binary> whose root holds exactly one regular file and no bin/ entry has that file become bin/<binary>, mode
+// 0755; the bare file is that case. Any other shape is refused.
 func unpack(f *os.File, binary string) (*rootfs.Tree, error) {
 	head := make([]byte, 262)
 	n, _ := f.ReadAt(head, 0)
@@ -312,9 +409,7 @@ func (in installer) point(agent, dir, current, previous, result string) (string,
 			os.Remove(img)
 		}
 	}
-	stem := strings.TrimSuffix(current, ".ext4") // the version and the digest the image is named for
-	i := strings.LastIndex(stem, "-")
-	v, d := stem[:max(i, 0)], stem[i+1:]
+	v, d := parse(current)
 	if err := in.record(agent, v, d, result); err != nil {
 		return "", err
 	}
@@ -344,6 +439,13 @@ func (in installer) record(agent, version, digest, result string) error {
 	}
 	_, err = f.Write(append(line, '\n'))
 	return errors.Join(err, f.Sync(), f.Close())
+}
+
+// parse is the version and the digest an image is named for.
+func parse(name string) (version, digest string) {
+	stem := strings.TrimSuffix(name, ".ext4")
+	i := strings.LastIndex(stem, "-")
+	return stem[:max(i, 0)], stem[i+1:]
 }
 
 // marker is the image name the marker file names, or "" when there is none.

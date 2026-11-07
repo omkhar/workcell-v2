@@ -112,10 +112,8 @@ func TestHide(t *testing.T) {
 	}
 }
 
-// TestTokenEndpoint: a path a case-folding router, or one that drops a
-// ;param suffix from a segment, would serve as the endpoint is the endpoint;
-// another path is not. Match only the exact spelling → the guest reads the
-// unrewritten answer of /OAUTH/TOKEN → FAIL (I5).
+// TestTokenEndpoint: a path a case-folding router, or one that drops a ;param suffix from a segment, would serve as the endpoint is the endpoint; another path
+// is not. Match only the exact spelling → the guest reads the unrewritten answer of /OAUTH/TOKEN → FAIL (I5).
 func TestTokenEndpoint(t *testing.T) {
 	t.Parallel()
 	rule := TerminateRule{Host: "api.example.com", SignIn: &SignIn{Host: "login.example.com", Path: tokenEndpointPath}}
@@ -147,10 +145,8 @@ func TestTokenEndpoint(t *testing.T) {
 	}
 }
 
-// TestLearn: a 2xx that is not a JSON object, as encoding/json reads one,
-// is refused whole and the broker is not asked, while a 2xx object goes to
-// the broker and a non-2xx is only hidden. Pass a 2xx through after hiding
-// → a BOM before the object carries both tokens to the guest → FAIL (I5).
+// TestLearn: a 2xx that is not a JSON object, as encoding/json reads one, is refused whole and the broker is not asked, while a 2xx object goes to the broker
+// and a non-2xx is only hidden. Pass a 2xx through after hiding → a BOM before the object carries both tokens to the guest → FAIL (I5).
 func TestLearn(t *testing.T) {
 	t.Parallel()
 	pair := `{"access_token":"sk-acc-1","refresh_token":"sk-ref-1"}`
@@ -299,8 +295,7 @@ func (p *provider) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// signinFixture terminates api.example.com, where the rule binds the access token
-// as a bearer, and login.example.com, the token host, both served by p.
+// signinFixture terminates api.example.com, where the rule binds the access token as a bearer, and login.example.com, the token host, both served by p.
 func signinFixture(t *testing.T, p *provider, broker Broker) (*http.Client, TerminateRule, *Proxy, *recorder) {
 	t.Helper()
 	server := httptest.NewTLSServer(p)
@@ -315,8 +310,7 @@ func signinFixture(t *testing.T, p *provider, broker Broker) (*http.Client, Term
 	return clientVia(listen(t, px, 443), caPool(t, ca)), rule, px, log
 }
 
-// send returns the status and body of one request, and fails the test on a
-// body that carries a real token: the guest never reads one (I5).
+// send returns the status and body of one request, and fails the test on a body that carries a real token: the guest never reads one (I5).
 func send(t *testing.T, c *http.Client, method, target, ctype, body string, header ...string) (int, string) {
 	t.Helper()
 	req := must(http.NewRequest(method, target, strings.NewReader(body)))
@@ -333,14 +327,10 @@ func send(t *testing.T, c *http.Client, method, target, ctype, body string, head
 	return code, got
 }
 
-// TestSignInFlow: before a sign-in the access placeholder is refused; a
-// sign-in's answer reaches the guest with the two placeholders in place of
-// the tokens and a fresh Content-Length; the access placeholder then goes
-// out as the real access token, the refresh placeholder in a form or a JSON
-// grant as the real refresh token, and after a refresh the same access
-// placeholder is the new token; a 400 that echoes the refresh token is
-// hidden too; and either placeholder anywhere else is refused or passed as
-// it is. Drop tokenResponse → the guest reads a real token → FAIL.
+// TestSignInFlow: before a sign-in the access placeholder is refused; a sign-in's answer reaches the guest with the two placeholders in place of the tokens and
+// a fresh Content-Length; the access placeholder then goes out as the real access token, the refresh placeholder in a form or a JSON grant as the real refresh
+// token, and after a refresh the same access placeholder is the new token; a 400 that echoes the refresh token is hidden too; and either placeholder anywhere
+// else is refused or passed as it is. Drop tokenResponse → the guest reads a real token → FAIL.
 func TestSignInFlow(t *testing.T) {
 	t.Parallel()
 	p := &provider{}
@@ -395,10 +385,8 @@ func TestSignInFlow(t *testing.T) {
 	_ = rule
 }
 
-// TestTokenAnswerFramings: a pair split inside a token across chunks, under
-// a media type with a charset, one gzipped, and one spelt with JSON escapes
-// all reach the guest as placeholders; an answer over the bound, and one
-// the broker cannot record, are refused whole.
+// TestTokenAnswerFramings: a pair split inside a token across chunks, under a media type with a charset, one gzipped, and one spelt with JSON escapes all reach
+// the guest as placeholders; an answer over the bound, and one the broker cannot record, are refused whole.
 func TestTokenAnswerFramings(t *testing.T) {
 	t.Parallel()
 	for _, mode := range []string{"chunked", "gzip", "escaped", "big", "unrecorded"} {
@@ -449,9 +437,8 @@ func TestTerminateRefusesBadSignIn(t *testing.T) {
 	}
 }
 
-// FuzzSwapRefresh: a body the guest wrote never makes swapRefresh panic;
-// one that does not carry the placeholder in its own field comes back as
-// it was, with the token not asked for, and one that does carries the token.
+// FuzzSwapRefresh: a body the guest wrote never makes swapRefresh panic; one that does not carry the placeholder in its own field comes back as it was, with
+// the token not asked for, and one that does carries the token.
 func FuzzSwapRefresh(f *testing.F) {
 	f.Add(0, "grant_type=refresh_token&refresh_token="+testRefreshPlaceholder)
 	f.Add(1, `{"refresh_token":"`+testRefreshPlaceholder+`"}`)
@@ -466,8 +453,7 @@ func FuzzSwapRefresh(f *testing.F) {
 	})
 }
 
-// FuzzHide: whatever the token endpoint answers, no real value is left in
-// the bytes the guest reads, nor in any string a JSON reading of them holds.
+// FuzzHide: whatever the token endpoint answers, no real value is left in the bytes the guest reads, nor in any string a JSON reading of them holds.
 func FuzzHide(f *testing.F) {
 	f.Add(`{"access_token":"sk-acc\/1","refresh_token":"sk-ref-1","n":1e400}`)
 	f.Add("sk-acc/1 sk-ref-1")

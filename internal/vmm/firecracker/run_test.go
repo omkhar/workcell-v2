@@ -26,9 +26,8 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-// TestRun runs the built `workcell run` as a child, as a user would, against a data
-// directory laid out the way `workcell update` will leave it: the pinned Firecracker and
-// kernel, an initramfs whose /init is workcell-init, and the Debian image from mkimage.
+// TestRun runs the built `workcell run` as a child, as a user would, against a data directory laid out the way `workcell update` will leave it: the pinned
+// Firecracker and kernel, an initramfs whose /init is workcell-init, and the Debian image from mkimage.
 func TestRun(t *testing.T) {
 	needKVM(t)
 	binary, kernel := pinned(t)
@@ -113,8 +112,7 @@ func TestRun(t *testing.T) {
 		}
 	})
 
-	// P3: on a clean data directory doctor finds the hypervisor and says what is missing; on the
-	// populated one every check passes.
+	// P3: on a clean data directory doctor finds the hypervisor and says what is missing; on the populated one every check passes.
 	t.Run("doctor", func(t *testing.T) {
 		for _, tc := range []struct {
 			name, xdg string
@@ -159,8 +157,7 @@ func TestRun(t *testing.T) {
 		}
 	})
 
-	// The caps of I10 as the guest sees them: one vCPU, at most 256 MiB of RAM, and ENOSPC
-	// at 64 MiB of writes to the root while less than that succeeds.
+	// The caps of I10 as the guest sees them: one vCPU, at most 256 MiB of RAM, and ENOSPC at 64 MiB of writes to the root while less than that succeeds.
 	t.Run("resource-caps", func(t *testing.T) {
 		flags = []string{"--cpus", "1", "--memory", "256MiB", "--disk", "64MiB"}
 		t.Cleanup(func() { flags = nil })
@@ -188,9 +185,8 @@ dd if=/dev/zero of=/var/tmp/b bs=1M count=80 2>&1 | grep -o 'No space left on de
 		}
 	})
 
-	// Clone mode: the guest starts in a copy of the directory, what it writes there stays
-	// there (I1), and once the session ends the VMM's files are gone while the copy stays
-	// as a session, with the directory it came from on record, for diff and pull.
+	// Clone mode: the guest starts in a copy of the directory, what it writes there stays there (I1), and once the session ends the VMM's files are gone while the
+	// copy stays as a session, with the directory it came from on record, for diff and pull.
 	t.Run("workspace", func(t *testing.T) {
 		own := t.TempDir() // this case's own repository; repo, which other cases use, is never reassigned
 		if err := os.WriteFile(filepath.Join(own, "hello.txt"), []byte("hi\n"), 0o644); err != nil {
@@ -231,11 +227,9 @@ dd if=/dev/zero of=/var/tmp/b bs=1M count=80 2>&1 | grep -o 'No space left on de
 		}
 	})
 
-	// A dependency cache (U-504). The runner's own Go toolchain goes into the guest in the export, the
-	// guest image having none. The first session builds into go:rw, a cold build that compiles the
-	// standard library; the next two read go and compile nothing, as `go build -x` shows, which
-	// prints no compile command for a package it takes from the cache. What the second session
-	// writes to its read-only cache is gone for the third, and the image is what it was (I7).
+	// A dependency cache (U-504). The runner's own Go toolchain goes into the guest in the export, the guest image having none. The first session builds into
+	// go:rw, a cold build that compiles the standard library; the next two read go and compile nothing, as `go build -x` shows, which prints no compile command
+	// for a package it takes from the cache. What the second session writes to its read-only cache is gone for the third, and the image is what it was (I7).
 	t.Run("dependency-cache", func(t *testing.T) {
 		goroot := runtime.GOROOT()
 		if _, err := os.Stat(filepath.Join(goroot, "bin", "go")); err != nil {
@@ -453,8 +447,8 @@ func onTerminal(t *testing.T, cmd *exec.Cmd) *terminal {
 	}}
 }
 
-// typeUntil types line again and again until the terminal shows want, for up to 30 s: a client
-// that has not connected yet reads nothing, and a line typed twice is answered twice.
+// typeUntil types line again and again until the terminal shows want, for up to 30 s: a client that has not connected yet reads nothing, and a line typed twice
+// is answered twice.
 func (x *terminal) typeUntil(t *testing.T, line, want string) {
 	t.Helper()
 	for end := time.Now().Add(30 * time.Second); time.Now().Before(end); time.Sleep(100 * time.Millisecond) {
@@ -486,8 +480,7 @@ func exitCode(t *testing.T, exited <-chan error, what string) int {
 	return -1
 }
 
-// debianImage builds cmd/mkimage into dir and runs it on the pinned Debian: the root image
-// `workcell update` will leave, as the escape adapter makes it.
+// debianImage builds cmd/mkimage into dir and runs it on the pinned Debian: the root image `workcell update` will leave, as the escape adapter makes it.
 func debianImage(t *testing.T, dir string) string {
 	t.Helper()
 	build(t, dir, "github.com/omkhar/workcell/v2/cmd/mkimage")
