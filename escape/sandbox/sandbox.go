@@ -43,8 +43,7 @@ type Output struct {
 type Config struct {
 	Payload   string // host path of the static payload binary
 	Workspace string // host directory exported into the guest as its workspace; "" exports nothing
-	// Mount serves Workspace itself, live (`--mount`, SPEC A5); false exports
-	// a copy-on-write clone. The control adapter shows it live either way.
+	// Mount serves Workspace live (`--mount`, SPEC A5) instead of a clone; control shows it live either way.
 	Mount     bool
 	CPUs      int
 	MemoryMiB int
@@ -54,28 +53,28 @@ type Config struct {
 	// The control adapter has no policy and ignores it.
 	Allow []string
 	// Deny names hosts the policy does not allow, resolved like an allowed
-	// name so that a policy the guest widened would reach a canary under it.
-	// The control adapter ignores it.
+	// name, so that a policy the guest widened would reach a canary under it.
 	Deny []string
 	// Resolver is the IPv4 address of a DNS server on the test host, port 53,
-	// that the host side of the session asks for every name it resolves for
-	// the guest; "" leaves the adapter's own. The judge runs it and so says
-	// what an allowed name resolves to (SPEC I4). In the control adapter it
-	// is the guest's own resolver.
+	// the host side of the session resolves every name with; "" leaves the
+	// adapter's own. The judge runs it (SPEC I4). Control gives it to the guest.
 	Resolver string
-	// Isolated, on Linux, runs the host side of the session in a network
-	// namespace of its own with one address the product's vetting accepts
-	// and no way out, so that a canary bound through Bind there is reached
-	// through the product's forward path and nothing leaves the test host
-	// (SPEC T8, S12). It needs Resolver. The control adapter ignores it.
+	// Isolated, on Linux, runs the host side in a network namespace of its own
+	// with one address the product's vetting accepts and no way out, so that a
+	// canary bound through Bind there is reached through the product's forward
+	// path and nothing leaves the test host (SPEC T8, S12). It needs Resolver.
 	Isolated bool
-	// Roots is the host path of a PEM bundle of the authorities the host side
-	// of the session trusts in an upstream, as an operator's SSL_CERT_FILE
-	// would: the suite's own, which signed every canary. "" leaves the host's
-	// own. The control adapter has no host side and ignores it.
+	// Roots is the host path of a PEM bundle the host side trusts in an
+	// upstream, as an operator's SSL_CERT_FILE: the suite's own authority,
+	// which signed every canary. "" leaves the host's own.
 	Roots string
 	// Secret is a credential bound to one allowed name; nil for none.
 	Secret *Secret
+	// Update is the [update] table the session's own configuration carries
+	// (Channel, CA and Key; Version plays no part), so that each session start
+	// makes the product's daily channel check; nil for no table. Control
+	// installs from the channel at every start, checking nothing.
+	Update *UpdateConfig
 }
 
 // Secret is one [[secret]] table entry as a test wants it: Value is bound to
@@ -83,45 +82,40 @@ type Config struct {
 // the variable Env, and only a terminated connection to Host is to carry
 // Value (SPEC A4, I5, I6). Method and Path narrow the binding to requests of
 // that method under that path prefix; Repos, to the repositories it names
-// (`owner/name`) on Host, as a git credential is scoped. The control adapter
-// stages Value itself, as a naive sandbox does. Source, when set, names the
-// row's source in the product's words instead of a file holding Value, which
-// is then empty: `signin:<host><path>` has the host obtain the credential
-// from a sign-in flow, the guest seeing the tokens it issues only as
-// placeholders, the access one in Env. The control adapter stages nothing
-// for such a row: the guest talks to the endpoint itself.
+// (`owner/name`) on Host, as a git credential is scoped. Source, when set,
+// names the row's source in the product's words instead of a file holding
+// Value, then empty: `signin:<host><path>` has the host obtain the credential
+// from a sign-in flow, the guest seeing its tokens only as placeholders, the
+// access one in Env. Control stages Value itself, as a naive sandbox does,
+// and nothing for a sign-in row: the guest talks to the endpoint itself.
 type Secret struct {
 	Name, Value, Host, Header, Env, Method, Path, Source string
 	Repos                                                []string
 }
 
-// UpdateConfig is one run of the product's update client as a judge wants
-// it: `workcell update` against a channel and an upstream the judge serves on
-// the test host (SPEC T8). The real adapter passes every field to the product
-// as a parameter (SPEC A11); nothing here is a test hook.
+// UpdateConfig is the product's update client as a judge wants it, against a
+// channel and an upstream the judge serves on the test host (SPEC T8). The
+// real adapter passes every field as a parameter the user could give (SPEC
+// A11); nothing here is a test hook.
 type UpdateConfig struct {
-	// Channel is the https URL of channel.json: the `[update] channel` the
-	// client consults. It names the test host's loopback address, never a name.
+	// Channel is the https URL of channel.json, `[update] channel`, naming the test host's loopback address.
 	Channel string
-	// CA is the PEM certificate that signed the certificates of the channel
-	// and upstream servers. The client is to trust it, and only it, for the run.
+	// CA is the PEM certificate that signed the channel's and upstream's certificates: the only one trusted.
 	CA []byte
-	// Key is the one channel key the client trusts: its table holds it, with
-	// a NotAfter in the future, and no other.
+	// Key is the one channel key the client trusts, with a NotAfter in the future.
 	Key ed25519.PublicKey
-	// Name is the pin the client is to install, keyed in the manifest by name
-	// and then by runtime.GOARCH. Version is `--to <version>`.
+	// Name is the pin to install, keyed in the manifest by name then runtime.GOARCH; Version is `--to <version>`.
 	Name, Version string
 }
 
 // Layer is one provider layer a judge wants installed on the host, as
 // `workcell update <agent>` installs it: the provider, the release, and the
 // artifact the row's digest names, in a shape a real upstream serves (a bare
-// executable, or a tar, plain or gzip, holding the binary at its root or
-// under bin/). The judge serves URL on its loopback over https under the
-// suite's authority (T8): the artifact, or other bytes to see a digest
-// mismatch refused. With no Artifact, URL is a real pin's and Digest its hex
-// SHA-256, fetched from upstream by the host's own network and trust (B8).
+// executable, or a tar, plain or gzip, with the binary at its root or under
+// bin/). The judge serves URL on its loopback under the suite's authority
+// (T8): the artifact, or other bytes to see a digest mismatch refused. With
+// no Artifact, URL is a real pin's and Digest its hex SHA-256, fetched from
+// upstream by the host's own network and trust (B8).
 type Layer struct {
 	Agent, Version, URL string
 	Artifact            []byte
@@ -158,38 +152,37 @@ type Observe interface {
 	// Helper returns the host pid of the session's named helper: "proxy",
 	// "resolver", "broker", or "supervisor" for the host end of the channel;
 	// names may share one process (SPEC A9). A helper lives only as long as a
-	// run does, so a judge asks while an Exec is in flight. One the product
-	// lacks is ErrNotImplemented.
+	// run does, so a judge asks during an Exec. One the product lacks is ErrNotImplemented.
 	Helper(ctx context.Context, name string) (pid int, err error)
 	// Channel describes the host-guest channel as the guest reaches it.
 	Channel(ctx context.Context) (Channel, error)
 	// Bind opens a listener ("tcp4") or a packet socket ("udp4") at addr on
 	// the host side of the session, where the product reaches the test host:
-	// in the host's own network, or the session's own when isolated. "host"
-	// as the host of addr stands for the test host's address there. A port
-	// that needs root fails with EACCES, and the judge binds it as root.
+	// the host's own network, or the session's own when isolated; "host" as
+	// the host of addr is the test host's address there. A port that needs
+	// root fails with EACCES, and the judge binds it as root.
 	Bind(ctx context.Context, network, addr string) (net.Listener, net.PacketConn, error)
 	// Relay describes the host end of the network relay: where the init opens
 	// one stream per relayed connection, behind the 20-byte header of ADR-003
 	// (version, proto, port, 16-byte address). A probe may dial it afresh.
 	Relay(ctx context.Context) (Channel, error)
-	// Update runs the product's update client once on the host, as
-	// `workcell update` does, with what u names, and returns the bytes of the
-	// artifact installed for u.Name afterwards, nil when none is. The state
-	// the client keeps between runs (last serial, installed artifact) is the
-	// session's: empty at Start, kept across calls. A refusal is not an
-	// error, and leaves the install as it was; an error means the client
-	// could not be run or its install could not be read.
+	// Update runs the product's update client once on the host, as `workcell
+	// update` does with what u names, and returns Installed for u.Name. What
+	// the client keeps between runs (last serial, the install) is the
+	// session's: empty at Start, kept across calls. A refusal is not an error
+	// and leaves the install as it was; an error means the client could not
+	// be run or its install could not be read.
 	Update(ctx context.Context, u UpdateConfig) (installed []byte, err error)
+	// Installed returns the bytes of the artifact installed for the pin name
+	// (UpdateConfig.Name), read on the host from the current layer; nil when none is.
+	Installed(ctx context.Context, name string) ([]byte, error)
 	// Install has the host install l for every session of this process, as
 	// `workcell update --to <version> <agent>` does from a row naming l.URL
 	// and the digest, and returns the host path of the layer's image, "" when
 	// the adapter keeps none. A refusal is an error.
 	Install(ctx context.Context, l Layer) (image string, err error)
-	// Bench runs the product's start benchmark once on the host, as
-	// `workcell bench start` does, with this session's artifacts, and returns
-	// what it printed and its exit status (SPEC P1). An error means it could
-	// not be run.
+	// Bench runs `workcell bench start` once on the host with this session's
+	// artifacts and returns what it printed and its exit status (SPEC P1).
 	Bench(ctx context.Context) (Output, error)
 }
 

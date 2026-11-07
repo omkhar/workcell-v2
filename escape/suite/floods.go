@@ -91,39 +91,34 @@ func sampledRun(read func() (int64, error), run func()) (below, above int64, err
 	return base - low, high - base, nil
 }
 
-// forkJudge fails if the guest's processes show up on the host.
-func forkJudge(ctx context.Context, s Session) (bool, string, error) {
-	r, _, above, err := sampled(s, hostProcs, "parent", strconv.Itoa(forkCount))
-	if err != nil {
-		return false, "", err
+// loadJudge runs the probe with args while read samples the host, and fails
+// if the host gained (gained) or lost more than bound meanwhile: a guest's
+// processes, memory, disk or descriptors counted as the host's. The detail
+// says what in the words given, the figure in units of unit.
+func loadJudge(read func() (int64, error), gained bool, bound, unit int64, what string, args ...string) Judge {
+	return func(ctx context.Context, s Session) (bool, string, error) {
+		r, below, above, err := sampled(s, read, args...)
+		if err != nil {
+			return false, "", err
+		}
+		got := below
+		if gained {
+			got = above
+		}
+		return got <= bound, fmt.Sprintf("the host %s (guest says %s: %s)", fmt.Sprintf(what, got/unit), r.Status, r.Detail), nil
 	}
-	if above > forkSlack {
-		return false, fmt.Sprintf("the host gained %d processes while the guest forked (guest says %s: %s)", above, r.Status, r.Detail), nil
-	}
-	return true, fmt.Sprintf("the host gained %d processes (guest says %s: %s)", above, r.Status, r.Detail), nil
 }
 
-// memoryJudge fails if the host lost more available memory than the cap and
-// its slack while the guest touched twice the cap.
-func memoryJudge(ctx context.Context, s Session) (bool, string, error) {
-	r, below, _, err := sampled(s, hostMemAvailable, "parent", strconv.Itoa(memoryTouch))
-	if err != nil {
-		return false, "", err
-	}
-	detail := fmt.Sprintf("the host lost %d MiB of available memory while the guest, capped at %d MiB, touched %d MiB (guest says %s: %s)", below>>20, capped.MemoryMiB, memoryTouch, r.Status, r.Detail)
-	return below <= int64(capped.MemoryMiB+memorySlack)<<20, detail, nil
-}
-
-// diskJudge fails if the host's filesystems lost more free space than the cap
-// and its slack while the guest wrote twice the cap.
-func diskJudge(ctx context.Context, s Session) (bool, string, error) {
-	r, below, _, err := sampled(s, hostDiskFree, strconv.Itoa(diskWrite))
-	if err != nil {
-		return false, "", err
-	}
-	detail := fmt.Sprintf("the host lost %d MiB of free disk while the guest, capped at %d MiB, wrote %d MiB (guest says %s: %s)", below>>20, capped.DiskMiB, diskWrite, r.Status, r.Detail)
-	return below <= int64(capped.DiskMiB+diskSlack)<<20, detail, nil
-}
+// The I10 judges on one figure each: the probe asks for about twice the cap,
+// and the host may lose no more than the cap and its slack, or gain no more
+// than the slack. The log judge holds the host's disk to one session's log.
+var (
+	forkJudge   = loadJudge(hostProcs, true, forkSlack, 1, "gained %d processes while the guest forked", "parent", strconv.Itoa(forkCount))
+	memoryJudge = loadJudge(hostMemAvailable, false, int64(capped.MemoryMiB+memorySlack)<<20, 1<<20, fmt.Sprintf("lost %%d MiB of available memory while the guest, capped at %d MiB, touched %d MiB", capped.MemoryMiB, memoryTouch), "parent", strconv.Itoa(memoryTouch))
+	diskJudge   = loadJudge(hostDiskFree, false, int64(capped.DiskMiB+diskSlack)<<20, 1<<20, fmt.Sprintf("lost %%d MiB of free disk while the guest, capped at %d MiB, wrote %d MiB", capped.DiskMiB, diskWrite), strconv.Itoa(diskWrite))
+	fileJudge   = loadJudge(hostFiles, true, fileSlack, 1, fmt.Sprintf("gained %%d open file handles while the guest opened %d", fileCount), strconv.Itoa(fileCount))
+	logJudge    = loadJudge(hostDiskFree, false, logCap+diskSlack<<20, 1<<20, fmt.Sprintf("lost %%d MiB of free disk while the guest streamed %d MiB of output, log cap %d MiB", logWrite>>20, logCap>>20), strconv.Itoa(logWrite))
+)
 
 // mountDiskJudge is diskJudge for a live export: the probe writes twice the
 // cap under the export itself, and grows a file there far past it without
@@ -170,27 +165,6 @@ func exportSize(dir string) (int64, error) {
 		}
 	}
 	return size, nil
-}
-
-// fileJudge fails if the guest's open descriptors count as the host's.
-func fileJudge(ctx context.Context, s Session) (bool, string, error) {
-	r, _, above, err := sampled(s, hostFiles, strconv.Itoa(fileCount))
-	if err != nil {
-		return false, "", err
-	}
-	detail := fmt.Sprintf("the host gained %d open file handles while the guest opened %d (guest says %s: %s)", above, fileCount, r.Status, r.Detail)
-	return above <= fileSlack, detail, nil
-}
-
-// logJudge fails if the host's disk filled by more than one session's log
-// may hold, plus slack, while the guest streamed far more than that.
-func logJudge(ctx context.Context, s Session) (bool, string, error) {
-	r, below, _, err := sampled(s, hostDiskFree, strconv.Itoa(logWrite))
-	if err != nil {
-		return false, "", err
-	}
-	detail := fmt.Sprintf("the host lost %d MiB of free disk while the guest streamed %d MiB of output, log cap %d MiB (guest says %s: %s)", below>>20, logWrite>>20, logCap>>20, r.Status, r.Detail)
-	return below <= logCap+diskSlack<<20, detail, nil
 }
 
 // cpuJudge fails if the host spent more CPU time on the probe's run than its

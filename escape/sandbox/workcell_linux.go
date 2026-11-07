@@ -101,10 +101,9 @@ func sign(context.Context, string, string) error { return nil }
 const steersResolver = true
 
 // holder is a session's own network namespace, holding isolatedAddr on its
-// loopback device and nothing else, so that no other address has a route:
-// the payload that made it and holds it, as root, and the connection whose
-// closing lets it go. The product starts inside it (steered) and the
-// judge's canaries listen in it (bind).
+// loopback device and nothing else, so that no other address has a route: the
+// payload that made it and holds it, as root, and the connection whose closing
+// lets it go. The product starts inside it (steered); the judge's canaries listen in it (bind).
 type holder struct {
 	pid     int
 	payload string
@@ -204,12 +203,11 @@ func EachProcess(f func(pid, ppid, pgid int)) error {
 	return nil
 }
 
-// productProcess finds the product's own process under root, the process
-// the adapter started for a run: root itself, or the deepest of its
-// descendants, whose executable is bin. Under steering root is sudo and the
-// product sits below it; a product that forked a supervisor of its own is
-// found below itself. A process between fork and exec still shows its
-// parent's executable, so a caller that finds nothing asks again.
+// productProcess finds the product's own process under root, the process the
+// adapter started for a run: root itself, or the deepest of its descendants,
+// whose executable is bin (under steering root is sudo; a product that forked
+// a supervisor of its own is found below itself). A process between fork and
+// exec still shows its parent's executable, so a caller that finds nothing asks again.
 func productProcess(root int, bin string) (int, bool) {
 	children := map[int][]int{}
 	if EachProcess(func(pid, ppid, _ int) { children[ppid] = append(children[ppid], pid) }) != nil {
@@ -237,8 +235,7 @@ func productProcess(root int, bin string) (int, bool) {
 // resolv.conf ($1) over /etc/resolv.conf, becomes the user the suite runs as
 // ($2, $3; the loader runs as root, since binding needs that), and becomes
 // the product with exactly the environment the suite gives it (the K=V words
-// after the ids, then the command). The product then resolves every name
-// with the resolver that file names, as any program on the host would.
+// after the ids, then the command), which then resolves every name with that file's resolver.
 const resolverLoader = `mount --make-rprivate / && mount --bind "$1" /etc/resolv.conf || { echo "workcell adapter: cannot bind the session's resolv.conf over /etc/resolv.conf" >&2; exit 125; }; u=$2 g=$3; shift 3; exec setpriv --reuid="$u" --regid="$g" --init-groups -- env -i "$@"`
 
 // steered returns the argv that runs argv under a /etc/resolv.conf naming

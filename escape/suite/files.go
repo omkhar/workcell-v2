@@ -209,7 +209,7 @@ func residueJudge(ctx context.Context, s Session) (bool, string, error) {
 	if !strings.HasPrefix(r.Detail, "planted=") || r.Detail == "planted=0" {
 		return false, "", fmt.Errorf("the first session planted nothing: %s", r.Detail)
 	}
-	two, err := s.Another()
+	two, err := s.Another(nil)
 	if err != nil {
 		return false, "", err
 	}

@@ -115,7 +115,7 @@ func connectName(addr, token string, sni bool) Result {
 	if _, err := io.WriteString(c, line); err != nil {
 		return Result{Status: "connected-write-failed", Detail: err.Error()}
 	}
-	return answered(c, "to "+addr)
+	return Result{Status: "connected", Detail: "to " + addr}
 }
 
 // rebindJudge runs the judge's resolver and a canary at the row's address, has

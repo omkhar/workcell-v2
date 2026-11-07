@@ -42,6 +42,8 @@ func (*workcell) Install(context.Context, Layer) (string, error) { return "", Er
 
 func (*workcell) Update(context.Context, UpdateConfig) ([]byte, error) { return nil, ErrNotImplemented }
 
+func (*workcell) Installed(context.Context, string) ([]byte, error) { return nil, ErrNotImplemented }
+
 func (*workcell) Audit(context.Context) (string, []string, error) { return "", nil, ErrNotImplemented }
 
 func (*workcell) Verify(context.Context) error { return ErrNotImplemented }

@@ -42,9 +42,9 @@ type Run func(args ...string) (Result, error)
 type Session struct {
 	Run Run
 	// Exec runs the test's probe as Run does, but gives back the run itself,
-	// exit status and streams unparsed, under ctx: the evidence for a judge
-	// that holds the host end of a run to account (SPEC I12). A status the
-	// host could not run the command under is a result here, not an error.
+	// exit status and streams unparsed, under ctx: the evidence for a judge that
+	// holds the host end of a run to account (SPEC I12). A status the host could
+	// not run the command under is a result here, not an error.
 	Exec func(ctx context.Context, args ...string) (sandbox.Output, error)
 	// Workspace is the host directory exported into the guest, "" for none.
 	// Its parent is the test's alone and removed afterwards, so a judge may
@@ -63,9 +63,10 @@ type Session struct {
 	// Pull brings the guest's workspace back to the host directory dest, as
 	// the product's pull does.
 	Pull func(dest string) error
-	// Another starts a second session with the same Want and its own export.
-	// The runner stops it with the first.
-	Another func() (Session, error)
+	// Another starts a second session with the same Want and its own export,
+	// and, when update is not nil, that [update] table in its own
+	// configuration (sandbox.Config.Update). The runner stops it with the first.
+	Another func(update *sandbox.UpdateConfig) (Session, error)
 	// Observe is the host side of the session: its record, its helpers and
 	// its channel.
 	sandbox.Observe
@@ -75,15 +76,14 @@ type Session struct {
 // run the probe through s.Run, and says whether the invariant held.
 type Judge func(ctx context.Context, s Session) (pass bool, detail string, err error)
 
-// Want is the sandbox a test needs: an export, whether it is the user's
-// tree served live rather than a clone (`--mount`, SPEC A5), the caps the
-// adapter is to state (zero: the adapter's default), the names the policy
-// allows and the names it does not, the resolver the host side of the
-// session is to use (the judge's, see sandbox.Config.Resolver), whether a
-// fresh secret is bound to the first allowed name, and narrowed to one
-// method and path (NewSecret), and the repo-local policy (a workcell.toml
-// the runner plants in the export before the session starts, in the shape
-// PlantPolicy gives Shape) that the hostile repository brings.
+// Want is the sandbox a test needs: an export, whether it is the user's tree
+// served live rather than a clone (`--mount`, SPEC A5), the caps the adapter
+// is to state (zero: the adapter's default), the names the policy allows and
+// the names it does not, the resolver the host side of the session is to use
+// (the judge's, sandbox.Config.Resolver), whether a fresh secret is bound to
+// the first allowed name, and narrowed to one method and path (NewSecret),
+// and the repo-local policy the hostile repository brings (a workcell.toml
+// the runner plants in the export before the session starts, PlantPolicy).
 type Want struct {
 	Workspace bool
 	Mount     bool

@@ -344,12 +344,7 @@ func resolverJudge(target, first string, qs []lookup) Judge {
 		if err != nil {
 			return false, "", err
 		}
-		got := map[string]string{}
-		for _, f := range strings.Fields(r.Detail) {
-			if label, rest, ok := strings.Cut(f, "="); ok {
-				got[label] = rest
-			}
-		}
+		got := fields(r.Detail)
 		var bad []string
 		for _, q := range qs {
 			if why := q.judge(got[q.label]); why != "" {
