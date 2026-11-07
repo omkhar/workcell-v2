@@ -39,8 +39,9 @@ import (
 // payloadType is the DSSE payload type of channel.json.
 const payloadType = "application/vnd.workcell.channel+json"
 
-// pinName is the pin every manifest carries and the client is told to install.
-const pinName = "provider"
+// pinName is the pin every manifest carries and the client is told to
+// install: claude's row, which the adapter maps to its agent.
+const pinName = "claude-code"
 
 const day = 24 * 60 * 60
 
