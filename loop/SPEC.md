@@ -202,7 +202,7 @@ created in `omkhar/workcell` alone, at gate H-829, after the loop has ended.
 | B9 | The client checks the channel at most daily, in the background, and never delays a session start. It applies an update at the next start, keeps the previous version, and rolls back by itself if the new one fails to run. |
 | B10 | The user stays in control: `[update] channel = "stable"` or `"hold"`; `cooloff` may lengthen the project's cool-off and never shorten it; `workcell update --to <version>` and `--rollback`. |
 | B11 | Early warning: `nightly.yml` runs the adapter smoke test against upstream's newest release whatever its age. It is never a gate. A failure opens or updates one issue, so a break is known before the cool-off ends. |
-| B12 | Freshness is measured: `nightly.yml` prints, per pin, the pinned version, the newest eligible version and the lag, and opens one issue when P7 is missed. |
+| B12 | Freshness is measured: `nightly.yml` prints, per pin, the pinned version, the newest eligible version and the lag. A missed P7 opens or updates its own issue, `nightly: P7 missed`, and does not make the run red, so `nightly: red` means a real failure. |
 | B13 | `bump.yml` runs daily and opens at most one pull request per class, so an upstream that ships every few hours costs one bump a day. |
 | B14 | The bot is a GitHub App with contents and pull-request write only. It has no workflow permission and cannot touch `.github/`. |
 | B15 | Adding an upstream of a known source type is one data row and no code. |
