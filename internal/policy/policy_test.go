@@ -4,6 +4,7 @@
 package policy
 
 import (
+	"bytes"
 	"errors"
 	"os"
 	"path/filepath"
@@ -12,6 +13,7 @@ import (
 	"strings"
 	"syscall"
 	"testing"
+	"time"
 )
 
 // specExample is the policy of SPEC section 5, as written there.
@@ -58,7 +60,7 @@ func TestParse(t *testing.T) {
 		{"tabs and comments after a header", "[network]\t# the table\nallow\t=\t[\"a.example\"]\n", []Entry{{"a.example", 2}}},
 		{"two secrets", "[[secret]]\nname = \"a\"\nsource = \"file:/a\"\nhost = \"h\"\nheader = \"k\"\n[[secret]]\nname = \"b\"\nsource = \"file:/b\"\nhost = \"h\"\nheader = \"j\"\n[network]\nallow = [\"a.example\"]\n", []Entry{{"a.example", 12}}},
 		{"negative and signed integers elsewhere", "[resources]\ncpus = -1\ndisk = +7\n", nil},
-		{"update table", "[update]\nchannel = \"hold\"\ncooloff = 14\n", nil},
+		{"update table", "[update]\nchannel = \"hold\"\ncooloff = \"14h\"\n", nil},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -102,6 +104,32 @@ func TestParseSecret(t *testing.T) {
 	}
 }
 
+// TestParseUpdate: the [update] table comes back with each key read as the client needs it, and
+// "" or nil for one left out; what it refuses is TestParseRefuses's concern.
+func TestParseUpdate(t *testing.T) {
+	hexKey := strings.Repeat("ab", 32)
+	tests := []struct {
+		name, text string
+		want       Update
+	}{
+		{"no table", "[network]\n", Update{}},
+		{"stable", "[update]\nchannel = \"stable\"\n", Update{Channel: "stable", Line: 1}},
+		{"hold", "\n[update]\nchannel = \"hold\"\n", Update{Channel: "hold", Line: 2}},
+		{"an https URL", "[update]\nchannel = \"https://c.test/channel.json\"\n", Update{Channel: "https://c.test/channel.json", Line: 1}},
+		{"an IP literal host", "[update]\nchannel = \"https://127.0.0.1:8443/channel.json\"\n", Update{Channel: "https://127.0.0.1:8443/channel.json", Line: 1}},
+		{"every key", "[update]\nchannel = \"hold\"\ncooloff = \"72h\"\nca = \"/etc/ca.pem\"\nkey = \"" + hexKey + "\"\n",
+			Update{Channel: "hold", Cooloff: 72 * time.Hour, CA: "/etc/ca.pem", Key: bytes.Repeat([]byte{0xab}, 32), Line: 1}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := Parse(tc.text, "config.toml")
+			if err != nil || !reflect.DeepEqual(got.Update, tc.want) {
+				t.Errorf("Parse(%q).Update = %+v, %v; want %+v", tc.text, got.Update, err, tc.want)
+			}
+		})
+	}
+}
+
 // TestParseTables holds the generic reader to the same subset and errors as Parse, whatever the table names.
 func TestParseTables(t *testing.T) {
 	tabs, err := Tables("[a]\nx = \"s\"\nn = 3\n[[b]]\nl = [\"p\",\n\"q\"]\n", "f")
@@ -135,6 +163,12 @@ func TestParseRefuses(t *testing.T) {
 		{"key defined twice", "[network]\nallow = []\nallow = []\n", "config.toml:3: key \"allow\" is defined twice"},
 		{"unknown key in network", "[network]\nallow = []\ndeny = []\n", "config.toml:3: unknown key \"deny\" in [network]"},
 		{"unknown key in secret", "[[secret]]\nname = \"a\"\nvalue = \"sk\"\n", "config.toml:3: unknown key \"value\" in [[secret]]"},
+		{"unknown key in update", "[update]\nchannel = \"hold\"\nmirror = \"x\"\n", "config.toml:3: [update] mirror is not one of"},
+		{"update channel that is not a word or an https URL", "[update]\nchannel = \"http://a.test/c.json\"\n", "config.toml:2: [update] channel must be"},
+		{"update cooloff that is not a duration", "[update]\ncooloff = \"3 days\"\n", "config.toml:2: [update] cooloff time"},
+		{"update cooloff that is negative", "[update]\ncooloff = \"-1h\"\n", "config.toml:2: [update] cooloff must not be negative"},
+		{"update cooloff that is an integer", "[update]\ncooloff = 14\n", "config.toml:2: [update] cooloff must be a string"},
+		{"update key that is short", "[update]\nkey = \"abcd\"\n", "config.toml:2: [update] key must be 64 hex"},
 		{"secret key not a string", "[[secret]]\nname = \"a\"\nsource = [\"file:/s\"]\n", "config.toml:3: source must be a string"},
 		{"secret repos not an array", "[[secret]]\nname = \"a\"\nrepos = \"octo/allowed\"\n", "config.toml:3: repos must be an array of strings"},
 		{"secret without a name", "\n[[secret]]\nsource = \"file:/s\"\nhost = \"h\"\nheader = \"k\"\n", "config.toml:2: [[secret]] needs a name"},
@@ -299,6 +333,7 @@ func TestReadRepo(t *testing.T) {
 		{"a pipe", func(p string) error { return syscall.Mkfifo(p, 0o600) }, nil, ErrNotRegular},
 		{"a directory", func(p string) error { return os.Mkdir(p, 0o700) }, nil, ErrNotRegular},
 		{"too large", func(p string) error { return os.WriteFile(p, []byte(strings.Repeat("#", maxBytes+1)), 0o600) }, nil, errTooLarge},
+		{"an update table", func(p string) error { return os.WriteFile(p, []byte("[update]\nchannel = \"hold\"\n"), 0o600) }, nil, errUpdate},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -308,9 +343,9 @@ func TestReadRepo(t *testing.T) {
 			}
 			got, err := ReadRepo(path)
 			switch {
-			case tc.other == errTooLarge:
-				if err == nil || !strings.Contains(err.Error(), "larger than") {
-					t.Errorf("ReadRepo = %v, want larger than", err)
+			case tc.other == errTooLarge || tc.other == errUpdate: // an error known by its text
+				if err == nil || !strings.Contains(err.Error(), tc.other.Error()) {
+					t.Errorf("ReadRepo = %v, want %v", err, tc.other)
 				}
 			case !errors.Is(err, tc.other) || (tc.other == nil && err != nil) || !slices.Equal(got.Allow, tc.want):
 				t.Errorf("ReadRepo = %v, %v; want %v, %v", got.Allow, err, tc.want, tc.other)
@@ -319,7 +354,7 @@ func TestReadRepo(t *testing.T) {
 	}
 }
 
-var errTooLarge = errors.New("too large")
+var errTooLarge, errUpdate = errors.New("larger than"), errors.New(".toml:1: [update] is the user's table")
 
 // FuzzParse holds the reader to never panicking or hanging on any bytes, and to naming a line
 // that exists for every entry it returns. U-503 feeds it a repository's file (T5).

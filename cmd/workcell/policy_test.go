@@ -16,25 +16,6 @@ import (
 	"github.com/omkhar/workcell/v2/internal/proxy"
 )
 
-func TestConfigDir(t *testing.T) {
-	tests := []struct {
-		name, xdg, home, want string
-	}{
-		{"XDG_CONFIG_HOME wins", "/x/config", "/home/u", "/x/config/workcell"},
-		{"HOME otherwise", "", "/home/u", "/home/u/.config/workcell"},
-	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Setenv("XDG_CONFIG_HOME", tc.xdg)
-			t.Setenv("HOME", tc.home)
-			got, err := configDir()
-			if err != nil || got != tc.want {
-				t.Errorf("configDir() = %q, %v; want %q", got, err, tc.want)
-			}
-		})
-	}
-}
-
 func TestAllowlist(t *testing.T) {
 	entries := func(texts ...string) (es []policy.Entry) {
 		for i, s := range texts {

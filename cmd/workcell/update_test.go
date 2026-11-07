@@ -8,9 +8,13 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"crypto/ed25519"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"encoding/pem"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -18,10 +22,14 @@ import (
 	"path/filepath"
 	"runtime"
 	"slices"
+	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
+	"github.com/omkhar/workcell/v2/internal/channel"
 	"github.com/omkhar/workcell/v2/internal/pins"
 	"github.com/omkhar/workcell/v2/internal/provider"
 )
@@ -119,7 +127,7 @@ func TestUpdate(t *testing.T) {
 		return []pins.Pin{{Name: "fake-cli", Release: cur, Previous: prev}}
 	}
 	img := func(r pins.Release) string {
-		return r.Version + "-" + r.Artifacts[runtime.GOARCH].SHA256[:16] + ".ext4"
+		return r.Version + "-" + r.Artifacts[runtime.GOARCH].SHA256 + ".ext4"
 	}
 	binary := provider.Provider{Name: "fake", Binary: "fake", Install: provider.Install{Method: "binary", Pin: "fake-cli"}}
 	steps := []struct {
@@ -140,9 +148,9 @@ func TestUpdate(t *testing.T) {
 		{name: "rollback", rows: row(v2, &v1), prov: binary, rollback: true, want: "fake 1.0.0 " + v1.Artifacts[runtime.GOARCH].SHA256[:16], cur: img(v1), prev: img(v2), result: "rolled_back"},
 		{name: "to the current version on disk", rows: row(v2, &v1), prov: binary, to: "2.0.0", want: "fake 2.0.0 " + v2.Artifacts[runtime.GOARCH].SHA256[:16], cur: img(v2), prev: img(v1), result: "rolled_back"},
 		{name: "to the previous version on disk", rows: row(v2, &v1), prov: binary, to: "1.0.0", want: "fake 1.0.0 " + v1.Artifacts[runtime.GOARCH].SHA256[:16], cur: img(v1), prev: img(v2), result: "rolled_back"},
-		{name: "to an unknown version", rows: row(v2, &v1), prov: binary, to: "9.9.9", refusal: "9.9.9 is not the row's current 2.0.0", cur: img(v1), prev: img(v2), result: "refused"},
-		{name: "digest mismatch", rows: row(bad, &v1), prov: binary, refusal: "sha256 " + sum("/v3.tar") + " is not the row's " + sum("/v2.tgz"), cur: img(v1), prev: img(v2), fetch: "/v3.tar", result: "refused"},
-		{name: "no artifact for this arch", rows: row(release("3.0.0", "/v3.tar", sum("/v3.tar"), "other"), &v1), prov: binary, refusal: "no artifact with a digest for " + runtime.GOARCH, cur: img(v1), prev: img(v2), result: "refused"},
+		{name: "to an unknown version", rows: row(v2, &v1), prov: binary, to: "9.9.9", refusal: "9.9.9 is in neither pins nor previous", cur: img(v1), prev: img(v2), result: "refused"},
+		{name: "digest mismatch", rows: row(bad, &v1), prov: binary, refusal: "sha256 " + sum("/v3.tar") + " is not the pin's " + sum("/v2.tgz"), cur: img(v1), prev: img(v2), fetch: "/v3.tar", result: "refused"},
+		{name: "no artifact for this arch falls back to the previous", rows: row(release("3.0.0", "/v3.tar", sum("/v3.tar"), "other"), &v1), prov: binary, want: "fake 1.0.0 " + v1.Artifacts[runtime.GOARCH].SHA256[:16], cur: img(v1), prev: img(v2)},
 		{name: "not a binary install", rows: row(v3, &v1), prov: provider.Provider{Name: "fake", Install: provider.Install{Method: "npm", Package: "fake"}}, refusal: "binaries only", cur: img(v1), prev: img(v2), result: "refused"},
 		{name: "no row", rows: nil, prov: binary, refusal: "no row under pins/", cur: img(v1), prev: img(v2), result: "refused"},
 		{name: "third install from plain tar drops the oldest", rows: row(v3, &v2), prov: binary, want: "fake 3.0.0 " + v3.Artifacts[runtime.GOARCH].SHA256[:16], cur: img(v3), prev: img(v1), fetch: "/v3.tar", result: "installed"},
@@ -156,7 +164,7 @@ func TestUpdate(t *testing.T) {
 	for _, s := range steps {
 		t.Run(s.name, func(t *testing.T) {
 			before := hits.Load()
-			got, err := installer{dir, s.rows, srv.Client()}.update(context.Background(), s.prov, s.to, s.rollback)
+			got, err := installer{dir: dir, rows: s.rows, client: srv.Client()}.update(context.Background(), s.prov, s.to, s.rollback)
 			switch {
 			case s.want != "" && (err != nil || got != s.want):
 				t.Fatalf("got %q, %v; want %q", got, err, s.want)
@@ -222,5 +230,149 @@ func TestUpdateUsage(t *testing.T) {
 		if rc := update(args, io.Discard, io.Discard); rc != 2 {
 			t.Errorf("update %v: exit %d, want 2", args, rc)
 		}
+	}
+}
+
+// TestChoose: --to takes any candidate's version and refuses every other; without it the first is installed unless the user's cool-off still holds it, then the previous.
+func TestChoose(t *testing.T) {
+	now := time.Unix(1_800_000_000, 0)
+	cur, prev := channel.Pin{Version: "2.0", Released: now.Unix() - 3600}, channel.Pin{Version: "1.0"}
+	tests := []struct {
+		name    string
+		cands   []channel.Pin
+		to      string
+		cooloff time.Duration
+		want    string // the version; "" for a refusal
+	}{
+		{"the current one", []channel.Pin{cur, prev}, "", 0, "2.0"},
+		{"to the current one", []channel.Pin{cur, prev}, "2.0", 0, "2.0"},
+		{"to the previous one", []channel.Pin{cur, prev}, "1.0", 0, "1.0"},
+		{"to a version in neither", []channel.Pin{cur, prev}, "3.0", 0, ""},
+		{"within the cool-off, the previous one", []channel.Pin{cur, prev}, "", 2 * time.Hour, "1.0"},
+		{"within the cool-off with no previous one", []channel.Pin{cur}, "", 2 * time.Hour, ""},
+		{"past the cool-off", []channel.Pin{cur, prev}, "", 30 * time.Minute, "2.0"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := choose(tc.cands, tc.to, tc.cooloff, now)
+			if (err == nil) != (tc.want != "") || got.Version != tc.want {
+				t.Errorf("choose = %+v, %v; want version %q", got, err, tc.want)
+			}
+		})
+	}
+}
+
+// TestChannel runs the product's own update client, as the [update] table of a config file sets it up (channel,
+// ca, key), against a loopback channel (T8): a valid manifest installs its pin and advances the serial kept; each
+// hostile manifest installs nothing and leaves the serial where a verified one put it; a redirect is not followed,
+// for channel.json or the artifact; channel.json is read to 64 KiB and no further; --to outside pins and previous installs nothing; a valid successor installs again.
+func TestChannel(t *testing.T) {
+	pub, key, _ := ed25519.GenerateKey(rand.Reader)
+	var mu sync.Mutex
+	served, moved, seen := map[string][]byte{}, map[string]string{}, map[string]int{}
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		defer mu.Unlock()
+		seen[r.URL.Path]++
+		switch b, ok := served[r.URL.Path]; {
+		case moved[r.URL.Path] != "":
+			http.Redirect(w, r, moved[r.URL.Path], http.StatusFound)
+		case ok:
+			w.Write(b)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+	set := func(path string, b []byte) { mu.Lock(); served[path] = b; mu.Unlock() }
+	move := func(path, to string) { mu.Lock(); moved[path] = to; mu.Unlock() }
+	cfg, data := t.TempDir(), t.TempDir()
+	ca := filepath.Join(cfg, "ca.pem")
+	if err := errors.Join(os.MkdirAll(filepath.Join(cfg, "workcell"), 0o700),
+		os.WriteFile(ca, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: srv.Certificate().Raw}), 0o600),
+		os.WriteFile(filepath.Join(cfg, "workcell", "config.toml"), []byte("[update]\nchannel = \""+srv.URL+"/channel.json\"\nca = \""+ca+"\"\nkey = \""+hex.EncodeToString(pub)+"\"\n"), 0o600)); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("XDG_CONFIG_HOME", cfg)
+	t.Setenv("XDG_DATA_HOME", data)
+	in, err := newInstaller()
+	if err != nil || in.channel != srv.URL+"/channel.json" || len(in.keys) != 1 || in.client.Transport == nil {
+		t.Fatalf("newInstaller = %+v, %v; want the table's channel, key and roots", in, err)
+	}
+	in.rows = []pins.Pin{{Name: "fake-cli", Release: pins.Release{Version: "0"}}} // the row is only the pin's name: the channel says what is installed
+	prov := provider.Provider{Name: "fake", Binary: "fake", Install: provider.Install{Method: "binary", Pin: "fake-cli"}}
+	now, day := time.Now().Unix(), int64(24*3600)
+	pin := func(version, path string, body []byte) map[string]map[string]channel.Pin { // path may be a URL of its own
+		sum := sha256.Sum256(body)
+		set(path, body)
+		return map[string]map[string]channel.Pin{"fake-cli": {runtime.GOARCH: {Version: version, URL: strings.TrimPrefix(srv.URL+path, srv.URL+"http"), SHA256: hex.EncodeToString(sum[:]), Released: now - 7*day}}}
+	}
+	publish := func(m channel.Manifest, signer ed25519.PrivateKey, edit func([]byte) []byte) {
+		body, _ := json.Marshal(m)
+		raw, _ := channel.Sign(body, []ed25519.PrivateKey{signer})
+		move("/channel.json", "")
+		set("/channel.json", edit(raw))
+	}
+	same := func(b []byte) []byte { return b }
+	corrupt := func(b []byte) []byte { // the signature with its first character another base64 letter
+		i := bytes.Index(b, []byte(`"sig":"`)) + 7
+		b[i] = 'A' + (b[i]-'A'+1)%26
+		return b
+	}
+	pad := func(b []byte) []byte { return append(b, bytes.Repeat([]byte(" "), channel.MaxBytes)...) }
+	_, wrong, _ := ed25519.GenerateKey(rand.Reader)
+	honest, bad := []byte("#!/bin/sh\necho honest\n"), []byte("#!/bin/sh\necho bad\n")
+	good := channel.Manifest{Serial: now - 120, Expires: now - 120 + 13*day, Pins: pin("1.0.0", "/honest", honest)}
+	variant := func(serial int64, path string) channel.Manifest {
+		return channel.Manifest{Serial: serial, Expires: serial + 13*day, Pins: pin("1.0.1", path, bad), Previous: good.Pins}
+	}
+	steps := []struct {
+		name    string
+		serve   func()
+		to      string
+		cooloff time.Duration
+		want    string // the version current afterwards
+		serial  int64  // the serial kept afterwards
+		refusal string
+	}{
+		{"a valid manifest installs", func() { publish(good, key, same) }, "1.0.0", 0, "1.0.0", now - 120, ""},
+		{"a wrong key", func() { publish(variant(now-60, "/wrong-key"), wrong, same) }, "1.0.1", 0, "1.0.0", now - 120, "no valid signature"},
+		{"a corrupt signature", func() { publish(variant(now-60, "/corrupt"), key, corrupt) }, "1.0.1", 0, "1.0.0", now - 120, "no valid signature"},
+		{"a lower serial", func() { publish(variant(now-120-day, "/lower"), key, same) }, "1.0.1", 0, "1.0.0", now - 120, "serial lower"},
+		{"a serial a day ahead", func() { publish(variant(now+25*3600, "/ahead"), key, same) }, "1.0.1", 0, "1.0.0", now - 120, "a day ahead"},
+		{"channel.json past 64 KiB", func() { publish(variant(now-60, "/big"), key, pad) }, "1.0.1", 0, "1.0.0", now - 120, "over the size cap"},
+		{"channel.json redirected", func() {
+			publish(variant(now-60, "/elsewhere"), key, same)
+			set("/elsewhere", served["/channel.json"])
+			move("/channel.json", "/elsewhere")
+		}, "1.0.1", 0, "1.0.0", now - 120, "HTTP 302"},
+		{"an artifact digest that does not match", func() { publish(variant(now-60, "/tampered"), key, same); set("/tampered", []byte("other")) }, "1.0.1", 0, "1.0.0", now - 60, "sha256"},
+		{"an artifact URL that redirects", func() {
+			publish(variant(now-50, "/moved"), key, same)
+			move("/moved", "/artifact")
+			set("/artifact", bad)
+		}, "1.0.1", 0, "1.0.0", now - 50, "HTTP 302"},
+		{"an artifact URL that is not https", func() { publish(variant(now-40, "http://127.0.0.1/plain"), key, same) }, "1.0.1", 0, "1.0.0", now - 50, "https"},
+		{"--to a version in neither pins nor previous", func() { publish(variant(now-30, "/neither"), key, same) }, "9.9.9", 0, "1.0.0", now - 30, "neither pins nor previous"},
+		{"within the user's cool-off the previous one stays", func() {}, "", 30 * 24 * time.Hour, "1.0.0", now - 30, ""},
+		{"a valid successor installs", func() { publish(variant(now-20, "/successor"), key, same) }, "1.0.1", 0, "1.0.1", now - 20, ""},
+	}
+	layers := filepath.Join(data, "workcell", "layers", "fake")
+	for _, s := range steps {
+		t.Run(s.name, func(t *testing.T) {
+			s.serve()
+			in.cooloff = s.cooloff
+			_, err := in.update(context.Background(), prov, s.to, false)
+			if (err == nil) != (s.refusal == "") || err != nil && !strings.Contains(err.Error(), s.refusal) {
+				t.Errorf("update = %v; want refusal %q", err, s.refusal)
+			}
+			serial, _ := os.ReadFile(filepath.Join(data, "workcell", "channel.serial"))
+			if cur := marker(layers, "current"); !strings.HasPrefix(cur, s.want+"-") || strings.TrimSpace(string(serial)) != strconv.FormatInt(s.serial, 10) {
+				t.Errorf("current %q, serial %q; want version %s and serial %d", cur, serial, s.want, s.serial)
+			}
+		})
+	}
+	if mu.Lock(); seen["/artifact"] != 0 || seen["/elsewhere"] != 0 || seen["/channel.json"] == 0 {
+		t.Errorf("requests %v; want none to a redirect's target", seen)
 	}
 }

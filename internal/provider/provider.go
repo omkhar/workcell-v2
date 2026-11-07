@@ -56,16 +56,6 @@ var (
 // All is the providers compiled into the binary, by name.
 var All = sync.OnceValues(func() ([]Provider, error) { return Load(files) })
 
-// Lookup is the compiled-in provider of the name.
-func Lookup(name string) (Provider, bool) {
-	all, _ := All()
-	i := slices.IndexFunc(all, func(p Provider) bool { return p.Name == name })
-	if i < 0 {
-		return Provider{}, false
-	}
-	return all[i], true
-}
-
 // FindSecret is the compiled-in credential of the name, with the provider that holds it, for a
 // [[secret]] row that names a provider's secret instead of spelling out its host and header.
 func FindSecret(name string) (Secret, Provider, bool) {

@@ -13,20 +13,24 @@ import (
 	"testing"
 )
 
+// TestDataDir: the data directory and the config file each follow their XDG variable, else the home directory.
 func TestDataDir(t *testing.T) {
 	tests := []struct {
-		name, xdg, home, want string
+		name, env, xdg, home, want string
+		dir                        func() (string, error)
 	}{
-		{"XDG_DATA_HOME wins", "/x/data", "/home/u", "/x/data/workcell"},
-		{"HOME otherwise", "", "/home/u", "/home/u/.local/share/workcell"},
+		{"XDG_DATA_HOME wins", "XDG_DATA_HOME", "/x/data", "/home/u", "/x/data/workcell", dataDir},
+		{"HOME otherwise", "XDG_DATA_HOME", "", "/home/u", "/home/u/.local/share/workcell", dataDir},
+		{"XDG_CONFIG_HOME wins", "XDG_CONFIG_HOME", "/x/config", "/home/u", "/x/config/workcell/config.toml", configFile},
+		{"HOME for the config too", "XDG_CONFIG_HOME", "", "/home/u", "/home/u/.config/workcell/config.toml", configFile},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			t.Setenv("XDG_DATA_HOME", tc.xdg)
+			t.Setenv(tc.env, tc.xdg)
 			t.Setenv("HOME", tc.home)
-			got, err := dataDir()
+			got, err := tc.dir()
 			if err != nil || got != tc.want {
-				t.Errorf("dataDir() = %q, %v; want %q", got, err, tc.want)
+				t.Errorf("%s = %q, %v; want %q", tc.env, got, err, tc.want)
 			}
 		})
 	}

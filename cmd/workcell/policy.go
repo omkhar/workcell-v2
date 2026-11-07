@@ -20,36 +20,24 @@ import (
 	"github.com/omkhar/workcell/v2/internal/secret"
 )
 
-// configDir is where the policy lives: $XDG_CONFIG_HOME/workcell, or ~/.config/workcell (SPEC
-// section 5), on every OS alike, as dataDir does for the data directory.
-func configDir() (string, error) {
-	if x := os.Getenv("XDG_CONFIG_HOME"); x != "" {
-		return filepath.Join(x, "workcell"), nil
-	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(home, ".config", "workcell"), nil
-}
-
-// configFile is the policy file, which may not exist.
+// configFile is the policy file, $XDG_CONFIG_HOME/workcell/config.toml or ~/.config/workcell/config.toml,
+// which may not exist.
 func configFile() (string, error) {
-	dir, err := configDir()
+	dir, err := xdgDir("XDG_CONFIG_HOME", ".config")
 	return filepath.Join(dir, "config.toml"), err
 }
 
 // repoFile is the policy a repository may carry, in the directory a session starts in.
 const repoFile = "workcell.toml"
 
-// loadPolicy reads the policy and builds what a session needs from it: the proxy's allowlist,
-// and the secret bindings. The user's file is narrowed by the workcell.toml of the current directory,
-// which may take grants away and give none (I13); then the entries of this session's --allow flags are
-// added (I13: the operator typed them on the host, and the repository may not undo that). A
+// loadPolicy reads the policy and builds what a session needs from it: the proxy's allowlist and
+// the secret bindings. The user's file is narrowed by the workcell.toml of the current directory,
+// which may take grants away and give none (I13); then the entries of this session's --allow flags
+// are added (I13: the operator typed them on the host, and the repository may not undo that). A
 // repository file that is not a regular file is ignored, with a line on stderr. A nil allowlist means
 // the policy allows nothing: no TCP port is relayed. An error names the file and line, or the flag.
-// note is a line for `explain` about what the repository file took away or asked for in vain, "" for none;
-// file is the user's policy file.
+// note is a line for `explain` about what the repository file took away or asked for in vain, "" for
+// none; file is the user's policy file.
 func loadPolicy(extra []string, stderr io.Writer) (allow *proxy.Allowlist, secrets []binding, note, file string, err error) {
 	if file, err = configFile(); err != nil {
 		return nil, nil, "", "", err
@@ -74,7 +62,12 @@ func loadPolicy(extra []string, stderr io.Writer) (allow *proxy.Allowlist, secre
 	asked = slices.DeleteFunc(asked, func(s string) bool {
 		return slices.ContainsFunc(extra, func(x string) bool { return strconv.Quote(x) == s })
 	})
-	note = repoNote(asked, len(narrowed.Allow) < len(p.Allow) || len(narrowed.Secret) < len(p.Secret), file)
+	switch { // the line `explain` adds about the repository's file, "" when it changed nothing
+	case len(asked) > 0:
+		note = repoFile + " asks for " + strings.Join(asked, ", ") + ": not granted; allow it in " + file + " or with --allow\n"
+	case len(narrowed.Allow) < len(p.Allow) || len(narrowed.Secret) < len(p.Secret):
+		note = repoFile + " narrows the policy of " + file + "\n"
+	}
 	p = narrowed
 	for _, text := range extra {
 		p.Allow = append(p.Allow, policy.Entry{Text: text}) // line 0: it comes from a flag
@@ -84,17 +77,6 @@ func loadPolicy(extra []string, stderr io.Writer) (allow *proxy.Allowlist, secre
 	}
 	secrets, err = bindings(p, allow, file)
 	return allow, secrets, note, file, err
-}
-
-// repoNote is the line `explain` adds about the repository's workcell.toml, "" when it changed nothing.
-func repoNote(asked []string, narrowed bool, file string) string {
-	switch {
-	case len(asked) > 0:
-		return repoFile + " asks for " + strings.Join(asked, ", ") + ": not granted; allow it in " + file + " or with --allow\n"
-	case narrowed:
-		return repoFile + " narrows the policy of " + file + "\n"
-	}
-	return ""
 }
 
 // binding is one [[secret]] row ready for a session: the grant the broker releases, the rule
@@ -124,11 +106,10 @@ var envName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 // each. The proxy judges host, header, method, path and repos (A3); the host must then be a bare name
 // of the allow list, so that the proxy terminates it and swaps there (I6), as must the host of a
 // sign-in source, and env must be a variable name. Two rows on one header of one host, or on one
-// token endpoint, are refused by the proxy. A row that gives a name and source but no host and no header takes
-// them, and env unless it gives one, from the provider secret of that name: a convenience that
-// grants nothing, since the host must still be in the allow list (I13). The provider's prefix
-// needs no rule: the proxy keeps a "Bearer " the guest sends before the placeholder. A fault is
-// reported with its line.
+// token endpoint, are refused by the proxy. A row with a name and source but no host and no header
+// takes them, and env unless it gives one, from the provider secret of that name: a convenience that
+// grants nothing, since the host must still be in the allow list (I13); the provider's prefix needs
+// no rule, as the proxy keeps a "Bearer " the guest sends before the placeholder. A fault is reported with its line.
 func bindings(p policy.Policy, allow *proxy.Allowlist, file string) ([]binding, error) {
 	var out []binding
 	for _, s := range p.Secret {
@@ -169,14 +150,13 @@ func bindings(p policy.Policy, allow *proxy.Allowlist, file string) ([]binding, 
 
 // allowlist turns the policy's allow entries into the proxy's allowlist, nil for none. A bare
 // name is port 443 by SNI; "name:port" forwards that one port to the name. The proxy's parser
-// judges each entry (A3), and an entry it refuses is reported with its line (or as --allow, for
-// an entry of that flag), a port two names claim with the line of the second.
+// judges the entries as each joins (A3), so one it refuses is reported with its line (or as
+// --allow, for an entry of that flag), a port two names claim with the line of the second.
 func allowlist(p policy.Policy, file string) (*proxy.Allowlist, error) {
 	if len(p.Allow) == 0 {
 		return nil, nil
 	}
 	var all []string
-	first := map[uint16]string{} // the entry that opened each forward port
 	for _, e := range p.Allow {
 		at := "--allow"
 		if e.Line > 0 {
@@ -189,23 +169,10 @@ func allowlist(p policy.Policy, file string) (*proxy.Allowlist, error) {
 		if !strings.Contains(text, ":") {
 			text += ":443"
 		}
-		one, err := proxy.ParseAllowlist(text, at)
-		if err != nil {
+		all = append(all, text)
+		if _, err := proxy.ParseAllowlist(strings.Join(all, "\n"), at); err != nil { // what this entry adds, named for it
 			return nil, err
 		}
-		for _, port := range one.Ports() {
-			if port == 443 {
-				continue
-			}
-			if prev, ok := first[port]; ok {
-				if _, err := proxy.ParseAllowlist(prev+"\n"+text, at); err != nil {
-					return nil, err
-				}
-			} else {
-				first[port] = text
-			}
-		}
-		all = append(all, text)
 	}
 	return proxy.ParseAllowlist(strings.Join(all, "\n"), file)
 }
