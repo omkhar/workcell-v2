@@ -33,8 +33,7 @@ const (
 	Error          = "error"
 )
 
-// perTest bounds one test, sandbox start to stop (SPEC: under 20 seconds),
-// unless the test states its own Bound.
+// perTest bounds one test, sandbox start to stop (SPEC: under 20 seconds), unless the test states its own Bound.
 const perTest = 20 * time.Second
 
 // Report is the JSON the runner prints.
@@ -125,8 +124,7 @@ func run(ctx context.Context, name string, fresh func() (sandbox.Sandbox, error)
 	return rep
 }
 
-// runOne starts the test's first session, lets the judge open more, and stops
-// them all, last first, when the judge is done.
+// runOne starts the test's first session, lets the judge open more, and stops them all, last first.
 func runOne(ctx context.Context, fresh func() (sandbox.Sandbox, error), payload, roots string, t suite.Test) (string, string) {
 	bound := perTest
 	if t.Bound > 0 {
@@ -140,15 +138,15 @@ func runOne(ctx context.Context, fresh func() (sandbox.Sandbox, error), payload,
 			sessions[i].stop()
 		}
 	}()
-	var open func() (suite.Session, error)
-	open = func() (suite.Session, error) {
+	var open func(update *sandbox.UpdateConfig) (suite.Session, error)
+	open = func(update *sandbox.UpdateConfig) (suite.Session, error) {
 		sb, err := fresh()
 		if err != nil {
 			return suite.Session{}, err
 		}
 		s := session{sb: sb}
 		sessions = append(sessions, s)
-		cfg := sandbox.Config{Payload: payload, Mount: t.Want.Mount, CPUs: t.Want.CPUs, MemoryMiB: t.Want.MemoryMiB, DiskMiB: t.Want.DiskMiB, Allow: t.Want.Allow, Deny: t.Want.Deny, Resolver: t.Want.Resolver, Isolated: t.Want.Isolated, Roots: roots}
+		cfg := sandbox.Config{Payload: payload, Mount: t.Want.Mount, CPUs: t.Want.CPUs, MemoryMiB: t.Want.MemoryMiB, DiskMiB: t.Want.DiskMiB, Allow: t.Want.Allow, Deny: t.Want.Deny, Resolver: t.Want.Resolver, Isolated: t.Want.Isolated, Roots: roots, Update: update}
 		if t.Want.Secret {
 			sec := suite.NewSecret(t.Want)
 			cfg.Secret = &sec
@@ -180,7 +178,7 @@ func runOne(ctx context.Context, fresh func() (sandbox.Sandbox, error), payload,
 		}
 		return ses, nil
 	}
-	first, err := open()
+	first, err := open(nil)
 	if err != nil {
 		return classify(err)
 	}

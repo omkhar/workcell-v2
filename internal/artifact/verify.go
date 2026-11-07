@@ -1,10 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Omkhar Arasaratnam
 
-// Package artifact downloads the artifacts of a candidate release on the host,
-// computes their digests from the bytes as they stream, and checks everything
-// upstream published about them: the published digest or npm SRI always, and a
-// Sigstore signature or registry provenance where the pin says upstream signs
+// Package artifact downloads the artifacts of a candidate release on the host, computes their digests from the bytes as they stream, and checks everything
+// upstream published about them: the published digest or npm SRI always, and a Sigstore signature or registry provenance where the pin says upstream signs
 // (B5). Nothing is skipped silently: a check that cannot run is a refusal.
 package artifact
 
@@ -34,8 +32,7 @@ import (
 )
 
 const (
-	// MaxArtifact bounds one download and one tarball's decompressed bytes. A
-	// provider CLI is at most a few hundred MiB; an OCI manifest is a few KiB.
+	// MaxArtifact bounds one download and one tarball's decompressed bytes. A provider CLI is at most a few hundred MiB; an OCI manifest is a few KiB.
 	MaxArtifact     = 512 << 20
 	maxBundle       = 64 << 10
 	maxAttestations = 1 << 20
@@ -47,18 +44,15 @@ var (
 	statementTypes = map[string]bool{"https://in-toto.io/Statement/v1": true, "https://in-toto.io/Statement/v0.1": true}
 )
 
-// Verifier downloads with Client and checks Sigstore bundles against Root. A
-// nil Client means http.DefaultClient; a nil Root means the embedded public
-// Sigstore root.
+// Verifier downloads with Client and checks Sigstore bundles against Root. A nil Client means http.DefaultClient; a nil Root means the embedded public Sigstore
+// root.
 type Verifier struct {
 	Client *http.Client
 	Root   *sigstore.Root
 }
 
-// Verify downloads every artifact of c, hashes it, checks each statement
-// upstream makes about it, and returns the release with every SHA-256 taken
-// from the downloaded bytes. Any failure names the architecture and the check,
-// and echoes nothing upstream sent. The context bounds the whole step.
+// Verify downloads every artifact of c, hashes it, checks each statement upstream makes about it, and returns the release with every SHA-256 taken from the
+// downloaded bytes. Any failure names the architecture and the check, and echoes nothing upstream sent. The context bounds the whole step.
 func (v Verifier) Verify(ctx context.Context, p pins.Pin, c pins.Candidate) (pins.Release, error) {
 	s := p.Signing
 	signed := s.Identity != "" || s.Issuer != "" || len(s.Bundles) > 0 || len(s.Members) > 0
@@ -97,8 +91,7 @@ func (v Verifier) Verify(ctx context.Context, p pins.Pin, c pins.Candidate) (pin
 	return rel, nil
 }
 
-// check downloads one architecture's artifact and checks what upstream says
-// about it: the published digest first, then the signature or provenance.
+// check downloads one architecture's artifact and checks what upstream says about it: the published digest first, then the signature or provenance.
 func (v Verifier) check(ctx context.Context, p pins.Pin, version, arch string, a pins.Artifact, id sigstore.Identity, signed bool) (pins.Artifact, error) {
 	sum256, sum512, member, err := v.download(ctx, a.URL, p.Signing.Members[arch])
 	if err != nil {
@@ -152,8 +145,7 @@ func (v Verifier) bundle(ctx context.Context, rawURL string, id sigstore.Identit
 	return nil
 }
 
-// provenance checks the registry's SLSA provenance attestation for the package
-// the npm locator names: a DSSE bundle whose in-toto statement has one subject,
+// provenance checks the registry's SLSA provenance attestation for the package the npm locator names: a DSSE bundle whose in-toto statement has one subject,
 // the package purl, with the tarball's sha512.
 func (v Verifier) provenance(ctx context.Context, locator, version string, id sigstore.Identity, hex512 string) error {
 	u, err := url.Parse(locator)
@@ -187,8 +179,7 @@ func (v Verifier) provenance(ctx context.Context, locator, version string, id si
 	return checkStatement(payload, "pkg:npm/"+strings.Replace(name, "@", "%40", 1)+"@"+version, hex512)
 }
 
-// provenanceBundle picks the one SLSA provenance attestation of a registry
-// attestations document and returns its bundle.
+// provenanceBundle picks the one SLSA provenance attestation of a registry attestations document and returns its bundle.
 func provenanceBundle(doc []byte) (json.RawMessage, error) {
 	var d struct {
 		Attestations []struct {
@@ -214,8 +205,7 @@ func provenanceBundle(doc []byte) (json.RawMessage, error) {
 	return b, nil
 }
 
-// checkStatement checks that an in-toto statement is SLSA provenance of
-// exactly one subject, purl, whose sha512 is hex512.
+// checkStatement checks that an in-toto statement is SLSA provenance of exactly one subject, purl, whose sha512 is hex512.
 func checkStatement(payload []byte, purl, hex512 string) error {
 	var s struct {
 		Type          string `json:"_type"`
@@ -249,11 +239,9 @@ func (v Verifier) root() *sigstore.Root {
 	return v.Root
 }
 
-// Fetch starts an https GET of rawURL with client, or http.DefaultClient when
-// it is nil, and returns the body of a 200 that is within limit bytes, whether
-// declared or streamed: the body fails past limit, and maps a transport fault to
-// a fixed phrase. Redirects follow the pins policy, at most three and https only,
-// unless the client brings its own. It is the one bounded reader of upstream bytes on the host (B8).
+// Fetch starts an https GET of rawURL with client, or http.DefaultClient when it is nil, and returns the body of a 200 that is within limit bytes, whether
+// declared or streamed: the body fails past limit, and maps a transport fault to a fixed phrase. Redirects follow the pins policy, at most three and https
+// only, unless the client brings its own. It is the one bounded reader of upstream bytes on the host (B8).
 func Fetch(ctx context.Context, client *http.Client, rawURL string, limit int64) (io.ReadCloser, error) {
 	if err := pins.HTTPSURL(rawURL); err != nil {
 		return nil, err
@@ -291,9 +279,8 @@ func (v Verifier) readAll(ctx context.Context, rawURL string, limit int64) ([]by
 	return io.ReadAll(b)
 }
 
-// download streams one artifact through sha256 and sha512 once, and, when
-// member is set, through the gzip tarball reader that digests that member.
-// Nothing is written to disk, and the bytes hashed are the bytes parsed.
+// download streams one artifact through sha256 and sha512 once, and, when member is set, through the gzip tarball reader that digests that member. Nothing is
+// written to disk, and the bytes hashed are the bytes parsed.
 func (v Verifier) download(ctx context.Context, rawURL, member string) (sum256, sum512, memberSum []byte, err error) {
 	b, err := Fetch(ctx, v.Client, rawURL, MaxArtifact)
 	if err != nil {
@@ -313,10 +300,8 @@ func (v Verifier) download(ctx context.Context, rawURL, member string) (sum256, 
 	return h256.Sum(nil), h512.Sum(nil), memberSum, nil
 }
 
-// tarMember reads a gzip tarball once and returns the sha256 of exactly one
-// regular-file entry named name. A second entry of that name, whatever its
-// kind, a member larger than limit, or more than limit decompressed bytes in
-// all, is a refusal. Nothing is extracted.
+// tarMember reads a gzip tarball once and returns the sha256 of exactly one regular-file entry named name. A second entry of that name, whatever its kind, a
+// member larger than limit, or more than limit decompressed bytes in all, is a refusal. Nothing is extracted.
 func tarMember(r io.Reader, name string, limit int64) ([]byte, error) {
 	gz, err := gzip.NewReader(r)
 	if err != nil {
@@ -357,8 +342,7 @@ func tarMember(r io.Reader, name string, limit int64) ([]byte, error) {
 
 var errCap = errors.New("over the size cap")
 
-// body reads at most n bytes from a reader and then fails, unlike io.LimitReader,
-// which ends quietly. Any other fault but the end is mapped to a fixed phrase.
+// body reads at most n bytes from a reader and then fails, unlike io.LimitReader, which ends quietly. Any other fault but the end is mapped to a fixed phrase.
 type body struct {
 	io.ReadCloser
 	n int64

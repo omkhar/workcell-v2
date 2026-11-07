@@ -34,8 +34,7 @@ import (
 	"github.com/omkhar/workcell/v2/internal/vmm"
 )
 
-// Firecracker as the U-101 spike (spikes/fcch) pinned it; the kernel is B of ADR-005, which
-// has FUSE_FS for mount mode, the same bytes escape/sandbox boots.
+// Firecracker as the U-101 spike (spikes/fcch) pinned it; the kernel is B of ADR-005, which has FUSE_FS for mount mode, the same bytes escape/sandbox boots.
 const (
 	fcURL     = "https://github.com/firecracker-microvm/firecracker/releases/download/v1.17.0/firecracker-v1.17.0-x86_64.tgz"
 	fcSHA256  = "06094a1108ae9e82aa4c23a775aa92758f53f1175d422270d9d6162cb9ade558"
@@ -87,9 +86,8 @@ func TestConfig(t *testing.T) {
 	}
 }
 
-// inputs are the pinned binary and kernel, the initramfs built from testdata/guest or from
-// the init, and, for a guest with a root image, the image and the init's command line. cpus
-// and memoryMiB size the guest; zero means 2 and 512.
+// inputs are the pinned binary and kernel, the initramfs built from testdata/guest or from the init, and, for a guest with a root image, the image and the
+// init's command line. cpus and memoryMiB size the guest; zero means 2 and 512.
 type inputs struct {
 	binary, kernel, initrd, image, cmdline string
 	cpus, memoryMiB                        int
@@ -228,9 +226,8 @@ func TestFirecracker(t *testing.T) {
 	})
 }
 
-// TestHelper is the supervisor that supervisor-killed SIGKILLs: it boots a guest in
-// the directory its parent chose, prints the VMM's pid once the guest said hello,
-// and then waits to be killed. It skips unless the parent set helperEnv.
+// TestHelper is the supervisor that supervisor-killed SIGKILLs: it boots a guest in the directory its parent chose, prints the VMM's pid once the guest said
+// hello, and then waits to be killed. It skips unless the parent set helperEnv.
 func TestHelper(t *testing.T) {
 	v := os.Getenv(helperEnv)
 	if v == "" {
@@ -296,8 +293,7 @@ func consoleFile(t *testing.T) *os.File {
 	return console
 }
 
-// launch starts a guest in a fresh short Dir and returns it with the guest's
-// connection, once the guest dialled.
+// launch starts a guest in a fresh short Dir and returns it with the guest's connection, once the guest dialled.
 func launch(t *testing.T, in inputs) (m *Machine, conn net.Conn, dir string, bootMS int64) {
 	t.Helper()
 	dir = shortDir(t)
@@ -378,8 +374,7 @@ func fetch(t *testing.T) inputs {
 		initrd: initramfs(t, dir, file{"init", build(t, dir, "./testdata/guest")})}
 }
 
-// pins holds the pinned binary and kernel, downloaded once per test binary into a
-// directory that TestMain removes.
+// pins holds the pinned binary and kernel, downloaded once per test binary into a directory that TestMain removes.
 var pins struct {
 	sync.Once
 	dir, binary, kernel string
@@ -494,8 +489,7 @@ func untar(archive, member, out string) error {
 	}
 }
 
-// newc returns one entry of a "newc" cpio archive: the 110-byte header, the
-// name and its NUL padded to 4, then the data padded to 4.
+// newc returns one entry of a "newc" cpio archive: the 110-byte header, the name and its NUL padded to 4, then the data padded to 4.
 func newc(name string, mode uint32, data []byte) []byte {
 	var b bytes.Buffer
 	fields := []uint32{1, mode, 0, 0, 1, 0, uint32(len(data)), 0, 0, 0, 0, uint32(len(name) + 1), 0}

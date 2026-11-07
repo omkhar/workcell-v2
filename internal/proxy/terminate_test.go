@@ -60,11 +60,9 @@ func (b *fakeBroker) callCount() int {
 	return len(b.calls)
 }
 
-// terminateFixture runs an upstream that echoes the x-api-key and Authorization
-// it received and a proxy that terminates example.com, with a rule for each of
-// those headers, a.example.com, with none, n.example.com, with an x-api-key
-// rule narrowed to POST under /v1/, and r.example.com, with an Authorization
-// rule scoped to the repository octo/allowed.
+// terminateFixture runs an upstream that echoes the x-api-key and Authorization it received and a proxy that terminates example.com, with a rule for each of
+// those headers, a.example.com, with none, n.example.com, with an x-api-key rule narrowed to POST under /v1/, and r.example.com, with an Authorization rule
+// scoped to the repository octo/allowed.
 func terminateFixture(t *testing.T, broker Broker) (proxyAddr string, ca *SessionCA, p *Proxy, log *recorder) {
 	t.Helper()
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -78,8 +76,7 @@ func terminateFixture(t *testing.T, broker Broker) (proxyAddr string, ca *Sessio
 	p.upstreamRoots = x509.NewCertPool()
 	p.upstreamRoots.AddCert(server.Certificate())
 	ca = must(NewSessionCA([]string{"example.com", "a.example.com", "n.example.com", "r.example.com"}, time.Now().Add(time.Hour)))
-	// Mixed-case header names: the broker must still get the lowercase form
-	// its grants use (TestTerminateSwapsOnlyExactPlaceholder checks the call).
+	// Mixed-case header names: the broker must still get the lowercase form its grants use (TestTerminateSwapsOnlyExactPlaceholder checks the call).
 	must(0, p.Terminate(ca, broker, []TerminateRule{
 		{Host: "example.com", Header: "X-Api-Key", Placeholder: testPlaceholder},
 		{Host: "example.com", Header: "Authorization", Placeholder: testAuthPlaceholder},
@@ -152,9 +149,8 @@ func TestTerminateSwapsOnlyExactPlaceholder(t *testing.T) {
 			t.Errorf("sent %q: upstream saw (%d, %q), want %q", tc.sent, code, body, tc.want)
 		}
 	}
-	// A Host that is not the SNI's name, another allowed name included, is
-	// refused before the broker or the upstream hears of it (I6); one that
-	// spells the name differently is the name.
+	// A Host that is not the SNI's name, another allowed name included, is refused before the broker or the upstream hears of it (I6); one that spells the name
+	// differently is the name.
 	for host, code := range map[string]int{"evil.example": 421, "a.example.com": 421, "EXAMPLE.COM:443": 200, "example.com.": 200} {
 		req, _ := http.NewRequest(http.MethodGet, "https://example.com/", nil)
 		req.Host = host
@@ -174,8 +170,7 @@ func TestTerminateSwapsOnlyExactPlaceholder(t *testing.T) {
 		t.Errorf("deny lines = %+v, want 2 ending in %+v", d, want)
 	}
 
-	// Every allowed name is terminated, with or without a rule: the client
-	// sees a session leaf for a.example.com too.
+	// Every allowed name is terminated, with or without a rule: the client sees a session leaf for a.example.com too.
 	if code, body := get(t, c, "https://a.example.com/", "user-key"); code != http.StatusOK || body != "a.example.com user-key" {
 		t.Errorf("GET to the host without a rule = (%d, %q), want it served through the session leaf", code, body)
 	}
@@ -202,8 +197,7 @@ func TestSameHost(t *testing.T) {
 	}
 }
 
-// Claude Code with apiKeyHelper sends the key in x-api-key and in
-// Authorization; both rules for one host must swap.
+// Claude Code with apiKeyHelper sends the key in x-api-key and in Authorization; both rules for one host must swap.
 func TestTerminateSwapsBothHeaders(t *testing.T) {
 	t.Parallel()
 	broker := &fakeBroker{value: "real-secret"}
@@ -219,8 +213,7 @@ func TestTerminateSwapsBothHeaders(t *testing.T) {
 	}
 }
 
-// A placeholder left anywhere after the swap fails closed with 502 and a deny
-// line; it never reaches upstream.
+// A placeholder left anywhere after the swap fails closed with 502 and a deny line; it never reaches upstream.
 func TestTerminateRefusesUnswappedPlaceholder(t *testing.T) {
 	t.Parallel()
 	addr, ca, p, log := terminateFixture(t, &fakeBroker{value: "real-secret"})
@@ -257,8 +250,7 @@ func TestTerminateRefusesUnswappedPlaceholder(t *testing.T) {
 			t.Errorf("%s: got (%d, %q), want 502 from the proxy", name, code, body)
 		}
 	}
-	// A trailer is declared before the body and delivered after it, so the
-	// proxy refuses every request trailer, placeholder-named or benign.
+	// A trailer is declared before the body and delivered after it, so the proxy refuses every request trailer, placeholder-named or benign.
 	trailers := []string{"X-" + testPlaceholder, "X-Checksum"}
 	for _, name := range trailers {
 		req, _ := http.NewRequest(http.MethodPost, "https://example.com/v1", strings.NewReader("body"))
@@ -320,8 +312,8 @@ func TestSessionCANameConstraints(t *testing.T) {
 	if ca.key.Curve != elliptic.P256() {
 		t.Fatal("CA key is not P-256")
 	}
-	// The CA is trusted only through the file SSL_CERT_FILE would name, as an operator's private
-	// authority is; a leaf of another authority is not, and a file that cannot be read refuses.
+	// The CA is trusted only through the file SSL_CERT_FILE would name, as an operator's private authority is; a leaf of another authority is not, and a file that
+	// cannot be read refuses.
 	file := filepath.Join(t.TempDir(), "roots.pem")
 	must(0, os.WriteFile(file, ca.CertPEM(), 0o600))
 	roots := must(upstreamRoots(file))
@@ -376,9 +368,8 @@ func TestNewSessionCARefusesBadInput(t *testing.T) {
 	}
 }
 
-// TestNewTerminateRule: the host comes back canonical and the header lowercase,
-// each rule gets a placeholder of its own, and a bad host, header, method,
-// path or repository is refused, as are repositories beside a method or path.
+// TestNewTerminateRule: the host comes back canonical and the header lowercase, each rule gets a placeholder of its own, and a bad host, header, method, path
+// or repository is refused, as are repositories beside a method or path.
 func TestNewTerminateRule(t *testing.T) {
 	t.Parallel()
 	repo := func(repos ...string) []string { return repos }
@@ -416,16 +407,11 @@ func TestNewTerminateRule(t *testing.T) {
 	}
 }
 
-// TestTerminateNarrowedRule: a rule naming a method and a path prefix swaps a
-// placeholder only on a request of that method under that prefix, and one
-// naming repositories only on a request to /owner/name or /owner/name.git or
-// under either, the placeholder bare, as a bearer or as a Basic password (as
-// git sends a token), judged on the path as sent and as decoded; any other
-// request carrying the placeholder in the bound header is refused before the
-// broker hears of it, with nothing forwarded, and a request carrying no
-// placeholder passes as is. The bytes the broker gave are wiped once the
-// request carries them. Drop the check → the broker is asked and the upstream
-// sees the value → FAIL.
+// TestTerminateNarrowedRule: a rule naming a method and a path prefix swaps a placeholder only on a request of that method under that prefix, and one naming
+// repositories only on a request to /owner/name or /owner/name.git or under either, the placeholder bare, as a bearer or as a Basic password (as git sends a
+// token), judged on the path as sent and as decoded; any other request carrying the placeholder in the bound header is refused before the broker hears of it,
+// with nothing forwarded, and a request carrying no placeholder passes as is. The bytes the broker gave are wiped once the request carries them. Drop the check
+// → the broker is asked and the upstream sees the value → FAIL.
 func TestTerminateNarrowedRule(t *testing.T) {
 	t.Parallel()
 	broker := &fakeBroker{value: "real-secret"}
@@ -489,9 +475,8 @@ func TestTerminateNarrowedRule(t *testing.T) {
 	}
 }
 
-// TestPlaceholderForm: the three forms a placeholder is swapped in rebuild
-// around the real value; a Basic value is a pair, the placeholder its whole
-// password, strictly encoded and bounded; anything else is not swapped.
+// TestPlaceholderForm: the three forms a placeholder is swapped in rebuild around the real value; a Basic value is a pair, the placeholder its whole password,
+// strictly encoded and bounded; anything else is not swapped.
 func TestPlaceholderForm(t *testing.T) {
 	t.Parallel()
 	b64 := base64.StdEncoding.EncodeToString
@@ -543,10 +528,8 @@ func TestNewPlaceholderIsFreshAndParses(t *testing.T) {
 	}
 }
 
-// TestTerminateRefusesTraceAndConnect: TRACE could echo the swapped key and
-// CONNECT tunnels past the rewrite, so both get 405 before the swap; a GET
-// still reaches the upstream. Drop the method check → the broker is asked and
-// the request goes upstream → FAIL.
+// TestTerminateRefusesTraceAndConnect: TRACE could echo the swapped key and CONNECT tunnels past the rewrite, so both get 405 before the swap; a GET still
+// reaches the upstream. Drop the method check → the broker is asked and the request goes upstream → FAIL.
 func TestTerminateRefusesTraceAndConnect(t *testing.T) {
 	t.Parallel()
 	broker := &fakeBroker{value: "real-secret"}
@@ -571,9 +554,8 @@ func TestTerminateRefusesTraceAndConnect(t *testing.T) {
 	}
 }
 
-// FuzzCarriesPlaceholder: a placeholder in any case in a header name, a
-// header value, a Basic value decoded or the raw target must be caught, and
-// a swap form must rebuild the exact value it matched.
+// FuzzCarriesPlaceholder: a placeholder in any case in a header name, a header value, a Basic value decoded or the raw target must be caught, and a swap form
+// must rebuild the exact value it matched.
 func FuzzCarriesPlaceholder(f *testing.F) {
 	f.Add("X-Api-Key", "Bearer "+testPlaceholder, "/v1?key=%77cph-0123456789abcdef0123456789abcdef")
 	f.Add("X-"+strings.ToUpper(testPlaceholder), "v", "/")

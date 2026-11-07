@@ -34,8 +34,7 @@ import (
 	"github.com/omkhar/workcell/v2/internal/provider"
 )
 
-// tarball is a layer holding body at each of the names, as regular files of mode 0755,
-// gzip-compressed or plain.
+// tarball is a layer holding body at each of the names, as regular files of mode 0755, gzip-compressed or plain.
 func tarball(t *testing.T, body string, gz bool, names ...string) []byte {
 	var buf bytes.Buffer
 	var w io.WriteCloser = gzip.NewWriter(&buf)
@@ -57,9 +56,8 @@ func tarball(t *testing.T, body string, gz bool, names ...string) []byte {
 	return buf.Bytes()
 }
 
-// TestUnpack: a layer's shape is told by content. A bare file, a tar whose root holds one
-// file under any name, and a tar that already holds bin/<binary> each give bin/<binary>,
-// mode 0755; a tar whose root holds two files, or a bin/ without the binary, is refused.
+// TestUnpack: a layer's shape is told by content. A bare file, a tar whose root holds one file under any name, and a tar that already holds bin/<binary> each
+// give bin/<binary>, mode 0755; a tar whose root holds two files, or a bin/ without the binary, is refused.
 func TestUnpack(t *testing.T) {
 	tests := []struct {
 		name string
@@ -96,10 +94,9 @@ func TestUnpack(t *testing.T) {
 	}
 }
 
-// TestUpdate walks one data directory through installs of each shape, a rollback, --to and
-// the refusals, against a loopback TLS upstream (T8) with rows the test supplies (A11): the
-// markers only ever name a complete image, a digest mismatch or a shape refused leaves them
-// untouched, and the record holds one line per step.
+// TestUpdate walks one data directory through installs of each shape, a rollback, --to and the refusals, against a loopback TLS upstream (T8) with rows the
+// test supplies (A11): the markers only ever name a complete image, a digest mismatch or a shape refused leaves them untouched, and the record holds one line
+// per step.
 func TestUpdate(t *testing.T) {
 	bodies := map[string][]byte{"/v1.tgz": tarball(t, "one", true, "bin/fake"), "/v2.tgz": tarball(t, "two", true, "fake-x86_64-unknown-linux-musl"),
 		"/v3.tar": tarball(t, "three", false, "bin/fake"), "/v4": []byte("#!/bin/sh\necho four\n"), "/v5.tgz": tarball(t, "five", true, "fake", "LICENSE")}
@@ -223,8 +220,7 @@ func TestUpdate(t *testing.T) {
 	}
 }
 
-// TestUpdateUsage: the verb refuses --to with --rollback, either flag without an agent, and
-// more than one agent, before it touches anything.
+// TestUpdateUsage: the verb refuses --to with --rollback, either flag without an agent, and more than one agent, before it touches anything.
 func TestUpdateUsage(t *testing.T) {
 	for _, args := range [][]string{{"--to", "1.0.0", "--rollback", "x"}, {"--to", "1.0.0"}, {"--rollback"}, {"a", "b"}, {"--bogus"}} {
 		if rc := update(args, io.Discard, io.Discard); rc != 2 {
@@ -233,11 +229,11 @@ func TestUpdateUsage(t *testing.T) {
 	}
 }
 
-// TestChannel runs the product's own update client, as the [update] table of a config file sets it up (channel,
-// ca, key), against a loopback channel (T8): a valid manifest installs its pin and advances the serial kept; each
-// hostile manifest installs nothing and leaves the serial where a verified one put it; a redirect of channel.json is not
-// followed, nor one of the artifact to a listener that is not https, while one to a path of the same https server is; channel.json
-// is read to 64 KiB and no further; --to outside pins and previous installs nothing; a valid successor installs again; the cool-off with nothing before it installs nothing.
+// TestChannel runs the product's own update client, as the [update] table of a config file sets it up (channel, ca, key), against a loopback channel (T8): a
+// valid manifest installs its pin and advances the serial kept; each hostile manifest installs nothing and leaves the serial where a verified one put it; a
+// redirect of channel.json is not followed, nor one of the artifact to a listener that is not https, while one to a path of the same https server is;
+// channel.json is read to 64 KiB and no further; --to outside pins and previous installs nothing; a valid successor installs again; the cool-off with nothing
+// before it installs nothing.
 func TestChannel(t *testing.T) {
 	pub, key, _ := ed25519.GenerateKey(rand.Reader)
 	var mu sync.Mutex
@@ -344,7 +340,7 @@ func TestChannel(t *testing.T) {
 			s.serve()
 			in.cooloff = s.cooloff
 			ctx := context.Background()
-			_, err := in.update(ctx, prov, func() (*channel.Manifest, error) { return in.manifest(ctx) }, s.to, false)
+			_, err := in.update(ctx, prov, func() (*channel.Manifest, error) { _, m, err := in.manifest(ctx); return m, err }, s.to, false)
 			if (err == nil) != (s.refusal == "") || err != nil && !strings.Contains(err.Error(), s.refusal) {
 				t.Errorf("update = %v; want refusal %q", err, s.refusal)
 			}
@@ -356,5 +352,97 @@ func TestChannel(t *testing.T) {
 	}
 	if mu.Lock(); seen["/artifact"] != 1 || seen["/plain"] != 0 || seen["/elsewhere"] != 0 || seen["/channel.json"] == 0 {
 		t.Errorf("requests %v; want one to the artifact's redirect target on the same https server and none to the others", seen)
+	}
+	mu.Unlock()
+
+	// B9, B10, with the same installer: the day's first start fetches channel.json once, in a goroutine, and keeps what verified as channel.next; a second start
+	// that day and a held channel fetch nothing; the next start installs what was kept, unless its image is marked failed; a layer whose binary could not run is
+	// set aside, with one record line naming it, and current goes back.
+	third := []byte("#!/bin/sh\necho third\n")
+	publish(channel.Manifest{Serial: now, Expires: now + 13*day, Pins: pin("1.0.3", "/daily", third), Previous: good.Pins}, key, same)
+	in.cooloff = 0
+	gets := func(path string) int { mu.Lock(); defer mu.Unlock(); return seen[path] }
+	until := func(ok func() bool) bool {
+		for i := 0; i < 500 && !ok(); i++ {
+			time.Sleep(10 * time.Millisecond)
+		}
+		return ok()
+	}
+	before := gets("/channel.json")
+	for _, s := range []struct {
+		name, channel string
+		now           time.Time
+		want          bool
+		gets          int
+	}{
+		{"the first start of the day checks once", in.channel, time.Now(), true, 1},
+		{"a second start the same day does not", in.channel, time.Now(), false, 1},
+		{"a held channel on a new day does not", "", time.Now().Add(24 * time.Hour), false, 1},
+	} {
+		d := in
+		d.channel = s.channel
+		got := d.daily(s.now)
+		if until(func() bool { return gets("/channel.json")-before == s.gets }); got != s.want || gets("/channel.json")-before != s.gets {
+			t.Errorf("%s: daily = %v, %d requests; want %v, %d", s.name, got, gets("/channel.json")-before, s.want, s.gets)
+		}
+	}
+	next := filepath.Join(in.dir, "channel.next")
+	if !until(func() bool { _, err := os.Stat(next); return err == nil }) {
+		t.Fatal("the daily check kept no channel.next")
+	}
+	mu.Lock()
+	raw := served["/channel.json"]
+	mu.Unlock()
+	if b := marker(in.dir, "channel.next"); b != string(raw) || marker(in.dir, "channel.serial") != strconv.FormatInt(now, 10) || gets("/channel.json")-before != 1 {
+		t.Errorf("channel.next holds %d bytes, serial %s, %d requests; want the %d served, %d, 1", len(b), marker(in.dir, "channel.serial"), gets("/channel.json")-before, len(raw), now)
+	}
+	sum := func(b []byte) string { s := sha256.Sum256(b); return hex.EncodeToString(s[:]) }
+	img2, img3, provs := "1.0.1-"+sum(bad)+".ext4", "1.0.3-"+sum(third)+".ext4", []provider.Provider{prov}
+	for _, s := range []struct {
+		name                  string
+		kept                  bool // channel.next holds the served manifest
+		failed, channel, want string
+		fetches               int // of the artifact, so far
+	}{
+		{"a kept manifest whose pin is marked failed installs nothing", true, img3, in.channel, "1.0.1", 0},
+		{"a held channel installs nothing", true, "", "", "1.0.1", 0},
+		{"the next start installs what the check kept", true, "", in.channel, "1.0.3", 1},
+		{"nothing kept, nothing done", false, "", in.channel, "1.0.3", 1},
+	} {
+		os.Remove(filepath.Join(layers, "failed"))
+		if s.failed != "" {
+			writeMarker(layers, "failed", s.failed)
+		}
+		if s.kept {
+			writeMarker(in.dir, "channel.next", string(raw))
+		}
+		a := in
+		a.channel = s.channel
+		var out bytes.Buffer
+		a.apply(provs, &out)
+		_, err := os.Stat(next)
+		if cur := marker(layers, "current"); !strings.HasPrefix(cur, s.want+"-") || err == nil || gets("/daily") != s.fetches {
+			t.Errorf("%s: current %q, channel.next %v, %d fetches, said %q; want %s, removed, %d", s.name, cur, err, gets("/daily"), out.String(), s.want, s.fetches)
+		}
+	}
+	real, _ := provider.All() // fail finds the provider by its binary among the built-in ones, so the layers that fail are the first one's
+	layers = filepath.Join(in.dir, "layers", real[0].Name)
+	if err := errors.Join(os.MkdirAll(layers, 0o700), writeMarker(layers, "current", img3), writeMarker(layers, "previous", img2), os.WriteFile(filepath.Join(layers, img3), nil, 0o600), os.WriteFile(filepath.Join(layers, img2), nil, 0o600)); err != nil {
+		t.Fatal(err)
+	}
+	for _, s := range []struct{ name, cur, prev, want string }{
+		{"the layer that could not run is set aside and the one before it is current", img3, img2, img2},
+		{"with none before, the session boots without the layer", img2, "", ""},
+	} {
+		rec, _ := os.ReadFile(filepath.Join(in.dir, "updates.log"))
+		var out bytes.Buffer
+		in.fail(real[0].Binary, &out)
+		_, err := os.Stat(filepath.Join(layers, s.cur))
+		after, _ := os.ReadFile(filepath.Join(in.dir, "updates.log"))
+		added := strings.Split(strings.TrimSpace(strings.TrimPrefix(string(after), string(rec))), "\n")
+		if cur, prev, failed := marker(layers, "current"), marker(layers, "previous"), marker(layers, "failed"); cur != s.want || prev != "" || failed != s.cur || err == nil ||
+			len(added) != 1 || !strings.HasSuffix(added[0], `"version":"`+s.cur[:5]+`","digest":"`+strings.TrimSuffix(s.cur[6:], ".ext4")+`","result":"failed"}`) || !strings.Contains(out.String(), "could not run") {
+			t.Errorf("%s: current %q previous %q failed %q, image %v, said %q, record added %v; want %q, none, %q, removed, one failed line naming %s", s.name, cur, prev, failed, err, out.String(), added, s.want, s.cur, s.cur)
+		}
 	}
 }

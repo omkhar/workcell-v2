@@ -27,9 +27,8 @@ type route struct {
 	header  map[string]string
 	chunked bool // no Content-Length, so the cap is met while reading
 
-	// A registry's anonymous pull: token, when set, is the bearer the route wants.
-	// Without it the route answers 401 and the challenge, which by default names
-	// this server's /token route. A query, when set, is the one the route accepts.
+	// A registry's anonymous pull: token, when set, is the bearer the route wants. Without it the route answers 401 and the challenge, which by default names this
+	// server's /token route. A query, when set, is the one the route accepts.
 	token     string
 	challenge string
 	query     string
@@ -141,9 +140,8 @@ func TestCandidates(t *testing.T) {
 		m[path] = rt
 		return m
 	}
-	// failures adds the rows every source shares: the upstream answers one of its
-	// requests with an error status, a truncated body, or a redirect off https or
-	// in a loop.
+	// failures adds the rows every source shares: the upstream answers one of its requests with an error status, a truncated body, or a redirect off https or in a
+	// loop.
 	failures := func(pin Pin, routes map[string]route, paths ...string) []row {
 		var rows []row
 		for _, p := range paths {
@@ -159,8 +157,7 @@ func TestCandidates(t *testing.T) {
 		return rows
 	}
 
-	// getter.get is shared by every source, so one body of cap+1 bytes per
-	// transport form covers them all.
+	// getter.get is shared by every source, so one body of cap+1 bytes per transport form covers them all.
 	over := string(make([]byte, maxBytes+1))
 
 	tests := []row{

@@ -30,8 +30,8 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-// The pinned arm64 kernel: Firecracker's CI build, kernel A of ADR-001, which boots
-// under Virtualization.framework (U-102). It is what escape/sandbox boots on a Mac.
+// The pinned arm64 kernel: Firecracker's CI build, kernel A of ADR-001, which boots under Virtualization.framework (U-102). It is what escape/sandbox boots on
+// a Mac.
 const (
 	kernelURL = "https://s3.amazonaws.com/spec.ccfc.min/firecracker-ci/v1.14/aarch64/vmlinux-6.1.155"
 	kernelSHA = "61baeae1ac6197be4fc5c71fa78df266acdc33c54570290d2f611c2b42c105be"
@@ -52,8 +52,7 @@ const entitlements = `<?xml version="1.0" encoding="UTF-8"?>
 </plist>
 `
 
-// needVM skips a test that boots a guest where it cannot: no hypervisor, or no codesign
-// to entitle a binary with.
+// needVM skips a test that boots a guest where it cannot: no hypervisor, or no codesign to entitle a binary with.
 func needVM(t *testing.T) {
 	t.Helper()
 	if hv, err := unix.SysctlUint32("kern.hv_support"); err != nil || hv != 1 {
@@ -64,9 +63,8 @@ func needVM(t *testing.T) {
 	}
 }
 
-// TestMachine drives the Machine itself. The framework wants the entitlement on the
-// process, so the test binary is copied, signed and run again with signedEnv set; the
-// child does the work and the parent reports it.
+// TestMachine drives the Machine itself. The framework wants the entitlement on the process, so the test binary is copied, signed and run again with signedEnv
+// set; the child does the work and the parent reports it.
 func TestMachine(t *testing.T) {
 	needVM(t)
 	if os.Getenv(signedEnv) == "" {
@@ -91,10 +89,8 @@ func TestMachine(t *testing.T) {
 		}
 	})
 
-	// The guest reboots when the host hangs up, as workcell-init does. The framework
-	// boots the kernel again then: the guest dials once more, and the VM is still
-	// running, so the host ends it with Kill. Should the framework ever stop the VM
-	// instead, Wait returns and the test says so.
+	// The guest reboots when the host hangs up, as workcell-init does. The framework boots the kernel again then: the guest dials once more, and the VM is still
+	// running, so the host ends it with Kill. Should the framework ever stop the VM instead, Wait returns and the test says so.
 	t.Run("boot-and-stop", func(t *testing.T) {
 		m, conn, ln, bootMS := boot(t, in)
 		short, cancel := context.WithTimeout(ctx, 100*time.Millisecond)
@@ -161,10 +157,9 @@ func TestMachine(t *testing.T) {
 	})
 }
 
-// TestRun runs the built `workcell run` as a child, as a user would, against a data
-// directory laid out the way `workcell update` will leave it on a Mac: the pinned kernel, an
-// initramfs whose /init is workcell-init, and the Debian arm64 image from mkimage. The
-// binary is signed ad hoc with the entitlement, as escape/sandbox does.
+// TestRun runs the built `workcell run` as a child, as a user would, against a data directory laid out the way `workcell update` will leave it on a Mac: the
+// pinned kernel, an initramfs whose /init is workcell-init, and the Debian arm64 image from mkimage. The binary is signed ad hoc with the entitlement, as
+// escape/sandbox does.
 func TestRun(t *testing.T) {
 	needVM(t)
 	kernel := pinned(t)
@@ -264,8 +259,7 @@ func TestRun(t *testing.T) {
 		}
 	})
 
-	// The caps of I10 as the guest sees them: one vCPU, at most 256 MiB of RAM, and ENOSPC
-	// at 64 MiB of writes to the root while less than that succeeds.
+	// The caps of I10 as the guest sees them: one vCPU, at most 256 MiB of RAM, and ENOSPC at 64 MiB of writes to the root while less than that succeeds.
 	t.Run("resource-caps", func(t *testing.T) {
 		flags = []string{"--cpus", "1", "--memory", "256MiB", "--disk", "64MiB"}
 		t.Cleanup(func() { flags = nil })
@@ -294,9 +288,8 @@ dd if=/dev/zero of=/var/tmp/b bs=1M count=80 2>&1 | grep -o 'No space left on de
 		}
 	})
 
-	// Clone mode: the guest starts in a copy of the directory, what it writes there stays
-	// there (I1), and once the session ends the VMM's files are gone while the copy stays
-	// as a session, with the directory it came from on record, for diff and pull.
+	// Clone mode: the guest starts in a copy of the directory, what it writes there stays there (I1), and once the session ends the VMM's files are gone while the
+	// copy stays as a session, with the directory it came from on record, for diff and pull.
 	t.Run("workspace", func(t *testing.T) {
 		own, err := filepath.EvalSymlinks(t.TempDir()) // as the child's Getwd will spell it: /tmp is a link here
 		if err != nil {
@@ -342,8 +335,8 @@ dd if=/dev/zero of=/var/tmp/b bs=1M count=80 2>&1 | grep -o 'No space left on de
 	t.Run("terminal", func(t *testing.T) {
 		master, slave := openPTY(t)
 		setSize(t, master, 24, 80)
-		// A shell is the session leader, as it would be for a user: the terminal is revoked when
-		// the leader exits here, so the shell itself compares the settings workcell left behind.
+		// A shell is the session leader, as it would be for a user: the terminal is revoked when the leader exits here, so the shell itself compares the settings
+		// workcell left behind.
 		script := fmt.Sprintf(`before=$(stty -g); %s run -- sh -c 'stty size; echo READY; read x; stty size; exit 3'; s=$?; [ "$before" = "$(stty -g)" ] && echo SAME || echo CHANGED; exit $s`, workcellBin)
 		cmd := workcell(repo, slave, "unused")
 		cmd.Args = []string{"/bin/sh", "-c", script}
@@ -383,8 +376,7 @@ dd if=/dev/zero of=/var/tmp/b bs=1M count=80 2>&1 | grep -o 'No space left on de
 	})
 }
 
-// reexec copies this test binary, signs the copy with the entitlement and runs the tests
-// matching run in it, with the child's output as this test's log.
+// reexec copies this test binary, signs the copy with the entitlement and runs the tests matching run in it, with the child's output as this test's log.
 func reexec(t *testing.T, run string) {
 	t.Helper()
 	self, err := os.Executable()
@@ -405,9 +397,8 @@ func reexec(t *testing.T, run string) {
 	}
 }
 
-// entitle writes a fresh copy of the binary at src into dir, signed ad hoc with the
-// entitlement, and returns it. The copy is fresh because re-signing a binary that has
-// run can get it killed (U-102).
+// entitle writes a fresh copy of the binary at src into dir, signed ad hoc with the entitlement, and returns it. The copy is fresh because re-signing a binary
+// that has run can get it killed (U-102).
 func entitle(t *testing.T, dir, src string) string {
 	t.Helper()
 	b, err := os.ReadFile(src)
@@ -440,8 +431,7 @@ func (in inputs) machine(t *testing.T, console io.Writer) *Machine {
 	return m
 }
 
-// boot starts a guest and returns it with the guest's connection and the listener it came
-// on, once it said hello.
+// boot starts a guest and returns it with the guest's connection and the listener it came on, once it said hello.
 func boot(t *testing.T, in inputs) (m *Machine, conn net.Conn, ln net.Listener, bootMS int64) {
 	t.Helper()
 	console := &bytes.Buffer{}
@@ -481,8 +471,7 @@ func boot(t *testing.T, in inputs) (m *Machine, conn net.Conn, ln net.Listener, 
 	return m, conn, ln, bootMS
 }
 
-// pins holds the pinned kernel, fetched once per test binary into the user's cache
-// directory and checked against its digest on every use.
+// pins holds the pinned kernel, fetched once per test binary into the user's cache directory and checked against its digest on every use.
 var pins struct {
 	sync.Once
 	kernel string
@@ -556,8 +545,7 @@ func download(path, url, want string) error {
 	return os.Rename(f.Name(), path)
 }
 
-// build compiles pkg into dir with env added and returns the binary; for the guest the
-// caller passes GOOS=linux GOARCH=arm64.
+// build compiles pkg into dir with env added and returns the binary; for the guest the caller passes GOOS=linux GOARCH=arm64.
 func build(t *testing.T, dir, pkg string, env ...string) string {
 	t.Helper()
 	out := filepath.Join(dir, filepath.Base(pkg))
@@ -579,8 +567,8 @@ func slurp(t *testing.T, path string) []byte {
 	return b
 }
 
-// debianImage builds cmd/mkimage into dir and runs it on the pinned Debian for arm64: the
-// root image `workcell update` will leave, as the escape adapter makes it.
+// debianImage builds cmd/mkimage into dir and runs it on the pinned Debian for arm64: the root image `workcell update` will leave, as the escape adapter makes
+// it.
 func debianImage(t *testing.T, dir string) string {
 	t.Helper()
 	build(t, dir, "github.com/omkhar/workcell/v2/cmd/mkimage", "CGO_ENABLED=1")
@@ -594,8 +582,7 @@ func debianImage(t *testing.T, dir string) string {
 	return image
 }
 
-// newc returns one entry of a "newc" cpio archive: the 110-byte header, the name and its
-// NUL padded to 4, then the data padded to 4.
+// newc returns one entry of a "newc" cpio archive: the 110-byte header, the name and its NUL padded to 4, then the data padded to 4.
 func newc(name string, mode uint32, data []byte) []byte {
 	var b bytes.Buffer
 	fields := []uint32{1, mode, 0, 0, 1, 0, uint32(len(data)), 0, 0, 0, 0, uint32(len(name) + 1), 0}

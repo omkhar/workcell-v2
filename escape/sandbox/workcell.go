@@ -19,9 +19,8 @@ import (
 // directory, and one `workcell pull` per Pull. It runs on Linux and macOS;
 // elsewhere every operation reports ErrNotImplemented. The session policy
 // goes in as the product's own config.toml under a directory of the
-// session's own (XDG_CONFIG_HOME), a secret's value in a file beside it,
-// outside any export. What the CLI cannot honour yet is refused at Start
-// with ErrNotImplemented, so that such a test is never a false pass.
+// session's own (XDG_CONFIG_HOME), a secret's value in a file beside it. What
+// the CLI cannot honour yet is refused at Start with ErrNotImplemented, never a false pass.
 
 // Prepare does the one-time setup the named adapter needs, under dir, which
 // the caller removes when the process ends. For workcell that is the four
@@ -65,8 +64,7 @@ const policyFile = "workcell/config.toml"
 // A quote, a backslash or a byte outside printable ASCII would change what
 // the file says, so such an entry is refused. It is written even with no
 // entry, so that nothing under the runner's ~/.config reaches a session.
-// cfg.Deny writes nothing, since a file that does not name a host is all the
-// product needs; a name in both lists is a mistake in the table, and refused.
+// cfg.Deny writes nothing; a name in both lists is a mistake, and refused.
 func policyTOML(cfg Config, source string) ([]byte, error) {
 	for _, name := range cfg.Allow {
 		if slices.Contains(cfg.Deny, name) {
@@ -147,9 +145,8 @@ func runArgs(cfg Config, loader string, args ...string) []string {
 }
 
 // cpioEntry writes one newc ("070701") cpio entry: a header of the magic and
-// thirteen 8-digit hex fields, the name with its NUL, and the data, each of
-// the last two padded to four bytes. A trailer is the entry named
-// "TRAILER!!!" with no data.
+// thirteen 8-digit hex fields, the name with its NUL, and the data, each of the
+// last two padded to four bytes. A trailer is the entry named "TRAILER!!!" with no data.
 func cpioEntry(w io.Writer, name string, mode uint32, data []byte) error {
 	const magic = "070701"
 	ino := uint32(1)
@@ -176,9 +173,8 @@ func pad4(b []byte) []byte {
 	return b
 }
 
-// Channel is where the guest's init dialled the host: AF_VSOCK, the host's
-// CID 2, port 5000. Nothing else of the channel is known here; a probe finds
-// the init's connection by that peer and may dial the same port afresh.
+// Channel is where the guest's init dialled the host: AF_VSOCK, the host's CID
+// 2, port 5000. A probe finds the init's connection by that peer and may dial the same port afresh.
 func (*workcell) Channel(context.Context) (Channel, error) { return Channel{Addr: "vsock:2:5000"}, nil }
 
 // Relay is where the guest's init opens one vsock stream per relayed

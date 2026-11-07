@@ -14,7 +14,6 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
-	"net"
 	"net/http"
 	"runtime"
 	"strings"
@@ -25,39 +24,16 @@ import (
 )
 
 // careful is a client that makes every check ADR-004 lists, so that each
-// judge is shown to have a pass; idle is one that installs nothing, and
-// sticky one that installs once and never fetches again, so that each judge
-// is shown to error rather than pass on them.
+// judge is shown to have a pass; idle installs nothing, and sticky installs
+// once and never fetches again, so that each judge is shown to error rather
+// than pass on them. Nothing else of Observe is called: a nil interface stands for it.
 type careful struct {
-	noObserve
+	sandbox.Observe
 	serial    int64
 	installed []byte
 }
 
-type noObserve struct{}
-
-func (noObserve) Audit(context.Context) (string, []string, error) {
-	return "", nil, sandbox.ErrNotImplemented
-}
-func (noObserve) Verify(context.Context) error                { return sandbox.ErrNotImplemented }
-func (noObserve) Helper(context.Context, string) (int, error) { return 0, sandbox.ErrNotImplemented }
-func (noObserve) Channel(context.Context) (sandbox.Channel, error) {
-	return sandbox.Channel{}, sandbox.ErrNotImplemented
-}
-func (noObserve) Relay(context.Context) (sandbox.Channel, error) {
-	return sandbox.Channel{}, sandbox.ErrNotImplemented
-}
-func (noObserve) Bench(context.Context) (sandbox.Output, error) {
-	return sandbox.Output{}, sandbox.ErrNotImplemented
-}
-func (noObserve) Bind(context.Context, string, string) (net.Listener, net.PacketConn, error) {
-	return nil, nil, sandbox.ErrNotImplemented
-}
-func (noObserve) Install(context.Context, sandbox.Layer) (string, error) {
-	return "", sandbox.ErrNotImplemented
-}
-
-type idle struct{ noObserve }
+type idle struct{ sandbox.Observe }
 
 func (idle) Update(context.Context, sandbox.UpdateConfig) ([]byte, error) { return nil, nil }
 

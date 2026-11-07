@@ -7,7 +7,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"net"
 	"os"
 	"path/filepath"
 	"testing"
@@ -16,8 +15,10 @@ import (
 	"github.com/omkhar/workcell/v2/escape/suite"
 )
 
-// fake is a sandbox whose payload prints canned bytes.
+// fake is a sandbox whose payload prints canned bytes; nothing of Observe is
+// called, so a nil interface stands for it.
 type fake struct {
+	sandbox.Observe
 	start      error
 	stdout     string
 	exit       int
@@ -34,29 +35,6 @@ func (f *fake) Exec(_ context.Context, args ...string) (sandbox.Output, error) {
 }
 func (f *fake) Pull(context.Context, string) error { return nil }
 func (f *fake) Stop() error                        { f.stops++; return nil }
-func (f *fake) Audit(context.Context) (string, []string, error) {
-	return "", nil, sandbox.ErrNotImplemented
-}
-func (f *fake) Verify(context.Context) error                { return sandbox.ErrNotImplemented }
-func (f *fake) Helper(context.Context, string) (int, error) { return 0, sandbox.ErrNotImplemented }
-func (f *fake) Relay(context.Context) (sandbox.Channel, error) {
-	return sandbox.Channel{}, sandbox.ErrNotImplemented
-}
-func (f *fake) Channel(context.Context) (sandbox.Channel, error) {
-	return sandbox.Channel{}, sandbox.ErrNotImplemented
-}
-func (f *fake) Update(context.Context, sandbox.UpdateConfig) ([]byte, error) {
-	return nil, sandbox.ErrNotImplemented
-}
-func (f *fake) Install(context.Context, sandbox.Layer) (string, error) {
-	return "", sandbox.ErrNotImplemented
-}
-func (f *fake) Bind(context.Context, string, string) (net.Listener, net.PacketConn, error) {
-	return nil, nil, sandbox.ErrNotImplemented
-}
-func (f *fake) Bench(context.Context) (sandbox.Output, error) {
-	return sandbox.Output{}, sandbox.ErrNotImplemented
-}
 
 func TestRunOutcomes(t *testing.T) {
 	judge := func(_ context.Context, s suite.Session) (bool, string, error) {
@@ -111,7 +89,7 @@ func TestSessions(t *testing.T) {
 	var got []suite.Session
 	sb := &fake{stdout: "escape-result ok \n"}
 	judge := func(_ context.Context, s suite.Session) (bool, string, error) {
-		two, err := s.Another()
+		two, err := s.Another(nil)
 		got = append(got, s, two)
 		if err != nil {
 			return false, "", err

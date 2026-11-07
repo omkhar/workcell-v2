@@ -18,17 +18,14 @@ import (
 )
 
 const (
-	// workers is how many requests are served at once; the kernel pipelines that many reads
-	// (ADR-005). A 17th waits for a worker.
+	// workers is how many requests are served at once; the kernel pipelines that many reads (ADR-005). A 17th waits for a worker.
 	workers = 16
-	// maxFDs is how many descriptors the guest can make this process hold: a directory node, an
-	// open file or an open directory each hold one. ENFILE beyond (I10), below any RLIMIT_NOFILE
-	// the Go runtime raises at start, so the proxy and the log keep their headroom.
+	// maxFDs is how many descriptors the guest can make this process hold: a directory node, an open file or an open directory each hold one. ENFILE beyond (I10),
+	// below any RLIMIT_NOFILE the Go runtime raises at start, so the proxy and the log keep their headroom.
 	maxFDs = 4096
-	// maxNodes bounds the node table (I10). A node costs about 200 bytes plus its name, so the
-	// table is at most about 60 MiB. ADR-005's walk of 10,100 entries held 10,102 nodes, so this
-	// leaves twelve times that for a real tree; only the guest's dentry cache holds a node for
-	// long, and it sheds entries under its own memory pressure. ENOMEM beyond.
+	// maxNodes bounds the node table (I10). A node costs about 200 bytes plus its name, so the table is at most about 60 MiB. ADR-005's walk of 10,100 entries
+	// held 10,102 nodes, so this leaves twelve times that for a real tree; only the guest's dentry cache holds a node for long, and it sheds entries under its own
+	// memory pressure. ENOMEM beyond.
 	maxNodes = 1 << 17
 	// frameLimit is how long one frame may take once it has begun (I12), as on the channel.
 	frameLimit = 5 * time.Second
@@ -36,10 +33,9 @@ const (
 	validity = time.Second
 )
 
-// node is one inode the guest knows by its id: where it is, as (parent, name), and what it
-// was when looked up. A directory holds its own descriptor, so every call on its content is
-// relative to it. name is "" once the entry was unlinked or replaced: the node then answers
-// ENOENT until the guest forgets it, except through a file handle already open on it.
+// node is one inode the guest knows by its id: where it is, as (parent, name), and what it was when looked up. A directory holds its own descriptor, so every
+// call on its content is relative to it. name is "" once the entry was unlinked or replaced: the node then answers ENOENT until the guest forgets it, except
+// through a file handle already open on it.
 type node struct {
 	id       uint64
 	parent   *node // nil for the root
@@ -64,8 +60,7 @@ type handle struct {
 	mu   sync.Mutex // one READDIR at a time moves the descriptor's position
 }
 
-// link is one step of a node's chain: name in the directory open on pfd must still be the
-// inode (dev, ino) it was when the node was made.
+// link is one step of a node's chain: name in the directory open on pfd must still be the inode (dev, ino) it was when the node was made.
 type link struct {
 	pfd      int
 	name     string
@@ -84,9 +79,8 @@ type loc struct {
 
 // Server is one export. Open makes one; Serve runs it; Close ends it.
 type Server struct {
-	// life is held for reading by every request that may use a descriptor and for writing
-	// where one may close (FORGET, RELEASE, Close) or where the tree changes shape (RENAME), so
-	// no request can use a reused descriptor number or see a half-moved node.
+	// life is held for reading by every request that may use a descriptor and for writing where one may close (FORGET, RELEASE, Close) or where the tree changes
+	// shape (RENAME), so no request can use a reused descriptor number or see a half-moved node.
 	life sync.RWMutex
 	mu   sync.Mutex // nodes, index, fhs, every node's fields, fds, grown
 	// nodes, index and fhs are the tables the (handle, name) grammar indexes.
@@ -95,16 +89,13 @@ type Server struct {
 	fhs            map[uint64]*handle
 	nextID, nextFH uint64
 	fds            int
-	// grown is how far files in the export have been made longer this session, by WRITE past
-	// the end or SETATTR size, and limit is its cap in bytes (I10): ENOSPC beyond. Shrinking
-	// and unlinking give nothing back, so the host loses at most limit however the guest
-	// mixes them, as a clone's image is fixed-size.
+	// grown is how far files in the export have been made longer this session, by WRITE past the end or SETATTR size, and limit is its cap in bytes (I10): ENOSPC
+	// beyond. Shrinking and unlinking give nothing back, so the host loses at most limit however the guest mixes them, as a clone's image is fixed-size.
 	grown, limit int64
 }
 
-// Open prepares to serve dir, the export, which must be a directory and not a symbolic
-// link, letting its files grow by limit bytes in all. From here on the export is the
-// descriptor; the path is never used again.
+// Open prepares to serve dir, the export, which must be a directory and not a symbolic link, letting its files grow by limit bytes in all. From here on the
+// export is the descriptor; the path is never used again.
 func Open(dir string, limit int64) (*Server, error) {
 	fd, err := unix.Open(dir, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
 	if err != nil {
@@ -120,9 +111,8 @@ func Open(dir string, limit int64) (*Server, error) {
 		nextID: rootID, fds: 1, limit: limit}, nil
 }
 
-// grow charges the file open on fd for reaching end bytes long, before it does, and is
-// ENOSPC once that would take the export past its limit. A request in flight beside another
-// on the same file charges as if alone: never less than the growth.
+// grow charges the file open on fd for reaching end bytes long, before it does, and is ENOSPC once that would take the export past its limit. A request in
+// flight beside another on the same file charges as if alone: never less than the growth.
 func (s *Server) grow(fd int, end int64) syscall.Errno {
 	var st unix.Stat_t
 	if err := unix.Fstat(fd, &st); err != nil {
@@ -140,8 +130,7 @@ func (s *Server) grow(fd int, end int64) syscall.Errno {
 	return 0
 }
 
-// Close releases every descriptor. Serve calls it when it returns; a Server that was never
-// served needs it once.
+// Close releases every descriptor. Serve calls it when it returns; a Server that was never served needs it once.
 func (s *Server) Close() {
 	s.life.Lock()
 	defer s.life.Unlock()
@@ -158,8 +147,8 @@ func (s *Server) Close() {
 	s.nodes, s.index, s.fhs, s.fds = map[uint64]*node{}, map[key]*node{}, map[uint64]*handle{}, 0
 }
 
-// Serve answers requests on st until it ends: nil at a clean end of stream, else the stream's
-// error. Whatever happens, every descriptor is closed before it returns.
+// Serve answers requests on st until it ends: nil at a clean end of stream, else the stream's error. Whatever happens, every descriptor is closed before it
+// returns.
 func (s *Server) Serve(st wire.Stream) error {
 	defer s.Close()
 	c := wire.New(st, frameLimit)
@@ -254,8 +243,7 @@ func (s *Server) handle(r request) []byte {
 	return Out(r.Unique, e, body)
 }
 
-// loc copies what a syscall on node id needs. It is ENOENT for an unknown id and for a node
-// whose entry, or whose ancestor's entry, is gone.
+// loc copies what a syscall on node id needs. It is ENOENT for an unknown id and for a node whose entry, or whose ancestor's entry, is gone.
 func (s *Server) loc(id uint64) (loc, syscall.Errno) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -284,12 +272,9 @@ func (s *Server) loc(id uint64) (loc, syscall.Errno) {
 	return l, 0
 }
 
-// at is the node's location, checked: every link from the export down to the directory the
-// syscall will use still names the inode it did. A directory the host moved out of the
-// export, or replaced, is ESTALE until the guest looks it up afresh (R6). need is what the
-// syscall needs the node to be: ENOTDIR a directory, for only a directory node has a
-// descriptor; EISDIR a node with a parent, anything but the root; 0 any node. A node that
-// is not that is the error need.
+// at is the node's location, checked: every link from the export down to the directory the syscall will use still names the inode it did. A directory the host
+// moved out of the export, or replaced, is ESTALE until the guest looks it up afresh (R6). need is what the syscall needs the node to be: ENOTDIR a directory,
+// for only a directory node has a descriptor; EISDIR a node with a parent, anything but the root; 0 any node. A node that is not that is the error need.
 func (s *Server) at(id uint64, need syscall.Errno) (loc, syscall.Errno) {
 	l, e := s.loc(id)
 	if e != 0 {
@@ -311,8 +296,7 @@ func (s *Server) at(id uint64, need syscall.Errno) (loc, syscall.Errno) {
 	return l, 0
 }
 
-// child is the node of name in directory p, with one more lookup counted. A directory gets
-// its own descriptor, and st is refreshed from it.
+// child is the node of name in directory p, with one more lookup counted. A directory gets its own descriptor, and st is refreshed from it.
 func (s *Server) child(p loc, name string, st *unix.Stat_t) (uint64, syscall.Errno) {
 	fd := -1
 	if st.Mode&unix.S_IFMT == unix.S_IFDIR {
@@ -364,8 +348,7 @@ func (s *Server) detach(n *node) {
 	n.name = ""
 }
 
-// forget drops lookups. A node goes once it has none and no child; the root never goes, and a
-// count beyond the lookups made drops no more than them.
+// forget drops lookups. A node goes once it has none and no child; the root never goes, and a count beyond the lookups made drops no more than them.
 func (s *Server) forget(fs []forget) {
 	s.life.Lock()
 	defer s.life.Unlock()
@@ -420,8 +403,7 @@ func (s *Server) release(node, fh uint64) syscall.Errno {
 	return 0
 }
 
-// openFD opens name in dirfd within the descriptor budget: never following a symbolic link,
-// never blocking on a FIFO, never inherited.
+// openFD opens name in dirfd within the descriptor budget: never following a symbolic link, never blocking on a FIFO, never inherited.
 func (s *Server) openFD(dirfd int, name string, flags int, mode uint32) (int, syscall.Errno) {
 	s.mu.Lock()
 	if s.fds >= maxFDs {

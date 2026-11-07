@@ -54,9 +54,8 @@ func TestTailIsBounded(t *testing.T) {
 	}
 }
 
-// TestOnceTakesOneConnection is the regression test for the channel connect flood (I12): once the
-// init's connection is in, a later connection to the port is refused rather than queued on the
-// host with whatever the guest writes on it, and the first one goes on working.
+// TestOnceTakesOneConnection is the regression test for the channel connect flood (I12): once the init's connection is in, a later connection to the port is
+// refused rather than queued on the host with whatever the guest writes on it, and the first one goes on working.
 func TestOnceTakesOneConnection(t *testing.T) {
 	addr := filepath.Join(t.TempDir(), "vsock_5000")
 	raw := must(net.Listen("unix", addr))
@@ -92,33 +91,47 @@ func TestOnceTakesOneConnection(t *testing.T) {
 	}
 }
 
-func TestExitResult(t *testing.T) {
+// TestOutput drives output with the guest's frames: how the command ended comes from its Exit, and an Exit with Err qualifies for fail (first) only as the
+// guest's first frame, since the init's exec failure comes before anything else and a forged one needs a running process, which spoke before it (I12, A1).
+func TestOutput(t *testing.T) {
+	noexec := guest.Exit{Err: "no such file"}
 	tests := []struct {
-		name string
-		exit guest.Exit
-		want result
+		name   string
+		before []wire.Frame // what the guest sends before its Exit
+		exit   guest.Exit
+		want   result
 	}{
-		{"success", guest.Exit{}, result{}},
-		{"status 7", guest.Exit{Code: 7}, result{code: 7}},
-		{"killed by SIGTERM", guest.Exit{Signal: 15}, result{code: 143}},
-		{"could not run", guest.Exit{Err: "no such file"}, result{code: 126}},
+		{"success", nil, guest.Exit{}, result{}},
+		{"status 7", nil, guest.Exit{Code: 7}, result{code: 7}},
+		{"killed by SIGTERM", nil, guest.Exit{Signal: 15}, result{code: 143}},
+		{"could not run, the first frame", nil, noexec, result{code: 126, err: errNoExec, first: true}},
+		{"could not run after output", []wire.Frame{{Type: guest.TypeStdout, Payload: []byte("hi")}}, noexec, result{code: 126, err: errNoExec}},
+		{"could not run after an ack", []wire.Frame{{Type: guest.TypeAck, Payload: guest.EncodeAck(1)}}, noexec, result{code: 126, err: errNoExec}},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got := exitResult(guest.EncodeExit(tc.exit))
-			if got.code != tc.want.code || (got.err != nil) != (tc.exit.Err != "") {
-				t.Errorf("exitResult(%+v) = %+v, want code %d", tc.exit, got, tc.want.code)
+			host, g := net.Pipe()
+			defer host.Close()
+			done := make(chan result, 1)
+			go output(wire.New(host, time.Second), &seat{window: make(chan struct{}, 1)}, done)
+			gc := wire.New(g, time.Second)
+			for _, f := range append(tc.before, wire.Frame{Type: guest.TypeExit, Payload: guest.EncodeExit(tc.exit)}) {
+				if err := gc.WriteFrame(f); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if got := <-done; got.code != tc.want.code || !errors.Is(got.err, tc.want.err) || got.first != tc.want.first {
+				t.Errorf("output = %+v, want %+v", got, tc.want)
 			}
 		})
 	}
-	if got := exitResult([]byte{9, 9, 9}); got.err == nil {
+	if got := exitResult([]byte{9, 9, 9}, false); got.err == nil {
 		t.Error("exitResult of a payload that is no Exit has no error")
 	}
 }
 
-// TestSeat: output with nobody attached is dropped; a client sees the output and its Stdin and
-// Resize frames reach the guest side, anything else it sends does not; the next client turns the
-// first out and gets the output instead; a client that has gone costs the seat, not the session.
+// TestSeat: output with nobody attached is dropped; a client sees the output and its Stdin and Resize frames reach the guest side, anything else it sends does
+// not; the next client turns the first out and gets the output instead; a client that has gone costs the seat, not the session.
 func TestSeat(t *testing.T) {
 	s := &seat{window: make(chan struct{}, 4), in: make(chan wire.Frame, 4)}
 	out := func(text string) wire.Frame { return wire.Frame{Type: guest.TypeStdout, Payload: []byte(text)} }
@@ -163,9 +176,8 @@ func TestSeat(t *testing.T) {
 	}
 }
 
-// TestClientEndsWithItsConnection is the regression test for a session that ends in error (a
-// malformed frame from the guest, I12): no Exit frame reaches the client, so only the closing of
-// its connection ends it, and the supervisor, which waits for it, must not hang.
+// TestClientEndsWithItsConnection is the regression test for a session that ends in error (a malformed frame from the guest, I12): no Exit frame reaches the
+// client, so only the closing of its connection ends it, and the supervisor, which waits for it, must not hang.
 func TestClientEndsWithItsConnection(t *testing.T) {
 	ours, theirs := net.Pipe()
 	ended := make(chan int, 1)

@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"net"
 	"net/http"
 	"os"
@@ -25,13 +26,11 @@ import (
 )
 
 // control is the plain container of SPEC T2: new mount, pid, uts and ipc
-// namespaces, the host's network namespace kept so that the network is open,
-// and the host's root shared, and with no cap on what it logs. A user
-// namespace maps the caller to root when the caller is not root already.
-// Its channel is a unix socket in the session directory, served by naiveHost
-// for each run; the command, pid 1 of its namespace, holds the guest end as
-// an inherited descriptor, since a plain container has no init.
-// Every escape test must fail here.
+// namespaces, the host's network and root shared, no cap on what it logs,
+// and a user namespace mapping the caller to root when it is not. Its
+// channel is a unix socket in the session directory, served by naiveHost for
+// each run; the command, pid 1 of its namespace, holds the guest end as an
+// inherited descriptor, since a plain container has no init. Every escape test must fail here.
 type control struct {
 	dir       string
 	payload   string
@@ -41,6 +40,7 @@ type control struct {
 	ln        *net.UnixListener // the host end of the channel
 	relay     *naiveRelay       // the host end of the relay
 	resolver  *naiveResolver    // the resolver the guest's resolv.conf names
+	update    *UpdateConfig     // the channel a naive start installs from, every start
 }
 
 // controlLoader runs as pid 1 of the run's namespaces: $0 is the session's
@@ -68,7 +68,7 @@ func (c *control) Start(_ context.Context, cfg Config) (string, error) {
 		return "", fmt.Errorf("control: place payload: %w", err)
 	}
 	c.env = []string{"PATH=" + filepath.Join(prefix, "bin") + ":/usr/sbin:/usr/bin:/sbin:/bin", "HOME=/root"}
-	c.workspace = cfg.Workspace
+	c.workspace, c.update = cfg.Workspace, cfg.Update
 	ln, err := net.Listen("unix", filepath.Join(dir, "channel"))
 	if err != nil {
 		return "", fmt.Errorf("control: open the channel: %w", err)
@@ -122,6 +122,9 @@ func (c *control) record(line string) error {
 }
 
 func (c *control) Exec(ctx context.Context, args ...string) (Output, error) {
+	if c.update != nil { // a naive daily check: every start, from whatever the channel says
+		c.Update(ctx, *c.update)
+	}
 	// The guest end of the channel: one connection, which the command
 	// inherits as descriptor 3 and the host end serves.
 	guest, err := net.Dial("unix", c.ln.Addr().String())
@@ -190,11 +193,10 @@ func (c *control) Exec(ctx context.Context, args ...string) (Output, error) {
 	return host.result(out), nil
 }
 
-// Pull does what a naive sandbox does: it snapshots the guest's work with git,
-// in the guest's own repository and under the guest's own configuration, so
-// that every hook, filter and attribute runs on the host and every submodule
-// URL is fetched; then it writes the snapshot's tree under dest path by path,
-// as the tree names them, through whatever a name resolves to.
+// Pull does what a naive sandbox does: it snapshots the guest's work with git
+// in the guest's own repository and configuration, so that every hook, filter
+// and attribute runs on the host and every submodule URL is fetched; then it
+// writes the tree under dest path by path, through whatever a name resolves to.
 func (c *control) Pull(ctx context.Context, dest string) error {
 	git, err := exec.LookPath("git")
 	if err != nil {
@@ -309,19 +311,15 @@ func (c *control) startHelpers() error {
 
 // Update does what a naive updater does: it reads the manifest's payload
 // without checking any signature, serial or expiry, fetches the artifact by
-// the URL in it, wherever a redirect sends it, and keeps whatever bytes came,
-// however many, with no digest check.
-func (c *control) Update(ctx context.Context, u UpdateConfig) ([]byte, error) {
+// the URL in it, wherever a redirect sends it, and keeps whatever bytes
+// came, however many, with no digest check.
+func (c *control) Update(_ context.Context, u UpdateConfig) ([]byte, error) {
 	pool := x509.NewCertPool()
 	pool.AppendCertsFromPEM(u.CA)
 	// No proxy: the only addresses an update may fetch are the test's own (SPEC S12).
 	client := &http.Client{Timeout: 5 * time.Second, Transport: &http.Transport{TLSClientConfig: &tls.Config{RootCAs: pool, MinVersion: tls.VersionTLS12}}}
 	get := func(url string) ([]byte, error) {
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-		if err != nil {
-			return nil, err
-		}
-		resp, err := client.Do(req)
+		resp, err := client.Get(url)
 		if err != nil {
 			return nil, err
 		}
@@ -358,11 +356,18 @@ func (c *control) Update(ctx context.Context, u UpdateConfig) ([]byte, error) {
 	return art, os.WriteFile(filepath.Join(c.dir, "installed-"+u.Name), art, 0o755)
 }
 
+func (c *control) Installed(_ context.Context, name string) ([]byte, error) {
+	b, err := os.ReadFile(filepath.Join(c.dir, "installed-"+name))
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, nil
+	}
+	return b, err
+}
+
 // Install does what a naive sandbox does: it unpacks the artifact into the
 // one prefix every session's PATH starts with, writable, and keeps no image.
 // It takes the shapes real upstreams serve as the product does: a bare
-// executable, or a tar whose root holds one regular file and no bin/, is
-// bin/<agent>.
+// executable, or a tar whose root holds one regular file and no bin/, is bin/<agent>.
 func (c *control) Install(ctx context.Context, l Layer) (string, error) {
 	if l.Artifact == nil { // a real pin: fetched as it is, digest checked
 		var err error
@@ -398,9 +403,8 @@ func (c *control) Install(ctx context.Context, l Layer) (string, error) {
 	return "", nil
 }
 
-// Bench: a plain container boots no VM, so there is no start to time. It
-// says so as the CLI reports a boot it could not do: one line on stderr and
-// exit 1. It never prints a measurement.
+// Bench: a plain container boots no VM, so there is no start to time. It says
+// so as the CLI reports a boot it could not do: one line on stderr, exit 1, no measurement.
 func (c *control) Bench(context.Context) (Output, error) {
 	return Output{Stderr: []byte("control: a plain container boots no VM\n"), Exit: 1}, nil
 }

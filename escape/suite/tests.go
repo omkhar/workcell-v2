@@ -13,7 +13,6 @@ import (
 	"fmt"
 	"net"
 	"net/http"
-	"os"
 	"strings"
 	"sync"
 	"syscall"
@@ -65,12 +64,11 @@ var All = append([]Test{
 	// The relay header names the host's own loopback and the metadata address.
 	{ID: "I4", Name: "relay-header-host-loopback", Probe: relayProbe, Host: relayCanary("tcp4", "127.0.0.1:0", "tcp")},
 	{ID: "I4", Name: "relay-header-metadata", Probe: relayProbe, Host: onLoopback("169.254.169.254", relayCanary("tcp4", "169.254.169.254:0", "tcp"))},
-	// Rebinding: the guest connects to an allowed name, by its forward port
-	// or by SNI at 443, and the judge, as the host's resolver, answers that
-	// name with the host's loopback, a LAN address, the metadata address,
-	// loopback as an IPv4-mapped IPv6 address, the unspecified address, or a
-	// CNAME to a denied name that is loopback. The host resolves the name,
-	// the canary at the answer must see nothing, and the guest tries twice.
+	// Rebinding: the guest connects to an allowed name, by its forward port or
+	// by SNI at 443, and the judge, as the host's resolver, answers it with the
+	// host's loopback, a LAN address, the metadata address, loopback as an
+	// IPv4-mapped IPv6 address, the unspecified address, or a CNAME to a denied
+	// name that is loopback. The canary at the answer must see nothing.
 	{ID: "I4", Name: "rebind-loopback-forward", Probe: rebindProbe, Host: rebindJudge(rebind{a: []string{"127.0.0.1"}, canary: "127.0.0.1"}), Want: rebinding},
 	{ID: "I4", Name: "rebind-loopback-sni", Probe: rebindProbe, Host: rebindJudge(rebind{a: []string{"127.0.0.1"}, canary: "127.0.0.1", sni: true}), Want: rebindingSNI},
 	{ID: "I4", Name: "rebind-lan-forward", Probe: rebindProbe, Host: onLoopback("10.255.255.254", rebindJudge(rebind{a: []string{"10.255.255.254"}, canary: "10.255.255.254"})), Want: rebinding},
@@ -88,13 +86,12 @@ var All = append([]Test{
 	{ID: "I3", Name: "doh-post-tcp4", Probe: dohProbe(http.MethodPost), Host: dnsCanary(dnsOverHTTPS, queried)},
 	{ID: "I3", Name: "doh-get-tcp4", Probe: dohProbe(http.MethodGet), Host: dnsCanary(dnsOverHTTPS, queried)},
 	{ID: "I3", Name: "tunnel-txt-udp4", Probe: tunnelProbe, Host: dnsCanary(dnsOverUDP, tunnelled)},
-	// The resolver the guest is configured with must answer the allowed
-	// name, in any case and with EDNS0, and refuse every other name: one no
-	// policy names, a subdomain of the allowed name, a name that merely ends
-	// in it, a name that starts with it, and other types; promptly, with a
-	// DNS answer that carries no address. The same at any address on port
-	// 53, under a policy that allows nothing, after hostile datagrams (I12)
-	// and after a burst (I10).
+	// The guest's configured resolver must answer the allowed name, in any
+	// case and with EDNS0, and refuse every other name (one no policy names, a
+	// subdomain, a name that merely ends or starts in it, other types)
+	// promptly, with a DNS answer carrying no address. The same at any address
+	// on port 53, under a policy allowing nothing, after hostile datagrams
+	// (I12) and after a burst (I10).
 	{ID: "I3", Name: "resolver-answers-allowed", Probe: lookupProbe, Host: resolverJudge(resolvConf, "plain", allowedLookups), Want: reachable},
 	{ID: "I3", Name: "resolver-refuses-others", Probe: lookupProbe, Host: resolverJudge(resolvConf, "plain", deniedLookups), Want: reachable},
 	{ID: "I3", Name: "resolver-at-host-address", Probe: lookupProbe, Host: resolverJudge(hostAddr+":53", "plain", bothLookups), Want: reachable},
@@ -102,9 +99,8 @@ var All = append([]Test{
 	{ID: "I3", Name: "resolver-empty-policy", Probe: lookupProbe, Host: resolverJudge(resolvConf, "plain", nothingLookups)},
 	{ID: "I3", Name: "resolver-after-garbage", Probe: lookupProbe, Host: resolverJudge(resolvConf, "garbage", bothLookups), Want: reachable},
 	{ID: "I3", Name: "resolver-after-burst", Probe: lookupProbe, Host: resolverJudge(resolvConf, "burst", bothLookups), Want: reachable},
-	// A secret lies beside the export on the host. The guest goes for it, and
-	// for the directory holding it, by path, by link, by mount and by file
-	// handle, and for the host's disks by device node.
+	// A secret lies beside the export on the host. The guest goes for it and its
+	// directory by path, link, mount and file handle, and for the host's disks by device node.
 	{ID: "I1", Name: "dotdot-traversal", Probe: traversalProbe, Host: outside(nil), Want: exported},
 	{ID: "I1", Name: "planted-symlink", Probe: symlinkProbe, Host: outside(plantLinks), Want: exported},
 	{ID: "I1", Name: "bind-mount", Probe: mountProbe, Host: outside(nil), Want: exported},
@@ -112,9 +108,8 @@ var All = append([]Test{
 	{ID: "I1", Name: "device-node", Probe: deviceProbe, Host: deviceJudge, Want: exported},
 	{ID: "I1", Name: "link-rename", Probe: moveProbe, Host: outside(nil), Want: exported},
 	// The same in mount mode (`--mount`): the export is the user's own tree,
-	// served live, so every name the guest utters meets the host's file
-	// service (ADR-005) and a write inside the export is correct. Only a
-	// byte beside or above it is a break.
+	// served live, so every name the guest utters meets the host's file service
+	// (ADR-005); a write inside the export is correct, a byte beside or above it a break.
 	{ID: "I1", Name: "mount-dotdot-traversal", Probe: traversalProbe, Host: outside(nil), Want: live},
 	{ID: "I1", Name: "mount-planted-symlink", Probe: symlinkProbe, Host: outside(plantLinks), Want: live},
 	{ID: "I1", Name: "mount-bind-mount", Probe: mountProbe, Host: outside(nil), Want: live},
@@ -124,26 +119,23 @@ var All = append([]Test{
 	{ID: "I7", Name: "cross-session-residue", Probe: residueProbe, Host: residueJudge, Want: exported},
 	// Root changes the provider layer the host installed; the next session must not see it.
 	{ID: "I7", Name: "layer-read-only", Probe: layerProbe, Host: layerJudge}, // and B8: a digest mismatch is refused
-	// The guest asks for twice its cap; the host, watched from outside, must
-	// give no more than the cap.
+	// The guest asks for twice its cap; the host, watched from outside, must give no more than the cap.
 	{ID: "I10", Name: "fork-flood", Probe: forkProbe, Host: forkJudge, Want: capped},
 	{ID: "I10", Name: "memory-flood", Probe: memoryProbe, Host: memoryJudge, Want: capped},
 	{ID: "I10", Name: "disk-flood", Probe: diskProbe, Host: diskJudge, Want: capped},
 	{ID: "I10", Name: "descriptor-flood", Probe: fileProbe, Host: fileJudge, Want: capped},
 	{ID: "I10", Name: "log-flood", Probe: logProbe, Host: logJudge, Want: capped},
 	{ID: "I10", Name: "cpu-flood", Probe: cpuProbe, Host: cpuJudge, Want: capped},
-	// The same disk flood in mount mode: the export is the host's own tree,
-	// served live, so a byte the guest writes under it is the host's at once,
-	// and so is a size the guest sets without writing.
+	// The same disk flood in mount mode: the export is the host's own tree, served
+	// live, so a byte the guest writes under it, or a size it sets without writing, is the host's at once.
 	{ID: "I10", Name: "mount-disk-flood", Probe: mountDiskProbe, Host: mountDiskJudge, Want: cappedLive},
-	// A secret is bound to one allowed name, both terminated on the host.
-	// The guest hunts for the real value in every process, on disk and in
-	// memory; sends its credential, alone and as a bearer token, in the
-	// bound header to the bound name, which must reach the canary as the
-	// real value; replays it at the other name, in another header, in the
-	// path and in the query, none of which may reach a canary. Under a
-	// binding narrowed to one method and path, only that is swapped. A
-	// redirect from the bound host carries the credential on to the other.
+	// A secret is bound to one allowed name, both terminated on the host. The
+	// guest hunts for the real value in every process, on disk and in memory;
+	// sends its credential, alone and as a bearer token, in the bound header to
+	// the bound name, which must reach the canary real; replays it at the other
+	// name, in another header, in the path and in the query, none of which may
+	// reach a canary. Under a binding narrowed to one method and path, only
+	// that is swapped. A redirect from the bound host carries it on to the other.
 	{ID: "I5", Name: "secret-in-guest", Probe: secretProbe, Host: secretJudge, Want: withSecret},
 	{ID: "I5", Name: "placeholder-swapped", Probe: exchangeProbe, Host: twoNames(canaries{}, swapJudge("GET,bound,/check,header", "GET,bound,/bearer,bearer")), Want: withSecret},
 	{ID: "I5", Name: "placeholder-replay", Probe: exchangeProbe, Host: twoNames(canaries{}, swapJudge("GET,bound,/check,header", "GET,other,/replay,header")), Want: withSecret},
@@ -155,15 +147,14 @@ var All = append([]Test{
 	// placeholder on any other path of the host reaches nothing.
 	{ID: "I5", Name: "repo-token-swapped", Probe: exchangeProbe, Host: twoNames(canaries{}, swapJudge("GET,bound,/octo/allowed.git/info/refs?service=git-upload-pack,basic", "POST,bound,/octo/allowed.git/git-upload-pack,basic", "POST,bound,/octo/allowed.git/git-receive-pack,basic", "GET,bound,/octo/allowed,basic", "GET,bound,/octo/allowed.git/info/refs?service=git-receive-pack,auth")), Want: scoped},
 	{ID: "I5", Name: "repo-token-elsewhere", Probe: exchangeProbe, Host: twoNames(canaries{}, swapJudge("GET,bound,/octo/allowed.git/info/refs?service=git-upload-pack,basic", "GET,bound,/octo/other.git/info/refs?service=git-upload-pack,basic", "POST,bound,/octo/other.git/git-receive-pack,basic", "GET,bound,/other/allowed.git/info/refs,basic", "GET,bound,/octo/allowed-x.git/info/refs,basic", "GET,bound,/octo/allowed.git-x/info/refs,basic", "GET,bound,/Octo/Allowed.git/info/refs,basic", "GET,bound,/octo/allowed.git/../other.git/info/refs,basic", "GET,bound,/octo/allowed.git%2F..%2Fother.git/info/refs,basic", "GET,bound,//octo/allowed.git/info/refs,basic", "GET,bound,/octo/other.git/git-upload-pack,auth", "GET,other,/octo/allowed.git/info/refs,basic")), Want: scoped},
-	// A secret whose source is a sign-in flow: the token endpoint on one
-	// allowed name issues an access and a refresh token, the access one
-	// bound to the API on the other (signin.go). The guest signs in; uses
-	// the access token at the API, which must see the real one; refreshes
-	// as a form and as JSON, which must reach the endpoint real, and uses
-	// the new token; hunts for the real tokens as secret-in-guest does;
-	// replays what it holds in the wrong header, as a bearer, in a query
-	// and at the wrong host or path; and meets a token response split
-	// inside a token, one gzipped, and a 4xx that echoes the refresh token.
+	// A secret whose source is a sign-in flow: the token endpoint on one allowed
+	// name issues an access and a refresh token, the access one bound to the
+	// API on the other (signin.go). The guest signs in; uses the access token
+	// at the API, which must see the real one; refreshes as a form and as JSON,
+	// which must reach the endpoint real, and uses the new token; hunts for the
+	// real tokens as secret-in-guest does; replays what it holds in the wrong
+	// header, as a bearer, in a query and at the wrong host or path; and meets a
+	// token response split inside a token, one gzipped, and a 4xx echoing the refresh token.
 	{ID: "I5", Name: "signin-exchange", Probe: signinProbe, Host: signedIn("", "signin", "api"), Want: signedInWant},
 	{ID: "I5", Name: "signin-refresh", Probe: signinProbe, Host: signedIn("", "signin", "api", "refresh", "api"), Want: signedInWant},
 	{ID: "I5", Name: "signin-refresh-json", Probe: signinProbe, Host: signedIn("", "signin", "refresh-json", "api"), Want: signedInWant},
@@ -172,22 +163,20 @@ var All = append([]Test{
 	{ID: "I5", Name: "signin-chunked", Probe: signinProbe, Host: signedIn("chunked", "signin", "api", "refresh", "api"), Want: signedInWant},
 	{ID: "I5", Name: "signin-gzip", Probe: signinProbe, Host: signedIn("gzip", "signin", "api"), Want: signedInWant},
 	{ID: "I5", Name: "signin-error-echo", Probe: signinProbe, Host: signedIn("", "signin", "refresh-bad", "api"), Want: signedInWant},
-	// Two allowed names, both terminated on the host. On a connection whose
-	// TLS names one, the request names the other, in the Host header, in
-	// :authority, or hidden from the SNI by ECH: neither canary may see a
-	// request for the other. A plain client in the guest must meet the host's
-	// own leaf, trusted through the environment the product set, never the
-	// canary's: terminated, not spliced. And a canary presenting a
-	// certificate for the other name must be carried no request.
+	// Two allowed names, both terminated on the host. On a connection whose TLS
+	// names one, the request names the other, in the Host header, in :authority,
+	// or hidden from the SNI by ECH: neither canary may see a request for the
+	// other. A plain client in the guest must meet the host's own leaf, trusted
+	// through the environment the product set, never the canary's: terminated,
+	// not spliced. A canary presenting a leaf for the other name gets no request.
 	{ID: "I6", Name: "sni-host-mismatch-h1", Probe: mismatchProbe(false), Host: twoNames(canaries{}, strictJudge), Want: terminating},
 	{ID: "I6", Name: "sni-authority-mismatch-h2", Probe: mismatchProbe(true), Host: twoNames(canaries{}, strictJudge), Want: terminating},
 	{ID: "I6", Name: "ech-hidden-sni", Probe: echProbe, Host: twoNames(canaries{ech: true}, strictJudge), Want: terminating},
 	{ID: "I6", Name: "terminated-session-leaf", Probe: terminatedProbe, Host: twoNames(canaries{}, terminationJudge), Want: terminating},
 	{ID: "I6", Name: "upstream-leaf-mismatch", Probe: upstreamProbe, Host: twoNames(canaries{misleaf: true}, upstreamJudge), Want: terminating},
 	// The repository the guest hands back is hostile: its hooks, config,
-	// attributes and submodule URL aim at the host, and its tree names paths
-	// through "..", through a symlink an earlier pull brought, twice in
-	// different case, and under ".git".
+	// attributes and submodule URL aim at the host, and its tree names paths through
+	// "..", through a symlink an earlier pull brought, twice in different case, and under ".git".
 	{ID: "I8", Name: "pull-runs-hook", Probe: repoProbe, Host: obeyed("hooks"), Want: exported},
 	{ID: "I8", Name: "pull-obeys-git-config", Probe: repoProbe, Host: obeyed("config"), Want: exported},
 	{ID: "I8", Name: "pull-fetches-submodule", Probe: repoProbe, Host: fetched, Want: exported},
@@ -195,13 +184,12 @@ var All = append([]Test{
 	{ID: "I8", Name: "pull-through-symlink", Probe: repoProbe, Host: obeyed("link", "fill"), Want: exported},
 	{ID: "I8", Name: "pull-case-collision", Probe: repoProbe, Host: collided, Want: exported},
 	{ID: "I8", Name: "pull-writes-dotgit", Probe: repoProbe, Host: planted, Want: exported},
-	// A workcell.toml in the repository tries to widen the policy: the
-	// allowlist, by another spelling of a name or through a symlink out of
-	// the repository; the secret's binding, to another host, header or
-	// source, or free of its method and path; the workspace mode; the caps.
-	// The guest replays its credential at the name only the repository
-	// allows or binds, and must see nothing. One file narrows the allowlist
-	// and the guest must not reach the name it dropped. One is a pipe.
+	// A workcell.toml in the repository tries to widen the policy: the allowlist,
+	// by another spelling of a name or through a symlink out of the repository;
+	// the secret's binding, to another host, header or source, or free of its
+	// method and path; the workspace mode; the caps. The guest replays its
+	// credential at the name only the repository allows or binds, and must see
+	// nothing. One file narrows the allowlist, which must hold. One is a pipe.
 	{ID: "I13", Name: "repo-policy-widens-allowlist", Probe: exchangeProbe, Host: twoNames(canaries{}, swapJudge("GET,bound,/check,header", "GET,other,/replay,header")), Want: widened},
 	{ID: "I13", Name: "repo-policy-respells-name", Probe: exchangeProbe, Host: twoNames(canaries{}, swapJudge("GET,bound,/check,header", "GET,other,/replay,header", "GET,other,/plain,none")), Want: respelled},
 	{ID: "I13", Name: "repo-policy-through-symlink", Probe: exchangeProbe, Host: twoNames(canaries{}, swapJudge("GET,bound,/check,header", "GET,other,/plain,none")), Want: linked},
@@ -213,9 +201,8 @@ var All = append([]Test{
 	{ID: "I13", Name: "repo-policy-is-a-pipe", Probe: liveProbe, Host: liveJudge, Want: piped},
 	{ID: "I13", Name: "repo-policy-lifts-memory-cap", Probe: memoryProbe, Host: memoryJudge, Want: uncapped},
 	// The guest, told where the host keeps the session's record, plants a
-	// record, sends the record's path to /dev/null, or empties it; and a user
-	// with the file edits it after the fact, dropping, altering, cutting,
-	// appending or reordering records, which verify must notice.
+	// record, sends the record's path to /dev/null, or empties it; and a user with
+	// the file drops, alters, cuts, appends or reorders records after the fact, which verify must notice.
 	{ID: "I9", Name: "audit-forge-record", Probe: auditProbe, Host: auditJudge("forge"), Want: exported},
 	{ID: "I9", Name: "audit-suppress-record", Probe: auditProbe, Host: auditJudge("suppress")},
 	{ID: "I9", Name: "audit-truncate-record", Probe: auditProbe, Host: auditJudge("truncate")},
@@ -224,18 +211,15 @@ var All = append([]Test{
 	{ID: "I9", Name: "verify-truncated-record", Probe: auditProbe, Host: offlineJudge("truncate")},
 	{ID: "I9", Name: "verify-appended-record", Probe: auditProbe, Host: offlineJudge("append")},
 	{ID: "I9", Name: "verify-swapped-records", Probe: auditProbe, Host: offlineJudge("swap")},
-	// The guest connects to an allowed name and to a denied one; the records
-	// the run adds must name both attempts, the one let through and the one
-	// refused. The names reach the guest in hex, so its own words cannot
-	// put them in the record.
+	// The guest connects to an allowed name and to a denied one; the records the
+	// run adds must name both attempts, let through and refused. The names
+	// reach the guest in hex, so its own words cannot put them in the record.
 	{ID: "I9", Name: "audit-records-connection", Probe: connectProbe, Host: recordedJudge, Want: servable},
-	// Each host helper is killed with SIGKILL while the guest holds a
-	// connection it was served through, and the proxy once more while the
-	// guest is still booting. After, nothing of the session may run, the
-	// held connection must close, and no canary and no resolver may hear
-	// from the guest. In the product the proxy and the resolver are one
-	// process with the supervisor (A9); the rows stand for the day they
-	// are not.
+	// Each host helper is killed with SIGKILL while the guest holds a connection
+	// it was served through, and the proxy once more while the guest is still
+	// booting. After, nothing of the session may run, the held connection must
+	// close, and no canary and no resolver may hear from the guest. In the
+	// product the helpers are one process with the supervisor (A9); the rows stand for the day they are not.
 	{ID: "I11", Name: "proxy-killed", Probe: holdProbe, Host: helperKilled("proxy", false), Want: servable},
 	{ID: "I11", Name: "resolver-killed", Probe: holdProbe, Host: helperKilled("resolver", false), Want: servable},
 	{ID: "I11", Name: "broker-killed", Probe: holdProbe, Host: helperKilled("broker", false), Want: servable},
@@ -269,6 +253,13 @@ var All = append([]Test{
 	{ID: "I14", Name: "update-truncated-download", Probe: idleProbe, Host: updateJudge("truncated")},
 	{ID: "I14", Name: "update-redirected-url", Probe: idleProbe, Host: updateJudge("redirected")},
 	{ID: "I14", Name: "update-plain-http-url", Probe: idleProbe, Host: updateJudge("plain-http")},
+	// The installer's second entry: the channel check a session start makes
+	// by itself, and the install the next start makes from what it kept. A
+	// manifest under another key or past its expiry must install nothing;
+	// a valid one installs exactly the digest it pins, after one check a day.
+	{ID: "I14", Name: "update-daily-wrong-key", Probe: idleProbe, Host: dailyJudge("wrong-key")},
+	{ID: "I14", Name: "update-daily-expired", Probe: idleProbe, Host: dailyJudge("expired")},
+	{ID: "I14", Name: "update-daily-once", Probe: idleProbe, Host: dailyJudge("once")},
 	// The product's own start benchmark, run on the host: twenty warm boots,
 	// and the median must be under the hosted budget.
 	{ID: "P1", Name: "warm-start", Probe: idleProbe, Host: benchJudge, Bound: benchBound},
@@ -302,23 +293,9 @@ func dialProbe(args []string) Result {
 	if _, err := fmt.Fprintln(c, args[1]); err != nil {
 		return Result{Status: "connected-write-failed", Detail: err.Error()}
 	}
-	return answered(c, "to "+args[0])
-}
-
-// answered says what the far end did after the token went: closed the
-// connection, answered on it, or held it open. With every address local to
-// the guest (ADR-003) a completed connect proves nothing by itself; only the
-// canary's catch does.
-func answered(c net.Conn, where string) Result {
-	c.SetReadDeadline(time.Now().Add(2 * time.Second))
-	n, err := c.Read(make([]byte, 64))
-	switch {
-	case n > 0:
-		return Result{Status: "answered", Detail: fmt.Sprintf("%s, %d bytes came back", where, n)}
-	case errors.Is(err, os.ErrDeadlineExceeded):
-		return Result{Status: "connected-held", Detail: where + ", held open 2s without an answer"}
-	}
-	return Result{Status: "connected-closed", Detail: where + ", then closed: " + err.Error()}
+	// With every address local to the guest (ADR-003) a completed connect
+	// proves nothing by itself; only the canary's catch does.
+	return Result{Status: "connected", Detail: "to " + args[0]}
 }
 
 // udpProbe sends the token args[1] as a datagram line to args[0].
@@ -444,9 +421,8 @@ func (t *trap) addr() string {
 }
 
 // stop closes the trap, after a moment for a datagram still in flight on
-// loopback or a connection the kernel queued that serve has not accepted
-// yet (closing the listener would drop it uncounted), and returns
-// everything that arrived.
+// loopback or a connection the kernel queued that serve has not accepted yet
+// (closing the listener would drop it uncounted), and returns everything that arrived.
 func (t *trap) stop() [][]byte {
 	t.mu.Lock()
 	done := t.done
@@ -488,10 +464,9 @@ func says(r Result) string { return fmt.Sprintf("guest says %s: %s", r.Status, r
 
 // tcpCanary listens on addr and has the guest dial it, as dialHost when that is
 // set (another address or spelling that reaches the same listener), else as
-// the listener's own address. udpCanary listens for datagrams at addr, on the
-// host's own address, and has the guest send the token there. The invariant
-// holds only if nothing arrives: a connection or a datagram is proof of
-// reach; the guest's word is not.
+// the listener's own address. udpCanary listens for datagrams at addr and has
+// the guest send the token there. The invariant holds only if nothing
+// arrives: a connection or a datagram is proof of reach; the guest's word is not.
 func tcpCanary(network, addr, dialHost string) Judge {
 	return trapJudge(network, addr, dialHost, lineToken, true)
 }

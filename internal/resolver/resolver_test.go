@@ -12,8 +12,7 @@ import (
 	"testing"
 )
 
-// query builds one query: id 0x1234, RD set, opcode, qdcount, one question for name (labels
-// split on dots, a trailing dot allowed) of the type and class given.
+// query builds one query: id 0x1234, RD set, opcode, qdcount, one question for name (labels split on dots, a trailing dot allowed) of the type and class given.
 func query(opcode byte, qdcount uint16, name string, typ, class uint16) []byte {
 	b := []byte{0x12, 0x34, 0x01 | opcode<<3, 0, 0, 0, 0, 0, 0, 0, 0, 0}
 	binary.BigEndian.PutUint16(b[4:], qdcount)
@@ -27,8 +26,7 @@ func query(opcode byte, qdcount uint16, name string, typ, class uint16) []byte {
 	return binary.BigEndian.AppendUint16(b, class)
 }
 
-// rawName is an A query whose name section is the bytes given, terminator included, for what
-// no name builder writes.
+// rawName is an A query whose name section is the bytes given, terminator included, for what no name builder writes.
 func rawName(wire ...byte) []byte {
 	return append(append(query(0, 1, "", 0, 0)[:12], wire...), 0, 1, 0, 1)
 }
@@ -40,16 +38,15 @@ func withOPT(q []byte) []byte {
 	return q
 }
 
-// reading is what a test reads from a reply: its rcode, question count, and the address of its
-// one A record, "" for none.
+// reading is what a test reads from a reply: its rcode, question count, and the address of its one A record, "" for none.
 type reading struct {
 	rcode     byte
 	questions int
 	addr      string
 }
 
-// read parses a reply to a query of id 0x1234 and holds it to the shape every reply has: a
-// response, at most one question echoed unchanged from the query, no record but the one A record.
+// read parses a reply to a query of id 0x1234 and holds it to the shape every reply has: a response, at most one question echoed unchanged from the query, no
+// record but the one A record.
 func read(t *testing.T, q, b []byte) reading {
 	t.Helper()
 	if len(b) < headerLen || len(b) > maxReply || b[2]&0x80 == 0 || b[0] != 0x12 || b[1] != 0x34 {
@@ -129,9 +126,8 @@ func TestAnswer(t *testing.T) {
 	}
 }
 
-// TestAnswerReportsRefusedNames: refused is told the name of an IN question the policy refuses,
-// lower-cased, and of nothing else: not an allowed name, whatever its type, not a malformed
-// question, not a response, and not a class or opcode that is refused whatever the name.
+// TestAnswerReportsRefusedNames: refused is told the name of an IN question the policy refuses, lower-cased, and of nothing else: not an allowed name, whatever
+// its type, not a malformed question, not a response, and not a class or opcode that is refused whatever the name.
 func TestAnswerReportsRefusedNames(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -160,8 +156,8 @@ func TestAnswerReportsRefusedNames(t *testing.T) {
 	}
 }
 
-// TestAnswerSaysNothing: a message shorter than a header, or one that is itself a response,
-// gets no reply, so no answer is reflected; and an empty policy refuses the allowed name too.
+// TestAnswerSaysNothing: a message shorter than a header, or one that is itself a response, gets no reply, so no answer is reflected; and an empty policy
+// refuses the allowed name too.
 func TestAnswerSaysNothing(t *testing.T) {
 	t.Parallel()
 	response := query(0, 1, "allowed.example", typeA, classIN)
@@ -189,10 +185,9 @@ func TestAnswerSaysNothing(t *testing.T) {
 	}
 }
 
-// FuzzAnswer holds the resolver to its bounds on any bytes (T5): it never panics, every query
-// of a header or more gets a reply unless it is a response, a reply is at most maxReply bytes
-// and is a response to the query's id with at most one question and one answer, and an answer
-// comes only for a plain A question on the allowed name.
+// FuzzAnswer holds the resolver to its bounds on any bytes (T5): it never panics, every query of a header or more gets a reply unless it is a response, a reply
+// is at most maxReply bytes and is a response to the query's id with at most one question and one answer, and an answer comes only for a plain A question on
+// the allowed name.
 func FuzzAnswer(f *testing.F) {
 	r := New([]string{"allowed.example"}, nil)
 	f.Add(query(0, 1, "allowed.example", typeA, classIN))

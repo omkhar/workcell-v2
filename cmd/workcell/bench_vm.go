@@ -23,6 +23,9 @@ func benchStart(stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "workcell:", err)
 		return 1
 	}
+	if in, err := newInstaller(); err == nil {
+		in.daily(time.Now()) // the day's check runs beside the boots, and the start it measures never waits for it (B9)
+	}
 	sigs := make(chan os.Signal, 4)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
 	defer signal.Stop(sigs)
