@@ -359,11 +359,11 @@ func baseFixture() fixture {
 	return f
 }
 
-// TestNewest: the freshness report, the guest rows rewritten at the newest stable release, and the P7 exit.
+// TestNewest: the freshness report, the guest rows rewritten at the newest stable release, the P7 line and the verification exit.
 func TestNewest(t *testing.T) {
 	tool := func(f *fixture) { f.pins = f.pins[1:] }
 	stale := "tool guest 1.2.0 1.3.0 1.3.0 72h0m0s eligible"
-	missed := "bump: stopped: P7 missed or verification failed: tool"
+	missed, failed := "P7 missed: tool", "bump: stopped: verification failed: tool"
 	cases := []struct {
 		name string
 		edit func(*fixture)
@@ -372,7 +372,7 @@ func TestNewest(t *testing.T) {
 		rows map[string]string // every file left in the pins directory, and its version
 	}{
 		{"pinned is the newest", func(f *fixture) { tool(f); f.pins[0].Version = "1.3.0" }, 0, []string{"tool guest 1.3.0 none none 0s backwards"}, map[string]string{"tool.json": "1.3.0"}},
-		{"past cool-off plus slack: lag printed, exit 1, row rewritten", tool, 1, []string{stale, missed}, map[string]string{"tool.json": "1.3.0"}},
+		{"past cool-off plus slack: lag and P7 line printed, exit 0, row rewritten", tool, 0, []string{stale, missed}, map[string]string{"tool.json": "1.3.0"}},
 		{"two eligible releases: lag counts from the oldest, unrounded", func(f *fixture) { // P7 missed by 29 minutes
 			tool(f)
 			f.args = append(f.args, "-dry-run")
@@ -382,15 +382,15 @@ func TestNewest(t *testing.T) {
 			f.upstream["/tool"] = "[" + fmt.Sprintf(rel, "1.4.0", now.Add(-49*time.Hour).Format(time.RFC3339), sum) + "," +
 				fmt.Sprintf(rel, "1.3.0", now.Add(-72*time.Hour-29*time.Minute).Format(time.RFC3339), sum) + "]"
 			f.upstream["/dl"] = "artifact"
-		}, 1, []string{"tool guest 1.2.0 1.4.0 1.4.0 24h0m0s eligible", missed}, map[string]string{"tool.json": "1.2.0"}},
-		{"dry run writes nothing", func(f *fixture) { tool(f); f.args = append(f.args, "-dry-run") }, 1, []string{stale, missed}, map[string]string{"tool.json": "1.2.0"}},
+		}, 0, []string{"tool guest 1.2.0 1.4.0 1.4.0 24h0m0s eligible", missed}, map[string]string{"tool.json": "1.2.0"}},
+		{"dry run writes nothing", func(f *fixture) { tool(f); f.args = append(f.args, "-dry-run") }, 0, []string{stale, missed}, map[string]string{"tool.json": "1.2.0"}},
 		{"still cooling off: rewritten", func(f *fixture) { tool(f); release(f, "tool", "1.3.0", now.Add(-6*time.Hour), false) }, 0,
 			[]string{"tool guest 1.2.0 none 1.3.0 0s cool-off"}, map[string]string{"tool.json": "1.3.0"}},
 		{"trusted is reported, never written", func(f *fixture) { f.pins = f.pins[:1]; release(f, "kit", "2.1.0", now.Add(-8*24*time.Hour), false) }, 0,
 			[]string{"kit trusted 2.0.0 2.1.0 2.1.0 24h0m0s eligible"}, map[string]string{"kit.json": "2.0.0"}},
 		{"source error is reported", func(f *fixture) { tool(f); delete(f.upstream, "/tool/latest") }, 0, []string{"tool guest 1.2.0 none none 0s source-error"}, map[string]string{"tool.json": "1.2.0"}},
 		{"verification fails: exit 1, nothing written", func(f *fixture) { tool(f); release(f, "tool", "1.3.0", now.Add(-120*time.Hour), true) }, 1,
-			[]string{"tool guest 1.2.0 1.3.0 1.3.0 0s verify-failed", missed}, map[string]string{"tool.json": "1.2.0"}},
+			[]string{"tool guest 1.2.0 1.3.0 1.3.0 0s verify-failed", failed}, map[string]string{"tool.json": "1.2.0"}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

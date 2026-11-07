@@ -1,0 +1,84 @@
+name: Nightly
+# Until cutover this runs only on `schedule`; H-905 switches the triggers to `schedule` and `workflow_dispatch`. Never a
+# required check, and no other workflow needs it (W8): a red run opens or updates one issue, and a missed P7 another. No environment, no secret, ever.
+on: { schedule: [{ cron: '47 4 * * *' }] }
+permissions: {}
+jobs:
+  repro: # Builds the Linux artifacts twice, each time into a new directory with a new build cache.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions: { contents: read }
+    env: { LDFLAGS: "-s -w -buildid= -X github.com/omkhar/workcell/v2/internal/version.Version=nightly" }
+    steps:
+      - { uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1, with: { persist-credentials: false } } # v7.0.1
+      - { uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e, with: { go-version-file: go.mod, cache: false } } # v7.0.0
+      - run: |
+          sums="$(mktemp -d)"; for run in a b; do
+            out="$(mktemp -d)"; GOCACHE="$(mktemp -d)"; export GOCACHE
+            for a in amd64 arm64; do
+              CGO_ENABLED=0 GOOS=linux GOARCH="${a}" go build -trimpath -ldflags="${LDFLAGS}" -o "${out}/workcell-linux-${a}" ./cmd/workcell
+              CGO_ENABLED=0 GOOS=linux GOARCH="${a}" go build -trimpath -ldflags="${LDFLAGS}" -o "${out}/workcell-init-${a}" ./cmd/workcell-init
+              go run ./cmd/mkimage -arch "${a}" -o "${out}/guest-${a}.img"
+            done
+            (cd "${out}" && sha256sum -- *) | tee "${sums}/${run}"
+          done; diff -u "${sums}/a" "${sums}/b" && echo reproducible
+  plan: # One fuzz job per target, listed at run time. Packages ported from v1 are fuzzed on the Mac only (S14).
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions: { contents: read }
+    outputs: { targets: "${{ steps.plan.outputs.targets }}", minutes: "${{ steps.plan.outputs.minutes }}" }
+    steps:
+      - { uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1, with: { persist-credentials: false } } # v7.0.1
+      - { uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e, with: { go-version-file: go.mod, cache: false } } # v7.0.0
+      - id: plan
+        run: |
+          m="$(tr -d '[:space:]' < escape/fuzz-minutes.txt)"
+          case "${m}" in ''|*[!0-9]*|0*) echo "::error::escape/fuzz-minutes.txt must hold whole minutes"; exit 1 ;; esac
+          if [ "${#m}" -gt 3 ] || [ "${m}" -gt 240 ]; then m=240; fi
+          t="$(go list -f '{{if or .TestGoFiles .XTestGoFiles}}{{.ImportPath}} {{.Dir}}{{end}}' ./... | while read -r pkg dir; do
+              grep -qs --exclude='*_test.go' 'Ported from v1:' "${dir}"/*.go && continue
+              go test -list '^Fuzz' "${pkg}" | sed -n "s|^\(Fuzz[A-Za-z0-9_]*\)\$|${pkg} \1|p"
+            done | jq -Rsc 'split("\n") | map(select(length > 0) | split(" ") | {pkg: .[0], target: .[1]})')"
+          echo "minutes=${m}" >> "${GITHUB_OUTPUT}"; echo "targets=${t}" >> "${GITHUB_OUTPUT}"; echo "${m} minutes: ${t}"
+  fuzz:
+    needs: [plan]
+    strategy: { fail-fast: false, matrix: { include: "${{ fromJSON(needs.plan.outputs.targets) }}" } }
+    runs-on: ubuntu-24.04
+    timeout-minutes: 270 # The 240 minute cap, plus building.
+    permissions: { contents: read }
+    steps:
+      - { uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1, with: { persist-credentials: false } } # v7.0.1
+      - { uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e, with: { go-version-file: go.mod, cache: false } } # v7.0.0
+      - env: { PKG: "${{ matrix.pkg }}", TARGET: "${{ matrix.target }}", MINUTES: "${{ needs.plan.outputs.minutes }}" }
+        run: go test -run '^$' -fuzz "^${TARGET}\$" -fuzztime "${MINUTES}m" "${PKG}"
+      - { if: failure(), run: "git ls-files -z --others -- '*/testdata/fuzz/*' | xargs -0 -r tail -v -n +1 --" } # Print each crasher's input.
+  upstream: # P2 first, on the pinned rows: install to first session. B12: the freshness report, whose missed P7 has its own issue; then B11: the B6 smoke rows on the newest stable release, whatever its age, which -newest wrote over the guest rows.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions: { contents: read }
+    env: { GATE_BASE: HEAD } # HEAD: the rewritten rows are the changed pins.
+    outputs: { p7: "${{ steps.fresh.outputs.p7 }}" }
+    steps:
+      - { uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1, with: { persist-credentials: false } } # v7.0.1
+      - { uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e, with: { go-version-file: go.mod, cache: false } } # v7.0.0
+      - run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm.rules >/dev/null
+          sudo udevadm control --reload-rules && sudo udevadm trigger --name-match=kvm --settle && test -w /dev/kvm
+      - run: go test -count=1 -v -run TestInstallToFirstSession ./spikes/install # P2: under 60 s, scripted install to first session.
+      - { id: fresh, if: "${{ !cancelled() }}", run: 's=0; set -o pipefail; go run ./cmd/bump -newest | tee "${RUNNER_TEMP}/fresh" || s=$?; ! grep -q "^P7 missed:" "${RUNNER_TEMP}/fresh" || echo p7=missed >> "${GITHUB_OUTPUT}"; exit "${s}"' } # A missed P7 exits 0 and gets its own issue; a failed verification fails the step (B5).
+      - { if: "${{ !cancelled() }}", run: go run ./escape/cmd/escape -sandbox workcell -only B6 } # The smoke runs whatever the report said.
+  issue:
+    needs: [repro, plan, fuzz, upstream]
+    if: failure() || needs.upstream.outputs.p7 == 'missed'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions: { issues: write } # The only write permission in this file. No checkout here (F20).
+    steps:
+      - env: { GH_TOKEN: "${{ github.token }}", GH_REPO: "${{ github.repository }}", RUN_URL: "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}",
+          RED: "${{ contains(needs.*.result, 'failure') && 'nightly: red' || '' }}", P7: "${{ needs.upstream.outputs.p7 == 'missed' && 'nightly: P7 missed' || '' }}" }
+        run: |
+          for TITLE in ${RED:+"${RED}"} ${P7:+"${P7}"}; do
+            n="$(gh issue list --state open --search "\"${TITLE}\" in:title" --json number,title --jq "[.[] | select(.title == \"${TITLE}\")][0].number // empty")"
+            if [ -n "${n}" ]; then gh issue comment "${n}" --body "Again: ${RUN_URL}"
+            else gh issue create --title "${TITLE}" --body "${TITLE}: ${RUN_URL}"; fi
+          done
