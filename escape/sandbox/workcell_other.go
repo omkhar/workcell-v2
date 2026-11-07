@@ -34,6 +34,10 @@ func (*workcell) Bind(context.Context, string, string) (net.Listener, net.Packet
 	return nil, nil, ErrNotImplemented
 }
 
+func RootBind(string, string, string, int) (net.Listener, net.PacketConn, error) {
+	return nil, nil, ErrNotImplemented
+}
+
 func (*workcell) Install(context.Context, Layer) (string, error) { return "", ErrNotImplemented }
 
 func (*workcell) Audit(context.Context) (string, []string, error) { return "", nil, ErrNotImplemented }

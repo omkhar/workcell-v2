@@ -17,7 +17,6 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
 )
 
@@ -101,19 +100,11 @@ func sign(context.Context, string, string) error { return nil }
 // of the session's own, so a session may name a resolver.
 const steersResolver = true
 
-// isolatedAddr is the one address the test host holds in a session's own
-// network namespace, in 192.175.48.0/24, the AS112 range (RFC 7534): global
-// unicast, so the product's vetting accepts it where it refuses every
-// loopback, private, link-local and documentation range, and no operator's
-// allocation. The namespace has a loopback device and nothing else: a packet
-// to this address is delivered inside it, any other has no route, so nothing
-// can leave the test host (SPEC T8, S12).
-const isolatedAddr = "192.175.48.1"
-
-// holder is a session's own network namespace: the payload that made it
-// and holds it, as root, and the connection whose closing lets it go. The
-// product is started inside it (steered) and the judge's canaries listen
-// in it (bind).
+// holder is a session's own network namespace, holding isolatedAddr on its
+// loopback device and nothing else, so that no other address has a route:
+// the payload that made it and holds it, as root, and the connection whose
+// closing lets it go. The product starts inside it (steered) and the
+// judge's canaries listen in it (bind).
 type holder struct {
 	pid     int
 	payload string
@@ -169,75 +160,19 @@ func asRoot(argv ...string) []string {
 	return argv
 }
 
-// RootBind binds network/addr as root on the test host, by the payload's
-// bind verb (suite.Bind), which hands the socket back over a unix socket
-// under a directory of its own: for a port below 1024 in the host's own
-// network, or, entered into the network namespace that the process ns
-// holds when ns is set, for anything there. "host" in addr stands for the
-// test host's address: isolatedAddr in a namespace, HostAddr else. The
-// listener (tcp) or packet conn (udp) comes back; root ran one bind.
-func RootBind(network, addr, payload string, ns int) (net.Listener, net.PacketConn, error) {
-	host, port, err := net.SplitHostPort(addr)
-	if err != nil {
-		return nil, nil, err
-	}
-	if host == "host" {
-		if host = isolatedAddr; ns == 0 {
-			if host, err = HostAddr(); err != nil {
-				return nil, nil, err
-			}
-		}
-		addr = net.JoinHostPort(host, port)
-	}
-	where := fmt.Sprintf("bind %s %s as root", network, addr)
+// settle has nothing to wait for: the product resolves through the file
+// steered gave it, and nothing on the host caches that.
+func settle() {}
+
+// rootBindArgv is what RootBind runs: the payload's bind verb (suite.Bind)
+// as root, entered into the network namespace that the process ns holds
+// when ns is set.
+func rootBindArgv(network, addr, path, payload string, ns int) []string {
 	var argv []string
 	if ns > 0 {
-		where += " in the session's network namespace"
 		argv = append(argv, "nsenter", "--net=/proc/"+strconv.Itoa(ns)+"/ns/net")
 	}
-	dir, err := os.MkdirTemp("", "escape-bind-")
-	if err != nil {
-		return nil, nil, err
-	}
-	defer os.RemoveAll(dir)
-	path := filepath.Join(dir, "fd")
-	ln, err := net.ListenUnix("unix", &net.UnixAddr{Name: path, Net: "unix"})
-	if err != nil {
-		return nil, nil, err
-	}
-	defer ln.Close()
-	argv = asRoot(append(argv, payload, "bind", network, addr, path)...)
-	if out, err := exec.Command(argv[0], argv[1:]...).CombinedOutput(); err != nil {
-		return nil, nil, fmt.Errorf("%s: %v: %s", where, err, bytes.TrimSpace(out))
-	}
-	ln.SetDeadline(time.Now().Add(2 * time.Second))
-	c, err := ln.AcceptUnix()
-	if err != nil {
-		return nil, nil, fmt.Errorf("%s: no descriptor came back: %w", where, err)
-	}
-	defer c.Close()
-	c.SetDeadline(time.Now().Add(2 * time.Second))
-	oob := make([]byte, 64)
-	_, oobn, _, _, err := c.ReadMsgUnix(make([]byte, 1), oob)
-	if err != nil {
-		return nil, nil, fmt.Errorf("%s: read the descriptor: %w", where, err)
-	}
-	msgs, err := syscall.ParseSocketControlMessage(oob[:oobn])
-	var fds []int
-	if err == nil && len(msgs) == 1 {
-		fds, err = syscall.ParseUnixRights(&msgs[0])
-	}
-	if err != nil || len(fds) != 1 {
-		return nil, nil, fmt.Errorf("%s: the descriptor: %v (%d messages, %d descriptors)", where, err, len(msgs), len(fds))
-	}
-	f := os.NewFile(uintptr(fds[0]), network)
-	defer f.Close()
-	if strings.HasPrefix(network, "udp") {
-		pc, err := net.FilePacketConn(f)
-		return nil, pc, err
-	}
-	l, err := net.FileListener(f)
-	return l, nil, err
+	return asRoot(append(argv, payload, "bind", network, addr, path)...)
 }
 
 // EachProcess calls f with the pid, parent and group of every process on

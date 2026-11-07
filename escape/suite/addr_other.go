@@ -6,11 +6,16 @@
 package suite
 
 import (
-	"errors"
 	"net"
+
+	"github.com/omkhar/workcell/v2/escape/sandbox"
 )
 
-// loopbackAddr adds a canary address to loopback on Linux only.
-func loopbackAddr(net.IP) (func(), error) {
-	return nil, errors.New("adding a canary address to loopback is Linux only")
+// loopbackAddr adds nothing off Linux: a canary address is an alias the
+// host's loopback interface already holds. It checks that; nothing to remove.
+func loopbackAddr(ip net.IP) (func(), error) {
+	if err := sandbox.LoopbackHolds(ip.String()); err != nil {
+		return nil, err
+	}
+	return func() {}, nil
 }

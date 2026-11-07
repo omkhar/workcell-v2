@@ -19,6 +19,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
@@ -63,7 +65,7 @@ func (b *fakeBroker) callCount() int {
 // those headers, a.example.com, with none, n.example.com, with an x-api-key
 // rule narrowed to POST under /v1/, and r.example.com, with an Authorization
 // rule scoped to the repository octo/allowed.
-func terminateFixture(t *testing.T, broker Broker) (proxyAddr string, ca *SessionCA, upstreamRoots *x509.CertPool, p *Proxy, log *recorder) {
+func terminateFixture(t *testing.T, broker Broker) (proxyAddr string, ca *SessionCA, p *Proxy, log *recorder) {
 	t.Helper()
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = io.WriteString(w, r.Host+" "+strings.Join(r.Header.Values("X-Api-Key"), ","))
@@ -72,10 +74,9 @@ func terminateFixture(t *testing.T, broker Broker) (proxyAddr string, ca *Sessio
 		}
 	}))
 	t.Cleanup(server.Close)
-	upstreamRoots = x509.NewCertPool()
-	upstreamRoots.AddCert(server.Certificate())
 	p, buf, _ := testProxy(t, "example.com:443 a.example.com:443 n.example.com:443 r.example.com:443", []netip.Addr{netip.MustParseAddr("8.8.8.8")}, server.Listener.Addr().String())
-	p.upstreamRoots = upstreamRoots
+	p.upstreamRoots = x509.NewCertPool()
+	p.upstreamRoots.AddCert(server.Certificate())
 	ca = must(NewSessionCA([]string{"example.com", "a.example.com", "n.example.com", "r.example.com"}, time.Now().Add(time.Hour)))
 	// Mixed-case header names: the broker must still get the lowercase form
 	// its grants use (TestTerminateSwapsOnlyExactPlaceholder checks the call).
@@ -85,7 +86,7 @@ func terminateFixture(t *testing.T, broker Broker) (proxyAddr string, ca *Sessio
 		{Host: "n.example.com", Header: "X-Api-Key", Placeholder: testPlaceholder, Method: "POST", Path: "/v1/"},
 		{Host: "r.example.com", Header: "Authorization", Placeholder: testAuthPlaceholder, Repos: []string{"octo/allowed"}},
 	}))
-	return listen(t, p, 443), ca, upstreamRoots, p, buf
+	return listen(t, p, 443), ca, p, buf
 }
 
 // basic is password as git sends a token: a Basic value of base64("x-access-token:" + password).
@@ -138,7 +139,7 @@ func do(t *testing.T, c *http.Client, req *http.Request) (int, string) {
 func TestTerminateSwapsOnlyExactPlaceholder(t *testing.T) {
 	t.Parallel()
 	broker := &fakeBroker{value: "real-secret"}
-	addr, ca, _, p, log := terminateFixture(t, broker)
+	addr, ca, p, log := terminateFixture(t, broker)
 	c := clientVia(addr, caPool(t, ca))
 	cases := []struct{ sent, want string }{
 		{testPlaceholder, "example.com real-secret"},
@@ -206,7 +207,7 @@ func TestSameHost(t *testing.T) {
 func TestTerminateSwapsBothHeaders(t *testing.T) {
 	t.Parallel()
 	broker := &fakeBroker{value: "real-secret"}
-	addr, ca, _, _, _ := terminateFixture(t, broker)
+	addr, ca, _, _ := terminateFixture(t, broker)
 	req, _ := http.NewRequest(http.MethodGet, "https://example.com/", nil)
 	req.Header.Set("X-Api-Key", testPlaceholder)
 	req.Header.Set("Authorization", "Bearer "+testAuthPlaceholder)
@@ -222,7 +223,7 @@ func TestTerminateSwapsBothHeaders(t *testing.T) {
 // line; it never reaches upstream.
 func TestTerminateRefusesUnswappedPlaceholder(t *testing.T) {
 	t.Parallel()
-	addr, ca, _, p, log := terminateFixture(t, &fakeBroker{value: "real-secret"})
+	addr, ca, p, log := terminateFixture(t, &fakeBroker{value: "real-secret"})
 	c := clientVia(addr, caPool(t, ca))
 	encoded := "%77cph-0123456789abcdef0123456789abcdef"
 	cases := map[string]struct {
@@ -279,7 +280,7 @@ func TestTerminateRefusesUnswappedPlaceholder(t *testing.T) {
 func TestTerminateBrokerErrorIs502(t *testing.T) {
 	t.Parallel()
 	broker := &fakeBroker{err: errors.New("no grant")}
-	addr, ca, _, p, log := terminateFixture(t, broker)
+	addr, ca, p, log := terminateFixture(t, broker)
 	code, body := get(t, clientVia(addr, caPool(t, ca)), "https://example.com/", testPlaceholder)
 	if code != http.StatusBadGateway || strings.Contains(body, testPlaceholder) {
 		t.Fatalf("broker error GET = (%d, %q), want 502 without reaching upstream", code, body)
@@ -292,7 +293,7 @@ func TestTerminateBrokerErrorIs502(t *testing.T) {
 
 func TestTerminateOffersHTTP11Only(t *testing.T) {
 	t.Parallel()
-	addr, ca, _, _, _ := terminateFixture(t, &fakeBroker{})
+	addr, ca, _, _ := terminateFixture(t, &fakeBroker{})
 	roots := caPool(t, ca)
 	dial := func(protos ...string) (string, error) {
 		conn, err := tls.DialWithDialer(&net.Dialer{Timeout: 5 * time.Second}, "tcp", addr, &tls.Config{ServerName: "example.com", RootCAs: roots, NextProtos: protos})
@@ -319,8 +320,11 @@ func TestSessionCANameConstraints(t *testing.T) {
 	if ca.key.Curve != elliptic.P256() {
 		t.Fatal("CA key is not P-256")
 	}
-	roots := x509.NewCertPool()
-	roots.AddCert(ca.cert)
+	// The CA is trusted only through the file SSL_CERT_FILE would name, as an operator's private
+	// authority is; a leaf of another authority is not, and a file that cannot be read refuses.
+	file := filepath.Join(t.TempDir(), "roots.pem")
+	must(0, os.WriteFile(file, ca.CertPEM(), 0o600))
+	roots := must(upstreamRoots(file))
 	verify := func(name string, leaf *x509.Certificate) error {
 		_, err := leaf.Verify(x509.VerifyOptions{DNSName: name, Roots: roots})
 		return err
@@ -331,6 +335,13 @@ func TestSessionCANameConstraints(t *testing.T) {
 	}
 	if again, _ := ca.leaf("api.example.com"); again != own {
 		t.Error("leaf was issued twice for one host")
+	}
+	other := must(NewSessionCA([]string{"api.example.com"}, time.Now().Add(time.Hour)))
+	if err := verify("api.example.com", must(other.leaf("api.example.com")).Leaf); err == nil {
+		t.Error("a leaf of another authority verified under the pool")
+	}
+	if _, err := upstreamRoots(file + ".missing"); err == nil {
+		t.Error("upstreamRoots read a missing file without error")
 	}
 	key, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	for _, name := range []string{"evil.example", "example.com"} {
@@ -418,7 +429,7 @@ func TestNewTerminateRule(t *testing.T) {
 func TestTerminateNarrowedRule(t *testing.T) {
 	t.Parallel()
 	broker := &fakeBroker{value: "real-secret"}
-	addr, ca, _, p, log := terminateFixture(t, broker)
+	addr, ca, p, log := terminateFixture(t, broker)
 	c := clientVia(addr, caPool(t, ca))
 	const n, r, auth = "n.example.com", "r.example.com", "Authorization"
 	swapped := r + "  auth=" + basic("real-secret")
@@ -539,7 +550,7 @@ func TestNewPlaceholderIsFreshAndParses(t *testing.T) {
 func TestTerminateRefusesTraceAndConnect(t *testing.T) {
 	t.Parallel()
 	broker := &fakeBroker{value: "real-secret"}
-	addr, ca, _, p, log := terminateFixture(t, broker)
+	addr, ca, p, log := terminateFixture(t, broker)
 	c := clientVia(addr, caPool(t, ca))
 	for _, method := range []string{http.MethodTrace, http.MethodConnect} {
 		req := must(http.NewRequest(method, "https://example.com/v1", nil))

@@ -12,6 +12,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
+	"time"
 )
 
 // The pinned arm64 guest: Firecracker's CI kernel, which boots under
@@ -47,28 +49,71 @@ func hostReady() error {
 	return nil
 }
 
-// steersResolver: a Mac has no mount namespace to give the product a
-// /etc/resolv.conf of the session's own, so a session that names a resolver
-// is refused at Start.
-const steersResolver = false
+// A Mac has no namespaces to give a session a network and a resolver of its
+// own. The maintainer set this host up instead, once, as root; the adapter
+// relies on it, checks for it and never changes it: lo0 holds isolatedAddr
+// and the judge's addresses as aliases, so nothing bound at one is reached
+// from off the host (SPEC T8); /etc/resolver/<judgeDomain> sends every
+// question for a name under it to the judge's resolver, as `scutil --dns`
+// shows, the product resolving through the system as any program would;
+// and bindHelper, root-owned, which sudo runs for the suite's user without
+// a password, binds a port below 1024 at an alias of lo0 and hands the
+// descriptor over as suite.Bind does. No other sudo exists.
+const (
+	steersResolver = true
+	judgeDomain    = "escape.test"
+	bindHelper     = "/usr/local/libexec/workcell-escape/workcell-bind"
+)
 
-func steered(string, string, []string, []string, int) ([]string, error) {
-	return nil, ErrNotImplemented
+// steered checks that every question for judgeDomain reaches resolver and nowhere else (T8).
+func steered(_, resolver string, _, argv []string, _ int) ([]string, error) {
+	if err := LoopbackHolds(resolver); err != nil {
+		return nil, err
+	}
+	out, err := exec.Command("scutil", "--dns").Output()
+	if err != nil {
+		return nil, fmt.Errorf("scutil --dns: %w", err)
+	}
+	for _, block := range strings.Split(string(out), "resolver #") {
+		words := strings.Join(strings.Fields(block), " ") + " "
+		if strings.Contains(words, " domain : "+judgeDomain+" ") && strings.Contains(words, " nameserver[0] : "+resolver+" ") {
+			return argv, nil
+		}
+	}
+	return nil, fmt.Errorf("scutil --dns lists no resolver for %s at %s: /etc/resolver/%s must name it, or a question for the suite's names would leave the host", judgeDomain, resolver, judgeDomain)
 }
 
-// holder: a session has no network namespace of its own on macOS.
+// holder is a session's own network on a Mac: the host's own, with
+// isolatedAddr an alias of lo0 that isolate checks; pid is the suite's own.
 type holder struct{ pid int }
 
-func isolate(string, string) (*holder, error) { return nil, ErrNotImplemented }
-func (*holder) bind(string, string) (net.Listener, net.PacketConn, error) {
-	return nil, nil, ErrNotImplemented
+func isolate(string, string) (*holder, error) {
+	if err := LoopbackHolds(isolatedAddr); err != nil {
+		return nil, err
+	}
+	return &holder{pid: os.Getpid()}, nil
 }
+
+// bind binds network/addr, "host" standing for isolatedAddr, as root (RootBind).
+func (h *holder) bind(network, addr string) (net.Listener, net.PacketConn, error) {
+	return RootBind(network, addr, "", h.pid)
+}
+
 func (*holder) stop() {}
 
+// settle waits out mDNSResponder's cache after a session resolved the
+// suite's names through it: an answer is held 15 s whatever its TTL (U-701)
+// and no user can flush it, else the next session never asks the judge.
+func settle() { time.Sleep(16 * time.Second) }
+
+// rootBindArgv is what RootBind runs: bindHelper, through sudo.
+func rootBindArgv(network, addr, path, _ string, _ int) []string {
+	return []string{"sudo", "-n", bindHelper, network, addr, path}
+}
+
 // productProcess is the product's own process under root, the process the
-// adapter started for a run. Without steering that is root itself; a
-// product that forked a supervisor of its own is not looked for below it
-// here (U-701).
+// adapter started for a run: root itself, since nothing wraps the product
+// here and its VM runs inside it (Virtualization.framework, in-process).
 func productProcess(root int, _ string) (int, bool) { return root, true }
 
 // hypervisor fetches nothing: Virtualization.framework is part of the OS.
