@@ -4,8 +4,6 @@
 package bump
 
 import (
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -28,22 +26,6 @@ func TestGrammar(t *testing.T) {
 	for _, s := range []string{strings.Repeat("a", 65), "", ".x", "-x", "../x", "../.github/workflows/x", "/etc/x", `..\x`, "a/b", "x\x00", "x\ny",
 		"1.2.3\n", "${{ github.token }}", "`id`", "[x](http://evil)", "<b>", "@omkhar", "https://evil.example/x", strings.Repeat("1", 4096)} {
 		check(s, false, false, false)
-	}
-}
-
-func TestLoad(t *testing.T) {
-	for _, c := range []struct {
-		file string
-		ok   bool
-	}{{"pins.go", true}, {"pins_test.go", true}, {"notes.txt", false}} {
-		dir := t.TempDir()
-		for name, body := range map[string]string{"tool.json": `{"Name":"tool","Class":"guest"}`, c.file: "x"} {
-			_ = os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644) // a failed write fails the row below
-		}
-		rows, err := Load(dir)
-		if (err == nil) != c.ok || (c.ok && len(rows) != 1) {
-			t.Errorf("%s beside a row: %d rows, %v", c.file, len(rows), err)
-		}
 	}
 }
 

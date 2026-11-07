@@ -80,7 +80,6 @@ func TestSelect(t *testing.T) {
 		}, nil, 0, "1.1.0", skips("pre-release", "1.2.3-rc.1", "1.2.3+build", "2.0.0-0", "latest", "nightly-2026-11-01", "1.2", "V1.2.3", "1.3.0"), false, false},
 		{"pre-release: 1.10.0 above 1.9.0", guest, []Candidate{cand("1.10.0", 30*day), cand("1.9.0", 30*day)}, nil, 0, "1.10.0", nil, false, false},
 		{"pre-release: leading v is stable", guest, []Candidate{cand("v1.1.0", 30*day)}, nil, 0, "v1.1.0", nil, false, false},
-		{"yanked: skipped for an older stable", guest, []Candidate{with(cand("1.2.0", 30*day), func(c *Candidate) { c.Yanked = true }), cand("1.1.0", 30*day)}, nil, 0, "1.1.0", skips("yanked", "1.2.0"), false, false},
 		{"deprecated: skipped", guest, []Candidate{with(cand("1.2.0", 30*day), func(c *Candidate) { c.Deprecated = true })}, nil, 0, "", skips("deprecated", "1.2.0"), false, false},
 		{"deprecated: flag off again counts from latest timestamp", guest, []Candidate{with(cand("1.2.0", 30*day), func(c *Candidate) {
 			c.Timestamps = append(c.Timestamps, now.Add(-2*hour))
@@ -90,7 +89,6 @@ func TestSelect(t *testing.T) {
 		})}, nil, 0, "", skips("withdrawn", "1.1.0"), false, false},
 		{"never backwards: newest eligible older than pin", pin(Guest, "2.0.0"), []Candidate{cand("1.9.0", 30*day), cand("2.1.0", hour)}, nil, 0, "", skips("cooling off", "2.1.0"), false, false},
 		{"never backwards: pin absent from candidates", pin(Guest, "2.0.0"), []Candidate{cand("1.5.0", 30*day), cand("1.9.0", 30*day)}, nil, 0, "", nil, false, false},
-		{"never backwards: pin yanked", pin(Guest, "2.0.0"), []Candidate{with(cand("2.0.0", 30*day), func(c *Candidate) { c.Yanked = true }), cand("1.9.0", 30*day)}, nil, 0, "", nil, false, false},
 		{"never backwards: same version stays", guest, []Candidate{cand("1.0.0", 30*day)}, nil, 0, "", nil, false, false},
 		{"new row takes the newest eligible", fresh, []Candidate{cand("1.0.0", 30*day), cand("1.1.0", 30*day)}, nil, 0, "1.1.0", nil, false, false},
 		{"security lane: guest 12h auto-merges", guest, []Candidate{cand("1.0.1", 12*hour)}, adv, 0, "1.0.1", nil, true, false},

@@ -3,6 +3,7 @@
   "Class": "guest",
   "Source": "github-releases",
   "Locator": "https://api.github.com/repos/openai/codex/releases",
+  "TagPrefix": "rust-",
   "Package": {
     "Ecosystem": "npm",
     "Name": "@openai/codex"
@@ -12,10 +13,16 @@
     "arm64": "codex-aarch64-unknown-linux-musl.tar.gz"
   },
   "Signing": {
-    "Identity": "",
-    "Issuer": "",
-    "Bundles": null,
-    "Members": null
+    "Identity": "https://github.com/openai/codex/.github/workflows/rust-release.yml@refs/tags/rust-{version}",
+    "Issuer": "https://token.actions.githubusercontent.com",
+    "Bundles": {
+      "amd64": "codex-x86_64-unknown-linux-musl.sigstore",
+      "arm64": "codex-aarch64-unknown-linux-musl.sigstore"
+    },
+    "Members": {
+      "amd64": "codex-x86_64-unknown-linux-musl",
+      "arm64": "codex-aarch64-unknown-linux-musl"
+    }
   },
   "Version": "",
   "Artifacts": null,

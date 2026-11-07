@@ -25,16 +25,14 @@ import (
 
 // Stats is what an export did.
 type Stats struct {
-	Files   int   // regular files, each name of a hard link counted
-	Bytes   int64 // their data, a hard-linked file once
-	Elapsed time.Duration
+	Files int   // regular files, each name of a hard link counted
+	Bytes int64 // their data, a hard-linked file once
 }
 
 // Export writes the directory dir to a new file at imagePath as an ext4 image with free
 // bytes of room for the guest to write. The image is sparse, and it is removed again if
 // the export fails.
 func Export(ctx context.Context, dir, imagePath string, free int64) (st Stats, err error) {
-	start := time.Now()
 	root, err := filepath.Abs(dir)
 	if err != nil {
 		return st, err
@@ -71,7 +69,7 @@ func Export(ctx context.Context, dir, imagePath string, free int64) (st Stats, e
 	if err := w.tree.WriteExt4File(img, time.Now(), free); err != nil {
 		return st, err
 	}
-	return Stats{w.files, w.bytes, time.Since(start)}, nil
+	return Stats{w.files, w.bytes}, nil
 }
 
 type walker struct {

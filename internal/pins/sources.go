@@ -29,12 +29,9 @@ const (
 		"application/vnd.docker.distribution.manifest.list.v2+json, application/vnd.docker.distribution.manifest.v2+json"
 )
 
-// Candidates lists the releases of p.Source at p.Locator. Any failure, whether
-// the network, a status, a parse, the size cap, a missing field or a bad
-// timestamp, returns an error and no candidates; it never looks like an
-// upstream with nothing new. A well-formed listing of no release returns an
-// empty slice and no error. It sends no credential except the anonymous pull
-// token a registry hands out when it answers 401 with a Bearer challenge.
+// Candidates lists the releases of p.Source at p.Locator. Any failure, whether the network, a status, a parse, the size cap, a missing field or a bad
+// timestamp, returns an error and no candidates; it never looks like an upstream with nothing new. A well-formed listing of no release returns an empty slice
+// and no error. It sends no credential except the anonymous pull token a registry hands out when it answers 401 with a Bearer challenge.
 func Candidates(ctx context.Context, client *http.Client, p Pin) ([]Candidate, error) {
 	ctx, cancel := context.WithTimeout(ctx, fetchTimeout)
 	defer cancel()
@@ -268,11 +265,9 @@ type ghAsset struct {
 	Digest string `json:"digest"`
 }
 
-// github reads the newest 100 releases. A stable release that lacks the asset
-// of any architecture in p.Assets is dropped. Only when no stable release
-// carries them all, so the pin names a wrong asset, is it an error. A release
-// that lacks the bundle p.Signing.Bundles names gets an empty Bundle: the
-// verifier refuses it if selected (B5), and the releases that carry one bump (P7).
+// github reads the newest 100 releases whose tag starts with p.TagPrefix, which is stripped from the version. A stable release that lacks the asset of any
+// architecture in p.Assets is dropped. Only when no stable release carries them all, so the pin names a wrong asset, is it an error. A release that lacks the
+// bundle p.Signing.Bundles names gets an empty Bundle: the verifier refuses it if selected (B5), and the releases that carry one bump (P7).
 func (g getter) github(p Pin) ([]Candidate, error) {
 	if len(p.Assets) == 0 {
 		return nil, errors.New("no assets named")
@@ -290,26 +285,26 @@ func (g getter) github(p Pin) ([]Candidate, error) {
 	}
 	cands := []Candidate{}
 	stable, complete := 0, 0 // the stable releases seen, and those with every asset
-next:
 	for _, r := range rels {
 		if r.Tag == "" {
 			return nil, errors.New("a release has no tag_name")
+		}
+		version, ok := strings.CutPrefix(r.Tag, p.TagPrefix)
+		if !ok {
+			continue
 		}
 		ts, err := parseTimes(r.CreatedAt, r.PublishedAt)
 		if err != nil {
 			return nil, fmt.Errorf("release %s: %w", r.Tag, err)
 		}
-		c := Candidate{Release: Release{Version: r.Tag, Artifacts: map[string]Artifact{}}, PreRelease: r.Prerelease || r.Draft, Timestamps: ts}
+		c := Candidate{Release: Release{Version: version, Artifacts: map[string]Artifact{}}, PreRelease: r.Prerelease || r.Draft, Timestamps: ts}
 		if !c.PreRelease {
 			stable++
 		}
 		for arch, name := range p.Assets {
 			i := slices.IndexFunc(r.Assets, func(a ghAsset) bool { return a.Name == name })
 			if i < 0 {
-				if c.PreRelease {
-					continue
-				}
-				continue next // an old release with a renamed asset does not block the rest
+				continue
 			}
 			a := r.Assets[i]
 			if err := HTTPSURL(a.URL); err != nil {
@@ -331,6 +326,9 @@ next:
 			c.Artifacts[arch] = art
 		}
 		if !c.PreRelease {
+			if len(c.Artifacts) < len(p.Assets) {
+				continue // an old release with a renamed asset does not block the rest
+			}
 			complete++
 		}
 		cands = append(cands, c)

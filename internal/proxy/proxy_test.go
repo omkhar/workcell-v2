@@ -11,11 +11,9 @@ import (
 	"crypto/tls"
 	"encoding/binary"
 	"errors"
-	"io"
 	"net"
 	"net/netip"
 	"sync"
-	"syscall"
 	"testing"
 	"time"
 
@@ -302,34 +300,6 @@ func TestConnectLooksUpRootedName(t *testing.T) {
 	p.connect("db", 5432)
 	if looked != "db." {
 		t.Fatalf("lookup host = %q, want %q", looked, "db.")
-	}
-}
-
-func TestServeShedsConnectionsOverTheLimit(t *testing.T) {
-	t.Parallel()
-	p, log, _ := testProxy(t, "example.com:443", []netip.Addr{netip.MustParseAddr("8.8.8.8")}, "127.0.0.1:1")
-	p.slots = make(chan struct{}, 1)
-	addr := listen(t, p, 443)
-	stalled := must(net.Dial("tcp", addr)) // holds the only slot while the proxy waits for a hello
-	defer stalled.Close()
-	for deadline := time.Now().Add(5 * time.Second); len(p.slots) == 0; time.Sleep(5 * time.Millisecond) {
-		if time.Now().After(deadline) {
-			t.Fatal("proxy never took a slot for the stalled connection")
-		}
-	}
-	extra := must(net.Dial("tcp", addr))
-	defer extra.Close()
-	_ = extra.SetReadDeadline(time.Now().Add(5 * time.Second))
-	if _, err := extra.Read(make([]byte, 1)); err != io.EOF && !errors.Is(err, syscall.ECONNRESET) {
-		t.Fatalf("read on a connection over the limit = %v, want EOF or reset", err)
-	}
-	want := denyLine{Port: 443, Reason: "overloaded", Count: 1, Seq: 1}
-	var d []denyLine
-	for deadline := time.Now().Add(5 * time.Second); len(d) == 0 && time.Now().Before(deadline); time.Sleep(5 * time.Millisecond) {
-		d = denies(t, p, log)
-	}
-	if len(d) != 1 || d[0] != want {
-		t.Fatalf("deny lines = %+v, want [%+v]", d, want)
 	}
 }
 

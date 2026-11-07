@@ -54,14 +54,10 @@ type vuln struct {
 	} `json:"affected"`
 }
 
-// Lookup asks the database at db (production passes OSV) about p. It has three
-// outcomes. (nil, nil): the database answered and no published advisory affects
-// p.Version with a fix, or p has no Package or no stable version to ask about.
-// (adv, nil): a published advisory affects p.Version and names a fix; adv is the
-// one with the highest fix. (nil, err): the database could not be consulted or
-// its answer could not be read; the caller passes nil to pins.Select, so the
-// normal cool-off stays in force, and reports err (W8). A failure is never
-// (nil, nil). The error names the pin and echoes nothing the server sent.
+// Lookup asks the database at db (production passes OSV) about p. It has three outcomes. (nil, nil): the database answered and no published advisory
+// affects p.Version with a fix, or p has no Package or no stable version to ask about. (adv, nil): a published advisory affects p.Version and names a fix; adv
+// is the one with the highest fix. (nil, err): the database could not be consulted or its answer could not be read; the caller passes nil to pins.Select, so
+// the normal cool-off stays in force, and reports err (W8). A failure is never (nil, nil). The error names the pin and echoes nothing the server sent.
 func Lookup(ctx context.Context, client *http.Client, db string, p pins.Pin) (*pins.Advisory, error) {
 	cur, ok := pins.ParseVersion(p.Version)
 	if p.Package == (pins.Package{}) || !ok {
@@ -132,12 +128,9 @@ func post(ctx context.Context, c *http.Client, db string, body []byte) ([]byte, 
 	return data, ""
 }
 
-// match reports the advisory v makes about p at cur, and its fix. A withdrawn
-// vuln, one whose id is not a short plain token (the id reaches a public issue
-// and pull request), a package other than p's and a span without a stable fix
-// match nothing. Within an affected entry the fix is the highest stable fix of
-// all its ranges, so a version at or above it lies outside every closed range,
-// and an entry with a range left open matches nothing.
+// match reports the advisory v makes about p at cur, and its fix. A withdrawn vuln, one whose id is not a short plain token (the id reaches a public issue
+// and pull request), a package other than p's and a span without a stable fix match nothing. Within an affected entry the fix is the highest stable fix of
+// all its ranges, so a version at or above it lies outside every closed range, and an entry with a range left open matches nothing.
 func (v vuln) match(p pins.Pin, cur pins.Version) (adv pins.Advisory, fix pins.Version, ok bool) {
 	if v.Withdrawn != "" || !plainID.MatchString(v.ID) {
 		return

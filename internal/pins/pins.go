@@ -70,6 +70,8 @@ type Pin struct {
 	// the GitHub releases API URL, the vendor release root, or the OCI repository
 	// API root, https://registry/v2/name (see sources.go).
 	Locator string
+	// TagPrefix: the GitHub releases source reads only tags that start with it and strips it, so the rest is the version; empty means every tag.
+	TagPrefix string `json:",omitempty"`
 	// Package is the pin's name in the advisory database. Empty means the pin has
 	// no advisory feed, so the security lane never opens for it (B4).
 	Package Package
@@ -89,7 +91,6 @@ type Pin struct {
 type Candidate struct {
 	Release
 	PreRelease bool        // upstream marks it a pre-release or a draft
-	Yanked     bool        // upstream withdrew it
 	Deprecated bool        // upstream marks it deprecated
 	Timestamps []time.Time // every timestamp upstream publishes for it, in any order
 }
@@ -123,7 +124,7 @@ var Cooloff = map[Class][2]time.Duration{
 	Trusted: {7 * 24 * time.Hour, 0},
 }
 
-// Select picks the newest stable release that is not a pre-release, yanked,
+// Select picks the newest stable release that is not a pre-release,
 // deprecated or withdrawn, and whose latest timestamp is at least the cool-off
 // before now. extra lengthens the cool-off and never shortens it (B10). A pin
 // never moves backwards. It reads nothing but its arguments (B3).
@@ -154,8 +155,6 @@ func Select(cur Pin, cands []Candidate, adv *Advisory, extra time.Duration, now 
 		switch {
 		case !stable || c.PreRelease:
 			why = "pre-release"
-		case c.Yanked:
-			why = "yanked"
 		case c.Deprecated:
 			why = "deprecated"
 		case slices.ContainsFunc(cur.Withdrawn, func(d string) bool {

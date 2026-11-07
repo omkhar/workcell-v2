@@ -125,7 +125,8 @@ type envSig struct {
 // timestamp verifies and its body binds the leaf, signature and digest, the
 // leaf names id, and the signature covers digest (a SHA-256, required for a
 // messageSignature bundle and checked against messageDigest when that is
-// present) or the DSSE pre-authentication encoding. For a dsseEnvelope bundle
+// present) or the DSSE pre-authentication encoding. A bundle with no mediaType
+// is read as cosign's local format (cosignBundle). For a dsseEnvelope bundle
 // it returns the payload and payload type, whose subject the caller checks,
 // and ignores digest; for a messageSignature bundle it returns nil.
 func Verify(root *Root, bundleJSON []byte, id Identity, digest []byte) (payload []byte, payloadType string, err error) {
@@ -138,6 +139,11 @@ func Verify(root *Root, bundleJSON []byte, id Identity, digest []byte) (payload 
 	var b bundle
 	if err := json.Unmarshal(bundleJSON, &b); err != nil {
 		return nil, "", errors.New("bundle: not valid JSON")
+	}
+	if b.MediaType == "" {
+		if b, err = cosignBundle(bundleJSON); err != nil {
+			return nil, "", err
+		}
 	}
 	if !mediaTypes[b.MediaType] {
 		return nil, "", errors.New("bundle: unknown media type")
@@ -194,6 +200,34 @@ func Verify(root *Root, bundleJSON []byte, id Identity, digest []byte) (payload 
 		}
 	}
 	return payload, payloadType, nil
+}
+
+// cosignBundle reads the local payload of cosign sign-blob --new-bundle-format=false --bundle as a
+// hashedrekord bundle; "logID" (the hex string, tagged to win over the embedded "logId") names the log.
+func cosignBundle(raw []byte) (bundle, error) {
+	var c struct {
+		Base64Signature, Cert []byte
+		RekorBundle           struct {
+			SignedEntryTimestamp []byte
+			Payload              struct {
+				tlogEntry // logIndex and integratedTime
+				Body      []byte
+				ID        string `json:"logID"`
+			}
+		}
+	}
+	err := json.Unmarshal(raw, &c)
+	p := c.RekorBundle.Payload
+	block, _ := pem.Decode(c.Cert)
+	keyID, hexErr := hex.DecodeString(p.ID)
+	if err != nil || hexErr != nil || block == nil || len(keyID) == 0 {
+		return bundle{}, errors.New("bundle: unknown media type, or not a cosign bundle")
+	}
+	t := p.tlogEntry
+	t.CanonicalizedBody, t.LogID = p.Body, &logRef{keyID}
+	t.KindVersion, t.InclusionPromise = &kindVersion{"hashedrekord", "0.0.1"}, &promise{c.RekorBundle.SignedEntryTimestamp}
+	return bundle{"application/vnd.dev.sigstore.bundle+json;version=0.1",
+		&material{Certificate: &rawCert{block.Bytes}, TlogEntries: []*tlogEntry{&t}}, &messageSig{Signature: c.Base64Signature}, nil}, nil
 }
 
 // pae is the DSSE pre-authentication encoding.

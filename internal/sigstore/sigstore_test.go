@@ -234,8 +234,21 @@ func marshal(t testing.TB, b *bundle) []byte {
 	return raw
 }
 
+// legacy renders b in the shape cosign sign-blob --new-bundle-format=false --bundle writes.
+func legacy(b *bundle) []byte {
+	e := entry(b)
+	raw, _ := json.Marshal(map[string]any{
+		"base64Signature": b.MessageSignature.Signature,
+		"cert":            pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: b.VerificationMaterial.Certificate.RawBytes}),
+		"rekorBundle": map[string]any{"SignedEntryTimestamp": e.InclusionPromise.SignedEntryTimestamp, "Payload": map[string]any{
+			"body": e.CanonicalizedBody, "integratedTime": e.IntegratedTime, "logIndex": e.LogIndex, "logID": hex.EncodeToString(e.LogID.KeyID)}},
+	})
+	return raw
+}
+
 type row struct {
 	name   string
+	legacy bool // render the bundle in cosign's local format
 	dsse   bool
 	in     func(*input)
 	post   func(*bundle)
@@ -272,6 +285,9 @@ func TestVerify(t *testing.T) {
 			s := fmt.Sprint(signed.Add(time.Minute).Unix())
 			return bytes.Replace(b, []byte(`"integratedTime":`+s), []byte(`"integratedTime":"`+s+`"`), 1)
 		}, ok: true},
+		{name: "legacy_good", legacy: true, ok: true},
+		{name: "legacy_other_san", legacy: true, san: "https://github.com/other/repo/.github/workflows/x.yml@refs/tags/v1"},
+		{name: "legacy_with_media_type_is_protobuf", legacy: true, text: func(b []byte) []byte { return bytes.Replace(b, []byte("{"), []byte(`{"mediaType":"`+v03+`",`), 1) }},
 		{name: "digest_absent", post: func(b *bundle) { b.MessageSignature.MessageDigest = nil }, ok: true},
 		{name: "leaf_far_past", in: func(in *input) {
 			in.tmpl.NotBefore, in.tmpl.NotAfter, in.at = signed.AddDate(-20, 0, 0), signed.AddDate(-20, 0, 0).Add(time.Minute), signed.AddDate(-20, 0, 0).Unix()
@@ -438,6 +454,9 @@ func TestVerify(t *testing.T) {
 				r.post(b)
 			}
 			raw := marshal(t, b)
+			if r.legacy {
+				raw = legacy(b)
+			}
 			if r.text != nil {
 				raw = r.text(raw)
 			}
@@ -525,7 +544,11 @@ func TestPublicRoot(t *testing.T) {
 // signedMaterial is the leaf DER, Rekor body and signed entry timestamp of a bundle that verified.
 func signedMaterial(t testing.TB, raw []byte) []byte {
 	var b bundle
-	if err := json.Unmarshal(raw, &b); err != nil {
+	err := json.Unmarshal(raw, &b)
+	if err == nil && b.MediaType == "" {
+		b, err = cosignBundle(raw)
+	}
+	if err != nil {
 		t.Fatal(err)
 	}
 	certs, err := parseCerts(b.VerificationMaterial)
@@ -542,6 +565,7 @@ func FuzzParse(f *testing.F) {
 	for _, dsse := range []bool{false, true} {
 		seeds = append(seeds, marshal(f, fx.build(f, fx.input(f, dsse))))
 	}
+	seeds = append(seeds, legacy(fx.build(f, fx.input(f, false))))
 	id := Identity{identity, issuer}
 	for _, s := range seeds {
 		f.Add(s)
