@@ -216,9 +216,9 @@ func (m *Machine) Close() error {
 }
 
 // configure is the framework's configuration for cfg, with the console's write
-// end attached: a boot loader, one virtio console, one virtio socket device and
-// the root image read-only before the workspace, so the guest sees them as vda
-// and vdb. There is never a network device.
+// end attached: a boot loader, one virtio console, one virtio socket device, one
+// entropy device and the root image read-only before the workspace, so the guest
+// sees them as vda and vdb. There is never a network device.
 func configure(cfg vmm.Config, c *console) (*vz.VirtualMachineConfiguration, error) {
 	opts := []vz.LinuxBootLoaderOption{vz.WithCommandLine(cmdline(cfg.Cmdline))}
 	if cfg.Initrd != "" {
@@ -249,6 +249,11 @@ func configure(cfg vmm.Config, c *console) (*vz.VirtualMachineConfiguration, err
 		return nil, err
 	}
 	vmc.SetSocketDevicesVirtualMachineConfiguration([]vz.SocketDeviceConfiguration{sock})
+	rng, err := vz.NewVirtioEntropyDeviceConfiguration() // seeds the guest's CRNG at boot: without it, the first getrandom(2) of a TLS client waited about 6 s (U-701)
+	if err != nil {
+		return nil, err
+	}
+	vmc.SetEntropyDevicesVirtualMachineConfiguration([]*vz.VirtioEntropyDeviceConfiguration{rng})
 	drives := []drive{{cfg.Image, true}, {cfg.Workspace, false}}
 	for _, l := range cfg.Layers {
 		drives = append(drives, drive{l.Image, true})
@@ -375,12 +380,8 @@ func (l *listener) pump() {
 	}
 }
 
+// Accept takes the next queued connection; once Close ran, the queue is empty for good.
 func (l *listener) Accept() (net.Conn, error) {
-	select {
-	case <-l.done:
-		return nil, net.ErrClosed
-	default:
-	}
 	select {
 	case c := <-l.conns:
 		return c, nil

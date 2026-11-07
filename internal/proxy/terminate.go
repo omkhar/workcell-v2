@@ -26,6 +26,7 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"os"
 	"path"
 	"regexp"
 	"slices"
@@ -36,10 +37,6 @@ import (
 
 // MaxCALifetime caps the session CA lifetime.
 const MaxCALifetime = 24 * time.Hour
-
-// CABackdate is how far NewSessionCA sets NotBefore before its clock, so a
-// peer whose clock is a little behind still accepts the CA.
-const CABackdate = time.Minute
 
 var discardLog = log.New(io.Discard, "", 0)
 
@@ -166,17 +163,11 @@ type SessionCA struct {
 	leaves map[string]*tls.Certificate
 }
 
-// ValidCAExpiry reports whether a session CA that expires at notAfter is
-// unexpired at now and expires within MaxCALifetime of now.
-func ValidCAExpiry(notAfter, now time.Time) bool {
-	return notAfter.After(now) && notAfter.Sub(now) <= MaxCALifetime
-}
-
 // NewSessionCA returns a CA whose critical name constraints permit only hosts
 // and no IP address. notAfter must be in the future and within MaxCALifetime.
 func NewSessionCA(hosts []string, notAfter time.Time) (*SessionCA, error) {
 	now := time.Now()
-	if !ValidCAExpiry(notAfter, now) {
+	if !notAfter.After(now) || notAfter.Sub(now) > MaxCALifetime {
 		return nil, fmt.Errorf("session CA expiry must be within %s from now", MaxCALifetime)
 	}
 	if len(hosts) == 0 {
@@ -188,7 +179,7 @@ func NewSessionCA(hosts []string, notAfter time.Time) (*SessionCA, error) {
 	}
 	template := &x509.Certificate{
 		Subject:                     pkix.Name{CommonName: "Workcell session CA"},
-		NotBefore:                   now.Add(-CABackdate),
+		NotBefore:                   now.Add(-time.Minute), // a peer whose clock is a little behind still accepts the CA
 		NotAfter:                    notAfter,
 		KeyUsage:                    x509.KeyUsageCertSign,
 		BasicConstraintsValid:       true,
@@ -211,11 +202,10 @@ func NewSessionCA(hosts []string, notAfter time.Time) (*SessionCA, error) {
 
 // sign issues template under parent, whose private key is signer.
 func sign(template, parent *x509.Certificate, pub *ecdsa.PublicKey, signer *ecdsa.PrivateKey) (*x509.Certificate, error) {
-	serial, err := rand.Int(rand.Reader, new(big.Int).Lsh(big.NewInt(1), 128))
-	if err != nil {
+	var err error
+	if template.SerialNumber, err = rand.Int(rand.Reader, new(big.Int).Lsh(big.NewInt(1), 128)); err != nil {
 		return nil, err
 	}
-	template.SerialNumber = serial
 	der, err := x509.CreateCertificate(rand.Reader, template, parent, pub, signer)
 	if err != nil {
 		return nil, err
@@ -294,6 +284,12 @@ func (p *Proxy) Terminate(ca *SessionCA, broker Broker, rules []TerminateRule) e
 			signin[s.Host] = append(signin[s.Host], r)
 		}
 	}
+	if p.upstreamRoots == nil {
+		var err error
+		if p.upstreamRoots, err = upstreamRoots(os.Getenv("SSL_CERT_FILE")); err != nil {
+			return err
+		}
+	}
 	p.ca, p.broker, p.terminate, p.signin = ca, broker, terminate, signin
 	p.transport = &http.Transport{
 		ForceAttemptHTTP2: false,
@@ -309,13 +305,28 @@ func (p *Proxy) Terminate(ca *SessionCA, broker Broker, rules []TerminateRule) e
 			}
 			conn, reason := p.connect(host, tlsPort)
 			if reason != "" {
-				p.deny(host, tlsPort, reason)
+				p.Deny(host, tlsPort, reason)
 				return nil, errors.New(reason)
 			}
 			return conn, nil
 		},
 	}
 	return nil
+}
+
+// upstreamRoots is the pool the proxy verifies an upstream with: the system roots and, when
+// certFile is the file SSL_CERT_FILE names, the operator's own authorities in it. Go reads that
+// file itself on Linux only; on macOS nil roots mean the platform verifier, which ignores it, so
+// a private authority the operator trusts there verified nothing. One explicit pool is the same
+// on every OS, and a file that cannot be read refuses termination rather than trusting less.
+func upstreamRoots(certFile string) (*x509.CertPool, error) {
+	pool, err := x509.SystemCertPool()
+	if err != nil || certFile == "" {
+		return pool, err
+	}
+	b, err := os.ReadFile(certFile)
+	pool.AppendCertsFromPEM(b)
+	return pool, err
 }
 
 // replayConn yields the replayed ClientHello bytes before the rest of the
@@ -408,12 +419,12 @@ func (p *Proxy) serveTerminated(client net.Conn, host string, replay []byte) {
 			// TRACE echoes request headers and CONNECT tunnels past the
 			// rewrite, so neither may carry a swapped key.
 			if r.Method == http.MethodTrace || r.Method == http.MethodConnect {
-				p.deny(host, tlsPort, "method_refused")
+				p.Deny(host, tlsPort, "method_refused")
 				http.Error(w, "method not allowed through the credential broker", http.StatusMethodNotAllowed)
 				return
 			}
 			if !sameHost(r.Host, host, port) {
-				p.deny(host, tlsPort, "host_mismatch")
+				p.Deny(host, tlsPort, "host_mismatch")
 				http.Error(w, fmt.Sprintf("the request names %q on a connection whose TLS names %s", r.Host, host), http.StatusMisdirectedRequest)
 				return
 			}
@@ -427,13 +438,13 @@ func (p *Proxy) serveTerminated(client net.Conn, host string, replay []byte) {
 					if len(rule.Repos) > 0 {
 						scope = "repositories " + strings.Join(rule.Repos, ", ")
 					}
-					p.deny(host, tlsPort, "binding_mismatch")
+					p.Deny(host, tlsPort, "binding_mismatch")
 					http.Error(w, "the credential in "+rule.Header+" is bound to "+scope, http.StatusForbidden)
 					return
 				}
 				value, err := p.broker.Lookup(r.Context(), host, rule.Header)
 				if err != nil {
-					p.deny(host, tlsPort, "broker_denied")
+					p.Deny(host, tlsPort, "broker_denied")
 					http.Error(w, "credential broker denied the request", http.StatusBadGateway)
 					return
 				}
@@ -445,7 +456,7 @@ func (p *Proxy) serveTerminated(client net.Conn, host string, replay []byte) {
 			if rule, ok := p.tokenEndpoint(host, r.URL); ok {
 				body, reason := p.tokenRequest(r, rule)
 				if reason != "" {
-					p.deny(host, tlsPort, reason)
+					p.Deny(host, tlsPort, reason)
 					http.Error(w, "request to the token endpoint refused: "+reason, http.StatusBadGateway)
 					return
 				}
@@ -453,7 +464,7 @@ func (p *Proxy) serveTerminated(client net.Conn, host string, replay []byte) {
 				r = r.WithContext(context.WithValue(r.Context(), tokenKey{}, rule))
 			}
 			if carriesPlaceholder(r) {
-				p.deny(host, tlsPort, "placeholder_unswapped")
+				p.Deny(host, tlsPort, "placeholder_unswapped")
 				http.Error(w, "request carries an unswapped credential placeholder", http.StatusBadGateway)
 				return
 			}

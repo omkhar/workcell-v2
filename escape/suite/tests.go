@@ -76,9 +76,10 @@ var All = append([]Test{
 	{ID: "I4", Name: "rebind-lan-forward", Probe: rebindProbe, Host: onLoopback("10.255.255.254", rebindJudge(rebind{a: []string{"10.255.255.254"}, canary: "10.255.255.254"})), Want: rebinding},
 	{ID: "I4", Name: "rebind-metadata-forward", Probe: rebindProbe, Host: onLoopback("169.254.169.254", rebindJudge(rebind{a: []string{"169.254.169.254"}, canary: "169.254.169.254"})), Want: rebinding},
 	{ID: "I4", Name: "rebind-metadata-sni", Probe: rebindProbe, Host: onLoopback("169.254.169.254", rebindJudge(rebind{a: []string{"169.254.169.254"}, canary: "169.254.169.254", sni: true})), Want: rebindingSNI},
-	{ID: "I4", Name: "rebind-mapped-loopback-forward", Probe: rebindProbe, Host: rebindJudge(rebind{aaaa: []string{"::ffff:127.0.0.1"}, canary: "127.0.0.1"}), Want: rebinding},
 	{ID: "I4", Name: "rebind-unspecified-forward", Probe: rebindProbe, Host: rebindJudge(rebind{a: []string{"0.0.0.0"}, canary: "0.0.0.0"}), Want: rebinding},
 	{ID: "I4", Name: "rebind-cname-denied-forward", Probe: rebindProbe, Host: rebindJudge(rebind{cname: deniedName, a: []string{"127.0.0.1"}, canary: "127.0.0.1"}), Want: rebindingCNAME},
+	// Last: its A answer is empty, which a Mac's resolver holds for 100 s (U-701).
+	{ID: "I4", Name: "rebind-mapped-loopback-forward", Probe: rebindProbe, Host: rebindJudge(rebind{aaaa: []string{"::ffff:127.0.0.1"}, canary: "127.0.0.1"}), Want: rebinding},
 	// DNS for a name no policy allows, sent past the guest's resolver straight to
 	// a host-side capture: as plain DNS, as DoT, as DoH, and as a tunnel.
 	{ID: "I3", Name: "direct-resolver-udp4", Probe: dnsUDPProbe, Host: dnsCanary(dnsOverUDP, queried)},

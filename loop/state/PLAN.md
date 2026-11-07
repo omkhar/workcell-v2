@@ -209,7 +209,7 @@ with ADR-003 and ADR-004, they build on the proposal, and you can accept it at a
 
 - [x] U-700 | flow:boundary | model:fable | env:macos | deps:H-103,U-208 | tries:0 | macOS backend behind `internal/vmm`
       accept: U-204's acceptance passes on macOS with no change outside `internal/vmm`
-- [ ] U-701 | flow:boundary | model:fable | env:macos | deps:U-700,U-305,U-306,U-307 | tries:0 | Network path on macOS
+- [x] U-701 | flow:boundary | model:fable | env:macos | deps:U-700,U-305,U-306,U-307 | tries:0 | Network path on macOS
       accept: I2, I3, I4, I6 and I11 added to `enforced-macos.txt` and green on the Mac
 - [x] U-702 | flow:build | model:sonnet | env:macos | deps:U-400 | tries:0 | `keychain:` secret source
       accept: reads an item created with `security add-generic-password`, with no prompt storm

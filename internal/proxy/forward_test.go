@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
+	"strings"
 	"testing"
 	"time"
 )
@@ -22,11 +23,11 @@ import (
 func TestForwardStaysSplicedBesideTermination(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
-		allow, tls, forward string // tls and forward: what each port does for example.com
+		allow, tls, forward, denied string // tls and forward: what each port does for example.com
 	}{
-		{"example.com:443 example.com:8443", "terminated", "spliced"},
-		{"example.com:8443", "sni_not_allowed", "spliced"},
-		{"example.com:443", "terminated", "port_not_allowed"},
+		{"example.com:443 example.com:8443", "terminated", "spliced", ""},
+		{"example.com:8443", "sni_not_allowed", "spliced", "sni_not_allowed"},
+		{"example.com:443", "terminated", "port_not_allowed", "port_not_allowed"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.allow, func(t *testing.T) {
@@ -53,13 +54,8 @@ func TestForwardStaysSplicedBesideTermination(t *testing.T) {
 				}
 				return dial(ctx, addr)
 			}
-			ca, err := NewSessionCA([]string{"example.com"}, time.Now().Add(time.Hour))
-			if err == nil {
-				err = p.Terminate(ca, nil, nil)
-			}
-			if err != nil {
-				t.Fatal(err)
-			}
+			ca := must(NewSessionCA([]string{"example.com"}, time.Now().Add(time.Hour)))
+			must(0, p.Terminate(ca, nil, nil))
 			tlsAddr, fwdAddr := listen(t, p, 443), listen(t, p, 8443)
 			resp, err := clientVia(tlsAddr, caPool(t, ca)).Get("https://example.com/")
 			body := ""
@@ -84,14 +80,8 @@ func TestForwardStaysSplicedBesideTermination(t *testing.T) {
 			for _, d := range denies(t, p, log) {
 				reasons = append(reasons, d.Reason)
 			}
-			var want []string
-			for _, r := range []string{tc.tls, tc.forward} {
-				if r != "terminated" && r != "spliced" {
-					want = append(want, r)
-				}
-			}
-			if len(reasons) != len(want) || len(want) > 0 && reasons[0] != want[0] {
-				t.Errorf("deny reasons %v, want %v", reasons, want)
+			if got := strings.Join(reasons, ","); got != tc.denied {
+				t.Errorf("deny reasons %q, want %q", got, tc.denied)
 			}
 		})
 	}
