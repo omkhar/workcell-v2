@@ -258,9 +258,9 @@ func updateJudge(variant string) Judge {
 			src.set("/"+variant, whole(artifact("tampered")))
 		case "truncated":
 			src.set("/"+variant, cut(bad))
-		case "redirected":
-			src.set("/moved", whole(bad))
-			src.set("/"+variant, moved(src.url+"/moved"))
+		case "redirected": // sent off the pinned HTTPS URL to a listener that is not
+			plain.set("/moved", whole(bad))
+			src.set("/"+variant, moved(plain.url+"/moved"))
 		case "plain-http":
 			plain.set("/"+variant, whole(bad))
 			h.Pins = pins("1.0.1", plain.url+"/"+variant, bad, now-7*day)
@@ -285,9 +285,6 @@ func updateJudge(variant string) Judge {
 		}
 		if rs := plain.requests(); len(rs) > 0 {
 			return false, fmt.Sprintf("the client fetched %v without TLS", rs), nil
-		}
-		if slices.Contains(src.requests(), "/moved") {
-			return false, "the client followed the redirect to a path no manifest pins", nil
 		}
 		// A valid successor pinning the same version: a client that refused the
 		// variant must still install from it.

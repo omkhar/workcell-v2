@@ -23,6 +23,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/omkhar/workcell/v2/internal/artifact"
@@ -62,12 +63,15 @@ func update(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "workcell update:", err)
 		return 2
 	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute) // one bound for the invocation: a stalled upstream cannot hang it
+	defer cancel()
+	manifest := sync.OnceValues(func() (*channel.Manifest, error) { return in.manifest(ctx) }) // channel.json is fetched and verified once, however many providers install
 	rc := 0
 	for _, p := range provs {
 		if _, err := in.row(p); err != nil && fs.NArg() == 0 {
 			continue
 		}
-		line, err := in.update(context.Background(), p, *to, *rollback)
+		line, err := in.update(ctx, p, manifest, *to, *rollback)
 		if err != nil {
 			fmt.Fprintln(stderr, "workcell update:", err)
 			rc = 1
@@ -78,8 +82,8 @@ func update(args []string, stdout, stderr io.Writer) int {
 	return rc
 }
 
-// installer is what update works with: the data directory, the rows under pins/, the client that fetches, which
-// follows no redirect (a 3xx is a refusal), the channel's URL, "" when nothing is fetched, the keys trusted to sign it and the user's cool-off (B10).
+// installer is what update works with: the data directory, the rows under pins/, the client that fetches (an artifact
+// through pins.Redirect, channel.json following no redirect), the channel's URL, "" when nothing is fetched, the keys trusted to sign it and the user's cool-off (B10).
 type installer struct {
 	dir     string
 	rows    []pins.Pin
@@ -92,7 +96,7 @@ type installer struct {
 // newInstaller reads the user's [update] table (B10): the channel is fetched unless it is "hold" or no
 // key is trusted, the table's alone when it gives one, else the built-in ones; ca's certificates alone are the roots.
 func newInstaller() (in installer, err error) {
-	in = installer{client: &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}, keys: channel.Keys}
+	in = installer{client: &http.Client{}, keys: channel.Keys}
 	file, err := configFile()
 	var p policy.Policy
 	if err == nil {
@@ -133,8 +137,8 @@ func newInstaller() (in installer, err error) {
 }
 
 // update brings the provider p to its current pin, to the pin to names, or back to the layer kept from before, and
-// returns the result line: agent, version, digest prefix. The pins come from the channel manifest when there is one to fetch, else from the row's own.
-func (in installer) update(ctx context.Context, p provider.Provider, to string, rollback bool) (string, error) {
+// returns the result line: agent, version, digest prefix. The pins come from the channel manifest, fetched by manifest when there is one to fetch, else from the row's own.
+func (in installer) update(ctx context.Context, p provider.Provider, manifest func() (*channel.Manifest, error), to string, rollback bool) (string, error) {
 	dir := filepath.Join(in.dir, "layers", p.Name)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return "", err
@@ -152,7 +156,7 @@ func (in installer) update(ctx context.Context, p provider.Provider, to string, 
 	}
 	m := channel.Build([]pins.Pin{row}, time.Now())
 	if in.channel != "" {
-		fetched, err := in.manifest(ctx)
+		fetched, err := manifest()
 		if err != nil {
 			return "", in.refuse(p.Name, to, "", err)
 		}
@@ -162,7 +166,7 @@ func (in installer) update(ctx context.Context, p provider.Provider, to string, 
 	if err != nil {
 		return "", in.refuse(p.Name, to, "", err)
 	}
-	switch name := imageName(pin.Version, pin.SHA256); name {
+	switch name := pin.Version + "-" + pin.SHA256 + ".ext4"; name { // the file name of a pin's layer: its version and its digest
 	case cur:
 		return p.Name + " " + pin.Version + " " + pin.SHA256[:16], nil
 	case prev:
@@ -189,13 +193,12 @@ func (in installer) row(p provider.Provider) (pins.Pin, error) {
 	return in.rows[i], nil
 }
 
-// manifest fetches channel.json once, at most channel.MaxBytes, and verifies it against the keys
-// and the last serial seen, kept in <data>/channel.serial, which advances only once a manifest
-// verified (I14) and on any failure is untouched.
+// manifest fetches channel.json, at most channel.MaxBytes and following no redirect (a 3xx is a refusal), and
+// verifies it against the keys and the last serial seen, kept in <data>/channel.serial, which advances only
+// once a manifest verified (I14) and on any failure is untouched.
 func (in installer) manifest(ctx context.Context) (*channel.Manifest, error) {
-	ctx, cancel := context.WithTimeout(ctx, time.Minute)
-	defer cancel()
-	body, err := artifact.Fetch(ctx, in.client, in.channel, channel.MaxBytes)
+	c := http.Client{Transport: in.client.Transport, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	body, err := artifact.Fetch(ctx, &c, in.channel, channel.MaxBytes)
 	var raw []byte
 	if err == nil {
 		raw, err = io.ReadAll(body)
@@ -342,9 +345,6 @@ func (in installer) record(agent, version, digest, result string) error {
 	_, err = f.Write(append(line, '\n'))
 	return errors.Join(err, f.Sync(), f.Close())
 }
-
-// imageName is the file name of a pin's layer: its version and its digest.
-func imageName(version, digest string) string { return version + "-" + digest + ".ext4" }
 
 // marker is the image name the marker file names, or "" when there is none.
 func marker(dir, which string) string {

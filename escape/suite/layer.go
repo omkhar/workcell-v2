@@ -162,14 +162,22 @@ func layerProbe(args []string) Result {
 }
 
 // hijack tries what root has to change the layer at root, whose binary is
-// path: a write, an unlink and a fresh file, and a new file beside it.
+// path: a write, an unlink and a fresh file, a new file beside it, and a
+// remount as writable with a write after it.
 func hijack(path, root string, body []byte) string {
 	write := func(p string) string { return "write=" + status(os.WriteFile(p, body, 0o755)) }
 	out := []string{write(path), "unlink=" + status(os.Remove(path))}
 	if out[1] == "unlink=ok" {
 		out = append(out, write(path))
 	}
-	return strings.Join(append(out, "add="+status(os.WriteFile(filepath.Join(root, "bin", "evil"), body, 0o755))), " ")
+	out = append(out, "add="+status(os.WriteFile(filepath.Join(root, "bin", "evil"), body, 0o755)))
+	// What mount says of the point, bounded: a detail is one line.
+	if msg := strings.TrimPrefix(output("mount", "-o", "remount,rw", root), "mount:_"+root+":_"); msg != "" {
+		out = append(out, "remount="+msg[:min(len(msg), 24)])
+	} else {
+		out = append(out, "remount=ok,"+write(path))
+	}
+	return strings.Join(out, " ")
 }
 
 // status is "ok" or the error in a word.

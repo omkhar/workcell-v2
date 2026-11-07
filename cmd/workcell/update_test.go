@@ -164,7 +164,7 @@ func TestUpdate(t *testing.T) {
 	for _, s := range steps {
 		t.Run(s.name, func(t *testing.T) {
 			before := hits.Load()
-			got, err := installer{dir: dir, rows: s.rows, client: srv.Client()}.update(context.Background(), s.prov, s.to, s.rollback)
+			got, err := installer{dir: dir, rows: s.rows, client: srv.Client()}.update(context.Background(), s.prov, nil, s.to, s.rollback)
 			switch {
 			case s.want != "" && (err != nil || got != s.want):
 				t.Fatalf("got %q, %v; want %q", got, err, s.want)
@@ -233,44 +233,16 @@ func TestUpdateUsage(t *testing.T) {
 	}
 }
 
-// TestChoose: --to takes any candidate's version and refuses every other; without it the first is installed unless the user's cool-off still holds it, then the previous.
-func TestChoose(t *testing.T) {
-	now := time.Unix(1_800_000_000, 0)
-	cur, prev := channel.Pin{Version: "2.0", Released: now.Unix() - 3600}, channel.Pin{Version: "1.0"}
-	tests := []struct {
-		name    string
-		cands   []channel.Pin
-		to      string
-		cooloff time.Duration
-		want    string // the version; "" for a refusal
-	}{
-		{"the current one", []channel.Pin{cur, prev}, "", 0, "2.0"},
-		{"to the current one", []channel.Pin{cur, prev}, "2.0", 0, "2.0"},
-		{"to the previous one", []channel.Pin{cur, prev}, "1.0", 0, "1.0"},
-		{"to a version in neither", []channel.Pin{cur, prev}, "3.0", 0, ""},
-		{"within the cool-off, the previous one", []channel.Pin{cur, prev}, "", 2 * time.Hour, "1.0"},
-		{"within the cool-off with no previous one", []channel.Pin{cur}, "", 2 * time.Hour, ""},
-		{"past the cool-off", []channel.Pin{cur, prev}, "", 30 * time.Minute, "2.0"},
-	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			got, err := choose(tc.cands, tc.to, tc.cooloff, now)
-			if (err == nil) != (tc.want != "") || got.Version != tc.want {
-				t.Errorf("choose = %+v, %v; want version %q", got, err, tc.want)
-			}
-		})
-	}
-}
-
 // TestChannel runs the product's own update client, as the [update] table of a config file sets it up (channel,
 // ca, key), against a loopback channel (T8): a valid manifest installs its pin and advances the serial kept; each
-// hostile manifest installs nothing and leaves the serial where a verified one put it; a redirect is not followed,
-// for channel.json or the artifact; channel.json is read to 64 KiB and no further; --to outside pins and previous installs nothing; a valid successor installs again.
+// hostile manifest installs nothing and leaves the serial where a verified one put it; a redirect of channel.json is not
+// followed, nor one of the artifact to a listener that is not https, while one to a path of the same https server is; channel.json
+// is read to 64 KiB and no further; --to outside pins and previous installs nothing; a valid successor installs again; the cool-off with nothing before it installs nothing.
 func TestChannel(t *testing.T) {
 	pub, key, _ := ed25519.GenerateKey(rand.Reader)
 	var mu sync.Mutex
 	served, moved, seen := map[string][]byte{}, map[string]string{}, map[string]int{}
-	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		mu.Lock()
 		defer mu.Unlock()
 		seen[r.URL.Path]++
@@ -282,8 +254,10 @@ func TestChannel(t *testing.T) {
 		default:
 			http.NotFound(w, r)
 		}
-	}))
+	})
+	srv, plain := httptest.NewTLSServer(handler), httptest.NewServer(handler) // the channel and its upstream; a listener that is not https
 	defer srv.Close()
+	defer plain.Close()
 	set := func(path string, b []byte) { mu.Lock(); served[path] = b; mu.Unlock() }
 	move := func(path, to string) { mu.Lock(); moved[path] = to; mu.Unlock() }
 	cfg, data := t.TempDir(), t.TempDir()
@@ -347,22 +321,30 @@ func TestChannel(t *testing.T) {
 			move("/channel.json", "/elsewhere")
 		}, "1.0.1", 0, "1.0.0", now - 120, "HTTP 302"},
 		{"an artifact digest that does not match", func() { publish(variant(now-60, "/tampered"), key, same); set("/tampered", []byte("other")) }, "1.0.1", 0, "1.0.0", now - 60, "sha256"},
-		{"an artifact URL that redirects", func() {
-			publish(variant(now-50, "/moved"), key, same)
-			move("/moved", "/artifact")
-			set("/artifact", bad)
-		}, "1.0.1", 0, "1.0.0", now - 50, "HTTP 302"},
+		{"an artifact URL that redirects to a listener that is not https", func() {
+			publish(variant(now-50, "/moved-off"), key, same)
+			move("/moved-off", plain.URL+"/plain")
+			set("/plain", bad)
+		}, "1.0.1", 0, "1.0.0", now - 50, "transport failure"},
 		{"an artifact URL that is not https", func() { publish(variant(now-40, "http://127.0.0.1/plain"), key, same) }, "1.0.1", 0, "1.0.0", now - 50, "https"},
 		{"--to a version in neither pins nor previous", func() { publish(variant(now-30, "/neither"), key, same) }, "9.9.9", 0, "1.0.0", now - 30, "neither pins nor previous"},
 		{"within the user's cool-off the previous one stays", func() {}, "", 30 * 24 * time.Hour, "1.0.0", now - 30, ""},
-		{"a valid successor installs", func() { publish(variant(now-20, "/successor"), key, same) }, "1.0.1", 0, "1.0.1", now - 20, ""},
+		{"a valid successor installs through a redirect on the same server", func() {
+			publish(variant(now-20, "/moved"), key, same)
+			move("/moved", "/artifact")
+			set("/artifact", bad)
+		}, "1.0.1", 0, "1.0.1", now - 20, ""},
+		{"within the cool-off with no previous one", func() {
+			publish(channel.Manifest{Serial: now - 10, Expires: now - 10 + 13*day, Pins: pin("1.0.2", "/alone", honest)}, key, same)
+		}, "", 30 * 24 * time.Hour, "1.0.1", now - 10, "cool-off lets in"},
 	}
 	layers := filepath.Join(data, "workcell", "layers", "fake")
 	for _, s := range steps {
 		t.Run(s.name, func(t *testing.T) {
 			s.serve()
 			in.cooloff = s.cooloff
-			_, err := in.update(context.Background(), prov, s.to, false)
+			ctx := context.Background()
+			_, err := in.update(ctx, prov, func() (*channel.Manifest, error) { return in.manifest(ctx) }, s.to, false)
 			if (err == nil) != (s.refusal == "") || err != nil && !strings.Contains(err.Error(), s.refusal) {
 				t.Errorf("update = %v; want refusal %q", err, s.refusal)
 			}
@@ -372,7 +354,7 @@ func TestChannel(t *testing.T) {
 			}
 		})
 	}
-	if mu.Lock(); seen["/artifact"] != 0 || seen["/elsewhere"] != 0 || seen["/channel.json"] == 0 {
-		t.Errorf("requests %v; want none to a redirect's target", seen)
+	if mu.Lock(); seen["/artifact"] != 1 || seen["/plain"] != 0 || seen["/elsewhere"] != 0 || seen["/channel.json"] == 0 {
+		t.Errorf("requests %v; want one to the artifact's redirect target on the same https server and none to the others", seen)
 	}
 }
