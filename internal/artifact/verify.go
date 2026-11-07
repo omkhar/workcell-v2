@@ -252,8 +252,8 @@ func (v Verifier) root() *sigstore.Root {
 // Fetch starts an https GET of rawURL with client, or http.DefaultClient when
 // it is nil, and returns the body of a 200 that is within limit bytes, whether
 // declared or streamed: the body fails past limit, and maps a transport fault to
-// a fixed phrase. Redirects follow the pins policy: at most three, https only.
-// It is the one bounded reader of upstream bytes on the host (B8).
+// a fixed phrase. Redirects follow the pins policy, at most three and https only,
+// unless the client brings its own. It is the one bounded reader of upstream bytes on the host (B8).
 func Fetch(ctx context.Context, client *http.Client, rawURL string, limit int64) (io.ReadCloser, error) {
 	if err := pins.HTTPSURL(rawURL); err != nil {
 		return nil, err
@@ -263,7 +263,9 @@ func Fetch(ctx context.Context, client *http.Client, rawURL string, limit int64)
 		return nil, errors.New("not a usable URL")
 	}
 	c := *cmp.Or(client, http.DefaultClient)
-	c.CheckRedirect = pins.Redirect
+	if c.CheckRedirect == nil {
+		c.CheckRedirect = pins.Redirect
+	}
 	resp, err := c.Do(req)
 	if err != nil {
 		return nil, pins.Bare("download", err)

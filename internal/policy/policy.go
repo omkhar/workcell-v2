@@ -10,6 +10,7 @@
 package policy
 
 import (
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -19,7 +20,10 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 	"unicode/utf8"
+
+	"github.com/omkhar/workcell/v2/internal/pins"
 )
 
 // maxBytes bounds a policy file; the standard allowlist limit, far above any real policy.
@@ -37,6 +41,18 @@ type Policy struct {
 	// Secret is the [[secret]] rows, in file order. Each is checked by the proxy and the
 	// broker, not here, beyond what the file must say.
 	Secret []Secret
+	// Update is the [update] table, the user's alone: ReadRepo refuses a file that carries it (I13).
+	Update Update
+}
+
+// Update is the [update] table (SPEC B10): Channel "stable", "hold" or an https URL, "" when left
+// out; Cooloff, more wait than the project's; CA, the path of a PEM file whose certificates alone
+// are trusted; Key, the one public key trusted, nil for the built-in keys; Line, the table's, 0 for none.
+type Update struct {
+	Channel, CA string
+	Cooloff     time.Duration
+	Key         []byte
+	Line        int
 }
 
 // Secret is one [[secret]] row: the secret Name, read on the host from Source, is sent only
@@ -70,8 +86,7 @@ func Read(path string) (Policy, error) {
 	return readAll(f, path)
 }
 
-// ErrNotRegular is what ReadRepo says of a path that is a symbolic link, a pipe, a directory or any
-// other thing but a file.
+// ErrNotRegular is what ReadRepo says of a symbolic link, a pipe, a directory or any other thing but a file.
 var ErrNotRegular = errors.New("not a regular file")
 
 // ReadRepo reads a repository's workcell.toml, the bytes of which the guest may have written (R6):
@@ -92,7 +107,11 @@ func ReadRepo(path string) (Policy, error) {
 	if st, err := f.Stat(); err != nil || !st.Mode().IsRegular() {
 		return Policy{}, fmt.Errorf("%s: %w", path, ErrNotRegular)
 	}
-	return readAll(f, path)
+	p, err := readAll(f, path)
+	if err == nil && p.Update.Line != 0 {
+		err = fmt.Errorf("%s:%d: [update] is the user's table: a repository's file may not carry it", path, p.Update.Line)
+	}
+	return p, err
 }
 
 func readAll(f *os.File, path string) (Policy, error) {
@@ -109,35 +128,17 @@ func readAll(f *os.File, path string) (Policy, error) {
 // Narrow is the user's policy as a repository's file leaves it (I13): that file can take grants away
 // and give none. With an allow array, only the user's entries it names, with exactly the same text, stay, and a secret whose host that drops goes too;
 // with [[secret]] rows, only the user's rows whose name a row of it names stay, as the user wrote them. Of a
-// repository's row only the name is read. [workspace], [resources] and [update] are not read. What the
+// repository's row only the name is read. [workspace] and [resources] are not read. What the
 // repository asked for that the user did not grant comes back as asked: a host or a secret's name, each quoted.
 func Narrow(user, repo Policy) (got Policy, asked []string) {
 	got = user
 	if repo.AllowSet {
-		got.Allow = nil
-		for _, e := range user.Allow {
-			if slices.ContainsFunc(repo.Allow, func(r Entry) bool { return r.Text == e.Text }) {
-				got.Allow = append(got.Allow, e)
-			}
-		}
-		for _, r := range repo.Allow {
-			if !slices.ContainsFunc(user.Allow, func(e Entry) bool { return e.Text == r.Text }) {
-				asked = append(asked, strconv.Quote(r.Text))
-			}
-		}
+		got.Allow, asked = keep(user.Allow, repo.Allow, func(e Entry) string { return e.Text }, "")
 	}
 	if len(repo.Secret) > 0 {
-		got.Secret = nil
-		for _, u := range user.Secret {
-			if slices.ContainsFunc(repo.Secret, func(r Secret) bool { return r.Name == u.Name }) {
-				got.Secret = append(got.Secret, u)
-			}
-		}
-		for _, r := range repo.Secret {
-			if !slices.ContainsFunc(user.Secret, func(u Secret) bool { return u.Name == r.Name }) {
-				asked = append(asked, "secret "+strconv.Quote(r.Name))
-			}
-		}
+		var more []string
+		got.Secret, more = keep(user.Secret, repo.Secret, func(s Secret) string { return s.Name }, "secret ")
+		asked = append(asked, more...)
 	}
 	if repo.AllowSet { // a secret goes with its host when the host is narrowed away
 		has := func(es []Entry, h string) bool {
@@ -148,8 +149,24 @@ func Narrow(user, repo Policy) (got Policy, asked []string) {
 	return got, asked
 }
 
-// tables are the tables SPEC section 5 names, and whether each is an array of tables. Only
-// [network] and [[secret]] are read today; the others are read past, since reading them costs nothing.
+// keep is the user's entries whose key a repository's entry has, and, each quoted after what, the
+// keys the repository has that the user lacks.
+func keep[T any](user, repo []T, key func(T) string, what string) (kept []T, asked []string) {
+	has := func(es []T, k string) bool { return slices.ContainsFunc(es, func(e T) bool { return key(e) == k }) }
+	for _, u := range user {
+		if has(repo, key(u)) {
+			kept = append(kept, u)
+		}
+	}
+	for _, r := range repo {
+		if !has(user, key(r)) {
+			asked = append(asked, what+strconv.Quote(key(r)))
+		}
+	}
+	return kept, asked
+}
+
+// tables are the tables SPEC section 5 names, and whether each is an array of tables; [workspace] and [resources] are read past.
 var tables = map[string]bool{"network": false, "secret": true, "workspace": false, "resources": false, "update": false}
 
 // Parse reads the policy in text; name labels the file in errors, as "name:line: what".
@@ -161,28 +178,28 @@ func Parse(text, name string) (Policy, error) {
 	var p Policy
 	first := map[string]int{} // the line of each single table seen
 	for _, t := range doc {
-		array, known := tables[t.name]
+		array, known := tables[t.Name]
 		switch {
 		case !known:
-			return Policy{}, fmt.Errorf("%s:%d: table [%s] is not one of network, secret, workspace, resources, update", name, t.line, t.name)
-		case array && !t.array:
-			return Policy{}, fmt.Errorf("%s:%d: [%s] is an array of tables: write [[%s]]", name, t.line, t.name, t.name)
-		case !array && t.array:
-			return Policy{}, fmt.Errorf("%s:%d: [[%s]] is a table: write [%s]", name, t.line, t.name, t.name)
-		case !array && first[t.name] != 0:
-			return Policy{}, fmt.Errorf("%s:%d: table [%s] is defined twice, first on line %d", name, t.line, t.name, first[t.name])
+			return Policy{}, fmt.Errorf("%s:%d: table [%s] is not one of network, secret, workspace, resources, update", name, t.Line, t.Name)
+		case array && !t.Array:
+			return Policy{}, fmt.Errorf("%s:%d: [%s] is an array of tables: write [[%s]]", name, t.Line, t.Name, t.Name)
+		case !array && t.Array:
+			return Policy{}, fmt.Errorf("%s:%d: [[%s]] is a table: write [%s]", name, t.Line, t.Name, t.Name)
+		case !array && first[t.Name] != 0:
+			return Policy{}, fmt.Errorf("%s:%d: table [%s] is defined twice, first on line %d", name, t.Line, t.Name, first[t.Name])
 		}
-		first[t.name] = t.line
-		switch t.name {
+		first[t.Name] = t.Line
+		switch t.Name {
 		case "network":
-			for key, v := range t.keys {
+			for key, v := range t.Keys {
 				if key != "allow" {
-					return Policy{}, fmt.Errorf("%s:%d: unknown key %q in [network]: allow is the only one", name, v.line, key)
+					return Policy{}, fmt.Errorf("%s:%d: unknown key %q in [network]: allow is the only one", name, v.Line, key)
 				}
-				if v.kind != kStrings {
-					return Policy{}, fmt.Errorf("%s:%d: allow must be an array of strings", name, v.line)
+				if !v.List {
+					return Policy{}, fmt.Errorf("%s:%d: allow must be an array of strings", name, v.Line)
 				}
-				p.Allow, p.AllowSet = v.strs, true
+				p.Allow, p.AllowSet = v.Strs, true
 			}
 		case "secret":
 			s, err := secretRow(t, name)
@@ -190,13 +207,50 @@ func Parse(text, name string) (Policy, error) {
 				return Policy{}, err
 			}
 			p.Secret = append(p.Secret, s)
+		case "update":
+			if err := updateTable(t, name, &p.Update); err != nil {
+				return Policy{}, err
+			}
 		}
 	}
 	return p, nil
 }
 
-// Table is one [name] or [[name]] of a document that Tables reads, with its keys. U-402 reads
-// the provider data files with it, so that the product has the one reader (I13).
+// updateTable reads the [update] table: channel, "stable", "hold" or an https URL; cooloff, a
+// duration that is not negative; ca, a path; key, 64 hex characters; each a string, each optional,
+// and nothing else.
+func updateTable(t Table, name string, u *Update) error {
+	u.Line = t.Line
+	for key, v := range t.Keys {
+		var err error
+		switch {
+		case v.List || v.Int:
+			err = errors.New("must be a string")
+		case key == "channel":
+			if u.Channel = v.Str; v.Str != "stable" && v.Str != "hold" && pins.HTTPSURL(v.Str) != nil {
+				err = errors.New(`must be "stable", "hold" or an https URL`)
+			}
+		case key == "cooloff":
+			if u.Cooloff, err = time.ParseDuration(v.Str); err == nil && u.Cooloff < 0 {
+				err = errors.New("must not be negative")
+			}
+		case key == "ca":
+			u.CA = v.Str
+		case key == "key":
+			if u.Key, err = hex.DecodeString(v.Str); err != nil || len(u.Key) != 32 {
+				err = errors.New("must be 64 hex characters")
+			}
+		default:
+			err = errors.New("is not one of channel, cooloff, ca and key")
+		}
+		if err != nil {
+			return fmt.Errorf("%s:%d: [update] %s %v", name, v.Line, key, err)
+		}
+	}
+	return nil
+}
+
+// Table is one [name] or [[name]] of a document, with its keys; the provider data files are read as Tables too (I13).
 type Table struct {
 	Name  string
 	Line  int
@@ -204,8 +258,7 @@ type Table struct {
 	Keys  map[string]Field
 }
 
-// Field is a value of the subset: a string in Str, an array of strings in Strs (List), or an
-// integer (Int), which the caller usually refuses.
+// Field is a value of the subset: a string in Str, an array of strings in Strs (List), or an integer (Int).
 type Field struct {
 	Line      int
 	Str       string
@@ -219,72 +272,41 @@ func Tables(text, name string) ([]Table, error) {
 	if err != nil {
 		return nil, fmt.Errorf("%s:%d: %s", name, err.line, err.msg)
 	}
-	out := make([]Table, len(doc))
-	for i, t := range doc {
-		out[i] = Table{Name: t.name, Line: t.line, Array: t.array, Keys: map[string]Field{}}
-		for k, v := range t.keys {
-			out[i].Keys[k] = Field{Line: v.line, Str: v.str, Strs: v.strs, List: v.kind == kStrings, Int: v.kind == kInteger}
-		}
-	}
-	return out, nil
+	return doc, nil
 }
 
 // secretRow reads one [[secret]] table: name and source, each a string, with host, header, env,
 // method and path optional, repos an optional array of strings, and nothing else. An empty string
 // or array is as good as no key. A row without host and header names a provider's secret, which
 // supplies them (cmd/workcell).
-func secretRow(t *table, name string) (Secret, error) {
-	s := Secret{Line: t.line}
+func secretRow(t Table, name string) (Secret, error) {
+	s := Secret{Line: t.Line}
 	fields := map[string]*string{"name": &s.Name, "source": &s.Source, "host": &s.Host, "header": &s.Header, "env": &s.Env, "method": &s.Method, "path": &s.Path}
-	for key, v := range t.keys {
+	for key, v := range t.Keys {
 		if key == "repos" {
-			if v.kind != kStrings {
-				return Secret{}, fmt.Errorf("%s:%d: repos must be an array of strings", name, v.line)
+			if !v.List {
+				return Secret{}, fmt.Errorf("%s:%d: repos must be an array of strings", name, v.Line)
 			}
-			for _, e := range v.strs {
+			for _, e := range v.Strs {
 				s.Repos = append(s.Repos, e.Text)
 			}
 			continue
 		}
 		field, ok := fields[key]
 		if !ok {
-			return Secret{}, fmt.Errorf("%s:%d: unknown key %q in [[secret]]: name, source, host, header, env, method, path and repos are the keys", name, v.line, key)
+			return Secret{}, fmt.Errorf("%s:%d: unknown key %q in [[secret]]: name, source, host, header, env, method, path and repos are the keys", name, v.Line, key)
 		}
-		if v.kind != kString {
-			return Secret{}, fmt.Errorf("%s:%d: %s must be a string", name, v.line, key)
+		if v.List || v.Int {
+			return Secret{}, fmt.Errorf("%s:%d: %s must be a string", name, v.Line, key)
 		}
-		*field = v.str
+		*field = v.Str
 	}
 	for _, key := range []string{"name", "source"} {
 		if *fields[key] == "" {
-			return Secret{}, fmt.Errorf("%s:%d: [[secret]] needs a %s", name, t.line, key)
+			return Secret{}, fmt.Errorf("%s:%d: [[secret]] needs a %s", name, t.Line, key)
 		}
 	}
 	return s, nil
-}
-
-// A parsed document: tables in file order, each with its keys. The subset has three value kinds.
-type kind int
-
-const (
-	kString kind = iota
-	kInteger
-	kStrings
-)
-
-type value struct {
-	kind kind
-	line int
-	str  string
-	int  int64
-	strs []Entry
-}
-
-type table struct {
-	name  string
-	line  int
-	array bool // [[name]]
-	keys  map[string]value
 }
 
 // A parse error carries the line it was found on.
@@ -316,17 +338,10 @@ type token struct {
 }
 
 func (t token) String() string {
-	switch t.kind {
-	case tEOF:
-		return "end of file"
-	case tNewline:
-		return "end of line"
-	case tString:
-		return "a string"
-	case tBare:
+	if t.kind == tBare {
 		return strconv.Quote(t.text)
 	}
-	return strconv.Quote([...]string{tLBracket: "[", tRBracket: "]", tLLBracket: "[[", tRRBracket: "]]", tEqual: "=", tComma: ","}[t.kind])
+	return [...]string{tEOF: "end of file", tNewline: "end of line", tString: "a string", tLBracket: `"["`, tRBracket: `"]"`, tLLBracket: `"[["`, tRRBracket: `"]]"`, tEqual: `"="`, tComma: `","`}[t.kind]
 }
 
 // scanner yields tokens from text, one at a time, with the line each begins on.
@@ -481,11 +496,11 @@ func (sc *scanner) basicString() (string, *parseError) {
 // parser reads a document from its scanner.
 type parser struct{ sc scanner }
 
-// parse reads the whole document.
-func parse(text string) ([]*table, *parseError) {
+// parse reads the whole document: its tables in file order, each with its keys.
+func parse(text string) ([]Table, *parseError) {
 	p := &parser{sc: scanner{s: text, line: 1}}
-	var doc []*table
-	var cur *table
+	var doc []Table
+	var cur *Table
 	for {
 		t, err := p.sc.next()
 		if err != nil {
@@ -496,11 +511,12 @@ func parse(text string) ([]*table, *parseError) {
 			return doc, nil
 		case tNewline:
 		case tLBracket, tLLBracket:
-			cur, err = p.header(t)
+			h, err := p.header(t)
 			if err != nil {
 				return nil, err
 			}
-			doc = append(doc, cur)
+			doc = append(doc, h)
+			cur = &doc[len(doc)-1]
 		case tBare:
 			if cur == nil {
 				return nil, &parseError{t.line, fmt.Sprintf("key %s before any table", t)}
@@ -515,33 +531,33 @@ func parse(text string) ([]*table, *parseError) {
 }
 
 // header reads [name] or [[name]] after its opening bracket.
-func (p *parser) header(open token) (*table, *parseError) {
+func (p *parser) header(open token) (Table, *parseError) {
 	t, err := p.sc.next()
 	if err != nil {
-		return nil, err
+		return Table{}, err
 	}
 	if t.kind != tBare || !bareKey(t.text) {
-		return nil, &parseError{t.line, fmt.Sprintf("want a table name, got %s", t)}
+		return Table{}, &parseError{t.line, fmt.Sprintf("want a table name, got %s", t)}
 	}
 	closing := tRBracket
 	if open.kind == tLLBracket {
 		closing = tRRBracket
 	}
 	if err := p.expect(closing); err != nil {
-		return nil, err
+		return Table{}, err
 	}
 	if err := p.endOfLine(); err != nil {
-		return nil, err
+		return Table{}, err
 	}
-	return &table{name: t.text, line: open.line, array: open.kind == tLLBracket, keys: map[string]value{}}, nil
+	return Table{Name: t.text, Line: open.line, Array: open.kind == tLLBracket, Keys: map[string]Field{}}, nil
 }
 
 // keyValue reads "= value" after the key, to the end of the line, into t.
-func (p *parser) keyValue(t *table, key token) *parseError {
+func (p *parser) keyValue(t *Table, key token) *parseError {
 	if !bareKey(key.text) {
 		return &parseError{key.line, fmt.Sprintf("%s is not a key", key)}
 	}
-	if _, dup := t.keys[key.text]; dup {
+	if _, dup := t.Keys[key.text]; dup {
 		return &parseError{key.line, fmt.Sprintf("key %s is defined twice", key)}
 	}
 	if err := p.expect(tEqual); err != nil {
@@ -554,7 +570,7 @@ func (p *parser) keyValue(t *table, key token) *parseError {
 	if err := p.endOfLine(); err != nil {
 		return err
 	}
-	t.keys[key.text] = v
+	t.Keys[key.text] = v
 	return nil
 }
 
@@ -562,48 +578,47 @@ func (p *parser) keyValue(t *table, key token) *parseError {
 func bareKey(s string) bool { return s != "" && !strings.ContainsAny(s, "+") }
 
 // value reads one value: a string, an integer or an array of strings, which may span lines.
-func (p *parser) value() (value, *parseError) {
+func (p *parser) value() (Field, *parseError) {
 	t, err := p.sc.next()
 	if err != nil {
-		return value{}, err
+		return Field{}, err
 	}
 	switch t.kind {
 	case tString:
-		return value{kind: kString, line: t.line, str: t.text}, nil
+		return Field{Line: t.line, Str: t.text}, nil
 	case tBare:
-		n, err := strconv.ParseInt(t.text, 10, 64)
-		if err != nil {
-			return value{}, &parseError{t.line, fmt.Sprintf("%s is not a string, an integer or an array of strings", t)}
+		if _, err := strconv.ParseInt(t.text, 10, 64); err != nil {
+			return Field{}, &parseError{t.line, fmt.Sprintf("%s is not a string, an integer or an array of strings", t)}
 		}
-		return value{kind: kInteger, line: t.line, int: n}, nil
+		return Field{Line: t.line, Int: true}, nil
 	case tLLBracket:
-		return value{}, &parseError{t.line, "nested arrays are not supported"}
+		return Field{}, &parseError{t.line, "nested arrays are not supported"}
 	case tLBracket:
 	default:
-		return value{}, &parseError{t.line, fmt.Sprintf("want a value, got %s", t)}
+		return Field{}, &parseError{t.line, fmt.Sprintf("want a value, got %s", t)}
 	}
-	v := value{kind: kStrings, line: t.line}
+	v := Field{Line: t.line, List: true}
 	for {
 		t, err := p.skipNewlines()
 		if err != nil {
-			return value{}, err
+			return Field{}, err
 		}
 		if t.kind == tRBracket {
 			return v, nil
 		}
 		if t.kind != tString {
-			return value{}, &parseError{t.line, fmt.Sprintf("an array may hold strings alone, got %s", t)}
+			return Field{}, &parseError{t.line, fmt.Sprintf("an array may hold strings alone, got %s", t)}
 		}
-		v.strs = append(v.strs, Entry{t.text, t.line})
+		v.Strs = append(v.Strs, Entry{t.text, t.line})
 		if t, err = p.skipNewlines(); err != nil {
-			return value{}, err
+			return Field{}, err
 		}
 		switch t.kind {
 		case tComma:
 		case tRBracket:
 			return v, nil
 		default:
-			return value{}, &parseError{t.line, fmt.Sprintf("want ',' or ']' in an array, got %s", t)}
+			return Field{}, &parseError{t.line, fmt.Sprintf("want ',' or ']' in an array, got %s", t)}
 		}
 	}
 }

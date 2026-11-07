@@ -5,8 +5,11 @@ package main
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"crypto/sha256"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -18,63 +21,57 @@ import (
 	"path/filepath"
 	"runtime"
 	"slices"
+	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/omkhar/workcell/v2/internal/artifact"
+	"github.com/omkhar/workcell/v2/internal/channel"
 	"github.com/omkhar/workcell/v2/internal/pins"
+	"github.com/omkhar/workcell/v2/internal/policy"
 	"github.com/omkhar/workcell/v2/internal/provider"
 	"github.com/omkhar/workcell/v2/internal/rootfs"
 	rows "github.com/omkhar/workcell/v2/pins"
 )
 
-// maxLayer bounds the bytes of tar stream, and of file data, that one provider CLI's
-// artifact may unpack to. The tree lives in memory, so a gzip bomb ends here.
+// maxLayer bounds the bytes of tar stream, and of file data, that one provider CLI's artifact may unpack to in memory.
 const maxLayer = 1 << 30
 
-// update is `workcell update [--to VERSION | --rollback] [AGENT]`: the host side of a provider
-// CLI's install (A10). The CLI's version is its row under pins/ and nowhere else. The artifact
-// is fetched on the host by the row's URL, refused unless its sha256 is the row's (B8), and
-// unpacked into a layer, an ext4 image under the data directory that a session attaches
-// read-only. A `current` marker names the layer only once the image is complete; the layer
-// it replaces stays as `previous`, which --rollback goes back to without fetching. --to takes
-// the row's current or previous release. With no agent, every provider that has a row is done.
+// update is `workcell update [--to VERSION | --rollback] [AGENT]`: the host side of a provider CLI's install (A10).
+// What may be installed is a pin of the signed channel manifest (I14), or of the row under pins/ when the channel
+// is held or no key is trusted: fetched on the host by its URL, refused unless its sha256 is the pin's (B8), and
+// unpacked into a layer, an ext4 image under the data directory that a session attaches read-only. A `current`
+// marker names the layer once the image is complete; the one it replaces stays as `previous`, which --rollback goes back to without fetching.
 func update(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("update", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	to := fs.String("to", "", "")
 	rollback := fs.Bool("rollback", false, "")
 	if fs.Parse(args) != nil || fs.NArg() > 1 || (*to != "" && *rollback) || (fs.NArg() == 0 && (*to != "" || *rollback)) {
-		fmt.Fprintln(stderr, "usage: workcell update [--to VERSION | --rollback] [AGENT]\n  installs the pinned release of a provider CLI, or of every provider;"+
-			" --to takes the row's current or previous release, --rollback the layer kept from before")
+		fmt.Fprintln(stderr, "usage: workcell update [--to VERSION | --rollback] [AGENT]\n  installs the pinned release of a provider CLI, or of every provider; --to takes the current or the previous release, --rollback the layer kept from before")
 		return 2
 	}
-	dir, err := dataDir()
-	in := installer{dir: dir, client: http.DefaultClient}
-	var provs []provider.Provider
-	if err == nil {
-		in.rows, err = rows.All()
-	}
-	if err == nil {
-		provs, err = provider.All()
-	}
-	if err == nil && fs.NArg() == 1 {
-		p, ok := provider.Lookup(fs.Arg(0))
-		if !ok {
-			err = fmt.Errorf("no provider named %q", fs.Arg(0))
+	in, err := newInstaller()
+	provs, perr := provider.All()
+	if fs.NArg() == 1 {
+		if provs = slices.DeleteFunc(provs, func(p provider.Provider) bool { return p.Name != fs.Arg(0) }); len(provs) == 0 && perr == nil {
+			perr = fmt.Errorf("no provider named %q", fs.Arg(0))
 		}
-		provs = []provider.Provider{p}
 	}
-	if err != nil {
+	if err = errors.Join(err, perr); err != nil {
 		fmt.Fprintln(stderr, "workcell update:", err)
 		return 2
 	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute) // one bound for the invocation: a stalled upstream cannot hang it
+	defer cancel()
+	manifest := sync.OnceValues(func() (*channel.Manifest, error) { return in.manifest(ctx) }) // channel.json is fetched and verified once, however many providers install
 	rc := 0
 	for _, p := range provs {
 		if _, err := in.row(p); err != nil && fs.NArg() == 0 {
 			continue
 		}
-		line, err := in.update(context.Background(), p, *to, *rollback)
+		line, err := in.update(ctx, p, manifest, *to, *rollback)
 		if err != nil {
 			fmt.Fprintln(stderr, "workcell update:", err)
 			rc = 1
@@ -85,79 +82,161 @@ func update(args []string, stdout, stderr io.Writer) int {
 	return rc
 }
 
-// installer is what update works with: the data directory, the rows under pins/ and the
-// client that fetches an artifact. A test passes its own rows and a loopback client (A11).
+// installer is what update works with: the data directory, the rows under pins/, the client that fetches (an artifact
+// through pins.Redirect, channel.json following no redirect), the channel's URL, "" when nothing is fetched, the keys trusted to sign it and the user's cool-off (B10).
 type installer struct {
-	dir    string
-	rows   []pins.Pin
-	client *http.Client
+	dir     string
+	rows    []pins.Pin
+	client  *http.Client
+	channel string
+	keys    []channel.Key
+	cooloff time.Duration
 }
 
-// update brings the provider p to the row's current release, to the release to names, or
-// back to the layer kept from before, and returns the result line: agent, version, digest prefix.
-func (in installer) update(ctx context.Context, p provider.Provider, to string, rollback bool) (string, error) {
-	row, err := in.row(p)
-	if err != nil {
-		return "", in.refuse(p.Name, "", "", err)
+// newInstaller reads the user's [update] table (B10): the channel is fetched unless it is "hold" or no
+// key is trusted, the table's alone when it gives one, else the built-in ones; ca's certificates alone are the roots.
+func newInstaller() (in installer, err error) {
+	in = installer{client: &http.Client{}, keys: channel.Keys}
+	file, err := configFile()
+	var p policy.Policy
+	if err == nil {
+		p, err = policy.Read(file)
 	}
+	if err == nil {
+		in.rows, err = rows.All()
+	}
+	if err == nil {
+		in.dir, err = dataDir()
+	}
+	if err != nil {
+		return in, err
+	}
+	u := p.Update
+	in.cooloff = u.Cooloff
+	if u.Key != nil {
+		in.keys = []channel.Key{{Public: u.Key, NotAfter: time.Date(9999, 1, 1, 0, 0, 0, 0, time.UTC)}}
+	}
+	switch {
+	case u.Channel == "hold" || len(in.keys) == 0:
+	case u.Channel == "" || u.Channel == "stable": // where the project publishes (ADR-004)
+		in.channel = "https://omkhar.github.io/workcell/channel.json"
+	default:
+		in.channel = u.Channel
+	}
+	if u.CA != "" {
+		pem, err := os.ReadFile(u.CA)
+		pool := x509.NewCertPool()
+		if err != nil || !pool.AppendCertsFromPEM(pem) {
+			return in, fmt.Errorf("%s: [update] ca %s: %w", file, u.CA, cmp.Or(err, errors.New("no certificate in it")))
+		}
+		t := http.DefaultTransport.(*http.Transport).Clone()
+		t.TLSClientConfig = &tls.Config{RootCAs: pool}
+		in.client.Transport = t
+	}
+	return in, nil
+}
+
+// update brings the provider p to its current pin, to the pin to names, or back to the layer kept from before, and
+// returns the result line: agent, version, digest prefix. The pins come from the channel manifest, fetched by manifest when there is one to fetch, else from the row's own.
+func (in installer) update(ctx context.Context, p provider.Provider, manifest func() (*channel.Manifest, error), to string, rollback bool) (string, error) {
 	dir := filepath.Join(in.dir, "layers", p.Name)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return "", err
+	}
+	row, err := in.row(p)
+	if err != nil {
+		return "", in.refuse(p.Name, "", "", err)
 	}
 	cur, prev := marker(dir, "current"), marker(dir, "previous")
 	if rollback {
 		if cur == "" || prev == "" {
 			return "", in.refuse(p.Name, "", "", errors.New("there is no earlier layer to roll back to"))
 		}
-		return in.point(p.Name, row, dir, prev, cur, "rolled_back")
+		return in.point(p.Name, dir, prev, cur, "rolled_back")
 	}
-	rel := row.Release
-	switch {
-	case to == "" || to == row.Version:
-	case row.Previous != nil && to == row.Previous.Version:
-		rel = *row.Previous
-	default:
-		return "", in.refuse(p.Name, to, "", fmt.Errorf("version %s is not the row's current %s or its previous one", to, row.Version))
+	m := channel.Build([]pins.Pin{row}, time.Now())
+	if in.channel != "" {
+		fetched, err := manifest()
+		if err != nil {
+			return "", in.refuse(p.Name, to, "", err)
+		}
+		m = *fetched
 	}
-	a, ok := rel.Artifacts[runtime.GOARCH]
-	if !ok || len(a.SHA256) != 64 {
-		return "", in.refuse(p.Name, rel.Version, "", fmt.Errorf("release %s has no artifact with a digest for %s", rel.Version, runtime.GOARCH))
+	pin, err := choose(channel.Select(&m, row.Name, runtime.GOARCH), to, in.cooloff, time.Now())
+	if err != nil {
+		return "", in.refuse(p.Name, to, "", err)
 	}
-	name := imageName(rel.Version, a.SHA256)
-	switch name {
+	switch name := pin.Version + "-" + pin.SHA256 + ".ext4"; name { // the file name of a pin's layer: its version and its digest
 	case cur:
-		v, d := known(row, name)
-		return p.Name + " " + v + " " + d[:min(16, len(d))], nil
+		return p.Name + " " + pin.Version + " " + pin.SHA256[:16], nil
 	case prev:
-		return in.point(p.Name, row, dir, prev, cur, "rolled_back")
+		return in.point(p.Name, dir, prev, cur, "rolled_back")
+	default:
+		if err := in.fetch(ctx, dir, name, p.Binary, pin); err != nil {
+			return "", in.refuse(p.Name, pin.Version, pin.SHA256, err)
+		}
+		return in.point(p.Name, dir, name, cur, "installed")
 	}
-	if err := in.fetch(ctx, dir, name, p.Binary, a); err != nil {
-		return "", in.refuse(p.Name, rel.Version, a.SHA256, err)
-	}
-	return in.point(p.Name, row, dir, name, cur, "installed")
 }
 
 // row is the pins/ row of p: the pin its install names, when it is installed as a binary.
 func (in installer) row(p provider.Provider) (pins.Pin, error) {
-	if p.Install.Method != "binary" {
-		return pins.Pin{}, fmt.Errorf("provider %s is installed by %s; update installs binaries only", p.Name, p.Install.Method)
-	}
 	i := slices.IndexFunc(in.rows, func(r pins.Pin) bool { return r.Name == p.Install.Pin })
-	if i < 0 {
+	switch {
+	case p.Install.Method != "binary":
+		return pins.Pin{}, fmt.Errorf("provider %s is installed by %s; update installs binaries only", p.Name, p.Install.Method)
+	case i < 0:
 		return pins.Pin{}, fmt.Errorf("provider %s names pin %s, which has no row under pins/", p.Name, p.Install.Pin)
-	}
-	if in.rows[i].Version == "" {
+	case in.rows[i].Version == "":
 		return pins.Pin{}, fmt.Errorf("provider %s names pin %s, whose row pins no release yet", p.Name, p.Install.Pin)
 	}
 	return in.rows[i], nil
 }
 
-// fetch downloads the artifact a into dir as the image name, through its digest check (B8):
-// the bytes go to a temporary file as they are hashed, and are unpacked only once the
-// digest is the row's. A mismatch leaves nothing behind. The image takes its name only
-// once it is complete and durable.
-func (in installer) fetch(ctx context.Context, dir, name, binary string, a pins.Artifact) error {
-	body, err := artifact.Fetch(ctx, in.client, a.URL, artifact.MaxArtifact)
+// manifest fetches channel.json, at most channel.MaxBytes and following no redirect (a 3xx is a refusal), and
+// verifies it against the keys and the last serial seen, kept in <data>/channel.serial, which advances only
+// once a manifest verified (I14) and on any failure is untouched.
+func (in installer) manifest(ctx context.Context) (*channel.Manifest, error) {
+	c := http.Client{Transport: in.client.Transport, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	body, err := artifact.Fetch(ctx, &c, in.channel, channel.MaxBytes)
+	var raw []byte
+	if err == nil {
+		raw, err = io.ReadAll(body)
+		body.Close()
+	}
+	last, _ := strconv.ParseInt(marker(in.dir, "channel.serial"), 10, 64) // absent, or not a number, is 0
+	var m *channel.Manifest
+	if err == nil {
+		m, err = channel.Verify(raw, in.keys, time.Now(), last)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("channel: %w", err)
+	}
+	return m, writeMarker(in.dir, "channel.serial", strconv.FormatInt(m.Serial, 10))
+}
+
+// choose is the candidate to install: with to, the one of that version, any other version refused; without,
+// the first, or the previous one while the user's cool-off (B10) still holds the first at now, or a refusal when there is none.
+func choose(cands []channel.Pin, to string, cooloff time.Duration, now time.Time) (channel.Pin, error) {
+	if to != "" {
+		if i := slices.IndexFunc(cands, func(c channel.Pin) bool { return c.Version == to }); i >= 0 {
+			return cands[i], nil
+		}
+		return channel.Pin{}, fmt.Errorf("version %s is in neither pins nor previous", to)
+	}
+	if len(cands) > 0 && now.Before(time.Unix(cands[0].Released, 0).Add(cooloff)) {
+		cands = cands[1:]
+	}
+	if len(cands) == 0 {
+		return channel.Pin{}, fmt.Errorf("nothing is pinned for %s that the %s cool-off lets in", runtime.GOARCH, cooloff)
+	}
+	return cands[0], nil
+}
+
+// fetch downloads the pin into dir as the image name, through its digest check (B8): the bytes go to a temporary
+// file as they are hashed, and are unpacked only once the digest is the pin's, a mismatch leaving nothing behind; the image, written over the download, takes its name once complete and durable.
+func (in installer) fetch(ctx context.Context, dir, name, binary string, pin channel.Pin) error {
+	body, err := artifact.Fetch(ctx, in.client, pin.URL, artifact.MaxArtifact)
 	if err != nil {
 		return err
 	}
@@ -172,49 +251,34 @@ func (in installer) fetch(ctx context.Context, dir, name, binary string, a pins.
 	if _, err := io.Copy(io.MultiWriter(tmp, h), body); err != nil {
 		return err
 	}
-	if got := hex.EncodeToString(h.Sum(nil)); got != a.SHA256 {
-		return fmt.Errorf("the download's sha256 %s is not the row's %s", got, a.SHA256)
-	}
-	if _, err := tmp.Seek(0, io.SeekStart); err != nil {
-		return err
+	if got := hex.EncodeToString(h.Sum(nil)); got != pin.SHA256 {
+		return fmt.Errorf("the download's sha256 %s is not the pin's %s", got, pin.SHA256)
 	}
 	t, err := unpack(tmp, binary)
 	if err != nil {
 		return err
 	}
-	img, err := os.CreateTemp(dir, ".image-*")
-	if err != nil {
+	if err := errors.Join(tmp.Truncate(0), t.WriteExt4File(tmp, time.Time{}, 0), tmp.Sync()); err != nil {
 		return err
 	}
-	defer os.Remove(img.Name())
-	defer img.Close()
-	if err := t.WriteExt4File(img, time.Time{}, 0); err != nil {
-		return err
-	}
-	if err := img.Sync(); err != nil {
-		return err
-	}
-	return os.Rename(img.Name(), filepath.Join(dir, name))
+	return os.Rename(tmp.Name(), filepath.Join(dir, name))
 }
 
-// unpack reads the artifact f into the tree of a layer, its shape told by content and never
-// by URL: a gzip stream or a tar is applied as a layer, anything else is one bare file. Then,
-// once, a tree without bin/<binary> whose root holds exactly one regular file and no bin/
-// entry has that file become bin/<binary>, mode 0755; the bare file is that case. A tree
-// that already holds bin/<binary> is left as it is. Any other shape is refused.
+// unpack reads the artifact f into the tree of a layer, its shape told by content and never by
+// URL: a gzip stream or a tar is applied as a layer, anything else is one bare file. Then, once, a
+// tree without bin/<binary> whose root holds exactly one regular file and no bin/ entry has that
+// file become bin/<binary>, mode 0755; the bare file is that case. Any other shape is refused.
 func unpack(f *os.File, binary string) (*rootfs.Tree, error) {
 	head := make([]byte, 262)
-	n, _ := io.ReadFull(f, head)
-	if _, err := f.Seek(0, io.SeekStart); err != nil {
-		return nil, err
-	}
+	n, _ := f.ReadAt(head, 0)
+	r := io.NewSectionReader(f, 0, 1<<62) // from the start, wherever f was left
 	t := rootfs.NewTree()
 	if bytes.HasPrefix(head[:n], []byte{0x1f, 0x8b}) || (n == len(head) && string(head[257:262]) == "ustar") {
-		if _, err := t.Apply(f, maxLayer); err != nil {
+		if _, err := t.Apply(r, maxLayer); err != nil {
 			return nil, err
 		}
 	} else {
-		data, err := io.ReadAll(f)
+		data, err := io.ReadAll(r)
 		if err != nil {
 			return nil, err
 		}
@@ -226,12 +290,7 @@ func unpack(f *os.File, binary string) (*rootfs.Tree, error) {
 	if t.Lookup(want) != nil {
 		return t, nil
 	}
-	var files []string
-	for _, name := range t.Names("/") {
-		if t.Lookup(name).Kind == rootfs.File {
-			files = append(files, name)
-		}
-	}
+	files := slices.DeleteFunc(t.Names("/"), func(name string) bool { return t.Lookup(name).Kind != rootfs.File })
 	if len(files) != 1 || t.Lookup("bin") != nil {
 		return nil, fmt.Errorf("the artifact holds neither %s nor one file at its root to become it", want)
 	}
@@ -239,9 +298,8 @@ func unpack(f *os.File, binary string) (*rootfs.Tree, error) {
 	return t, errors.Join(t.Put("bin", rootfs.Node{Kind: rootfs.Dir, Mode: 0o755}), t.Link(files[0], want), t.Remove(files[0]))
 }
 
-// point makes the complete image current the agent's layer, keeps previous as the one to
-// roll back to, removes any other image, records the result and returns the result line.
-func (in installer) point(agent string, row pins.Pin, dir, current, previous, result string) (string, error) {
+// point makes the complete image current, keeps previous to roll back to, removes any other image, records and reports.
+func (in installer) point(agent, dir, current, previous, result string) (string, error) {
 	if err := writeMarker(dir, "previous", previous); err != nil {
 		return "", err
 	}
@@ -254,7 +312,9 @@ func (in installer) point(agent string, row pins.Pin, dir, current, previous, re
 			os.Remove(img)
 		}
 	}
-	v, d := known(row, current)
+	stem := strings.TrimSuffix(current, ".ext4") // the version and the digest the image is named for
+	i := strings.LastIndex(stem, "-")
+	v, d := stem[:max(i, 0)], stem[i+1:]
 	if err := in.record(agent, v, d, result); err != nil {
 		return "", err
 	}
@@ -266,8 +326,7 @@ func (in installer) refuse(agent, version, digest string, err error) error {
 	return errors.Join(fmt.Errorf("%s: %w", agent, err), in.record(agent, version, digest, "refused"))
 }
 
-// updateRecord is one line of <data>/updates.log, in the secret ledger's shape: time first,
-// then the fields, then the result: installed, rolled_back or refused.
+// updateRecord is one line of <data>/updates.log: time first, then the fields, then installed, rolled_back or refused.
 type updateRecord struct {
 	Time    string `json:"time"`
 	Name    string `json:"name"`
@@ -279,9 +338,6 @@ type updateRecord struct {
 // record appends one line to the append-only record and makes it durable before it returns.
 func (in installer) record(agent, version, digest, result string) error {
 	line, _ := json.Marshal(updateRecord{time.Now().UTC().Format(time.RFC3339Nano), agent, version, digest, result})
-	if err := os.MkdirAll(in.dir, 0o700); err != nil {
-		return err
-	}
 	f, err := os.OpenFile(filepath.Join(in.dir, "updates.log"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
 	if err != nil {
 		return err
@@ -290,44 +346,15 @@ func (in installer) record(agent, version, digest, result string) error {
 	return errors.Join(err, f.Sync(), f.Close())
 }
 
-// imageName is the file name of a release's layer: its version and the first 16 hex of its digest.
-func imageName(version, digest string) string { return version + "-" + digest[:16] + ".ext4" }
-
-// known is the version and digest of the image name: the full digest when the row still names
-// the release, the prefix the name carries otherwise.
-func known(row pins.Pin, name string) (version, digest string) {
-	for _, r := range []*pins.Release{&row.Release, row.Previous} {
-		if r == nil {
-			continue
-		}
-		if a, ok := r.Artifacts[runtime.GOARCH]; ok && len(a.SHA256) == 64 && imageName(r.Version, a.SHA256) == name {
-			return r.Version, a.SHA256
-		}
-	}
-	stem := strings.TrimSuffix(name, ".ext4")
-	i := strings.LastIndex(stem, "-")
-	return stem[:max(i, 0)], stem[i+1:]
-}
-
 // marker is the image name the marker file names, or "" when there is none.
 func marker(dir, which string) string {
-	b, err := os.ReadFile(filepath.Join(dir, which))
-	if err != nil {
-		return ""
-	}
+	b, _ := os.ReadFile(filepath.Join(dir, which))
 	return strings.TrimSpace(string(b))
 }
 
-// writeMarker points the marker at the image name, through a rename so that a reader sees the
-// old name or the new one, or removes the marker when name is empty.
+// writeMarker points the marker at the image name, "" for none, through a rename: a reader sees the old name or the new.
 func writeMarker(dir, which, name string) error {
 	path := filepath.Join(dir, which)
-	if name == "" {
-		if err := os.Remove(path); !errors.Is(err, os.ErrNotExist) {
-			return err
-		}
-		return nil
-	}
 	if err := os.WriteFile(path+".tmp", []byte(name+"\n"), 0o600); err != nil {
 		return err
 	}

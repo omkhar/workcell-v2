@@ -11,17 +11,17 @@ import (
 	"github.com/omkhar/workcell/v2/internal/vmm"
 )
 
-// dataDir is where the pinned artifacts live: $XDG_DATA_HOME/workcell, or
-// ~/.local/share/workcell. update and doctor fill it; run only reads it.
-func dataDir() (string, error) {
-	if x := os.Getenv("XDG_DATA_HOME"); x != "" {
+// dataDir is where the pinned artifacts live: $XDG_DATA_HOME/workcell, or ~/.local/share/workcell.
+// update and doctor fill it; run only reads it.
+func dataDir() (string, error) { return xdgDir("XDG_DATA_HOME", ".local", "share") }
+
+// xdgDir is workcell's directory under the variable, else under the path beneath the home directory, on every OS alike.
+func xdgDir(env string, home ...string) (string, error) {
+	if x := os.Getenv(env); x != "" {
 		return filepath.Join(x, "workcell"), nil
 	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(home, ".local", "share", "workcell"), nil
+	h, err := os.UserHomeDir()
+	return filepath.Join(append(append([]string{h}, home...), "workcell")...), err
 }
 
 // artifacts are the files a session boots from, and the directory they are in: the kernel,

@@ -130,8 +130,8 @@ func TestVerify(t *testing.T) {
 			if err != nil {
 				return
 			}
-			if p, ok := Select(m, "provider0", "amd64"); ok != (tc.use != "") || p.Version != tc.use {
-				t.Fatalf("Select = %+v %v, want version %q", p, ok, tc.use)
+			if ps := Select(m, "provider0", "amd64"); (len(ps) > 0) != (tc.use != "") || len(ps) > 0 && ps[0].Version != tc.use {
+				t.Fatalf("Select = %+v, want version %q first", ps, tc.use)
 			}
 		})
 	}
@@ -183,8 +183,8 @@ func TestBuild(t *testing.T) {
 	if _, err := Verify(env, []Key{k1}, now.Add(time.Hour), 0); err != nil {
 		t.Fatalf("a built manifest does not verify: %v", err)
 	}
-	if p, ok := Select(&m, "b", "arm64"); !ok || p.Version != "1.9" {
-		t.Fatalf("Select b/arm64 = %+v %v, want the previous 1.9, as 2.0's digest is withdrawn", p, ok)
+	if ps := Select(&m, "b", "arm64"); len(ps) != 1 || ps[0].Version != "1.9" {
+		t.Fatalf("Select b/arm64 = %+v, want the previous 1.9 alone, as 2.0's digest is withdrawn", ps)
 	}
 }
 
@@ -203,7 +203,7 @@ func FuzzVerify(f *testing.F) {
 		if err != nil {
 			return
 		}
-		if _, ok := Select(m, "provider0", "amd64"); !ok {
+		if len(Select(m, "provider0", "amd64")) == 0 {
 			t.Fatalf("a verified manifest selects nothing for provider0/amd64: %+v", m)
 		}
 	})

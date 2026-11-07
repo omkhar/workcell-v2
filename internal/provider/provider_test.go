@@ -39,15 +39,9 @@ func TestEmbeddedProviders(t *testing.T) {
 		if len(p.Secrets) == 0 || p.Install.Method == "" {
 			t.Errorf("%s: no secret or no install: %+v", p.Name, p)
 		}
-		if got, ok := Lookup(p.Name); !ok || got.Binary != p.Binary {
-			t.Errorf("Lookup(%q) = %+v, %v", p.Name, got, ok)
-		}
 	}
 	if want := []string{"claude", "codex", "copilot", "gemini"}; !slices.Equal(names, want) {
 		t.Errorf("providers = %v, want %v", names, want)
-	}
-	if _, ok := Lookup("nope"); ok {
-		t.Error("Lookup found a provider that is not there")
 	}
 	for name, want := range map[string]string{"anthropic": "claude", "openai": "codex", "github": "copilot", "gemini": "gemini", "nope": ""} {
 		if s, p, ok := FindSecret(name); ok != (want != "") || p.Name != want || ok && s.Name != name || ok && s.Prefix != map[string]string{"openai": "Bearer ", "github": "Bearer "}[name] {

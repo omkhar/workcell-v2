@@ -40,6 +40,10 @@ type Key struct {
 	NotAfter time.Time
 }
 
+// Keys is the table built into the client: empty until H-905 hands over the project's key (B7),
+// so until then a client installs from the channel only with a key its [update] table names.
+var Keys []Key
+
 // ID is the key ID, the hex SHA-256 of the public half, derived on both sides (W6).
 func (k Key) ID() string { h := sha256.Sum256(k.Public); return hex.EncodeToString(h[:]) }
 
@@ -109,16 +113,12 @@ func Verify(raw []byte, keys []Key, now time.Time, lastSerial int64) (*Manifest,
 	if len(raw) > MaxBytes || decode(raw, &env, true) != nil || env.PayloadType != PayloadType {
 		return nil, errFormat
 	}
-	msg, ok := pae(env.Payload), false
-	for _, s := range env.Signatures {
-		for _, k := range keys {
-			if s.KeyID == k.ID() && now.Before(k.NotAfter) && len(k.Public) == ed25519.PublicKeySize &&
-				ed25519.Verify(k.Public, msg, s.Sig) {
-				ok = true
-			}
-		}
-	}
-	if !ok {
+	msg := pae(env.Payload)
+	if !slices.ContainsFunc(env.Signatures, func(s signature) bool {
+		return slices.ContainsFunc(keys, func(k Key) bool {
+			return s.KeyID == k.ID() && now.Before(k.NotAfter) && len(k.Public) == ed25519.PublicKeySize && ed25519.Verify(k.Public, msg, s.Sig)
+		})
+	}) {
 		return nil, errSignature
 	}
 	var m Manifest
@@ -150,15 +150,15 @@ func Verify(raw []byte, keys []Key, now time.Time, lastSerial int64) (*Manifest,
 	return &m, nil
 }
 
-// Select picks what to install for name and arch: the current pin unless it is
-// withdrawn, else the kept previous one, so a rollback stays inside I14 (B9, B10).
-func Select(m *Manifest, name, arch string) (p Pin, ok bool) {
+// Select is what name may install on arch: the current pin, then the kept previous one, each left
+// out when withdrawn, so that a rollback stays inside I14 (B9, B10); the first is what to install.
+func Select(m *Manifest, name, arch string) (out []Pin) {
 	for _, set := range []map[string]map[string]Pin{m.Pins, m.Previous} {
 		if p, ok := set[name][arch]; ok && !slices.Contains(m.Withdrawn, p.SHA256) {
-			return p, true
+			out = append(out, p)
 		}
 	}
-	return Pin{}, false
+	return out
 }
 
 // Build makes the manifest of rows as of now: each release under pins, each prior

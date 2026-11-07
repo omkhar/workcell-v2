@@ -145,14 +145,13 @@ func denyMessage(d audit.Record, cfg string) string {
 	if host == "" { // as printed when it is no remedy
 		host = "(invalid)"
 	}
-	named := host != "(invalid)"
 	allow := func(entry string) string {
 		return fmt.Sprintf("allow it with  workcell run --allow %s  or add %q to [network] allow in %s", entry, entry, cfg)
 	}
 	switch d.Result {
 	case "name_not_allowed", "sni_not_allowed":
 		via := map[string]string{"name_not_allowed": "dns", "sni_not_allowed": "tls"}[d.Result]
-		if !named {
+		if host == "(invalid)" {
 			return fmt.Sprintf("denied %s (%s): not a host name, so there is nothing to allow", host, via)
 		}
 		return fmt.Sprintf("denied %s (%s): %s", host, via, allow(host))

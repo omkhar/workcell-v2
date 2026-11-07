@@ -40,6 +40,8 @@ func RootBind(string, string, string, int) (net.Listener, net.PacketConn, error)
 
 func (*workcell) Install(context.Context, Layer) (string, error) { return "", ErrNotImplemented }
 
+func (*workcell) Update(context.Context, UpdateConfig) ([]byte, error) { return nil, ErrNotImplemented }
+
 func (*workcell) Audit(context.Context) (string, []string, error) { return "", nil, ErrNotImplemented }
 
 func (*workcell) Verify(context.Context) error { return ErrNotImplemented }

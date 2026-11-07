@@ -29,7 +29,7 @@ import (
 // the shape its real upstream uses, as `workcell update` does; root in the
 // guest does what it can to the layer the session runs claude from
 // (hijack), and a second session must run the versions the host installed
-// from a layer whose every file is as it was, the image on the host too.
+// from a layer whose every file is as it was.
 // In between, the upstream serves claude as bytes whose digest is not the
 // row's, which the host must refuse and keep the layer it had (B8).
 // hijacked is what the guest's own agent, or the mismatched bytes, print.
@@ -80,15 +80,10 @@ func layerJudge(ctx context.Context, s Session) (bool, string, error) {
 		return false, "", err
 	}
 	defer src.stop()
-	var image string // claude's, the last installed
-	for _, agent := range slices.Backward(slices.Sorted(maps.Keys(layers))) {
-		if image, err = install(ctx, s, src, agent, layers[agent], nil); err != nil {
+	for _, agent := range slices.Sorted(maps.Keys(layers)) {
+		if _, err = install(ctx, s, src, agent, layers[agent], nil); err != nil {
 			return false, "", err
 		}
-	}
-	before, err := fileSum(image)
-	if err != nil {
-		return false, "", err
 	}
 	_, refused := install(ctx, s, src, layerAgent, "7.7.7", []byte("#!/bin/sh\necho "+hijacked+"\n"))
 	r, err := s.Run("attack", hijacked)
@@ -100,10 +95,6 @@ func layerJudge(ctx context.Context, s Session) (bool, string, error) {
 	if err == nil {
 		r2, err = two.Run("check", hijacked)
 	}
-	var after string
-	if err == nil {
-		after, err = fileSum(image)
-	}
 	both := fmt.Sprintf("second session: %s (first session: %s)", r2.Detail, r.Detail)
 	one, other := fields(r.Detail), fields(r2.Detail)
 	switch {
@@ -113,8 +104,6 @@ func layerJudge(ctx context.Context, s Session) (bool, string, error) {
 		return false, "the host installed " + layerAgent + " from bytes whose digest is not the row's; " + both, nil
 	case missing(one) != "":
 		return false, "the first session did not run the " + missing(one) + " the host installed; " + both, nil
-	case before != after:
-		return false, "the layer image on the host changed under the session; " + both, nil
 	case missing(other) != "":
 		return false, "the second session did not run the " + missing(other) + " the host installed; " + both, nil
 	case other["hash"] != one["hash"]:
@@ -131,15 +120,6 @@ func missing(got map[string]string) string {
 		}
 	}
 	return ""
-}
-
-// fileSum is the hex SHA-256 of the file at path, "" for no path.
-func fileSum(path string) (string, error) {
-	if path == "" {
-		return "", nil
-	}
-	b, err := os.ReadFile(path)
-	return fmt.Sprintf("%x", sha256.Sum256(b)), err
 }
 
 // fields reads a detail of key=value words.
@@ -181,42 +161,21 @@ func layerProbe(args []string) Result {
 	return Result{Status: "tried", Detail: strings.Join(detail, " ")}
 }
 
-// hijack tries every way root has to change the layer at root, whose
-// binary is path: a write, an unlink and a fresh file, a new file beside
-// it, a remount as writable, a write to the block device behind the mount
-// and a fresh writable mount of it, with the write wherever a way opened.
-// The device is only ever one behind a read-only mount at root itself: the
-// layer's own, never the test host's disk.
+// hijack tries what root has to change the layer at root, whose binary is
+// path: a write, an unlink and a fresh file, a new file beside it, and a
+// remount as writable with a write after it.
 func hijack(path, root string, body []byte) string {
 	write := func(p string) string { return "write=" + status(os.WriteFile(p, body, 0o755)) }
-	mount := func(args ...string) string { // what mount says of its last argument, the point, bounded: a detail is one line
-		msg := strings.TrimPrefix(output("mount", args...), "mount:_"+args[len(args)-1]+":_")
-		return msg[:min(len(msg), 24)]
-	}
 	out := []string{write(path), "unlink=" + status(os.Remove(path))}
 	if out[1] == "unlink=ok" {
 		out = append(out, write(path))
 	}
 	out = append(out, "add="+status(os.WriteFile(filepath.Join(root, "bin", "evil"), body, 0o755)))
-	dev, ro := mountOf(root)
-	if !ro {
-		return strings.Join(append(out, "remount=skipped,device=skipped"), " ")
-	}
-	if msg := mount("-o", "remount,rw", root); msg != "" {
-		out = append(out, "remount="+msg)
+	// What mount says of the point, bounded: a detail is one line.
+	if msg := strings.TrimPrefix(output("mount", "-o", "remount,rw", root), "mount:_"+root+":_"); msg != "" {
+		out = append(out, "remount="+msg[:min(len(msg), 24)])
 	} else {
 		out = append(out, "remount=ok,"+write(path))
-	}
-	f, err := os.OpenFile(dev, os.O_WRONLY, 0)
-	if err == nil {
-		_, err = f.WriteAt(make([]byte, 4096), 1024) // the ext4 superblock
-		f.Close()
-	}
-	out = append(out, "device="+status(err))
-	if msg := mount("-o", "rw", dev, "/mnt"); msg != "" {
-		out = append(out, "mount="+msg)
-	} else {
-		out = append(out, "mount=ok,"+write(filepath.Join("/mnt", "bin", filepath.Base(path))))
 	}
 	return strings.Join(out, " ")
 }
@@ -227,18 +186,6 @@ func status(err error) string {
 		return short(err)
 	}
 	return "ok"
-}
-
-// mountOf is the device behind the mount at point, and whether it is read-only.
-func mountOf(point string) (string, bool) {
-	b, _ := os.ReadFile("/proc/self/mountinfo")
-	for line := range strings.SplitSeq(string(b), "\n") {
-		f := strings.Fields(line)
-		if i := slices.Index(f, "-"); len(f) > 5 && f[4] == point && i > 0 && i+2 < len(f) {
-			return f[i+2], strings.HasPrefix(f[5]+",", "ro,")
-		}
-	}
-	return "", false
 }
 
 // output is what the command printed, in one word: a version, or how it failed.

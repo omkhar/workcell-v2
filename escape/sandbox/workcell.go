@@ -184,6 +184,3 @@ func (*workcell) Channel(context.Context) (Channel, error) { return Channel{Addr
 // Relay is where the guest's init opens one vsock stream per relayed
 // connection (ADR-003): the host's CID 2, port 5001.
 func (*workcell) Relay(context.Context) (Channel, error) { return Channel{Addr: "vsock:2:5001"}, nil }
-func (*workcell) Update(context.Context, UpdateConfig) ([]byte, error) {
-	return nil, ErrNotImplemented
-}

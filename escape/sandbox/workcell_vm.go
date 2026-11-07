@@ -14,6 +14,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"net"
 	"net/http"
 	"os"
@@ -652,10 +653,76 @@ func (w *workcell) Install(ctx context.Context, l Layer) (string, error) {
 	return filepath.Join(layers, strings.TrimSpace(string(current))), nil
 }
 
+// Update runs the plain product once as a user with an [update] table would:
+// `workcell update --to <version> <agent>` under a configuration of its own,
+// beside the session's policy, whose table names u.Channel, a file holding
+// u.CA and u.Key in hex, every one a parameter the user could give (SPEC
+// A11). The product's exit status is not an error: what it installed is the
+// answer, read from the image the layer's `current` names, never from what
+// the product says of it; nil when no layer is current.
+func (w *workcell) Update(ctx context.Context, u UpdateConfig) ([]byte, error) {
+	var agent string
+	for a, name := range rows {
+		if name == u.Name {
+			agent = a
+		}
+	}
+	if w.dir == "" || agent == "" {
+		return nil, fmt.Errorf("workcell: Update before Start, or no pin row named %q", u.Name)
+	}
+	host := &workcell{dir: filepath.Join(w.dir, "update"), bin: prepared.bin}
+	file, ca := filepath.Join(host.dir, "config", policyFile), filepath.Join(host.dir, "ca.pem")
+	table := []byte("[update]\n")
+	var err error
+	for _, kv := range []struct{ key, value string }{{"channel", u.Channel}, {"ca", ca}, {"key", hex.EncodeToString(u.Key)}} {
+		if table, err = quoted(append(table, kv.key+" = "...), "update "+kv.key, kv.value); err != nil {
+			return nil, fmt.Errorf("workcell: %w", err)
+		}
+		table = append(table, '\n')
+	}
+	err = errors.Join(os.MkdirAll(filepath.Dir(file), 0o755), os.MkdirAll(filepath.Join(host.dir, "cwd"), 0o755))
+	if err == nil {
+		err = errors.Join(os.WriteFile(file, table, 0o644), os.WriteFile(ca, u.CA, 0o644))
+	}
+	if err != nil {
+		return nil, fmt.Errorf("workcell: write the update table: %w", err)
+	}
+	out, err := host.cli(ctx, nil, "update", "--to", u.Version, agent)
+	if err != nil {
+		return nil, err
+	}
+	if out.Exit != 0 {
+		fmt.Fprintf(os.Stderr, "escape: workcell update --to %s %s: exit %d: %s\n", u.Version, agent, out.Exit, bytes.TrimSpace(out.Stderr))
+	}
+	layers := filepath.Join(prepared.xdg, "workcell", "layers", agent)
+	current, err := os.ReadFile(filepath.Join(layers, "current"))
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	// debugfs reads the image as a file, without a mount; it exits 0 whatever
+	// happened, and says on stderr what it could not do.
+	image := filepath.Join(layers, filepath.Base(strings.TrimSpace(string(current))))
+	cmd := exec.CommandContext(ctx, "debugfs", "-R", "cat bin/"+agent, image)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	b, err := cmd.Output()
+	if err == nil && len(b) == 0 {
+		err = fmt.Errorf("%s", bytes.TrimSpace(stderr.Bytes()))
+	}
+	if err != nil {
+		return nil, fmt.Errorf("workcell: read bin/%s of the layer image %s: %w", agent, image, err)
+	}
+	return b, nil
+}
+
 // Stop removes the session's directory, every session image the product
-// kept, since no `workcell rm` exists yet and tests run one at a time, and
-// every layer installed: the next test's pull must find only its own runs,
-// and its sessions boot with no layer.
+// kept, since no `workcell rm` exists yet and tests run one at a time,
+// every layer installed and the channel serial the update client keeps: the
+// next test's pull must find only its own runs, its sessions boot with no
+// layer, and its update client has seen no manifest.
 func (w *workcell) Stop() error {
 	if w.dir == "" {
 		return nil
@@ -667,5 +734,5 @@ func (w *workcell) Stop() error {
 		settle() // the host's resolver cache, where it has one, outlives the session
 	}
 	data := filepath.Join(prepared.xdg, "workcell")
-	return errors.Join(os.RemoveAll(w.dir), os.RemoveAll(filepath.Join(data, "sessions")), os.RemoveAll(filepath.Join(data, "layers")))
+	return errors.Join(os.RemoveAll(w.dir), os.RemoveAll(filepath.Join(data, "sessions")), os.RemoveAll(filepath.Join(data, "layers")), os.RemoveAll(filepath.Join(data, "channel.serial")))
 }
