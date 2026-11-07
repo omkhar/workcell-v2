@@ -295,6 +295,8 @@ the loop has ended.
       accept: a fixture advisory shortens the cool-off; a lookup error leaves the normal cool-off in force and is reported
 - [x] B-828 | flow:build | model:sonnet | env:kvm | deps:B-824,W-802b | tries:0 | sign:you | Nightly early-warning smoke on upstream's newest release, and the freshness report (B11, B12)
       accept: one rolling issue, never a gate; the report shows lag per pin against P7; `nightly.yml` stays within 80 lines
+- [ ] B-830 | flow:build | model:sonnet | env:any | deps:B-828 | tries:0 | Make `pins/codex.json` selectable and signed (B3, B5): openai/codex tags its releases `rust-vX.Y.Z`, which `pins.ParseVersion` does not read as stable, so `Select` calls every release a pre-release and the row can never move. Let a row name its tag prefix, or move the row to the npm source with its provenance, and fill its `Signing` from the `.sigstore` bundle published beside each asset. Product and bump budgets are tight, so delete first (`PARKED.md`)
+      accept: `go run ./cmd/bump -newest -dry-run` lists codex with a stable eligible version; a fixture whose bundle names another identity is refused
 
 ## Phase 9: docs and migration
 
@@ -308,7 +310,7 @@ the loop has ended.
       accept: every v1 flag listed in `_legacy/flags.txt` has a row
 - [x] U-904 | flow:build | model:sonnet | env:any | deps:W-801,W-802b | tries:0 | sign:you | Homebrew formula, a checksum-verifying install script, and the P2 install-timing job in `nightly.yml`
       accept: the script refuses a download with a wrong checksum, shown against a local server; it has at most 90 lines, because `gate.sh` joins the 300-line shell budget at cutover; `nightly.yml` stays within 80 lines
-- [ ] U-905a | flow:mech | model:sonnet | env:any | deps:U-903,U-502a,U-600,U-400,U-402,U-302,U-205,U-701,U-702,B-823,B-826b,B-827,B-828 | tries:0 | Delete `_legacy/` and `spikes/`
+- [ ] U-905a | flow:mech | model:sonnet | env:any | deps:U-903,U-502a,U-600,U-400,U-402,U-302,U-205,U-701,U-702,B-823,B-826b,B-827,B-828,B-830 | tries:0 | Delete `_legacy/` and `spikes/`
       accept: gate green; budgets met
 - [ ] U-906 | flow:mech | model:sonnet | env:kvm | deps:above | tries:0 | wait:nightly.yml | Record P1 to P7 in `docs/benchmarks.md`, each with its number and the run it came from
       accept: P2 comes from `nightly.yml`. P7 cannot be met before cutover, because nothing merges a bump here. In its place stand the dry run that B-826b read, and the lag per pin that `nightly.yml` reports. P5 is the p50 over the last 10 pull requests, each counted by the slower of `gate` and `gate-macos`; P1 and P6 include H-703 and H-704. If another target is missed, mark this unit `[!]`

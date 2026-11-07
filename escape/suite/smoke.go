@@ -202,7 +202,7 @@ func smokeProbe(args []string) Result {
 		}
 	}
 	status := "failed"
-	if vexit == "0" && strings.Contains(vout, version) && sexit == "0" {
+	if vexit == "0" && strings.Contains(vout, strings.TrimPrefix(version, "v")) && sexit == "0" { // a tag "v1.0.107" prints "1.0.107"
 		status = "ok"
 	}
 	return Result{Status: status, Detail: fmt.Sprintf("version=%s exit=%s session=%s %s", vout[:min(len(vout), 40)], vexit, sexit, sout)}

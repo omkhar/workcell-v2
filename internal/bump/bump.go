@@ -176,19 +176,16 @@ func (t Tool) Run(ctx context.Context) error {
 	return nil
 }
 
-// p7 is how long past its normal cool-off a release may wait (P7).
-var p7 = map[pins.Class]time.Duration{pins.Guest: 24 * time.Hour, pins.Trusted: 72 * time.Hour}
+var p7 = map[pins.Class]time.Duration{pins.Guest: 24 * time.Hour, pins.Trusted: 72 * time.Hour} // how long past its normal cool-off a release may wait (P7)
 
-// Newest prints per pin the freshness report (B12), rewrites each guest row at the
-// newest stable release whatever its age (B11), and fails naming each pin that
-// misses P7 or fails verification (B5). Lag is the time the oldest eligible release has
-// outlived its normal cool-off; the security lane understates a fast-lane lag.
+// Newest prints per pin the freshness report (B12) and a "P7 missed" line for each pin that misses P7, rewrites each guest row at the newest stable release whatever its age (B11),
+// and fails naming each pin that fails verification (B5). Lag is the time the oldest eligible release has outlived its normal cool-off; the security lane understates a fast-lane lag.
 func (t Tool) Newest(ctx context.Context) error {
 	ps, err := Load(t.Pins)
 	if err != nil {
 		return err
 	}
-	var bad []string
+	var failed []string
 	for _, p := range ps {
 		cool := pins.Cooloff[p.Class][0]
 		c, token, err := t.plan(ctx, p, t.Now)
@@ -201,8 +198,11 @@ func (t Tool) Newest(ctx context.Context) error {
 			lag = max(0, t.Now.Sub(c.Since)-cool)
 		}
 		fmt.Fprintln(t.Out, p.Name, p.Class, cmp.Or(p.Version, "-"), cmp.Or(c.New.Version, "none"), cmp.Or(n.New.Version, "none"), lag.Round(time.Hour), token)
-		if lag > p7[p.Class] || newest == "verify-failed" {
-			bad = append(bad, p.Name)
+		if lag > p7[p.Class] { // nightly.yml opens its own issue on this line, apart from real failures (B12)
+			fmt.Fprintln(t.Out, "P7 missed:", p.Name)
+		}
+		if newest == "verify-failed" {
+			failed = append(failed, p.Name)
 		}
 		if newest == "eligible" && p.Class == pins.Guest && !t.DryRun {
 			if os.WriteFile(filepath.Join(t.Pins, p.Name+".json"), Row(n.New), 0o644) != nil {
@@ -210,8 +210,8 @@ func (t Tool) Newest(ctx context.Context) error {
 			}
 		}
 	}
-	if bad != nil {
-		return Stopped("P7 missed or verification failed: " + strings.Join(bad, " "))
+	if failed != nil {
+		return Stopped("verification failed: " + strings.Join(failed, " "))
 	}
 	return nil
 }
