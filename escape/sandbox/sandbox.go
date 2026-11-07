@@ -249,6 +249,25 @@ func HostAddr() (string, error) {
 	return "", errors.New("the host has no non-loopback IPv4 address for a canary")
 }
 
+// LoopbackHolds says whether ip is an address of the host's loopback
+// interface, where a Mac holds the suite's canary addresses (SPEC T8).
+func LoopbackHolds(ip string) error {
+	ifs, err := net.Interfaces()
+	if err != nil {
+		return err
+	}
+	want := net.ParseIP(ip)
+	for _, i := range ifs {
+		addrs, _ := i.Addrs()
+		for _, a := range addrs {
+			if ipn, ok := a.(*net.IPNet); ok && i.Flags&net.FlagLoopback != 0 && ipn.IP.Equal(want) {
+				return nil
+			}
+		}
+	}
+	return fmt.Errorf("%s is not an address of the host's loopback interface, which its setup must hold", ip)
+}
+
 // bindHere binds network/addr in this process's own network, "host" in
 // addr standing for HostAddr: what Bind does for a session that is not
 // isolated.

@@ -9,21 +9,10 @@ package suite
 #include <mach/mach.h>
 #include <mach/mach_host.h>
 
-// cpuTicks fills ticks with the host's CPU ticks since boot, summed over
-// every CPU, in CPU_STATE_* order: user, system, idle, nice. The port that
-// mach_host_self hands out is given back, since the judges sample often.
-static kern_return_t cpuTicks(natural_t ticks[CPU_STATE_MAX]) {
-	host_cpu_load_info_data_t info;
-	mach_msg_type_number_t n = HOST_CPU_LOAD_INFO_COUNT;
-	host_t host = mach_host_self();
-	kern_return_t kr = host_statistics(host, HOST_CPU_LOAD_INFO, (host_info_t)&info, &n);
-	mach_port_deallocate(mach_task_self(), host);
-	for (int i = 0; kr == KERN_SUCCESS && i < CPU_STATE_MAX; i++) ticks[i] = info.cpu_ticks[i];
-	return kr;
-}
-
 // freePages fills pages with the host's free, speculative and purgeable
 // page counts: what it can hand out at once, as MemAvailable is on Linux.
+// The port that mach_host_self hands out is given back, since the judges
+// sample often.
 static kern_return_t freePages(unsigned long long pages[3]) {
 	vm_statistics64_data_t s;
 	mach_msg_type_number_t n = HOST_VM_INFO64_COUNT;
@@ -41,22 +30,17 @@ static kern_return_t freePages(unsigned long long pages[3]) {
 import "C"
 
 import (
+	"errors"
 	"fmt"
 	"os"
-	"strings"
 	"syscall"
 
 	"golang.org/x/sys/unix"
 )
 
-// The host as the judge sees it, from Mach and sysctl, the same figures the
-// Linux judges read from /proc. A guest's load must not show here.
-
-// hostProcs counts the host's processes.
-func hostProcs() (int64, error) {
-	ps, err := unix.SysctlKinfoProcSlice("kern.proc.all")
-	return int64(len(ps)), err
-}
+// The host as the judge sees it, from Mach and sysctl: the memory the I12
+// flood row reads and the processes the I11 rows kill and count. The other
+// load figures serve I10 rows not enforced on a Mac: an error, never a pass.
 
 // hostMemAvailable is the memory the host can hand out at once, in bytes.
 func hostMemAvailable() (int64, error) {
@@ -67,59 +51,12 @@ func hostMemAvailable() (int64, error) {
 	return int64(pages[0]+pages[1]+pages[2]) * int64(os.Getpagesize()), nil
 }
 
-// hostFiles is the host's count of open file handles (kern.num_files).
-func hostFiles() (int64, error) {
-	n, err := unix.SysctlUint32("kern.num_files")
-	return int64(n), err
-}
+var errLinuxOnly = errors.New("reading that host figure is Linux only")
 
-// hostBusy is the host's CPU time spent on anything but idle, in clock
-// ticks of 1/100 s, summed over every CPU.
-func hostBusy() (int64, error) {
-	var ticks [C.CPU_STATE_MAX]C.natural_t
-	if kr := C.cpuTicks(&ticks[0]); kr != C.KERN_SUCCESS {
-		return 0, fmt.Errorf("host_statistics: kern_return %d", int(kr))
-	}
-	return int64(ticks[C.CPU_STATE_USER]) + int64(ticks[C.CPU_STATE_SYSTEM]) + int64(ticks[C.CPU_STATE_NICE]), nil
-}
-
-// hostDiskFree sums the free bytes of every local, writable filesystem the
-// host has mounted, each APFS container counted once.
-func hostDiskFree() (int64, error) {
-	n, err := unix.Getfsstat(nil, unix.MNT_NOWAIT)
-	if err != nil {
-		return 0, err
-	}
-	mounts := make([]unix.Statfs_t, n)
-	if n, err = unix.Getfsstat(mounts, unix.MNT_NOWAIT); err != nil {
-		return 0, err
-	}
-	seen := map[string]bool{}
-	var free int64
-	for _, st := range mounts[:n] {
-		key := container(unix.ByteSliceToString(st.Mntfromname[:]))
-		if st.Flags&unix.MNT_RDONLY != 0 || st.Flags&unix.MNT_LOCAL == 0 || st.Blocks == 0 || seen[key] {
-			continue
-		}
-		seen[key] = true
-		free += int64(st.Bavail) * int64(st.Bsize)
-	}
-	return free, nil
-}
-
-// container names what a volume's free space belongs to. The APFS volumes
-// of one container, /dev/diskNsM and a snapshot /dev/diskNsMsK, share it,
-// so all of them map to /dev/diskN; any other device is its own.
-func container(dev string) string {
-	rest, ok := strings.CutPrefix(dev, "/dev/disk")
-	if !ok {
-		return dev
-	}
-	if i := strings.IndexByte(rest, 's'); i >= 0 {
-		rest = rest[:i]
-	}
-	return "/dev/disk" + rest
-}
+func hostProcs() (int64, error)    { return 0, errLinuxOnly }
+func hostFiles() (int64, error)    { return 0, errLinuxOnly }
+func hostBusy() (int64, error)     { return 0, errLinuxOnly }
+func hostDiskFree() (int64, error) { return 0, errLinuxOnly }
 
 // szomb is the state of a process that exited and has not been reaped
 // (sys/proc.h SZOMB).

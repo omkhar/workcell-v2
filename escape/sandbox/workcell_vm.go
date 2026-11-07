@@ -40,6 +40,112 @@ const (
 // guest sees nothing of the host, and runs it with the test's arguments.
 const loader = `cat >/tmp/p && chmod 755 /tmp/p && exec /tmp/p "$@"`
 
+// isolatedAddr is the one address the test host holds in a session's own
+// network (Config.Isolated), in 192.175.48.0/24, the AS112 range (RFC
+// 7534): global unicast, so the product's vetting accepts it, and no
+// operator's. A Linux namespace holds it on its loopback, a Mac's lo0 as an
+// alias; either way nothing sent to it leaves the host (SPEC T8, S12).
+const isolatedAddr = "192.175.48.1"
+
+// RootBind binds network/addr as root on the test host, by a helper that
+// hands the socket back over a unix socket (rootBindArgv: the payload's
+// bind verb, suite.Bind, or the Mac's helper): a port below 1024 in the
+// host's own network, or anything in the session's own when ns is set.
+// "host" in addr stands for the test host's address there: isolatedAddr in
+// the session's own network, HostAddr else. A socket handed over dead
+// (handedOver) is closed and the bind tried again.
+func RootBind(network, addr, payload string, ns int) (net.Listener, net.PacketConn, error) {
+	host, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		return nil, nil, err
+	}
+	if host == "host" {
+		if host = isolatedAddr; ns == 0 {
+			if host, err = HostAddr(); err != nil {
+				return nil, nil, err
+			}
+		}
+		addr = net.JoinHostPort(host, port)
+	}
+	where := fmt.Sprintf("bind %s %s as root", network, addr)
+	for try := 1; ; try++ {
+		f, err := handedOver(rootBindArgv(network, addr, "", payload, ns), network, where)
+		if err != nil {
+			return nil, nil, err
+		}
+		// Dead: 0 bytes and no error, where a live socket says EAGAIN (udp) or ENOTCONN (a listener).
+		if n, _, rerr := syscall.Recvfrom(int(f.Fd()), make([]byte, 1), syscall.MSG_DONTWAIT|syscall.MSG_PEEK); n != 0 || rerr != nil {
+			defer f.Close()
+			if strings.HasPrefix(network, "udp") {
+				pc, err := net.FilePacketConn(f)
+				return nil, pc, err
+			}
+			l, err := net.FileListener(f)
+			return l, nil, err
+		}
+		f.Close()
+		if try == 3 {
+			return nil, nil, fmt.Errorf("%s: the socket handed over was dead, %d times: its sender exited before it was taken", where, try)
+		}
+	}
+}
+
+// handedOver runs argv, whose last word it replaces with the path of a unix
+// socket of its own, and takes the descriptor sent there, polling for the
+// connection: on macOS a socket queued on a connection not yet accepted is
+// dead once its sender exits (U-701: 18 of 30 under load by a wake-up, 1 of 30 polling).
+func handedOver(argv []string, network, where string) (*os.File, error) {
+	dir, err := os.MkdirTemp("", "escape-bind-")
+	if err != nil {
+		return nil, err
+	}
+	defer os.RemoveAll(dir)
+	path := filepath.Join(dir, "fd")
+	ln, err := net.ListenUnix("unix", &net.UnixAddr{Name: path, Net: "unix"})
+	if err != nil {
+		return nil, err
+	}
+	defer ln.Close()
+	argv[len(argv)-1] = path
+	cmd := exec.Command(argv[0], argv[1:]...)
+	out := &bounded{limit: MaxStderr}
+	cmd.Stdout, cmd.Stderr = out, out
+	if err := cmd.Start(); err != nil {
+		return nil, fmt.Errorf("%s: %w", where, err)
+	}
+	defer cmd.Wait()
+	raw, _ := ln.SyscallConn()
+	nfd, cerr := -1, error(syscall.EAGAIN)
+	raw.Control(func(fd uintptr) {
+		for start := time.Now(); cerr == syscall.EAGAIN && time.Since(start) < 2*time.Second; {
+			nfd, _, cerr = syscall.Accept(int(fd))
+		}
+	})
+	if cerr != nil {
+		cmd.Wait()
+		return nil, fmt.Errorf("%s: no descriptor came back: %v: %s", where, cerr, bytes.TrimSpace(out.bytes()))
+	}
+	c := os.NewFile(uintptr(nfd), "fd")
+	defer c.Close()
+	oob := make([]byte, 64)
+	_, oobn, _, _, err := syscall.Recvmsg(nfd, make([]byte, 1), oob, 0)
+	for start := time.Now(); err == syscall.EAGAIN && time.Since(start) < 2*time.Second; { // taken before the sender wrote
+		_, oobn, _, _, err = syscall.Recvmsg(nfd, make([]byte, 1), oob, 0)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("%s: read the descriptor: %w", where, err)
+	}
+	msgs, err := syscall.ParseSocketControlMessage(oob[:oobn])
+	var fds []int
+	if err == nil && len(msgs) == 1 {
+		fds, err = syscall.ParseUnixRights(&msgs[0])
+	}
+	if err != nil || len(fds) != 1 {
+		return nil, fmt.Errorf("%s: the descriptor: %v (%d messages, %d descriptors)", where, err, len(msgs), len(fds))
+	}
+	return os.NewFile(uintptr(fds[0]), network), nil
+}
+
 // prepared is what Prepare made, once per process, for every session.
 var prepared struct {
 	bin  string // the workcell binary
@@ -556,6 +662,9 @@ func (w *workcell) Stop() error {
 	}
 	if w.ns != nil {
 		w.ns.stop()
+	}
+	if w.cfg.Resolver != "" {
+		settle() // the host's resolver cache, where it has one, outlives the session
 	}
 	data := filepath.Join(prepared.xdg, "workcell")
 	return errors.Join(os.RemoveAll(w.dir), os.RemoveAll(filepath.Join(data, "sessions")), os.RemoveAll(filepath.Join(data, "layers")))
