@@ -209,8 +209,10 @@ func (p *Proxy) learn(rule TerminateRule, status int, body []byte) ([]byte, erro
 		}
 	}()
 	if status/100 == 2 {
-		obj, ok := parseJSON(body).(map[string]any)
-		if !ok {
+		var obj map[string]any // json.Valid first: Decode alone would take trailing bytes
+		dec := json.NewDecoder(bytes.NewReader(body))
+		dec.UseNumber()
+		if !json.Valid(body) || dec.Decode(&obj) != nil || obj == nil {
 			return nil, errors.New("token answer is not a JSON object")
 		}
 		a, _ := obj["access_token"].(string)
@@ -275,20 +277,6 @@ func hideIn(v any, swaps []swap) any {
 		for i, e := range x {
 			x[i] = hideIn(e, swaps)
 		}
-	}
-	return v
-}
-
-// parseJSON decodes body as one JSON value, numbers kept as written, or returns nil for a body that is not one.
-func parseJSON(body []byte) any {
-	if !json.Valid(body) {
-		return nil
-	}
-	dec := json.NewDecoder(bytes.NewReader(body))
-	dec.UseNumber()
-	var v any
-	if dec.Decode(&v) != nil {
-		return nil
 	}
 	return v
 }

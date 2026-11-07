@@ -290,6 +290,8 @@ func TestRun(t *testing.T) {
 	cases = append(cases,
 		runCase{name: "a case twin of a row", code: 2, edit: func(f *fixture) { f.extra["Tool.json"] = string(bump.Row(pin("Tool", pins.Guest, "1.0.0"))) }},
 		runCase{name: "a file outside the name grammar", code: 2, edit: func(f *fixture) { f.extra[".x.json"] = "{}" }},
+		runCase{name: "a file that is not a row", code: 2, edit: func(f *fixture) { f.extra["notes.txt"] = "x" }},
+		runCase{name: "a Go file beside the rows is skipped", code: 0, writes: slices.Concat(openGuestPR, openTrustedPR), edit: func(f *fixture) { f.extra["pins_test.go"] = "x" }},
 		runCase{name: "class Guest", code: 2, edit: func(f *fixture) { f.pins[1].Class = "Guest" }},
 		runCase{name: "class empty", code: 2, edit: func(f *fixture) { f.pins[1].Class = "" }},
 	)

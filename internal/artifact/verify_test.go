@@ -60,6 +60,7 @@ type signer struct {
 	interKey *ecdsa.PrivateKey
 	rekor    *ecdsa.PrivateKey
 	keyID    []byte
+	local    bool // bundles are in the local shape of cosign sign-blob --new-bundle-format=false --bundle
 }
 
 func p256(t testing.TB) *ecdsa.PrivateKey {
@@ -150,9 +151,14 @@ func (s *signer) bundle(t testing.TB, san string, digest, payload []byte, payloa
 	body, _ := json.Marshal(map[string]any{"apiVersion": "0.0.1", "kind": kind, "spec": spec})
 	at := signedAt.Add(time.Minute).Unix()
 	set := sha256.Sum256(fmt.Appendf(nil, `{"body":"%s","integratedTime":%d,"logID":"%x","logIndex":7}`, base64.StdEncoding.EncodeToString(body), at, s.keyID))
+	promise := sign(t, s.rekor, set[:])
 	b["verificationMaterial"] = map[string]any{"certificate": map[string]any{"rawBytes": leaf.Raw}, "tlogEntries": []any{map[string]any{
 		"logIndex": 7, "logId": map[string]any{"keyId": s.keyID}, "kindVersion": map[string]any{"kind": kind, "version": "0.0.1"},
-		"integratedTime": at, "inclusionPromise": map[string]any{"signedEntryTimestamp": sign(t, s.rekor, set[:])}, "canonicalizedBody": body}}}
+		"integratedTime": at, "inclusionPromise": map[string]any{"signedEntryTimestamp": promise}, "canonicalizedBody": body}}}
+	if s.local {
+		b = map[string]any{"base64Signature": sig, "cert": cert, "rekorBundle": map[string]any{"SignedEntryTimestamp": promise,
+			"Payload": map[string]any{"body": body, "integratedTime": at, "logIndex": 7, "logID": hex.EncodeToString(s.keyID)}}}
+	}
 	raw, _ := json.Marshal(b)
 	return raw
 }
@@ -312,21 +318,24 @@ type row struct {
 	src    pins.Source
 	signed bool // GitHub: a bundle per architecture; npm: registry provenance
 	member bool // GitHub: the bundle signs the tar member, not the asset
+	codex  bool // GitHub: openai/codex's shape: the identity names the tag as "rust-" and the version, and the bundles are cosign's local format
 	mut    func(*setup)
 	ok     bool
 	want   string // a phrase the refusal must carry
 }
 
 func build(t *testing.T, sg *signer, r row) *setup {
+	sg.local = r.codex
 	s := &setup{t: t, sg: sg, routes: map[string]route{}, sums: map[string]string{}, timeout: 20 * time.Second}
 	arts := map[string]pins.Artifact{}
 	switch r.src {
 	case pins.GitHubReleases:
 		s.pin = pins.Pin{Name: "tool", Source: r.src, Locator: up + "/repos/vendor/tool/releases", Assets: map[string]string{}}
 		s.cand.Version = "v1.2.0"
-		s.san = strings.ReplaceAll(ghID, "{version}", s.cand.Version)
+		id := strings.Replace(ghID, "{version}", map[bool]string{true: "rust-"}[r.codex]+"{version}", 1)
+		s.san = strings.ReplaceAll(id, "{version}", s.cand.Version)
 		if r.signed {
-			s.pin.Signing = pins.Signing{Identity: ghID, Issuer: issuer, Bundles: map[string]string{}, Members: map[string]string{}}
+			s.pin.Signing = pins.Signing{Identity: id, Issuer: issuer, Bundles: map[string]string{}, Members: map[string]string{}}
 		}
 		for _, arch := range arches {
 			bin := []byte("binary for " + arch)
@@ -453,6 +462,7 @@ func TestVerify(t *testing.T) {
 	rows := []row{
 		{name: "good github signed member", src: gh, signed: true, member: true, ok: true},
 		{name: "good github signed asset", src: gh, signed: true, ok: true},
+		{name: "good github codex shape: prefixed identity, local bundle", src: gh, signed: true, member: true, codex: true, ok: true},
 		{name: "good github unsigned digest", src: gh, ok: true},
 		{name: "good npm signed", src: npm, signed: true, ok: true},
 		{name: "good npm unsigned sri", src: npm, ok: true},
@@ -512,6 +522,9 @@ func TestVerify(t *testing.T) {
 		{name: "15E bundle-other-arch", src: gh, signed: true, mut: bundle(func(s *setup) []byte { return s.routes[key(s.cand.Artifacts["arm64"].Bundle)].body })},
 		{name: "16E bundle-wrong-identity", src: gh, signed: true, mut: func(s *setup) {
 			s.pin.Signing.Identity = strings.Replace(ghID, "release.yml", "other.yml", 1)
+		}},
+		{name: "16E codex-bundle-names-another-workflow", src: gh, signed: true, member: true, codex: true, want: "identity", mut: func(s *setup) {
+			s.pin.Signing.Identity = strings.Replace(s.pin.Signing.Identity, "release.yml", "other.yml", 1)
 		}},
 		{name: "16E bundle-wrong-issuer", src: gh, signed: true, mut: func(s *setup) { s.pin.Signing.Issuer = "https://accounts.google.com" }},
 		{name: "16V identity-without-issuer", src: gh, signed: true, mut: func(s *setup) { s.pin.Signing.Issuer, s.noFetch = "", true }},

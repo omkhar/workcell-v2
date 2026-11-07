@@ -111,6 +111,8 @@ func TestCandidates(t *testing.T) {
 		Signing: Signing{Identity: "https://github.com/vendor/tool/.github/workflows/release.yml@refs/tags/{version}",
 			Issuer: "https://token.actions.githubusercontent.com", Bundles: map[string]string{"amd64": "tool-linux-amd64.sigstore"}}}
 
+	prefixed := Pin{Name: "tool", Source: GitHubReleases, Locator: ghPin.Locator, TagPrefix: "rust-", Assets: map[string]string{"amd64": "tool.tar.gz"}}
+
 	npmOK := map[string]route{"/@vendor%2ftool": {file: "npm-tool.json"}}
 	ghOK := map[string]route{"/repos/vendor/tool/releases": {file: "github-releases.json"}}
 	vendorOK := map[string]route{"/root/latest": {file: "vendor-latest.txt"}, "/root/1.2.0/manifest.json": {file: "vendor-manifest.json"}}
@@ -133,6 +135,7 @@ func TestCandidates(t *testing.T) {
 		pin    Pin
 		routes map[string]route
 		want   func(base string) []Candidate // nil means an error is expected
+		chosen string                        // when set, Select over the candidates, past the cool-off, picks this version
 	}
 	// withRoute is routes with one route replaced.
 	withRoute := func(routes map[string]route, path string, rt route) map[string]route {
@@ -205,6 +208,15 @@ func TestCandidates(t *testing.T) {
 		{name: "github asset no release carries", pin: Pin{Name: "tool", Source: GitHubReleases, Locator: ghPin.Locator,
 			Assets: map[string]string{"amd64": "nope.tar.gz"}}, routes: ghOK},
 		{name: "github no asset row", pin: Pin{Name: "tool", Source: GitHubReleases, Locator: ghPin.Locator}, routes: ghOK},
+		{name: "github tag prefix keeps the prefixed tags, stripped", pin: prefixed, routes: withRoute(ghOK, "/repos/vendor/tool/releases", route{body: `[
+	{"tag_name": "v9.9.9", "created_at": "2026-10-21T09:00:00Z", "assets": [{"name": "tool.tar.gz", "browser_download_url": "https://g.example/9"}]},
+	{"tag_name": "rust-v0.2.0", "created_at": "2026-10-20T09:00:00Z", "assets": [{"name": "tool.tar.gz", "browser_download_url": "https://g.example/2"}]},
+	{"tag_name": "rust-v0.1.0", "created_at": "2026-09-10T09:00:00Z", "assets": [{"name": "tool.tar.gz", "browser_download_url": "https://g.example/1"}]}]`}), chosen: "v0.2.0",
+			want: func(string) []Candidate {
+				return []Candidate{
+					{Release: Release{Version: "v0.2.0", Artifacts: map[string]Artifact{"amd64": {URL: "https://g.example/2"}}}, Timestamps: ts("2026-10-20T09:00:00Z")},
+					{Release: Release{Version: "v0.1.0", Artifacts: map[string]Artifact{"amd64": {URL: "https://g.example/1"}}}, Timestamps: ts("2026-09-10T09:00:00Z")}}
+			}},
 		{name: "github bundle asset present", pin: signedPin, routes: withRoute(ghOK, "/repos/vendor/tool/releases", route{
 			body: `[{"tag_name": "v1.2.0", "created_at": "2026-10-20T09:00:00Z", "assets": [
 				{"name": "tool-linux-amd64.tar.gz", "browser_download_url": "https://g.example/a", "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
@@ -294,6 +306,9 @@ func TestCandidates(t *testing.T) {
 			}
 			if want := tt.want(srv.URL); !reflect.DeepEqual(got, want) {
 				t.Errorf("got  %+v\nwant %+v", got, want)
+			}
+			if r, err := Select(Pin{Name: "tool", Class: Guest}, got, nil, 0, time.Date(2026, 11, 7, 0, 0, 0, 0, time.UTC)); tt.chosen != "" && (err != nil || r.Chosen == nil || r.Chosen.Version != tt.chosen) {
+				t.Errorf("Select chose %+v, %v; want %s", r.Chosen, err, tt.chosen)
 			}
 		})
 	}

@@ -135,7 +135,7 @@ func (v Verifier) bundle(ctx context.Context, rawURL string, id sigstore.Identit
 	if err != nil {
 		return fmt.Errorf("bundle: %w", err)
 	}
-	payload, _, err := sigstore.Verify(v.root(), raw, id, digest)
+	payload, _, err := sigstore.Verify(cmp.Or(v.Root, sigstore.PublicRoot()), raw, id, digest)
 	if err != nil {
 		return err
 	}
@@ -169,7 +169,7 @@ func (v Verifier) provenance(ctx context.Context, locator, version string, id si
 	if err != nil {
 		return err
 	}
-	payload, payloadType, err := sigstore.Verify(v.root(), b, id, nil)
+	payload, payloadType, err := sigstore.Verify(cmp.Or(v.Root, sigstore.PublicRoot()), b, id, nil)
 	if err != nil {
 		return err
 	}
@@ -230,13 +230,6 @@ func checkStatement(payload []byte, purl, hex512 string) error {
 		return errors.New("provenance: the subject sha512 is not the tarball's")
 	}
 	return nil
-}
-
-func (v Verifier) root() *sigstore.Root {
-	if v.Root == nil {
-		return sigstore.PublicRoot()
-	}
-	return v.Root
 }
 
 // Fetch starts an https GET of rawURL with client, or http.DefaultClient when it is nil, and returns the body of a 200 that is within limit bytes, whether
