@@ -49,12 +49,12 @@ go install github.com/omkhar/workcell/v2/cmd/workcell@latest   # untested until 
 ```
 
 Homebrew and an install script arrive with the release (untested until v2.0.0). Until then the guest files (kernel,
-init, root image, Firecracker) are not downloaded for you. The test in `spikes/readme/` builds them in a temporary
-directory, and its log is the source of the output below.
+init, root image, Firecracker) are not downloaded for you. A Go test built them in a temporary directory, and its
+log is the source of the output below.
 
 ## First session
 
-Every command below was run by `spikes/readme/readme_test.go` on a Linux host with KVM. The directory you run
+Every command below was run by a Go test on a Linux host with KVM. The directory you run
 `workcell run` in is copied into the guest as `/workspace`.
 
 ```
