@@ -373,10 +373,8 @@ func (g getter) vendor(p Pin) ([]Candidate, error) {
 	return []Candidate{{Release: Release{Version: v, Artifacts: arts}, Timestamps: ts}}, nil
 }
 
-// oci reads the manifests of the newest maxOCITags tags that are plain
-// versions. The artifact is the manifest by digest, the same for every
-// architecture. A manifest without an org.opencontainers.image.created
-// annotation has no timestamp, and so is never selected.
+// oci reads the manifests of the newest maxOCITags tags that fit the pin's prefix, suffix and version or date. The artifact is the manifest by digest, the same for every
+// architecture. A manifest with no org.opencontainers.image.created, on it or on a descriptor, has no timestamp, and so is never selected.
 func (g getter) oci(p Pin) ([]Candidate, error) {
 	var list struct {
 		Name string   `json:"name"`
@@ -412,17 +410,22 @@ func (g getter) oci(p Pin) ([]Candidate, error) {
 		if d := h.Get("Docker-Content-Digest"); d != "" && d != "sha256:"+digest {
 			return nil, fmt.Errorf("tag %s: Docker-Content-Digest %q is not the digest of the body", tag, d)
 		}
+		type ann struct{ Annotations map[string]string } // on the index or, as at real registries, on each descriptor
 		var m struct {
-			Annotations map[string]string `json:"annotations"`
+			ann
+			Manifests []ann
 		}
 		if err := json.Unmarshal(body, &m); err != nil {
 			return nil, fmt.Errorf("tag %s: %w", tag, err)
 		}
-		var ts []time.Time
-		if created := m.Annotations["org.opencontainers.image.created"]; created != "" {
-			if ts, err = parseTimes(created); err != nil {
-				return nil, fmt.Errorf("tag %s: created: %w", tag, err)
-			}
+		const created = "org.opencontainers.image.created"
+		raw := []string{m.Annotations[created]}
+		for _, d := range m.Manifests {
+			raw = append(raw, d.Annotations[created])
+		}
+		ts, err := parseTimes(raw...)
+		if err != nil && strings.Join(raw, "") != "" {
+			return nil, fmt.Errorf("tag %s: created: %w", tag, err)
 		}
 		a := Artifact{URL: p.Locator + "/manifests/sha256:" + digest, SHA256: digest}
 		cands = append(cands, Candidate{Release: Release{Version: tag, Artifacts: map[string]Artifact{"amd64": a, "arm64": a}}, Timestamps: ts})

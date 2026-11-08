@@ -175,7 +175,7 @@ func TestRun(t *testing.T) {
 		{name: "dated OCI tags: a missing manifest skips the tag, the plan has a verdict", dry: true, code: 0, out: []string{"kit trusted trixie-20261027-slim trixie-20261104-slim eligible"},
 			edit: func(f *fixture) {
 				f.pins[0].Source, f.pins[0].Assets, f.pins[0].TagPrefix, f.pins[0].TagSuffix, f.pins[0].Version = pins.OCI, nil, "trixie-", "-slim", "trixie-20261027-slim"
-				m := `{"annotations":{"org.opencontainers.image.created":"2026-11-01T00:00:00Z"}}`
+				m := `{"manifests":[{"annotations":{"org.opencontainers.image.created":"2026-11-01T00:00:00Z"}}]}`
 				f.upstream["/kit/tags/list"] = `{"name":"library/kit","tags":["13.1","trixie-20261020-slim","trixie-20261027-slim","trixie-20261104-slim"]}`
 				f.upstream["/kit/manifests/trixie-20261104-slim"], f.upstream[fmt.Sprintf("/kit/manifests/sha256:%x", sha256.Sum256([]byte(m)))] = m, m
 			}},

@@ -124,7 +124,7 @@ func TestCandidates(t *testing.T) {
 	ociWant := func(base string) []Candidate {
 		d2, d1 := fileDigest(t, "oci-manifest-1.2.0.json"), fileDigest(t, "oci-manifest-1.1.0.json")
 		return []Candidate{
-			{Release: Release{Version: "1.2.0", Artifacts: both(Artifact{URL: base + "/v2/vendor/tool/manifests/sha256:" + d2, SHA256: d2})}, Timestamps: ts("2026-10-20T09:30:00Z")},
+			{Release: Release{Version: "1.2.0", Artifacts: both(Artifact{URL: base + "/v2/vendor/tool/manifests/sha256:" + d2, SHA256: d2})}, Timestamps: ts("2026-10-20T09:30:00Z", "2026-10-20T09:31:00Z")},
 			{Release: Release{Version: "1.1.0", Artifacts: both(Artifact{URL: base + "/v2/vendor/tool/manifests/sha256:" + d1, SHA256: d1})}},
 		}
 	}

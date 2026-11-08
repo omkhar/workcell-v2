@@ -66,15 +66,12 @@ type Pin struct {
 	Name   string // the upstream, such as "claude"
 	Class  Class
 	Source Source
-	// Locator is the https URL of the upstream's listing: the npm package document,
-	// the GitHub releases API URL, the vendor release root, or the OCI repository
+	// Locator is the https URL of the upstream's listing: the npm package document, the GitHub releases API URL, the vendor release root, or the OCI repository
 	// API root, https://registry/v2/name (see sources.go).
 	Locator string
-	// TagPrefix and TagSuffix: the GitHub releases and OCI sources read only tags that start and end with them; the rest is the version. The GitHub source strips
-	// the prefix. Empty means every tag.
+	// TagPrefix and TagSuffix: GitHub releases read tags with the prefix and strip it, and read no suffix. OCI reads tags with both; the rest is the version.
 	TagPrefix, TagSuffix string `json:",omitempty"`
-	// Package is the pin's name in the advisory database. Empty means the pin has
-	// no advisory feed, so the security lane never opens for it (B4).
+	// Package is the pin's name in the advisory database. Empty means the pin has no advisory feed, so the security lane never opens for it (B4).
 	Package Package
 	// Assets maps an architecture to the GitHub asset name or the vendor manifest
 	// platform key of that architecture. The npm and OCI sources need none.
