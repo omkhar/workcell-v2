@@ -38,20 +38,11 @@ func Candidates(ctx context.Context, client *http.Client, p Pin) ([]Candidate, e
 	c := *client
 	c.CheckRedirect = Redirect
 	g := getter{ctx, &c}
-	var cands []Candidate
-	var err error
-	switch p.Source {
-	case NPM:
-		cands, err = g.npm(p)
-	case GitHubReleases:
-		cands, err = g.github(p)
-	case VendorManifest:
-		cands, err = g.vendor(p)
-	case OCI:
-		cands, err = g.oci(p)
-	default:
-		err = fmt.Errorf("unknown source %q", p.Source)
+	fetch, ok := map[Source]func(getter, Pin) ([]Candidate, error){NPM: getter.npm, GitHubReleases: getter.github, VendorManifest: getter.vendor, OCI: getter.oci}[p.Source]
+	if !ok {
+		return nil, fmt.Errorf("pin %q: unknown source %q", p.Name, p.Source)
 	}
+	cands, err := fetch(g, p)
 	if err != nil {
 		return nil, fmt.Errorf("pin %q: %w", p.Name, err)
 	}
@@ -95,10 +86,7 @@ func (g getter) get(rawURL, accept string) ([]byte, http.Header, error) {
 		Token       string `json:"token"`
 		AccessToken string `json:"access_token"`
 	}
-	tokBody, _, err := g.fetch(realm.String(), "", "")
-	if err == nil {
-		err = json.Unmarshal(tokBody, &tok)
-	}
+	_, err = g.json(realm.String(), "", &tok)
 	if err != nil || cmp.Or(tok.Token, tok.AccessToken) == "" {
 		return nil, nil, fmt.Errorf("%w; no token from %s", se, realm.Host)
 	}
@@ -298,9 +286,6 @@ func (g getter) github(p Pin) ([]Candidate, error) {
 			return nil, fmt.Errorf("release %s: %w", r.Tag, err)
 		}
 		c := Candidate{Release: Release{Version: version, Artifacts: map[string]Artifact{}}, PreRelease: r.Prerelease || r.Draft, Timestamps: ts}
-		if !c.PreRelease {
-			stable++
-		}
 		for arch, name := range p.Assets {
 			i := slices.IndexFunc(r.Assets, func(a ghAsset) bool { return a.Name == name })
 			if i < 0 {
@@ -326,6 +311,7 @@ func (g getter) github(p Pin) ([]Candidate, error) {
 			c.Artifacts[arch] = art
 		}
 		if !c.PreRelease {
+			stable++
 			if len(c.Artifacts) < len(p.Assets) {
 				continue // an old release with a renamed asset does not block the rest
 			}
@@ -400,21 +386,24 @@ func (g getter) oci(p Pin) ([]Candidate, error) {
 	if err != nil {
 		return nil, err
 	}
-	if h.Get("Link") != "" {
-		return nil, errors.New("the tag list has more than one page")
+	if h.Get("Link") != "" || list.Name == "" {
+		return nil, errors.New("the tag list has more than one page or no name")
 	}
-	if list.Name == "" {
-		return nil, errors.New("the tag list has no name")
-	}
-	tags := slices.DeleteFunc(list.Tags, func(t string) bool { _, ok := ParseVersion(t); return !ok })
+	tags := slices.DeleteFunc(list.Tags, func(t string) bool {
+		_, ok := p.version(t)
+		return !ok || !strings.HasPrefix(t, p.TagPrefix) || !strings.HasSuffix(t, p.TagSuffix)
+	})
 	slices.SortFunc(tags, func(a, b string) int {
-		va, _ := ParseVersion(a)
-		vb, _ := ParseVersion(b)
+		va, _ := p.version(a)
+		vb, _ := p.version(b)
 		return Compare(vb, va)
 	})
 	cands := []Candidate{}
 	for _, tag := range tags[:min(len(tags), maxOCITags)] {
 		body, h, err := g.get(p.Locator+"/manifests/"+tag, ociAccept)
+		if se := new(statusError); errors.As(err, &se) && se.code == http.StatusNotFound {
+			continue // a tag whose manifest is gone skips the tag, not the pin
+		}
 		if err != nil {
 			return nil, err
 		}

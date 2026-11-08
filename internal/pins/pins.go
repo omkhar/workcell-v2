@@ -70,8 +70,9 @@ type Pin struct {
 	// the GitHub releases API URL, the vendor release root, or the OCI repository
 	// API root, https://registry/v2/name (see sources.go).
 	Locator string
-	// TagPrefix: the GitHub releases source reads only tags that start with it and strips it, so the rest is the version; empty means every tag.
-	TagPrefix string `json:",omitempty"`
+	// TagPrefix and TagSuffix: the GitHub releases and OCI sources read only tags that start and end with them; the rest is the version. The GitHub source strips
+	// the prefix. Empty means every tag.
+	TagPrefix, TagSuffix string `json:",omitempty"`
 	// Package is the pin's name in the advisory database. Empty means the pin has
 	// no advisory feed, so the security lane never opens for it (B4).
 	Package Package
@@ -133,7 +134,7 @@ func Select(cur Pin, cands []Candidate, adv *Advisory, extra time.Duration, now 
 	if !ok {
 		return Result{}, fmt.Errorf("pin %q: unknown class %q", cur.Name, cur.Class)
 	}
-	curV, hasCur := ParseVersion(cur.Version)
+	curV, hasCur := cur.version(cur.Version)
 	if !hasCur && cur.Version != "" {
 		return Result{}, fmt.Errorf("pin %q: version %q is not a stable X.Y.Z", cur.Name, cur.Version)
 	}
@@ -142,7 +143,7 @@ func Select(cur Pin, cands []Candidate, adv *Advisory, extra time.Duration, now 
 	var best Version
 	for i := range cands {
 		c := &cands[i]
-		v, stable := ParseVersion(c.Version)
+		v, stable := cur.version(c.Version)
 		if stable && hasCur && Compare(v, curV) <= 0 {
 			continue // never backwards
 		}
@@ -209,6 +210,15 @@ type Version [3]uint64
 
 // Compare orders two versions as slices.Compare does.
 func Compare(a, b Version) int { return slices.Compare(a[:], b[:]) }
+
+// version reads a tag of p's source: the prefix and suffix stripped where present, then X.Y.Z or a date, yyyymmdd, which orders as {yyyy, mm, dd}.
+func (p Pin) version(tag string) (Version, bool) {
+	s := strings.TrimSuffix(strings.TrimPrefix(tag, p.TagPrefix), p.TagSuffix)
+	if n, err := strconv.ParseUint(s, 10, 32); err == nil && len(s) == 8 {
+		return Version{n / 10000, n / 100 % 100, n % 100}, true
+	}
+	return ParseVersion(s)
+}
 
 // ParseVersion reads a plain stable version, X.Y.Z with an optional leading
 // "v". Any other form, a pre-release or build suffix included, does not parse.

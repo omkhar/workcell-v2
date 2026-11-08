@@ -3,6 +3,8 @@
   "Class": "trusted",
   "Source": "oci",
   "Locator": "https://mirror.gcr.io/v2/library/debian",
+  "TagPrefix": "trixie-",
+  "TagSuffix": "-slim",
   "Package": {
     "Ecosystem": "",
     "Name": ""

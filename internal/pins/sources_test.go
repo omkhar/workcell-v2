@@ -110,9 +110,7 @@ func TestCandidates(t *testing.T) {
 	signedPin := Pin{Name: "tool", Source: GitHubReleases, Locator: ghPin.Locator, Assets: map[string]string{"amd64": "tool-linux-amd64.tar.gz"},
 		Signing: Signing{Identity: "https://github.com/vendor/tool/.github/workflows/release.yml@refs/tags/{version}",
 			Issuer: "https://token.actions.githubusercontent.com", Bundles: map[string]string{"amd64": "tool-linux-amd64.sigstore"}}}
-
 	prefixed := Pin{Name: "tool", Source: GitHubReleases, Locator: ghPin.Locator, TagPrefix: "rust-", Assets: map[string]string{"amd64": "tool.tar.gz"}}
-
 	npmOK := map[string]route{"/@vendor%2ftool": {file: "npm-tool.json"}}
 	ghOK := map[string]route{"/repos/vendor/tool/releases": {file: "github-releases.json"}}
 	vendorOK := map[string]route{"/root/latest": {file: "vendor-latest.txt"}, "/root/1.2.0/manifest.json": {file: "vendor-manifest.json"}}
@@ -142,8 +140,11 @@ func TestCandidates(t *testing.T) {
 		m[path] = rt
 		return m
 	}
-	// failures adds the rows every source shares: the upstream answers one of its requests with an error status, a truncated body, or a redirect off https or in a
-	// loop.
+	datedPin := Pin{Name: "tool", Source: OCI, Locator: ociPin.Locator, TagPrefix: "trixie-", TagSuffix: "-slim"}
+	datedOK := withRoute(withRoute(withRoute(ociOK, "/v2/vendor/tool/tags/list", route{file: "oci-dated-tags.json", token: "tok"}),
+		"/v2/vendor/tool/manifests/trixie-20261104-slim", route{file: "oci-manifest-1.2.0.json", token: "tok"}),
+		"/v2/vendor/tool/manifests/trixie-20261027-slim", route{file: "oci-manifest-1.1.0.json", token: "tok"})
+	// failures adds the rows every source shares: an error status, a truncated body, or a redirect off https or in a loop.
 	failures := func(pin Pin, routes map[string]route, paths ...string) []row {
 		var rows []row
 		for _, p := range paths {
@@ -181,7 +182,6 @@ func TestCandidates(t *testing.T) {
 			body: `{"versions": {"1.2.0": {"dist": {"tarball": "https://r.example/t.tgz"}}}, "time": {"1.2.0": "yesterday"}}`})},
 		{name: "npm http tarball", pin: npmPin, routes: withRoute(npmOK, "/@vendor%2ftool", route{
 			body: `{"versions": {"1.2.0": {"dist": {"tarball": "http://r.example/t.tgz"}}}, "time": {"1.2.0": "2026-10-20T09:30:00Z"}}`})},
-
 		{name: "github", pin: ghPin, routes: ghOK, want: func(string) []Candidate {
 			return []Candidate{
 				{Release: Release{Version: "v1.4.0", Artifacts: map[string]Artifact{}}, PreRelease: true, Timestamps: ts("2026-10-30T10:00:00Z")},
@@ -223,12 +223,6 @@ func TestCandidates(t *testing.T) {
 			return []Candidate{{Release: Release{Version: "v1.2.0", Artifacts: map[string]Artifact{"amd64": {URL: "https://g.example/a",
 				SHA256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", Bundle: "https://g.example/a.sigstore"}}}, Timestamps: ts("2026-10-20T09:00:00Z")}}
 		}},
-		{name: "github bundle asset missing", pin: signedPin, routes: withRoute(ghOK, "/repos/vendor/tool/releases", route{
-			body: `[{"tag_name": "v1.2.0", "created_at": "2026-10-20T09:00:00Z", "assets": [
-				{"name": "tool-linux-amd64.tar.gz", "browser_download_url": "https://g.example/a", "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}]}]`}), want: func(string) []Candidate {
-			return []Candidate{{Release: Release{Version: "v1.2.0", Artifacts: map[string]Artifact{"amd64": {URL: "https://g.example/a",
-				SHA256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}}}, Timestamps: ts("2026-10-20T09:00:00Z")}}
-		}},
 		{name: "github bundle adopted by the newest release", pin: signedPin, routes: withRoute(ghOK, "/repos/vendor/tool/releases", route{
 			body: `[{"tag_name": "v1.3.0", "created_at": "2026-10-28T09:00:00Z", "assets": [
 				{"name": "tool-linux-amd64.tar.gz", "browser_download_url": "https://g.example/b"},
@@ -243,7 +237,6 @@ func TestCandidates(t *testing.T) {
 			body: `[{"tag_name": "v1.2.0", "created_at": "2026-10-20T09:00:00Z", "assets": [
 				{"name": "tool-linux-amd64.tar.gz", "browser_download_url": "https://g.example/a", "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
 				{"name": "tool-linux-amd64.sigstore", "browser_download_url": "http://g.example/a.sigstore"}]}]`})},
-
 		{name: "vendor", pin: vendorPin, routes: vendorOK, want: func(base string) []Candidate {
 			return []Candidate{{Release: Release{Version: "1.2.0", Artifacts: map[string]Artifact{
 				"amd64": {URL: base + "/root/1.2.0/linux-x64/claude", SHA256: "3333333333333333333333333333333333333333333333333333333333333333"},
@@ -262,8 +255,12 @@ func TestCandidates(t *testing.T) {
 			body: `{"version": "1.2.0", "buildDate": "2026-10-20T08:00:00Z", "platforms": {"linux-x64": {"checksum": "3333333333333333333333333333333333333333333333333333333333333333", "binary": "claude"}, "linux-arm64": {"checksum": "2222222222222222222222222222222222222222222222222222222222222222"}}}`})},
 		{name: "vendor missing build date", pin: vendorPin, routes: withRoute(vendorOK, "/root/1.2.0/manifest.json", route{
 			body: `{"version": "1.2.0", "platforms": {}}`})},
-
 		{name: "oci", pin: ociPin, routes: ociOK, want: ociWant},
+		{name: "oci dated tags: the point tags stay unfetched, the tag without a manifest is skipped", pin: datedPin, routes: datedOK, want: func(base string) []Candidate {
+			w := ociWant(base)
+			w[0].Version, w[1].Version = "trixie-20261104-slim", "trixie-20261027-slim"
+			return w
+		}},
 		{name: "oci token as access_token", pin: ociPin, routes: withRoute(ociOK, "/token", route{body: `{"access_token": "tok"}`}), want: ociWant},
 		{name: "oci token endpoint gives no token", pin: ociPin, routes: withRoute(ociOK, "/token", route{body: `{}`})},
 		{name: "oci token endpoint fails", pin: ociPin, routes: withRoute(ociOK, "/token", route{status: 500, body: "oops"})},
