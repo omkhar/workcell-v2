@@ -8,13 +8,12 @@ import (
 	"cmp"
 	"context"
 	"crypto/tls"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"os"
 	"os/exec"
+	"regexp"
 	"runtime"
 	"slices"
 	"strconv"
@@ -53,25 +52,16 @@ var events = []string{
 	"message_stop", `{"type":"message_stop"}`,
 }
 
-const message = `{"id":"msg_fake","type":"message","role":"assistant","model":"fake","content":[{"type":"text","text":"hello"}],"stop_reason":"end_turn","stop_sequence":null,"usage":{"input_tokens":1,"output_tokens":1}}`
-
 // messages is the fake API: a POST to /v1/messages carrying want in header
-// gets a 200, streamed when it asks; any other credential 401; any other path 404.
+// gets a 200 stream, the only form claude -p asks for; any other credential 401; any other path 404.
 func messages(header, want string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		var req struct{ Stream bool }
 		switch {
 		case r.Method != http.MethodPost || r.URL.Path != "/v1/messages":
 			http.NotFound(w, r)
 		case r.Header.Get(header) != want:
 			http.Error(w, `{"type":"error","error":{"type":"authentication_error","message":"invalid credential"}}`, http.StatusUnauthorized)
 		default:
-			json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&req)
-			if !req.Stream {
-				w.Header().Set("Content-Type", "application/json")
-				io.WriteString(w, message)
-				return
-			}
 			w.Header().Set("Content-Type", "text/event-stream")
 			for i := 0; i < len(events); i += 2 {
 				fmt.Fprintf(w, "event: %s\ndata: %s\n\n", events[i], events[i+1])
@@ -202,10 +192,15 @@ func smokeProbe(args []string) Result {
 		}
 	}
 	status := "failed"
-	if vexit == "0" && strings.Contains(vout, strings.TrimPrefix(version, "v")) && sexit == "0" { // a tag "v1.0.107" prints "1.0.107"
+	if vexit == "0" && printed(vout, version) && sexit == "0" {
 		status = "ok"
 	}
 	return Result{Status: status, Detail: fmt.Sprintf("version=%s exit=%s session=%s %s", vout[:min(len(vout), 40)], vexit, sexit, sout)}
+}
+
+// printed: out holds version as a whole token (a pin 1.0.10 does not pass against 1.0.105; a tag "v1.0.107" prints "1.0.107").
+func printed(out, version string) bool {
+	return regexp.MustCompile(`(^|[^0-9.])v?` + regexp.QuoteMeta(strings.TrimPrefix(version, "v")) + `\.*([^0-9.]|$)`).MatchString(out)
 }
 
 // ran runs name for at most wait with env added: how it ended ("0" for

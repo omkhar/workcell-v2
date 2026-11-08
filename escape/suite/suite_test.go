@@ -109,3 +109,11 @@ func FuzzFormat(f *testing.F) {
 		}
 	})
 }
+
+func TestPrinted(t *testing.T) {
+	for _, tt := range [][]string{{"1.0.105_(Claude_Code)", "v1.0.105", "yes"}, {"1.0.105_(Claude_Code)", "1.0.10", ""}, {"v1.0.10.", "1.0.10", "yes"}, {"11.0.10", "1.0.10", ""}} {
+		if printed(tt[0], tt[1]) != (tt[2] == "yes") {
+			t.Errorf("printed(%q, %q): want %q", tt[0], tt[1], tt[2])
+		}
+	}
+}
