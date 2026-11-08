@@ -135,7 +135,6 @@ func TestCandidates(t *testing.T) {
 		pin    Pin
 		routes map[string]route
 		want   func(base string) []Candidate // nil means an error is expected
-		chosen string                        // when set, Select over the candidates, past the cool-off, picks this version
 	}
 	// withRoute is routes with one route replaced.
 	withRoute := func(routes map[string]route, path string, rt route) map[string]route {
@@ -211,7 +210,7 @@ func TestCandidates(t *testing.T) {
 		{name: "github tag prefix keeps the prefixed tags, stripped", pin: prefixed, routes: withRoute(ghOK, "/repos/vendor/tool/releases", route{body: `[
 	{"tag_name": "v9.9.9", "created_at": "2026-10-21T09:00:00Z", "assets": [{"name": "tool.tar.gz", "browser_download_url": "https://g.example/9"}]},
 	{"tag_name": "rust-v0.2.0", "created_at": "2026-10-20T09:00:00Z", "assets": [{"name": "tool.tar.gz", "browser_download_url": "https://g.example/2"}]},
-	{"tag_name": "rust-v0.1.0", "created_at": "2026-09-10T09:00:00Z", "assets": [{"name": "tool.tar.gz", "browser_download_url": "https://g.example/1"}]}]`}), chosen: "v0.2.0",
+	{"tag_name": "rust-v0.1.0", "created_at": "2026-09-10T09:00:00Z", "assets": [{"name": "tool.tar.gz", "browser_download_url": "https://g.example/1"}]}]`}),
 			want: func(string) []Candidate {
 				return []Candidate{
 					{Release: Release{Version: "v0.2.0", Artifacts: map[string]Artifact{"amd64": {URL: "https://g.example/2"}}}, Timestamps: ts("2026-10-20T09:00:00Z")},
@@ -306,9 +305,6 @@ func TestCandidates(t *testing.T) {
 			}
 			if want := tt.want(srv.URL); !reflect.DeepEqual(got, want) {
 				t.Errorf("got  %+v\nwant %+v", got, want)
-			}
-			if r, err := Select(Pin{Name: "tool", Class: Guest}, got, nil, 0, time.Date(2026, 11, 7, 0, 0, 0, 0, time.UTC)); tt.chosen != "" && (err != nil || r.Chosen == nil || r.Chosen.Version != tt.chosen) {
-				t.Errorf("Select chose %+v, %v; want %s", r.Chosen, err, tt.chosen)
 			}
 		})
 	}

@@ -291,6 +291,8 @@ the loop has ended.
       accept: `workcell bench start` p50 is unchanged with the channel server unreachable and with one that hangs, shown on this unit's pull request; a second start the same day and a `hold` start make no request, shown against a loopback server (T8); a layer that fails to run is rolled back and not retried; I14 stays green; no job names an environment or reads a secret
 - [x] B-826b | flow:mech | model:haiku | env:kvm | deps:B-826 | tries:0 | wait:bump.yml | Read the first scheduled run of `bump.yml` that holds the channel job
       accept: the run is green; its log shows the plan, and a manifest signed and checked with a key made in the job; it opened no pull request and published nothing. If not, set B-825 or B-826 back to `[ ]` and say why at the end of its accept line
+- [ ] R-1 | flow:mech | model:opus | env:any | deps:B-826 | tries:0 | Retro. Read the `Learned:` and `Next:` lines of `loop/state/LOG.md` since the last `R-` result (all of them for R-1), all of `PARKED.md` and `BLOCKED.md`, and the last ten scheduled runs (C7). Settle each `PARKED.md` line: delete it when it no longer holds or is done, or replace it with a `[ ]` unit directly below this retro, at most three new units per retro, a locked file becoming a `sign:you` unit. The orchestrator does it itself. Change only `loop/state/`, and no gate line
+      accept: the log entry gives the count of `PARKED.md` lines read, names each line deleted or turned into a unit, and gives each scheduled workflow with the date and conclusion of its newest run; gate green
 - [x] B-827 | flow:build | model:sonnet | env:any | deps:B-821 | tries:0 | Security fast lane, using a public advisory database (B4)
       accept: a fixture advisory shortens the cool-off; a lookup error leaves the normal cool-off in force and is reported
 - [x] B-828 | flow:build | model:sonnet | env:kvm | deps:B-824,W-802b | tries:0 | sign:you | Nightly early-warning smoke on upstream's newest release, and the freshness report (B11, B12)
@@ -314,6 +316,8 @@ the loop has ended.
       accept: gate green; budgets met
 - [ ] U-906 | flow:mech | model:sonnet | env:kvm | deps:above | tries:0 | wait:nightly.yml | Record P1 to P7 in `docs/benchmarks.md`, each with its number and the run it came from
       accept: P2 comes from `nightly.yml`. P7 cannot be met before cutover, because nothing merges a bump here. In its place stand the dry run that B-826b read, and the lag per pin that `nightly.yml` reports. P5 is the p50 over the last 10 pull requests, each counted by the slower of `gate` and `gate-macos`; P1 and P6 include H-703 and H-704. If another target is missed, mark this unit `[!]`
+- [ ] R-2 | flow:mech | model:opus | env:any | deps:U-906 | tries:0 | Retro: the orchestrator does it itself, and R-1's line is the text
+      accept: the log entry gives the count of `PARKED.md` lines read, names each line deleted or turned into a unit, and gives each scheduled workflow with the date and conclusion of its newest run; gate green
 - [x] U-907 | flow:doc | model:opus | env:any | deps:U-901,W-801 | tries:1 | sign:you | `SECURITY.md` for v2, starting from v1's. The text of v1's policy is public at `github.com/omkhar/workcell`, and this repository's history holds `SECURITY.md` as it was before the kit arrived. Propose the file as `proposed/SECURITY.md.txt`
       accept: it covers supported versions, private reporting, response times, scope, and how to verify a release and the update channel, all as they are in v2; until H-905 a first paragraph says that this repository is a building site that publishes no release, and points to `loop/REFERENCE.md` section 9; H-905 removes it; the rest names nothing under `loop/` and does not speak of a building site; at most 130 lines
 
@@ -338,6 +342,8 @@ and the fix unit moves it into place (S4).
       accept: as S-1002
 - [ ] S-1007 | flow:audit | model:fable | env:kvm | deps:S-1001 | tries:0 | Audit: secrets: sources, placeholders, sign-in token swap, git credentials, logs, crash output (I5)
       accept: as S-1002
+- [ ] R-3 | flow:mech | model:opus | env:any | deps:S-1007 | tries:0 | Retro: the orchestrator does it itself, and R-1's line is the text
+      accept: the log entry gives the count of `PARKED.md` lines read, names each line deleted or turned into a unit, and gives each scheduled workflow with the date and conclusion of its newest run; gate green
 - [ ] S-1008 | flow:audit | model:fable | env:kvm | deps:S-1001 | tries:0 | Audit: workspace export in both modes, and the return path (I1, I8)
       accept: as S-1002
 - [ ] S-1009 | flow:audit | model:fable | env:any | deps:S-1001 | tries:0 | Audit: policy loading and merge, CLI parsing, `--allow`, adapter data files (I13)
@@ -350,6 +356,8 @@ and the fix unit moves it into place (S4).
       accept: as S-1002; includes one pass of `zizmor`, `actionlint` and `govulncheck`
 - [ ] S-1013 | flow:audit | model:fable | env:kvm | deps:S-1002,S-1003,S-1004,S-1005,S-1006,S-1007,S-1008,S-1009,S-1010,S-1011,S-1012 | tries:0 | Audit: chains. Combine refuted and low findings across surfaces; attack start-up, shutdown, crash and upgrade windows
       accept: as S-1002
+- [ ] R-4 | flow:mech | model:opus | env:any | deps:S-1013 | tries:0 | Retro: the orchestrator does it itself, and R-1's line is the text
+      accept: the log entry gives the count of `PARKED.md` lines read, names each line deleted or turned into a unit, and gives each scheduled workflow with the date and conclusion of its newest run; gate green
 - [ ] S-1014a | flow:mech | model:haiku | env:any | deps:S-1001,W-802b | tries:0 | Ask for the long fuzz run: set `escape/fuzz-minutes.txt` to `240`
       accept: the file on `main` holds `240`
 - [ ] S-1014 | flow:audit | model:fable | env:any | deps:S-1014a | tries:0 | wait:nightly.yml | Collect the long fuzz run, then set `escape/fuzz-minutes.txt` back to `10`. The crashers are the candidates, so no auditor is needed
@@ -358,9 +366,11 @@ and the fix unit moves it into place (S4).
       accept: both `CLAUDE-SECURITY-RESULTS.jsonl` files and any crasher are in `~/work/loop/private/findings-in/`, which git ignores
 - [ ] S-1016 | flow:audit | model:fable | env:macos | deps:H-1015,S-1014 | tries:0 | Triage every tool finding under S4, in `~/work` as H-1015 left it and not in a fresh clone, because the inputs are files that git ignores. The findings are the candidates, so no auditor is needed
       accept: each one is confirmed, refuted, a duplicate or `needs the maintainer` in `loop/state/FINDINGS.md`
-- [ ] S-1017 | flow:mech | model:opus | env:any | deps:above | tries:0 | Sweep verdict (S8). If this sweep confirmed anything at medium or above, add one to the sweep count in `loop/state/FINDINGS.md`, and set S-1002 to S-1013 and this unit back to `[ ]` with `tries:0`. After a third such sweep, mark this unit `[!]` instead
+- [ ] S-1017 | flow:mech | model:opus | env:any | deps:above | tries:0 | Sweep verdict (S8). If this sweep confirmed anything at medium or above, add one to the sweep count in `loop/state/FINDINGS.md`, and set S-1002 to S-1013, R-3, R-4 and this unit back to `[ ]` with `tries:0`. After a third such sweep, mark this unit `[!]` instead
       accept: a sweep with nothing confirmed at medium or above, and every `S-F` unit `[x]`
-- [ ] S-1018 | flow:doc | model:opus | env:any | deps:S-1017 | tries:0 | Write `docs/security-review.md` (S13)
+- [ ] R-5 | flow:mech | model:opus | env:any | deps:S-1017 | tries:0 | Retro: the orchestrator does it itself, and R-1's line is the text
+      accept: the log entry gives the count of `PARKED.md` lines read, names each line deleted or turned into a unit, and gives each scheduled workflow with the date and conclusion of its newest run; gate green
+- [ ] S-1018 | flow:doc | model:opus | env:any | deps:S-1017,R-5 | tries:0 | Write `docs/security-review.md` (S13)
       accept: at most 200 lines; every fixed finding links to its regression test
 - [H] H-1019 | env:any | deps:S-1018 | Read the report. Decide whether to commission an independent human audit before or after release. Sign a checkpoint
       accept: `checkpoint.sh` has signed the reviewed commit
