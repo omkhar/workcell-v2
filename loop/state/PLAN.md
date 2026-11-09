@@ -215,7 +215,7 @@ with ADR-003 and ADR-004, they build on the proposal, and you can accept it at a
       accept: reads an item created with `security add-generic-password`, with no prompt storm
 - [H] H-703 | env:macos | deps:U-701,U-702,U-501,U-601,B-826 | In the second account: run the full suite on a real Mac. Arrange the Developer ID, virtualization entitlement and notarisation. The suite needs no Developer ID: as `loop`, sign the test binary ad hoc with the virtualization entitlement (`codesign -s - --entitlements`). Your Developer ID signs nothing that the second account built or could touch. It signs release builds only, in `omkhar/workcell`, after H-1019. Keep its certificate and key out of that account. `REFERENCE.md` section 6 has the commands
       accept: suite report committed to `docs/benchmarks.md`; the report lists I1 to I14; P1 measured on the Mac
-- [H] H-704 | env:macos | deps:U-208 | In the second account: Linux arm64. Run the suite in a Linux arm64 guest with nested virtualization on the Mac (needs an M3 or later), or narrow P6 in `SPEC.md` to "builds and unit-tests on arm64". `REFERENCE.md` section 6 has the commands
+- [x] H-704 | env:macos | deps:U-208 | In the second account: Linux arm64. Run the suite in a Linux arm64 guest with nested virtualization on the Mac (needs an M3 or later), or narrow P6 in `SPEC.md` to "builds and unit-tests on arm64". `REFERENCE.md` section 6 has the commands Decided 2026-11-09: P6 narrowed, see `proposed/loop/SPEC.md.txt` and the LOG entry
       accept: a result in `docs/benchmarks.md`, or the signed spec change
 
 ## Phase 8: workflows, release and process (see `WORKFLOW-REVIEW.md`)

@@ -125,7 +125,7 @@ in by the proxy; the guest holds a placeholder. The rules are in `loop/SPEC.md`.
 ## Limits
 
 - Linux amd64 with KVM is the host that runs sessions today. macOS support is not finished: its network path is not
-  there yet. Linux arm64 is untested.
+  there yet. Linux arm64 builds and passes the unit tests in CI, and has not run a session.
 - There is no release. See the top of this file.
 - A session works on a copy of your directory. `workcell pull` brings the work back, and `workcell diff` lists it first.
   With `--mount` the guest writes straight into the real directory, and there is nothing to pull back.
