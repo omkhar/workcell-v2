@@ -225,6 +225,9 @@ the file again. If `main` moved, fetch it (the first command of C0), run
 `git -c user.name=loop -c user.email=loop@localhost merge --no-edit refs/remotes/origin/main`, and write the file again. Where
 this file says 7a case 2, add only `loop/state/` to the commit. For HALT or DONE, say so and say why.
 
+Never ask the maintainer to run, or to install as root, a file that your account can write. Have them copy it into their own
+account, read the copy, and build or run from that copy.
+
 ## 8. Hard limits
 
 - One unit. When it is delivered, stop, even if the next one looks easy.

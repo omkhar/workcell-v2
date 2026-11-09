@@ -24,7 +24,7 @@ re-run:
 | P3 | No host dependency beyond the OS hypervisor (KVM or Virtualization.framework) | `workcell doctor` on a clean image |
 | P4 | Every invariant in section 3 passes black-box, on a real VM, on every change | `escape/` suite in `ci.yml` |
 | P5 | Pull-request feedback p50 under 10 minutes | Actions run data |
-| P6 | macOS arm64, Linux amd64 and Linux arm64 are all launch hosts | `ci.yml`, and human gates H-703 and H-704 |
+| P6 | macOS arm64 and Linux amd64 are launch hosts; Linux arm64 builds and passes the unit tests | `ci.yml` (`gate-arm64` for Linux arm64), and human gate H-703 |
 | P7 | A new stable upstream release reaches users within its cool-off plus 24 hours (guest class) or plus 72 hours (trusted class), with no human action | freshness report in `nightly.yml` |
 
 ## 2. Attacker
