@@ -537,6 +537,10 @@ your own account and run:
 cd ~/workcell-v2 && ~/loopkit/loop/land.sh --from /Users/Shared/workcell-handover.bundle
 ```
 
+Before you run it, run `git bundle list-heads /Users/Shared/workcell-handover.bundle` and compare the commit it prints with
+the commit that Claude's closing report names. One report once named a commit the bundle did not hold. If they differ, do
+not land. Tell Claude to write the file again.
+
 It reads that one file, refuses anything locked, lists every file that changes, and asks before it signs. When it says
 `LANDED`, go back to `loop`, type `/exit`, and start the next piece with the same two commands.
 
