@@ -252,7 +252,7 @@ load the workflow file from `main`. Five things follow.
       accept: at most 30 lines
 - [x] W-804 | flow:doc | model:haiku | env:any | deps:W-800 | tries:0 | sign:you | `CONTRIBUTING.md` at most 80 lines, and `CLAUDE.md` at most 60 lines with a one-line `AGENTS.md` that points to it, including the sunset rule. Keep the section "While the loop runs" of `CLAUDE.md` as it is; H-905 removes it
       accept: a newcomer can build and test from three commands
-- [H] H-806 | env:any | deps:U-005,U-006,U-007,U-008,U-009,U-010,U-010b | In the second account: optional, private, and outside this repository. Compare with other open-source sandboxes. Adapters, runs and results stay off GitHub. Report any weakness to that project's maintainers privately, and wait for them, before you publish a comparison
+- [x] H-806 | env:any | deps:U-005,U-006,U-007,U-008,U-009,U-010,U-010b | In the second account: optional, private, and outside this repository. Compare with other open-source sandboxes. Adapters, runs and results stay off GitHub. Report any weakness to that project's maintainers privately, and wait for them, before you publish a comparison Done 2026-11-08: comparison in ~/workcell-h806/comparison.md (private, off GitHub); no new weakness found, nothing to disclose; see the LOG entry
       accept: this line is ticked, done or declined. Nothing else about it is recorded here (S14)
 
 ## Phase 8b: upstream freshness (SPEC section 10)
