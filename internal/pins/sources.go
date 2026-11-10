@@ -25,7 +25,7 @@ const (
 	maxRedirects = 3
 	maxOCITags   = 30 // the newest version tags whose manifests are read
 	fetchTimeout = 2 * time.Minute
-	ociAccept    = "application/vnd.oci.image.index.v1+json, application/vnd.oci.image.manifest.v1+json, " +
+	OCIAccept    = "application/vnd.oci.image.index.v1+json, application/vnd.oci.image.manifest.v1+json, " +
 		"application/vnd.docker.distribution.manifest.list.v2+json, application/vnd.docker.distribution.manifest.v2+json"
 )
 
@@ -398,7 +398,7 @@ func (g getter) oci(p Pin) ([]Candidate, error) {
 	})
 	cands := []Candidate{}
 	for _, tag := range tags[:min(len(tags), maxOCITags)] {
-		body, h, err := g.get(p.Locator+"/manifests/"+tag, ociAccept)
+		body, h, err := g.get(p.Locator+"/manifests/"+tag, OCIAccept)
 		if se := new(statusError); errors.As(err, &se) && se.code == http.StatusNotFound {
 			continue // a tag whose manifest is gone skips the tag, not the pin
 		}

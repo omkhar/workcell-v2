@@ -93,7 +93,11 @@ func (v Verifier) Verify(ctx context.Context, p pins.Pin, c pins.Candidate) (pin
 
 // check downloads one architecture's artifact and checks what upstream says about it: the published digest first, then the signature or provenance.
 func (v Verifier) check(ctx context.Context, p pins.Pin, version, arch string, a pins.Artifact, id sigstore.Identity, signed bool) (pins.Artifact, error) {
-	sum256, sum512, member, err := v.download(ctx, a.URL, p.Signing.Members[arch])
+	accept := ""
+	if p.Source == pins.OCI {
+		accept = pins.OCIAccept
+	}
+	sum256, sum512, member, err := v.download(ctx, a.URL, accept, p.Signing.Members[arch])
 	if err != nil {
 		return pins.Artifact{}, err
 	}
@@ -235,13 +239,16 @@ func checkStatement(payload []byte, purl, hex512 string) error {
 // Fetch starts an https GET of rawURL with client, or http.DefaultClient when it is nil, and returns the body of a 200 that is within limit bytes, whether
 // declared or streamed: the body fails past limit, and maps a transport fault to a fixed phrase. Redirects follow the pins policy, at most three and https
 // only, unless the client brings its own. It is the one bounded reader of upstream bytes on the host (B8).
-func Fetch(ctx context.Context, client *http.Client, rawURL string, limit int64) (io.ReadCloser, error) {
+func Fetch(ctx context.Context, client *http.Client, rawURL, accept string, limit int64) (io.ReadCloser, error) {
 	if err := pins.HTTPSURL(rawURL); err != nil {
 		return nil, err
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 	if err != nil {
 		return nil, errors.New("not a usable URL")
+	}
+	if accept != "" {
+		req.Header.Set("Accept", accept)
 	}
 	c := *cmp.Or(client, http.DefaultClient)
 	if c.CheckRedirect == nil {
@@ -264,7 +271,7 @@ func Fetch(ctx context.Context, client *http.Client, rawURL string, limit int64)
 
 // readAll fetches a small body, such as a bundle, into memory.
 func (v Verifier) readAll(ctx context.Context, rawURL string, limit int64) ([]byte, error) {
-	b, err := Fetch(ctx, v.Client, rawURL, limit)
+	b, err := Fetch(ctx, v.Client, rawURL, "", limit)
 	if err != nil {
 		return nil, err
 	}
@@ -274,8 +281,8 @@ func (v Verifier) readAll(ctx context.Context, rawURL string, limit int64) ([]by
 
 // download streams one artifact through sha256 and sha512 once, and, when member is set, through the gzip tarball reader that digests that member. Nothing is
 // written to disk, and the bytes hashed are the bytes parsed.
-func (v Verifier) download(ctx context.Context, rawURL, member string) (sum256, sum512, memberSum []byte, err error) {
-	b, err := Fetch(ctx, v.Client, rawURL, MaxArtifact)
+func (v Verifier) download(ctx context.Context, rawURL, accept, member string) (sum256, sum512, memberSum []byte, err error) {
+	b, err := Fetch(ctx, v.Client, rawURL, accept, MaxArtifact)
 	if err != nil {
 		return nil, nil, nil, err
 	}

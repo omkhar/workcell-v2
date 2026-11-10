@@ -214,7 +214,7 @@ func serve(t *testing.T, routes map[string]route) (*http.Client, *atomic.Int32) 
 	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		hits.Add(1)
 		rt, ok := routes[r.Host+r.URL.EscapedPath()]
-		if !ok {
+		if !ok || strings.Contains(r.URL.Path, "/manifests/") && !strings.Contains(r.Header.Get("Accept"), "vnd.oci.") { // like mirror.gcr.io (B5)
 			http.NotFound(w, r)
 			return
 		}

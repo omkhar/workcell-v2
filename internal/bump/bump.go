@@ -244,6 +244,7 @@ func (t Tool) plan(ctx context.Context, p pins.Pin, now time.Time) (Change, stri
 	}
 	rel, err := artifact.Verifier{Client: t.Upstream}.Verify(ctx, p, *r.Chosen)
 	if err != nil { // no fall-through to an older release (B5)
+		fmt.Fprintln(t.Out, "verify-failed:", err)
 		return Change{Old: p, New: pins.Pin{Release: pins.Release{Version: r.Chosen.Version}}}, "verify-failed", nil
 	}
 	n := p

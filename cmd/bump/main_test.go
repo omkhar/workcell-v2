@@ -167,18 +167,20 @@ type runCase struct {
 	check  func(*testing.T, []call)
 }
 
+// datedKit makes the first pin an OCI image with dated tags, as pins/debian.json is.
+func datedKit(f *fixture) {
+	f.pins[0].Source, f.pins[0].Assets, f.pins[0].TagPrefix, f.pins[0].TagSuffix, f.pins[0].Version = pins.OCI, nil, "trixie-", "-slim", "trixie-20261027-slim"
+	m := `{"manifests":[{"annotations":{"org.opencontainers.image.created":"2026-11-01T00:00:00Z"}}]}`
+	f.upstream["/kit/tags/list"] = `{"name":"library/kit","tags":["13.1","trixie-20261020-slim","trixie-20261027-slim","trixie-20261104-slim"]}`
+	f.upstream["/kit/manifests/trixie-20261104-slim"], f.upstream[fmt.Sprintf("/kit/manifests/sha256:%x", sha256.Sum256([]byte(m)))] = m, m
+}
+
 func TestRun(t *testing.T) {
 	cases := []runCase{
 		{name: "dry run plans, posts nothing", dry: true, code: 0,
 			out: []string{"dry-run: nothing is posted or written", "kit trusted 2.0.0 2.1.0 eligible", "tool guest 1.2.0 1.3.0 eligible",
 				"would open pull request: guest", "would open pull request: trusted"}},
-		{name: "dated OCI tags: a missing manifest skips the tag, the plan has a verdict", dry: true, code: 0, out: []string{"kit trusted trixie-20261027-slim trixie-20261104-slim eligible"},
-			edit: func(f *fixture) {
-				f.pins[0].Source, f.pins[0].Assets, f.pins[0].TagPrefix, f.pins[0].TagSuffix, f.pins[0].Version = pins.OCI, nil, "trixie-", "-slim", "trixie-20261027-slim"
-				m := `{"manifests":[{"annotations":{"org.opencontainers.image.created":"2026-11-01T00:00:00Z"}}]}`
-				f.upstream["/kit/tags/list"] = `{"name":"library/kit","tags":["13.1","trixie-20261020-slim","trixie-20261027-slim","trixie-20261104-slim"]}`
-				f.upstream["/kit/manifests/trixie-20261104-slim"], f.upstream[fmt.Sprintf("/kit/manifests/sha256:%x", sha256.Sum256([]byte(m)))] = m, m
-			}},
+		{name: "dated OCI tags: a missing manifest skips the tag, the plan has a verdict", dry: true, code: 0, out: []string{"kit trusted trixie-20261027-slim trixie-20261104-slim eligible"}, edit: datedKit},
 		{name: "one pull request per class", code: 0, out: []string{"opened pull request: guest 7", "opened pull request: trusted 7"},
 			writes: slices.Concat(openGuestPR, openTrustedPR), check: checkOpened},
 		{name: "guest already open and green: merged once with the checked head, no second guest pull request", code: 0, edit: openGuest,
@@ -394,8 +396,9 @@ func TestNewest(t *testing.T) {
 		{"trusted is reported, never written", func(f *fixture) { f.pins = f.pins[:1]; release(f, "kit", "2.1.0", now.Add(-8*24*time.Hour), false) }, 0,
 			[]string{"kit trusted 2.0.0 2.1.0 2.1.0 24h0m0s eligible"}, map[string]string{"kit.json": "2.0.0"}},
 		{"source error is reported", func(f *fixture) { tool(f); delete(f.upstream, "/tool/latest") }, 0, []string{"tool guest 1.2.0 none none 0s source-error"}, map[string]string{"tool.json": "1.2.0"}},
+		{"dated OCI tags: the registry wants an OCI Accept, the digest is verified", func(f *fixture) { f.pins = f.pins[:1]; datedKit(f) }, 0, []string{"kit trusted trixie-20261027-slim trixie-20261104-slim trixie-20261104-slim 300h0m0s eligible"}, map[string]string{"kit.json": "trixie-20261027-slim"}},
 		{"verification fails: exit 1, nothing written", func(f *fixture) { tool(f); release(f, "tool", "1.3.0", now.Add(-120*time.Hour), true) }, 1,
-			[]string{"tool guest 1.2.0 1.3.0 1.3.0 0s verify-failed", failed}, map[string]string{"tool.json": "1.2.0"}},
+			[]string{"tool guest 1.2.0 1.3.0 1.3.0 0s verify-failed", failed, "verify-failed: pin \"tool\" amd64: the published digest is not the sha256 of the download"}, map[string]string{"tool.json": "1.2.0"}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -472,7 +475,7 @@ func runFixture(t *testing.T, f fixture, dry bool) (string, int, *standIn, map[s
 	up := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, ok := f.upstream[r.URL.Path]
 		switch {
-		case !ok:
+		case !ok || strings.Contains(r.URL.Path, "/manifests/") && !strings.Contains(r.Header.Get("Accept"), "vnd.oci."): // 404, like mirror.gcr.io
 			http.NotFound(w, r)
 		case body == drip:
 			for range 200 {

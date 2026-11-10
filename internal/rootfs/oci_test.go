@@ -232,6 +232,7 @@ func TestPullRefusals(t *testing.T) {
 		{"digest with a path in it", func(f *fixture) {
 			f.publish([]map[string]any{{"mediaType": tarGz, "digest": "sha256:../" + strings.Repeat("a", 60), "size": 10}})
 		}, "not a sha256 digest"},
+		{"upper-case image digest", func(f *fixture) { f.img.Digest = strings.ToUpper(f.img.Digest) }, "not a sha256 digest"},
 		{"no manifest for the platform", func(f *fixture) { f.img.Arch = "s390x" }, "no manifest for linux/s390x"},
 		{"not a manifest", func(f *fixture) { f.manifest(map[string]any{"mediaType": "text/html"}) }, "not an OCI or Docker"},
 		{"http registry", func(f *fixture) { f.img.Registry = "http://registry.test" }, "bare https"},

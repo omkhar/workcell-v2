@@ -6,7 +6,6 @@ package main
 import (
 	"encoding/json"
 	"os"
-	"strings"
 	"testing"
 
 	"github.com/omkhar/workcell/v2/internal/pins"
@@ -26,9 +25,6 @@ func pin(mod func(*pins.Pin)) pins.Pin {
 
 func TestImageFromPin(t *testing.T) {
 	loc := func(s string) func(*pins.Pin) { return func(p *pins.Pin) { p.Locator = s } }
-	sha := func(s string) func(*pins.Pin) {
-		return func(p *pins.Pin) { p.Artifacts["amd64"] = pins.Artifact{SHA256: s} }
-	}
 	tests := []struct {
 		name string
 		pin  pins.Pin
@@ -45,10 +41,6 @@ func TestImageFromPin(t *testing.T) {
 		{"no v2", pin(loc("https://r.example/a")), "amd64", rootfs.Image{}, true},
 		{"empty repository", pin(loc("https://r.example/v2/")), "amd64", rootfs.Image{}, true},
 		{"query", pin(loc("https://r.example/v2/a?x=1")), "amd64", rootfs.Image{}, true},
-		{"missing arch", pin(nil), "riscv64", rootfs.Image{}, true},
-		{"uppercase", pin(sha(strings.ToUpper(hex64))), "amd64", rootfs.Image{}, true},
-		{"short", pin(sha(hex64[1:])), "amd64", rootfs.Image{}, true},
-		{"prefixed", pin(sha("sha256:" + hex64)), "amd64", rootfs.Image{}, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
