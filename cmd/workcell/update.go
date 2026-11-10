@@ -200,7 +200,7 @@ func (in installer) row(p provider.Provider) (pins.Pin, error) {
 // for the daily check to keep.
 func (in installer) manifest(ctx context.Context) ([]byte, *channel.Manifest, error) {
 	c := http.Client{Transport: in.client.Transport, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
-	body, err := artifact.Fetch(ctx, &c, in.channel, channel.MaxBytes)
+	body, err := artifact.Fetch(ctx, &c, in.channel, "", channel.MaxBytes)
 	var raw []byte
 	if err == nil {
 		raw, err = io.ReadAll(body)
@@ -335,7 +335,7 @@ func choose(cands []channel.Pin, to string, cooloff time.Duration, now time.Time
 // fetch downloads the pin into dir as the image name, through its digest check (B8): the bytes go to a temporary file as they are hashed, and are unpacked only
 // once the digest is the pin's, a mismatch leaving nothing behind; the image, written over the download, takes its name once complete and durable.
 func (in installer) fetch(ctx context.Context, dir, name, binary string, pin channel.Pin) error {
-	body, err := artifact.Fetch(ctx, in.client, pin.URL, artifact.MaxArtifact)
+	body, err := artifact.Fetch(ctx, in.client, pin.URL, "", artifact.MaxArtifact)
 	if err != nil {
 		return err
 	}

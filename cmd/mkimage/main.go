@@ -81,9 +81,5 @@ func imageFromPin(p pins.Pin, arch string) (rootfs.Image, error) {
 	if u.Scheme != "https" || u.Host == "" || !ok || repo == "" || u.RawQuery != "" || u.User != nil {
 		return rootfs.Image{}, bad
 	}
-	a, ok := p.Artifacts[arch]
-	if !ok || len(a.SHA256) != 64 || strings.Trim(a.SHA256, "0123456789abcdef") != "" {
-		return rootfs.Image{}, fmt.Errorf("the pin has no valid digest for %q", arch)
-	}
-	return rootfs.Image{Registry: "https://" + u.Host, Repository: repo, Digest: "sha256:" + a.SHA256, OS: "linux", Arch: arch}, nil
+	return rootfs.Image{Registry: "https://" + u.Host, Repository: repo, Digest: "sha256:" + p.Artifacts[arch].SHA256, OS: "linux", Arch: arch}, nil
 }

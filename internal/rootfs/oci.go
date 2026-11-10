@@ -29,9 +29,6 @@ const (
 	// maxRaw bounds the bytes of tar stream, and of file data, that all layers of one
 	// image may expand to. The tree lives in memory, so a gzip bomb ends here.
 	maxRaw = 2 << 30
-
-	acceptManifests = "application/vnd.oci.image.index.v1+json, application/vnd.oci.image.manifest.v1+json, " +
-		"application/vnd.docker.distribution.manifest.list.v2+json, application/vnd.docker.distribution.manifest.v2+json"
 )
 
 // Media types Pull accepts. Anything else, zstd layers and foreign layers included, is refused.
@@ -147,7 +144,7 @@ func checkDigest(d string) error {
 
 // document fetches a manifest or index by digest and checks the bytes against it.
 func (g *registry) document(ctx context.Context, digest string) (*document, error) {
-	body, err := g.get(ctx, "manifests", digest, acceptManifests, maxManifest)
+	body, err := g.get(ctx, "manifests", digest, pins.OCIAccept, maxManifest)
 	if err != nil {
 		return nil, err
 	}
