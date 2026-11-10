@@ -61,6 +61,6 @@ The macOS host enforces nine invariants (`escape/enforced-macos.txt`). `GATE_MAC
 | I13 repo policy | pass | 10/10 |
 | I14 update, channel | pass (daily), n/a (layer) | daily-wrong-key and daily-expired pass; layer-image cases need `debugfs` (Linux) |
 
-Of the fourteen, the nine the macOS host enforces (I2, I3, I4, I6, I7, I8, I11, I12 and P1) are green; I1, I5, I9 and I13 also pass here though they are not in the enforced set; I10's non-memory floods and I14's layer-image checks need Linux host counters or `debugfs` and are covered by the KVM nightly track, not this host. B6 pin-smoke is not run here: it needs the real upstream agent fixtures, absent in this environment, and the run confirmed the fake API saw no real key.
+The nine checks the macOS host enforces (eight of the fourteen invariants, I2, I3, I4, I6, I7, I8, I11 and I12, and P1) are green; I1, I5, I9 and I13 also pass here though they are not in the enforced set; I10's non-memory floods and I14's layer-image checks need Linux host counters or `debugfs` and are covered by the KVM nightly track, not this host. B6 pin-smoke is not run here: it needs the real upstream agent fixtures, absent in this environment, and the run confirmed the fake API saw no real key.
 
 P1 warm start, measured on the Mac: n=20, p50 251 ms, min 245 ms, max 267 ms (`GATE_MACOS=1` run); the unfiltered run measured p50 253 ms. P2 to P7 are recorded by U-906 from the KVM nightly.
