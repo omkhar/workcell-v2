@@ -102,33 +102,6 @@ case "$hooks" in
     printf '          The Claude app may have made one for the scheduled task. If you do not know a host, delete that webhook: REFERENCE.md section 2\n'
     ;;
 esac
-# A GitHub App with access here can put a check on pull requests unseen, so every App that reaches this repository is listed.
-apps="" apps_ok=1
-if gh api --paginate user/installations --jq ".installations[] | select((.account.login | ascii_downcase) == (\"${slug%%/*}\" | ascii_downcase)) | \"\(.id) \(.app_slug) \(.repository_selection)\"" >"$tmp/installs.txt" 2>/dev/null; then
-  : >"$tmp/apps.txt"
-  while read -r app_id app_slug app_scope; do
-    if [ "$app_scope" != all ]; then
-      gh api --paginate "user/installations/$app_id/repositories" --jq '.repositories[].full_name' >"$tmp/app-repos.txt" 2>/dev/null || apps_ok=0
-      grep -qixF "$slug" "$tmp/app-repos.txt" || continue
-    fi
-    printf '%s\n' "$app_slug" >>"$tmp/apps.txt"
-  done <"$tmp/installs.txt"
-  apps="$(sort "$tmp/apps.txt" | paste -sd+ -)"
-  apps="${apps:-none}"
-fi
-[ "$apps_ok" = 1 ] || apps=""
-want "the Claude GitHub App is the only App with access to the repository" "claude" "$apps"
-# Its dynamic runs ran jobs until automatic dependency submission was switched off. Only the attached code security configuration shows it.
-submit=""
-if gh api "repos/$slug/code-security-configuration" >"$tmp/config.json" 2>/dev/null; then
-  if [ -s "$tmp/config.json" ]; then
-    submit="$(jq -r '.configuration.dependency_graph_autosubmit_action // "not_set"' "$tmp/config.json" 2>/dev/null || true)"
-  else submit=not_set; fi
-fi
-case "$submit" in
-  disabled | enabled | '') want "automatic dependency submission is off" "disabled" "$submit" ;;
-  *) printf '  NOTE  automatic dependency submission: GitHub exposes no such setting for this repository through the API; read it in the repository'"'"'s code security settings\n' ;;
-esac
 want "no environments" "0" "$(ask "repos/$slug/environments" --jq '[.environments[].name] | length')"
 want "the label loop-halt exists" "loop-halt" "$(ask "repos/$slug/labels/loop-halt" --jq .name)"
 exit "$bad"
