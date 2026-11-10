@@ -37,3 +37,30 @@ Source: `loop/baseline/ci.tsv`, made by `baseline-ci.sh` from the public GitHub 
 | Upstream refresh | 11 | 3 | 6 | 0% | 0% |
 
 The `CI` row is the v1 row comparable to P5. Rows with a single run (Bench, CI insights, Fuzz, Mutation, Pin Hygiene) are one sample each.
+
+## macOS suite (H-703)
+
+Source: the escape suite on a real Mac (Apple M2 Max, darwin/arm64, macOS 27.2, Virtualization.framework), a clone of `main` at commit 7731bd90, run 2026-11-09.
+
+The macOS host enforces nine invariants (`escape/enforced-macos.txt`). `GATE_MACOS=1 loop/gate.sh` ran them and reported `GATE PASS in 386s` (69 checks, 0 failed, 0 errors). A full `escape -sandbox workcell` run, with no enforced-list filter, recorded every invariant's outcome on this host:
+
+| Invariant | macOS outcome | Note |
+|---|---|---|
+| I1 workspace isolation | pass (fs), n/a (mount) | dotdot, symlink, bind-mount, open-by-handle, link-rename pass; `--mount` and loop-device cases are Linux-only |
+| I2 egress block | pass | 12/12 |
+| I3 resolver | pass | 13/13 |
+| I4 host/LAN/metadata block, rebind | pass | 15/15 |
+| I5 credential binding | pass | 15/15; no placeholder or sign-in token reached the guest |
+| I6 TLS, SNI, ECH | pass | 5/5 |
+| I7 cross-session residue, read-only layers | pass | 2/2 |
+| I8 safe return path | pass | 7/7 |
+| I9 audit integrity | pass | 9/9; `verify` rejects every tampered log |
+| I10 resource caps | pass (mem), n/a (other) | memory-flood pass; fork, disk, descriptor, log and cpu floods read Linux-only host counters |
+| I11 fail-closed on helper death | pass | 4/4 |
+| I12 host-guest channel | pass | 10/10 |
+| I13 repo policy | pass | 10/10 |
+| I14 update, channel | pass (daily), n/a (layer) | daily-wrong-key and daily-expired pass; layer-image cases need `debugfs` (Linux) |
+
+Of the fourteen, the nine the macOS host enforces (I2, I3, I4, I6, I7, I8, I11, I12 and P1) are green; I1, I5, I9 and I13 also pass here though they are not in the enforced set; I10's non-memory floods and I14's layer-image checks need Linux host counters or `debugfs` and are covered by the KVM nightly track, not this host. B6 pin-smoke is not run here: it needs the real upstream agent fixtures, absent in this environment, and the run confirmed the fake API saw no real key.
+
+P1 warm start, measured on the Mac: n=20, p50 251 ms, min 245 ms, max 267 ms (`GATE_MACOS=1` run); the unfiltered run measured p50 253 ms. P2 to P7 are recorded by U-906 from the KVM nightly.
