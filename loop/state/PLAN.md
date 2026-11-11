@@ -170,7 +170,7 @@ with ADR-003 and ADR-004, they build on the proposal, and you can accept it at a
       accept: in a real guest, after `workcell update <agent>` on the host against a loopback upstream, `workcell run -- <binary> --version` prints the installed version; a write to the layer from inside the guest is refused or lost, and the next session sees the layer unchanged (I7); no escape row or enforced line is removed
 - [x] U-408 | flow:boundary | model:fable | env:kvm | deps:U-402,B-821,U-408a,U-408b | tries:0 | `workcell update [agent]`: fetch by pinned URL and digest on the host, build a per-agent layer, keep the previous one, record version and digest in the audit log (A10, B8)
       accept: provider versions appear only under `pins/`; a digest mismatch is refused; `--rollback` and `--to` work
-- [H] H-409 | env:any | deps:U-403 | In the second account: test real sign-in for each adapter, once you have read each provider's terms on intercepting subscription sign-in. Use test accounts, or revoke the sessions afterwards. `REFERENCE.md` section 6 has the commands
+- [x] H-409 | env:any | deps:U-403 | In the second account: test real sign-in for each adapter, once you have read each provider's terms on intercepting subscription sign-in. Use test accounts, or revoke the sessions afterwards. `REFERENCE.md` section 6 has the commands
       accept: `docs/providers.md` states, per provider, which sign-in methods are supported
 
 ## Phase 5: workspace
