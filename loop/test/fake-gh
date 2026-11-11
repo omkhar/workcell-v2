@@ -332,6 +332,7 @@ case "$1 ${2:-}" in
       "GET actions/policies/"*) [ -e "$st/policies/${rest##*/}.json" ] || exit 1; answer "$(cat "$st/policies/${rest##*/}.json")" ;;
       "PUT pulls/"*"/merge") n="${rest#pulls/}"; try_merge "${n%/merge}" || { echo "gh: Repository rule violations found (HTTP 405)" >&2; exit 1; } ;;
       "GET pulls?"*) answer "$(prs_json | jq '[.[] | select(.state == "OPEN") | {number, head: {ref: .headRefName}}]')" ;;
+      "GET commits/heads/main/check-suites"*) answer "$(cat "$st/check-suites.json" 2>/dev/null || echo '{"total_count": 2, "check_suites": [{"app": {"slug": "claude"}}, {"app": {"slug": "github-actions"}}]}')" ;;
       "GET commits/"*"/check-runs"*)
         sha="${rest#commits/}"; sha="${sha%%/*}"
         name="$(printf '%s' "$rest" | sed -nE 's/.*check_name=([a-z-]+).*/\1/p')"
