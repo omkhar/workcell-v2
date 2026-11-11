@@ -16,12 +16,15 @@ limit what it can reach (I2, I5).
   `header` (lower case), `env` (the variable that holds the placeholder) and an optional `prefix` of
   `""` or `"Bearer "`.
 
-| File | Binary | Install | Hosts | Secret row: name, header, env |
-|------|--------|---------|-------|-------------------------------|
-| `claude.toml` | `claude` | binary, pin `claude-code` | `api.anthropic.com`, `claude.ai`, `console.anthropic.com` | `anthropic`, `x-api-key`, `ANTHROPIC_API_KEY` |
-| `codex.toml` | `codex` | binary, pin `codex` | `api.openai.com`, `auth.openai.com`, `chatgpt.com` | `openai`, `authorization` with `Bearer `, `OPENAI_API_KEY` |
-| `copilot.toml` | `copilot` | binary, pin `copilot-cli` | `api.githubcopilot.com`, `api.individual.githubcopilot.com`, `api.github.com`, `github.com` | `github`, `authorization` with `Bearer `, `COPILOT_GITHUB_TOKEN` |
-| `gemini.toml` | `gemini` | npm, package `@google/gemini-cli` | `generativelanguage.googleapis.com`, `ai.google.dev` | `gemini`, `x-goog-api-key`, `GEMINI_API_KEY` |
+| File | Binary | Install | Hosts | Secret row: name, header, env | Sign-in |
+|------|--------|---------|-------|-------------------------------|---------|
+| `claude.toml` | `claude` | binary, pin `claude-code` | `api.anthropic.com`, `claude.ai`, `console.anthropic.com` | `anthropic`, `x-api-key`, `ANTHROPIC_API_KEY` | API key only |
+| `codex.toml` | `codex` | binary, pin `codex` | `api.openai.com`, `auth.openai.com`, `chatgpt.com` | `openai`, `authorization` with `Bearer `, `OPENAI_API_KEY` | API key only |
+| `copilot.toml` | `copilot` | binary, pin `copilot-cli` | `api.githubcopilot.com`, `api.individual.githubcopilot.com`, `api.github.com`, `github.com` | `github`, `authorization` with `Bearer `, `COPILOT_GITHUB_TOKEN` | token only |
+| `gemini.toml` | `gemini` | npm, package `@google/gemini-cli` | `generativelanguage.googleapis.com`, `ai.google.dev` | `gemini`, `x-goog-api-key`, `GEMINI_API_KEY` | API key only |
+
+Sign-in with a subscription account (Claude, ChatGPT, Copilot or Google) is not supported for any provider. It was
+not tested against a real provider, and a `signin:HOST/PATH` source is proven against the suite's test endpoint only.
 
 A provider's hosts do not open the network. A session reaches them only if `[network] allow` lists them
 too (I2).
