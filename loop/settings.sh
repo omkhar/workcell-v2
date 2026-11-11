@@ -102,6 +102,11 @@ case "$hooks" in
     printf '          The Claude app may have made one for the scheduled task. If you do not know a host, delete that webhook: REFERENCE.md section 2\n'
     ;;
 esac
+# GitHub opens a check suite on every push for each App installed here with checks: write, so the newest commit of main lists the
+# Apps that could report a check. GitHub Actions appears there only once a workflow has run on that commit, and its checks are
+# required above, so it is tolerated here and not expected. Any other App is a way to report checks that the kit does not know.
+want "no App but claude and GitHub Actions has a check suite on the newest commit of main" "claude" \
+  "$(ask "repos/$slug/commits/heads/main/check-suites?per_page=100" --jq '[.check_suites[].app.slug | select(. != "github-actions")] | sort | unique | join("+") | if . == "" then "none" else . end')"
 want "no environments" "0" "$(ask "repos/$slug/environments" --jq '[.environments[].name] | length')"
 want "the label loop-halt exists" "loop-halt" "$(ask "repos/$slug/labels/loop-halt" --jq .name)"
 exit "$bad"

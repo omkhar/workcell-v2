@@ -265,7 +265,7 @@ chk "the push straight to main was refused" "$(has "$out" 'a push straight to ma
 honest() { cat "$FAKE/pr/$(grep -l '^claude/selftest-good-2' "$FAKE"/pr/*/head | sed 's#/head$##; s#.*/##' | sort -n | tail -n 1)/sha"; } # the newest honest probe
 chk "the honest probe looks like a claim, so guard had to fetch a file's content" "$(og show "$(honest):loop/state/LOG.md" | tail -n 1 | grep -cE '^## [0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}Z U-001 START mode=cloud$')" 1
 chk "and it only adds to the log" "$(og diff --numstat refs/heads/main "$(honest)" -- loop/state/LOG.md | cut -f1-2 | tr '\t' ' ')" "1 0"
-chk "every setting was read back" "$(printf '%s\n' "$out" | sed -n '/^3\/6 /,/^4\/6 /p' | grep -c '^  ok    ')" 18; chk "none was wrong" "$(has "$out" WRONG)" 0
+chk "every setting was read back" "$(printf '%s\n' "$out" | sed -n '/^3\/6 /,/^4\/6 /p' | grep -c '^  ok    ')" 19; chk "none was wrong" "$(has "$out" WRONG)" 0
 chk "H-000 is ticked on GitHub" "$(og show refs/heads/main:loop/state/PLAN.md | grep -c '^- \[x\] H-000')" 1
 chk "v1's CI timings were recorded" "$(og show refs/heads/main:loop/baseline/ci.tsv | grep -c '^CI')" 1
 chk "only of runs that v1's own branches started, and only under plain names" "$(og show refs/heads/main:loop/baseline/ci.tsv | cut -f1 | tr '\n' ' ')" "workflow CI Nightly "
@@ -794,7 +794,7 @@ out="$("$K/adopt.sh" 2>&1 </dev/null)"; chk "nothing proposed" "$(has "$out" 'no
 # ---------------------------------------------------------------- settings
 echo "## settings.sh"
 T() { out="$("$K/settings.sh" "${1:-check}" 2>&1)"; rc=$?; }
-T; chk "all settings read back as they should" "$rc" 0; chk "eighteen lines, one for each thing it reads" "$(has "$out" '^  ok    ')" 18
+T; chk "all settings read back as they should" "$rc" 0; chk "nineteen lines, one for each thing it reads" "$(has "$out" '^  ok    ')" 19
 drift() { # drift <what> <file> <jq edit> [<start of the line that must say WRONG>]
   cp "$2" "$W/keep.json"; jq "$3" "$W/keep.json" >"$2"
   T; chk "noticed: $1" "$rc" 1
@@ -845,10 +845,15 @@ echo '[{"id": 1, "name": "web", "active": true, "config": {"url": "https://hooks
   {"id": 3, "config": {"url": "https://claude.ai:x@evil.example/hook"}}, {"id": 4, "config": {"url": "HTTPS://Upper.example/x"}}]' >"$FAKE/hooks.json"
 T; chk "a webhook is shown with its host, not with a name and password in front of it, and stops nothing" "$rc $(has "$out" '^  NOTE  webhooks: 4, sending to: (no address) Upper.example evil.example hooks.example.com$')" "0 1"
 echo '{"message": "x"}' >"$FAKE/hooks.json"; T; chk "an answer about webhooks that makes no sense is a failure" "$rc $(has "$out" '^  WRONG the webhooks can be read')" "1 1"; rm "$FAKE/hooks.json"
+plant "a third App with a check suite on the newest commit of main" check-suites.json '{"total_count": 3, "check_suites": [{"app": {"slug": "claude"}}, {"app": {"slug": "github-actions"}}, {"app": {"slug": "some-scanner"}}]}' 'no App but claude and GitHub Actions'
+echo '{"total_count": 1, "check_suites": [{"app": {"slug": "claude"}}]}' >"$FAKE/check-suites.json"; T; chk "a fresh commit of main, where no workflow has run yet, is fine" "$rc" 0; rm "$FAKE/check-suites.json"
+plant "no claude among the Apps, GitHub Actions alone" check-suites.json '{"total_count": 1, "check_suites": [{"app": {"slug": "github-actions"}}]}' 'no App but claude and GitHub Actions'
+plant "no check suite at all" check-suites.json '{"total_count": 0, "check_suites": []}' 'no App but claude and GitHub Actions'
+plant "an answer about check suites that makes no sense" check-suites.json '{}' 'no App but claude and GitHub Actions'
 plant "an environment named release" environments.json '{"total_count": 1, "environments": [{"id": 1, "name": "release"}]}' 'no environments'
 plant "an environment named bump: that one belongs in omkhar/workcell" environments.json '{"total_count": 1, "environments": [{"id": 1, "name": "bump"}]}' 'no environments'
 plant "an answer about environments that makes no sense" environments.json '{}' 'no environments'
-for read in rulesets rules/branches/main tags keys hooks collaborators environments; do
+for read in rulesets rules/branches/main tags keys hooks collaborators environments commits/heads/main/check-suites; do
   FAKE_FAIL="api repos/*/$read*" "$K/settings.sh" check >/dev/null 2>&1; chk "a read that fails is a failure, not a pass: $read" $? 1
 done
 mv "$K/github-tags-all.json" "$W/keep.json"; T; chk "nor does a file that is missing from the kit make two empty answers equal" "$rc $(has "$out" '^  WRONG those rules are aimed at every tag')" "1 1"; mv "$W/keep.json" "$K/github-tags-all.json"
