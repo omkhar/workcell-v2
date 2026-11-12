@@ -20,6 +20,7 @@ set -eu
 tag="${1:-v2.0.0}" # the maintainer bumps this with each release
 url="${INSTALL_URL:-https://github.com/omkhar/workcell/releases/download/${tag}}"
 dir="${INSTALL_DIR:-${HOME}/.local/bin}"
+case "${dir}" in /*) ;; *) dir="$(pwd)/${dir}" ;; esac # absolute before the cd below
 die() { echo "install: $*" >&2; exit 1; }
 
 case "$(uname -s)/$(uname -m)" in
@@ -46,6 +47,6 @@ check want >&2 || die "checksum of ${asset} does not match SHA256SUMS: nothing i
 mkdir -p "${dir}"
 cp "${asset}" "${new}"
 chmod 0755 "${new}"
+"${new}" --version || die "the downloaded ${asset} does not run: nothing installed"
 mv -f "${new}" "${dir}/workcell"
-"${dir}/workcell" --version || die "${dir}/workcell does not run"
 echo "Installed ${dir}/workcell. Next: make sure ${dir} is on your PATH, then run: workcell doctor"
