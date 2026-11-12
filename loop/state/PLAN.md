@@ -322,7 +322,7 @@ the loop has ended.
       accept: the script refuses a download with a wrong checksum, shown against a local server; it has at most 90 lines, because `gate.sh` joins the 300-line shell budget at cutover; `nightly.yml` stays within 80 lines
 - [x] U-905a | flow:mech | model:sonnet | env:any | deps:U-903,U-502a,U-600,U-400,U-402,U-302,U-205,U-701,U-702,B-823,B-826b,B-827,B-828,B-830 | tries:0 | Delete `_legacy/` and `spikes/`
       accept: gate green; budgets met
-- [ ] U-906 | flow:mech | model:sonnet | env:kvm | deps:above | tries:0 | wait:nightly.yml | Record P1 to P7 in `docs/benchmarks.md`, each with its number and the run it came from
+- [x] U-906 | flow:mech | model:sonnet | env:kvm | deps:above | tries:0 | wait:nightly.yml | Record P1 to P7 in `docs/benchmarks.md`, each with its number and the run it came from
       accept: P2 comes from `nightly.yml`. P7 cannot be met before cutover, because nothing merges a bump here. In its place stand the dry run that B-826b read, and the lag per pin that `nightly.yml` reports. P5 is the p50 over the last 10 pull requests, each counted by the slower of `gate` and `gate-macos`; P1 and P6 include H-703 and H-704. If another target is missed, mark this unit `[!]`
 - [ ] R-2 | flow:mech | model:opus | env:any | deps:U-906 | tries:0 | Retro: the orchestrator does it itself, and R-1's line is the text
       accept: the log entry gives the count of `PARKED.md` lines read, names each line deleted or turned into a unit, and gives each scheduled workflow with the date and conclusion of its newest run; gate green
