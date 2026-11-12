@@ -141,11 +141,9 @@ func FilesOK(fs []file, changed int) bool {
 	}
 	for _, f := range fs {
 		lines := strings.Split(f.Patch, "\n")
-		switch {
-		case !PathOK(f.Filename) || (f.Status != "added" && f.Status != "modified") || f.Patch == "":
+		if !PathOK(f.Filename) || (f.Status != "added" && f.Status != "modified") || f.Patch == "" ||
+			f.Status == "added" && (len(lines) < 2 || lines[1] != "+{") { // a symbolic link's patch is its target, never a JSON object
 			return false
-		case f.Status == "added" && (len(lines) < 2 || lines[1] != "+{"):
-			return false // a symbolic link's patch is its target, never a JSON object
 		}
 	}
 	return true
@@ -201,8 +199,7 @@ func (t Tool) merge(ctx context.Context, n int) error {
 	case t.DryRun:
 		fmt.Fprintln(t.Out, "would merge:", n)
 	default:
-		in := map[string]string{"sha": pr.Head.SHA, "merge_method": "squash"}
-		if _, err := g.do(ctx, "merge", http.MethodPut, g.url("/pulls/%d/merge", n), in, nil); err != nil {
+		if _, err := g.do(ctx, "merge", http.MethodPut, g.url("/pulls/%d/merge", n), map[string]string{"sha": pr.Head.SHA, "merge_method": "squash"}, nil); err != nil {
 			return err
 		}
 		fmt.Fprintln(t.Out, "merged:", n)
@@ -242,13 +239,11 @@ func (t Tool) propose(ctx context.Context, class pins.Class, cs []Change) error 
 		}
 	}
 	var pr struct{ Number int }
-	in = map[string]string{"title": "bump: " + string(class) + " pins", "head": branch, "base": "main", "body": body(cs, t.Now)}
-	if _, err := g.do(ctx, "open pull request", http.MethodPost, g.url("/pulls"), in, &pr); err != nil {
+	if _, err := g.do(ctx, "open pull request", http.MethodPost, g.url("/pulls"), map[string]string{"title": "bump: " + string(class) + " pins", "head": branch, "base": "main", "body": body(cs, t.Now)}, &pr); err != nil {
 		return err
 	}
 	if security {
-		lb := map[string][]string{"labels": {"security"}}
-		if _, err := g.do(ctx, "label", http.MethodPost, g.url("/issues/%d/labels", pr.Number), lb, nil); err != nil {
+		if _, err := g.do(ctx, "label", http.MethodPost, g.url("/issues/%d/labels", pr.Number), map[string][]string{"labels": {"security"}}, nil); err != nil {
 			return err
 		}
 	}
@@ -263,20 +258,17 @@ func (t Tool) issue(ctx context.Context, name string) error {
 		fmt.Fprintln(t.Out, "would open issue:", name)
 		return nil
 	}
-	g := t.GitHub
 	title := "bump: verification failed: " + name
-	is, err := list[struct{ Title string }](ctx, g, "list issues", g.url("/issues?state=open&per_page=100"))
+	is, err := list[struct{ Title string }](ctx, t.GitHub, "list issues", t.GitHub.url("/issues?state=open&per_page=100"))
 	if err != nil {
 		return err
 	}
-	for _, i := range is {
-		if i.Title == title {
-			return nil
-		}
+	if slices.ContainsFunc(is, func(i struct{ Title string }) bool { return i.Title == title }) {
+		return nil
 	}
 	in := map[string]string{"title": title, "body": "The newest eligible release of pin " + name +
 		" failed verification, so it is not pinned. The bump of this pin waits until a release verifies."}
-	if _, err := g.do(ctx, "open issue", http.MethodPost, g.url("/issues"), in, nil); err != nil {
+	if _, err := t.GitHub.do(ctx, "open issue", http.MethodPost, t.GitHub.url("/issues"), in, nil); err != nil {
 		return err
 	}
 	fmt.Fprintln(t.Out, "opened issue:", name)
