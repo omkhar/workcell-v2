@@ -257,9 +257,10 @@ load the workflow file from `main`. Five things follow.
 
 ## Phase 8b: upstream freshness (SPEC section 10)
 
-`_legacy/bump/` holds the v1 selector, policy and per-provider verification
-scripts. Mine them for facts: where each upstream publishes, which timestamps it
-exposes, and how it signs. Do not port their structure.
+v1's bump code held the v1 selector, policy and per-provider verification
+scripts. They were mined for facts (where each upstream publishes, which timestamps
+it exposes, and how it signs) until U-905a deleted them with the rest of v1. Their
+structure was not ported.
 
 This repository never holds a GitHub App, an environment or a secret, because code from free paths would run with
 them. So `bump.yml` only plans and does dry runs here. H-829 creates the App and the keys in `omkhar/workcell`, after
@@ -324,8 +325,12 @@ the loop has ended.
       accept: gate green; budgets met
 - [x] U-906 | flow:mech | model:sonnet | env:kvm | deps:above | tries:0 | wait:nightly.yml | Record P1 to P7 in `docs/benchmarks.md`, each with its number and the run it came from
       accept: P2 comes from `nightly.yml`. P7 cannot be met before cutover, because nothing merges a bump here. In its place stand the dry run that B-826b read, and the lag per pin that `nightly.yml` reports. P5 is the p50 over the last 10 pull requests, each counted by the slower of `gate` and `gate-macos`; P1 and P6 include H-703 and H-704. If another target is missed, mark this unit `[!]`
-- [ ] R-2 | flow:mech | model:opus | env:any | deps:U-906 | tries:0 | Retro: the orchestrator does it itself, and R-1's line is the text
+- [x] R-2 | flow:mech | model:opus | env:any | deps:U-906 | tries:0 | Retro: the orchestrator does it itself, and R-1's line is the text
       accept: the log entry gives the count of `PARKED.md` lines read, names each line deleted or turned into a unit, and gives each scheduled workflow with the date and conclusion of its newest run; gate green
+- [ ] B-833 | flow:mech | model:sonnet | env:any | deps:R-2 | tries:0 | `internal/bump`: a plan line that ends in `source-error` carries no cause, because `Tool.plan` drops the error of `pins.Candidates`, while `verify-failed:` prints its own on the next line. The hosted plan printed `codex guest - none source-error` on 2026-11-08 and 2026-11-12 and `eligible` on 2026-11-11, with the workflow's token in `GITHUB_TOKEN` each time, so the log cannot say what fails and nobody can fix it. Print the cause on its own line, as `verify-failed:` does. Product code is at its budget, so delete a line first
+      accept: a table test shows `source-error: <cause>` under the plan line for a pin whose upstream answers an error; the budgets hold; gate green
+- [ ] U-908 | flow:mech | model:sonnet | env:any | deps:R-2 | tries:0 | sign:you | `scripts/install.sh`: a relative `INSTALL_DIR`, such as `INSTALL_DIR=bin`, is resolved after `cd "${tmp}"`, so the binary lands under the temporary directory, the EXIT trap removes it, and the script exits 0 with nothing installed; and when `workcell --version` fails after the `mv`, the binary stays installed although the header promises that nothing is. Make `dir` absolute before the `cd`, and move the binary into place only after it has run. Propose the complete file as `proposed/scripts/install.sh`
+      accept: against a local server and a fake asset, `INSTALL_DIR=bin` installs `./bin/workcell`, and an asset that does not run leaves `${dir}/workcell` as it was; shown by running the proposed script, not by reading it; at most 90 lines
 - [x] U-907 | flow:doc | model:opus | env:any | deps:U-901,W-801 | tries:1 | sign:you | `SECURITY.md` for v2, starting from v1's. The text of v1's policy is public at `github.com/omkhar/workcell`, and this repository's history holds `SECURITY.md` as it was before the kit arrived. Propose the file as `proposed/SECURITY.md.txt`
       accept: it covers supported versions, private reporting, response times, scope, and how to verify a release and the update channel, all as they are in v2; until H-905 a first paragraph says that this repository is a building site that publishes no release, and points to `loop/REFERENCE.md` section 9; H-905 removes it; the rest names nothing under `loop/` and does not speak of a building site; at most 130 lines
 
