@@ -140,20 +140,19 @@ func (t Tool) Run(ctx context.Context) error {
 			changes[p.Class] = append(changes[p.Class], c)
 		}
 	}
-	g := t.GitHub
 	for _, name := range failed {
 		if err := t.issue(ctx, name); err != nil {
 			return err
 		}
 	}
 	open := map[pins.Class]bool{}
-	if g.Repo != "" || !t.DryRun {
-		prs, err := list[pull](ctx, g, "list pull requests", g.url("/pulls?state=open&base=main&per_page=100"))
+	if t.GitHub.Repo != "" || !t.DryRun {
+		prs, err := list[pull](ctx, t.GitHub, "list pull requests", t.GitHub.url("/pulls?state=open&base=main&per_page=100"))
 		if err != nil {
 			return err
 		}
 		for _, pr := range prs {
-			if class, ok := g.class(pr); ok && !open[class] {
+			if class, ok := t.GitHub.class(pr); ok && !open[class] {
 				open[class] = true
 				if err := t.merge(ctx, pr.Number); err != nil {
 					return err
@@ -223,6 +222,7 @@ func (t Tool) plan(ctx context.Context, p pins.Pin, now time.Time) (Change, stri
 	defer cancel()
 	cands, err := pins.Candidates(ctx, t.Upstream, p)
 	if err != nil {
+		fmt.Fprintln(t.Out, "source-error:", pins.Cause(err))
 		return Change{}, "source-error", nil
 	}
 	adv, err := advisory.Lookup(ctx, t.Upstream, t.OSV, p)

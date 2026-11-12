@@ -49,6 +49,14 @@ func Candidates(ctx context.Context, client *http.Client, p Pin) ([]Candidate, e
 	return append([]Candidate{}, cands...), nil
 }
 
+// Cause says why Candidates failed in words no upstream chose: a status code, or none.
+func Cause(err error) string {
+	if se := new(statusError); errors.As(err, &se) {
+		return fmt.Sprintf("status %d", se.code)
+	}
+	return "no usable answer"
+}
+
 type getter struct {
 	ctx    context.Context
 	client *http.Client
