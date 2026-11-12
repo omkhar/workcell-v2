@@ -1068,3 +1068,6 @@ Proved by running, in spikes/install/install_test.go: script() now prefers propo
 Learned: the locked script already printed "does not run" on a broken asset, so that phrase alone does not separate old from new; the unchanged-bytes check does. A spike that runs a locked file should prefer its proposal, so hosted CI proves a sign:you change before adoption and the adopted file after it.
 Next: U-908 waits for adopt.sh; S-1001 (deps:above) opens only when it is [x], so the next cloud run halts with nothing-to-do until the maintainer adopts the proposal; then Phase 10 from S-1001. The claim was PR #177, which this run gives its final title.
 Hosted gate on 7055e29: the first run (131006497243) passed; the retitle's second run failed I12 channel-connect-flood alone, 66 MiB of host memory lost beyond a plain run's 45 MiB with floodSlack 64 MiB, 137 of 138 passed, no VM or runner error, and nothing in this change touches I12. That is the flood flake PARKED line 17 (U-208) names and R-2 judged settled; this push only re-runs the checks, and a further sighting should turn that line into a unit.
+## 2026-11-12T12:15Z S-1001 START mode=cloud
+## 2026-11-12T12:36Z S-1001 BLOCKED mode=cloud model=fable tries=0
+S-1001: needs the maintainer, see the run's transcript

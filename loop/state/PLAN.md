@@ -341,7 +341,7 @@ runs on the top tier. Each confirmed finding becomes an `S-F<n>` unit (`flow:bou
 audit that found it), added directly below that audit. Its reproducing test waits under `escape/_pending/S-F<n>/`,
 and the fix unit moves it into place (S4).
 
-- [ ] S-1001 | flow:audit | model:fable | env:any | deps:above | tries:0 | Map the attack surface as built: every place attacker-controlled bytes enter host code, and the authority that code holds. Compare it with `docs/threat-model.md`
+- [!] S-1001 | flow:audit | model:fable | env:any | deps:above | tries:0 | Map the attack surface as built: every place attacker-controlled bytes enter host code, and the authority that code holds. Compare it with `docs/threat-model.md`
       accept: `loop/state/FINDINGS.md` opens with the map; any surface missing from S-1002 to S-1013 gets its own unit
 - [ ] S-1002 | flow:audit | model:fable | env:kvm | deps:S-1001 | tries:0 | Audit: host-guest channel, guest init, supervisor lifecycle (I7, I10, I12)
       accept: coverage list and candidates recorded; each candidate confirmed or refuted under S4
