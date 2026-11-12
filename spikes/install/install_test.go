@@ -58,11 +58,12 @@ func moduleRoot(t *testing.T) string {
 	}
 }
 
-// script finds scripts/install.sh, else proposed/scripts/install.sh (before the cutover).
+// script finds proposed/scripts/install.sh, so that a waiting proposal is what is tested, else
+// scripts/install.sh (once the maintainer has adopted the proposal and removed it from proposed/).
 func script(t *testing.T) string {
 	t.Helper()
 	root := moduleRoot(t)
-	for _, p := range []string{"scripts/install.sh", "proposed/scripts/install.sh"} {
+	for _, p := range []string{"proposed/scripts/install.sh", "scripts/install.sh"} {
 		if _, err := os.Stat(filepath.Join(root, p)); err == nil {
 			return filepath.Join(root, p)
 		}
@@ -89,18 +90,28 @@ func hostAsset(t *testing.T) string {
 // directory and the TMPDIR the script used.
 func install(t *testing.T, dist string) (out string, code int, dir, tmp string) {
 	t.Helper()
-	srv := httptest.NewServer(http.FileServer(http.Dir(dist)))
-	defer srv.Close()
 	root := t.TempDir()
-	dir, tmp = filepath.Join(root, "bin"), filepath.Join(root, "tmp")
-	if err := os.Mkdir(tmp, 0o755); err != nil {
-		t.Fatal(err)
-	}
+	dir = filepath.Join(root, "bin")
 	if err := os.Mkdir(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
+	out, code, tmp = run(t, dist, root, "", dir)
+	return out, code, dir, tmp
+}
+
+// run runs the script in workdir (the current directory if empty) with INSTALL_DIR set to
+// installDir, which may be relative. It makes a TMPDIR under root and returns it.
+func run(t *testing.T, dist, root, workdir, installDir string) (out string, code int, tmp string) {
+	t.Helper()
+	srv := httptest.NewServer(http.FileServer(http.Dir(dist)))
+	defer srv.Close()
+	tmp = filepath.Join(root, "tmp")
+	if err := os.Mkdir(tmp, 0o755); err != nil {
+		t.Fatal(err)
+	}
 	cmd := exec.Command("sh", script(t))
-	cmd.Env = []string{"PATH=" + os.Getenv("PATH"), "HOME=" + root, "TMPDIR=" + tmp, "INSTALL_URL=" + srv.URL, "INSTALL_DIR=" + dir}
+	cmd.Dir = workdir
+	cmd.Env = []string{"PATH=" + os.Getenv("PATH"), "HOME=" + root, "TMPDIR=" + tmp, "INSTALL_URL=" + srv.URL, "INSTALL_DIR=" + installDir}
 	cmd.WaitDelay = 3 * time.Second
 	b, err := cmd.CombinedOutput()
 	var exit *exec.ExitError
@@ -112,15 +123,19 @@ func install(t *testing.T, dist string) (out string, code int, dir, tmp string) 
 		t.Fatal(err)
 	}
 	t.Logf("$ install.sh   (exit %d)\n%s", code, b)
-	return string(b), code, dir, tmp
+	return string(b), code, tmp
 }
 
 // dist writes a fake release directory: a small executable for this host and, unless sums is
-// "missing", a SHA256SUMS whose digest is right or, for "wrong", wrong.
+// "missing", a SHA256SUMS whose digest is right or, for "wrong", wrong. For "broken" the
+// digest is right but the executable fails.
 func dist(t *testing.T, sums string) string {
 	t.Helper()
 	asset, d := hostAsset(t), t.TempDir()
 	body := []byte("#!/bin/sh\necho workcell test\n")
+	if sums == "broken" {
+		body = []byte("#!/bin/sh\nexit 3\n")
+	}
 	if err := os.WriteFile(filepath.Join(d, asset), body, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -170,6 +185,43 @@ func TestInstallVerified(t *testing.T) {
 	}
 	if fi, err := os.Stat(filepath.Join(dir, "workcell")); err != nil || fi.Mode() != 0o755 {
 		t.Errorf("%s/workcell: %v %v, want mode 0755", dir, fi, err)
+	}
+	empty(t, "TMPDIR", tmp)
+}
+
+// TestInstallRelativeDir: a relative INSTALL_DIR is relative to where the script was started.
+func TestInstallRelativeDir(t *testing.T) {
+	root, tmpRoot := t.TempDir(), t.TempDir()
+	out, code, tmp := run(t, dist(t, "good"), tmpRoot, root, "bin")
+	if code != 0 || !strings.Contains(out, "workcell test") {
+		t.Errorf("exit %d, output %q: want success and the --version line", code, out)
+	}
+	if fi, err := os.Stat(filepath.Join(root, "bin", "workcell")); err != nil || fi.Mode() != 0o755 {
+		t.Errorf("%s/bin/workcell: %v %v, want mode 0755", root, fi, err)
+	}
+	empty(t, "TMPDIR", tmp)
+}
+
+// TestInstallKeepsOldOnBrokenAsset: a checked asset that does not run leaves the old binary as it was.
+func TestInstallKeepsOldOnBrokenAsset(t *testing.T) {
+	old := []byte("#!/bin/sh\necho old\n")
+	dir := filepath.Join(t.TempDir(), "bin")
+	if err := os.Mkdir(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "workcell"), old, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	root := t.TempDir()
+	out, code, tmp := run(t, dist(t, "broken"), root, "", dir)
+	if code == 0 || !strings.Contains(out, "does not run") {
+		t.Errorf("exit %d, output %q: want a refusal that says the binary does not run", code, out)
+	}
+	if got, err := os.ReadFile(filepath.Join(dir, "workcell")); err != nil || !bytes.Equal(got, old) {
+		t.Errorf("%s/workcell: %q %v, want it unchanged", dir, got, err)
+	}
+	if left, err := os.ReadDir(dir); err != nil || len(left) != 1 {
+		t.Errorf("install directory %s: %v %v, want only workcell", dir, left, err)
 	}
 	empty(t, "TMPDIR", tmp)
 }
