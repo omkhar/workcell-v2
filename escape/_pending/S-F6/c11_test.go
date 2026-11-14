@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Omkhar Arasaratnam
 
-// C11 (I10, with I12's hang). This file waits here, where Go does not compile it, until its fix lands; the fix unit moves it into internal/proxy/.
+// S-F6, finding C11 of S-1005 (I10, with I12's hang). This file waits here, where Go does not compile it, until its fix lands; the fix unit moves it into internal/proxy/.
 // The terminated server keeps http.Server's default MaxHeaderBytes, 1 MiB, and after the header block no read has a deadline. A request to a
 // sign-in row's token endpoint that declares a body and never sends it is held in tokenRequest's io.ReadAll with no upstream dialled, its header
 // block live, for as long as the guest likes: "100 Continue" is the proxy saying it has parsed the block and now waits. A client needs a few KiB
