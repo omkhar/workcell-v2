@@ -547,6 +547,7 @@ const attachLimit = time.Hour
 func client(raw net.Conn, restore func(), tty bool) (int, error) {
 	defer raw.Close()
 	defer restore()
+	signal.Ignore(syscall.SIGPIPE) // a reader of the terminal's output that has gone (`| head -1`) detaches this client; it does not end the process (I9)
 	c := wire.New(raw, attachLimit)
 	var mu sync.Mutex
 	send := func(typ uint8, p []byte) error {
@@ -647,9 +648,7 @@ func (t *tail) Write(p []byte) (int, error) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	t.b = append(t.b, p...)
-	if len(t.b) > 4096 {
-		t.b = t.b[len(t.b)-4096:]
-	}
+	t.b = t.b[max(0, len(t.b)-4096):]
 	return len(p), nil
 }
 
