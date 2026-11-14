@@ -693,3 +693,89 @@ JSON string, and the JSON wire body echoed as text; all three failed on the pare
 seeds hold a base64-shaped refresh value with &, one seed echoes both spellings, and its assertion refuses the real value,
 its url-encoded and its json-escaped spelling, plain and in the re-marshalled JSON reading. escape/_pending/S-F7/ is gone.
 Product 15000 of 15000, paid by folding the doc comments of learn and hide; test 27486 of 27500.
+
+## S-1006: resolver: tunnelling, rebinding, cache and case tricks (I3, I4), as built at main 64eeaad
+
+Trust boundary. Guest root owns every byte on vsock 5001 after the 20 B header of a UDP-53 stream: the 2 B length and up to 65535 B
+of DNS message (cmd/workcell/relay.go exchange, internal/relay ReadFrame, internal/resolver Answer), and the stream rate and timing.
+The handling code is the supervisor, as the operator's uid: it answers from policy, writes one audit Note per refused name through
+proxy.Deny and never forwards a query. The network attacker owns the host resolver's answers for allowed names (internal/proxy/proxy.go
+connect, net.DefaultResolver; map row 14) and every upstream byte; the supervisor dials TCP from the host with those answers after
+blockedAddr. The allowed-name set reaches the resolver as allow.Hosts() (lowercase, unrooted, dnsName-validated) and the proxy as the
+exact port-scoped sets of the same strings; the session CA's PermittedDNSDomains is allow.TLSHosts(). The guest's resolv.conf
+(cmd/workcell-init/net.go) is data only (A1): whatever it names, every address routes to the init and UDP 53 is relayed to the
+in-process resolver. Lenses worked in order: parsing and resources, logic and state, concurrency and check-to-use, cryptography and
+identity, failure modes, downgrade and replay, interaction with other surfaces.
+
+Leads refuted or bounded, with evidence (overlay tests from the scratchpad against the real packages, nothing in the tree changed,
+every target a listener this session bound on 127.0.0.1; nothing here needed a VM):
+- Parsing: label types 0x41 and 0x80, a compression pointer to a later offset, 128 one-byte labels (255 text bytes) and QDCOUNT other
+  than 1 all get FORMERR in a 12-byte reply; 127 one-byte labels (253 bytes) parse; a valid question followed by 65 KB of junk is
+  answered normally (49 bytes); TC, AA, Z, AD and CD are masked out of the reply; every reply is at most the question plus 16 bytes,
+  so maxReply 287 holds and there is no amplification, and the reply goes back over vsock only. A 65535-byte frame through the real
+  stream dispatcher is answered; a frame that promises 65535 bytes and sends 3 is dropped at the absolute deadline (701 ms with a
+  700 ms wait), so a DNS stream holds a slot for at most headerWait, within the 1024 slots.
+- Logic and state: case folding is ASCII-only on both sides and the allowlist is ASCII, so no fold matches a non-ASCII spelling; a
+  trailing dot is trimmed by the query form and refused by crypto/tls in an SNI; subdomain, suffix, prefix and one-label-with-a-dot
+  are refused (TestAnswer); underscore and wildcard labels give name "" (refused, "(invalid)" in the log); punycode is compared
+  literally; ANY, AAAA, TXT and HTTPS on an allowed name are NOERROR with no record; class 0, CH and every opcode but QUERY are
+  REFUSED without a record. REFUSED against nodata tells the guest whether a name is allowed, which the CA's PermittedDNSDomains
+  already discloses. The resolver's 127.0.0.1 answer is a hint only: the dialled address is connect's own lookup.
+- Concurrency and check-to-use: one lookup per connection, every answer vetted before any dial, sequential dials over that one set
+  under a shared budget, no second lookup and no Happy Eyeballs (TestConnectVetsEveryAnswerOnEveryConnection); Go's singleflight
+  dedups concurrent lookups of one name; the Go stub never chases a CNAME (a canary resolver answering `CNAME denied.example`, with
+  and without the target's A, produced only A and AAAA queries for allowed.example.); the interface list is read per connect. No gap.
+- Cryptography and identity: none on this surface. DNSSEC is not consulted (no DO bit, AD ignored, the OS resolver's validation is
+  not visible); the only identity check on the path is upstream x509 for terminated hosts (S-1005).
+- Failure modes (I11): the resolver is in-process and cannot die apart from the supervisor; a ReadFrame error or a nil Answer closes
+  the stream; a lookup error or an empty set is resolve_failed, an unreadable interface list is blocked_address, an Accept error ends
+  serveRelay and closes every adapter so Serve ends. No error path reaches a dial or a splice.
+- Downgrade, rollback and replay: header version 1 only; the resolver is stateless, so a replayed frame gets the same reply; the
+  product caches nothing across sessions; OS caches hold answers for allowed names only, since the host asks for nothing else.
+- Interaction: DNS tunnelling moves at most 253 bytes per refused query into the host's own log and nothing off the host; the host's
+  only outbound queries are A and AAAA of the rooted allowed name (I3). Forward ports map to one host each and the resolver answers
+  that host too. The terminated transport's DialContext re-enters connect per upstream connection, so vetting is per connection, but
+  that dial is detached from the guest's request: candidate C13 below.
+- S-1004 handoff, the refused callback's host string (I9): the name reaching Deny is lowercase [a-z0-9.-] of at most 253 bytes, or ""
+  for any other byte; audit clips at 253 and JSON-escapes. Names `-dash.example`, `a_b.example`, `x"y`, `x\n`,
+  `x,"event":"session_end"`, a 253-byte name and the root went through resolver.New, p.Deny and a real audit.Create log: Verify
+  passes, every line parses, denyReader prints one line each, the non-hostname ones as `denied (invalid) (dns): not a host name`. No
+  forge, no second line, no confusion with a host-set field. The only suppression path is the SoftLimit fill (S-1010's design): about
+  130 B per refused query at 240 streams/s or less is about 4.5 min to 8 MiB, against 1.3 s through the terminated path (S-1005).
+- PARKED line 8, address-shaped names (I13): netip.ParseAddr refuses exactly what dnsName lets through, and Go's lookupIPAddr parses
+  with netip first, then isDomainName refuses all-numeric names. With a local canary resolver, lookups of `01.2.3.4.`, `2130706433.`,
+  `127.1.` and `1.2.3.4.5.` sent no query and gave resolve_failed; `0x7f.1.`, `localhost.` and `a.localhost.` went out as names (A and
+  AAAA of the rooted name only) and any answer meets blockedAddr. absDomainName roots only dotted names, so a single-label /etc/hosts
+  entry is skipped by the rooted lookup and DNS is asked instead. All operator-chosen: no guest path puts a name into the policy.
+- PARKED line 44, resolver caches (I4): on darwin Go resolves through libSystem getaddrinfo, so mDNSResponder's cache applies; Linux
+  pure Go has none; systemd-resolved caches per TTL. The product caches nothing and vets every address per connection, so a cached or
+  stale answer changes which vetted address is dialled or gives resolve_failed; it cannot widen reach. The cross-session effect is on
+  suite verdicts only (tests.go orders the no-data row last; workcell_darwin.go settle sleeps 16 s). Mac only, reasoned.
+- PARKED line 7, untested variants (I3): only TCP to listed ports and UDP 53 cross the vsock. DoQ and h3 are UDP to 853 and 443 with
+  no listener in the guest (udp4-datagram and quic-initial rows); mDNS and LLMNR have no device and no group membership; IPv6 forms
+  share the dual-stack listeners and AnyIP ::/0 (relay rows and the `[fd00::1]:53` unit row); DoH over h2 to an allowed host at 443 is
+  HTTPS to an allowed host, the operator's choice, and the terminated server offers http/1.1 only. No new row needed.
+- S-1005 handoff, the transport's timeouts: a stall on the forward (splice) path holds the slot with the socket (5 guests gone, 5 slots
+  held, 5 upstreams open), bounded by maxConns; a post-handshake stall needs a certificate valid for the allowed name, so only the
+  provider (out of scope) can cause it, and the transport closes that connection on cancel. The handshake phase is C13.
+
+Observations (R3, suite hygiene; not candidates): denyMessage's remedy for a refused name with a leading or trailing hyphen is one
+ParseAllowlist refuses; PARKED line 26 is still open (the `forwarded` Want has no Resolver, so four forwarded rows ask the runner's
+resolver for allowed.escape.test); a single-label allowlist name never matches /etc/hosts under the rooted lookup on Linux.
+
+Coverage. Read in full: internal/resolver/resolver.go and resolver_test.go; internal/relay/relay.go and relay_test.go;
+cmd/workcell/relay.go, relay_test.go, policy.go, log.go, ocsf.go; cmd/workcell/run_vm.go lines 230-369 (boot, bind, resolver wiring);
+internal/proxy/proxy.go, allowlist.go, terminate.go, proxy_test.go, terminate_test.go lines 1-200; cmd/workcell-init/net.go as data;
+internal/audit/audit.go and lines.go; escape/suite/dns.go, dnstests.go, resolver.go, rebind.go, tests.go;
+escape/sandbox/control_resolver_linux.go; ADR-003; docs/policy.md; PARKED.md; SPEC sections 2, 3, 6, 11 and 13; FINDINGS lines 1-133
+and 404-521; Go 1.27 net/http transport.go (getConn, wantConn, dialConnFor, addTLS, CloseIdleConnections), net lookup.go, hosts.go,
+dnsclient.go absDomainName, conf.go and cgo_unix_syscall.go. Skimmed: terminate_test.go past line 200; signin.go (Deny sites);
+escape/sandbox workcell_vm.go, workcell_darwin.go, workcell_linux.go, workcell.go, sandbox.go; escape/suite/relay.go and helpers.go;
+docs/threat-model.md; loop/gate.sh budgets; the proxy forward, clients, c10 to c12, git and providers tests by name. Not opened:
+internal/proxy/signin_test.go, escape/suite/packets.go and icmp_linux.go, the remaining sandbox files, cmd/workcell/explain.go,
+docs/providers.md, _legacy/. Ran: go test ./internal/proxy ./internal/resolver ./internal/relay ./cmd/workcell on the tree (green) and
+nine overlay probes; nothing needing a VM; no probe left the session. terminate.go and proxy.go are ported, so C13 is an ordinary
+public candidate under section 13 with its `also in v1 main` line; cmd/workcell/relay.go is not ported. No model declined, and no
+safeguard re-ran a request.
+
+### S-1006 candidates
