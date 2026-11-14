@@ -24,20 +24,15 @@ import (
 	"github.com/omkhar/workcell/v2/escape/sandbox"
 )
 
-// The provider layer row (I7, B8). The host installs the agents in layers from
-// an upstream the judge serves (T8), each in its real upstream's shape; root
-// in the guest does what it can to claude's layer (hijack), and a second
-// session must run the versions the host installed from a layer unchanged.
-// In between, bytes whose digest is not the row's must be refused (B8).
-// hijacked is what the guest's own agent, or the mismatched bytes, print.
+// The provider layer row (I7, B8). The host installs the agents in layers from an upstream the judge serves (T8), each in its real upstream's shape; root in
+// the guest does what it can to claude's layer (hijack), and a second session must run the versions the host installed from a layer unchanged. In between,
+// bytes whose digest is not the row's must be refused (B8). hijacked is what the guest's own agent, or the mismatched bytes, print.
 var layers = map[string]string{"claude": "9.9.9", "codex": "8.8.8"}
 
 const layerAgent, hijacked = "claude", "6.6.6"
 
-// shaped is the artifact an agent's upstream serves for a binary that
-// prints version, and the path it serves it at: claude a bare executable,
-// codex a gzip tar whose only entry, at the root, is named by the target
-// triple. The binary is a shell script as far as the row cares.
+// shaped is the artifact an agent's upstream serves for a binary that prints version, and the path it serves it at: claude a bare executable, codex a gzip tar
+// whose only entry, at the root, is named by the target triple. The binary is a shell script as far as the row cares.
 func shaped(agent, version string) (string, []byte) {
 	body := []byte("#!/bin/sh\necho " + version + "\n")
 	if agent != "codex" {
@@ -54,8 +49,7 @@ func shaped(agent, version string) (string, []byte) {
 	return "/" + name + ".tar.gz", art.Bytes()
 }
 
-// install has the host install agent at version from src, which serves the
-// shaped artifact the row's digest names, or served when that is not nil.
+// install has the host install agent at version from src, which serves the shaped artifact the row's digest names, or served when that is not nil.
 func install(ctx context.Context, s Session, src *upstream, agent, version string, served []byte) (string, error) {
 	path, art := shaped(agent, version)
 	if served == nil {
@@ -65,8 +59,7 @@ func install(ctx context.Context, s Session, src *upstream, agent, version strin
 	return s.Install(ctx, sandbox.Layer{Agent: agent, Version: version, URL: src.url + path, Artifact: art})
 }
 
-// layerJudge installs every agent of layers, has the host refuse a digest
-// mismatch, and compares what two sessions see.
+// layerJudge installs every agent of layers, has the host refuse a digest mismatch, and compares what two sessions see.
 func layerJudge(ctx context.Context, s Session) (bool, string, error) {
 	cfg, err := certificate("127.0.0.1")
 	if err != nil {
@@ -130,10 +123,8 @@ func fields(detail string) map[string]string {
 	return out
 }
 
-// layerProbe runs `<agent> --version` for each agent of layers on PATH,
-// hashes every file of claude's layer (the parent of the binary's directory)
-// and, as "attack", tries as root to make claude print the version given,
-// then says what it prints. Versions first: a detail is cut at maxDetail.
+// layerProbe runs `<agent> --version` for each agent of layers on PATH, hashes every file of claude's layer (the parent of the binary's directory) and, as
+// "attack", tries as root to make claude print the version given, then says what it prints. Versions first: a detail is cut at maxDetail.
 func layerProbe(args []string) Result {
 	if len(args) != 2 {
 		return Result{Status: "error", Detail: "want attack|check and version"}
@@ -158,9 +149,8 @@ func layerProbe(args []string) Result {
 	return Result{Status: "tried", Detail: strings.Join(detail, " ")}
 }
 
-// hijack tries what root has to change the layer at root, whose binary is
-// path: a write, an unlink and a fresh file, and a new file beside it. The
-// judge decides on the second session's view, whatever these say.
+// hijack tries what root has to change the layer at root, whose binary is path: a write, an unlink and a fresh file, and a new file beside it. The judge
+// decides on the second session's view, whatever these say.
 func hijack(path, root string, body []byte) string {
 	write := func(p string) string { return "write=" + status(os.WriteFile(p, body, 0o755)) }
 	out := []string{write(path), "unlink=" + status(os.Remove(path))}
@@ -187,8 +177,7 @@ func output(name string, args ...string) string {
 	return out
 }
 
-// treeSum hashes every regular file and symlink below root, by relative
-// path, mode and content, into twelve hex characters.
+// treeSum hashes every regular file and symlink below root, by relative path, mode and content, into twelve hex characters.
 func treeSum(root string) string {
 	h := sha256.New()
 	filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
