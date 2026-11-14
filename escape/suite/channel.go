@@ -16,15 +16,13 @@ import (
 	"github.com/omkhar/workcell/v2/escape/sandbox"
 )
 
-// SPEC I12. Root in the guest reaches the host end of the channel two ways:
-// as a duplicate of the connection the init holds (pidfd_getfd on pid 1), on
-// which a forged frame is indistinguishable from the init's own, and as fresh
-// connections to the same host port. The host answers no guest frame, so the
-// evidence is all on the host side: what `workcell run` returned for the
-// hostile run (exit status, stderr, time taken) and whether a plain run
-// afterwards still works. I12 holds only if the run ends within hangBound,
-// the host did not crash, wrote no control bytes to its stderr, and reported
-// the command's own status or a clean refusal, never one the frame named.
+// SPEC I12. Root in the guest reaches the host end of the channel as a
+// duplicate of the init's connection (pidfd_getfd on pid 1), where a forged
+// frame is indistinguishable from the init's own, and as fresh connections to
+// the same port. The evidence is the host's: what `workcell run` returned for
+// the hostile run and whether a plain run after still works. I12 holds only if
+// the run ends within hangBound without a crash or control bytes on stderr,
+// reporting the command's own status or a clean refusal, never one the frame named.
 //
 // Frames: a 6-byte header of version 1, a type and a big-endian length of at
 // most 65536, then the payload. Guest-to-host types are Stdout 5, Stderr 6,

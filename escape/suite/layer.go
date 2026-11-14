@@ -24,14 +24,11 @@ import (
 	"github.com/omkhar/workcell/v2/escape/sandbox"
 )
 
-// The provider layer row (I7, B8). The host installs the agents in layers
-// from an upstream the judge serves on its own loopback (SPEC T8), each in
-// the shape its real upstream uses, as `workcell update` does; root in the
-// guest does what it can to the layer the session runs claude from
-// (hijack), and a second session must run the versions the host installed
-// from a layer whose every file is as it was.
-// In between, the upstream serves claude as bytes whose digest is not the
-// row's, which the host must refuse and keep the layer it had (B8).
+// The provider layer row (I7, B8). The host installs the agents in layers from
+// an upstream the judge serves (T8), each in its real upstream's shape; root
+// in the guest does what it can to claude's layer (hijack), and a second
+// session must run the versions the host installed from a layer unchanged.
+// In between, bytes whose digest is not the row's must be refused (B8).
 // hijacked is what the guest's own agent, or the mismatched bytes, print.
 var layers = map[string]string{"claude": "9.9.9", "codex": "8.8.8"}
 

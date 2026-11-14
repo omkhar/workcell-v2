@@ -22,27 +22,18 @@ import (
 	"github.com/omkhar/workcell/v2/escape/sandbox"
 )
 
-// The I11 rows. The product has no helper process of its own (SPEC A9): the
-// proxy and the resolver are parts of the one supervisor that owns the
-// session's VM. So "the proxy dies" is that process dying as a crash kills
-// it, SIGKILL, while the guest holds a connection the proxy served it. The
-// adapter names the process (sandbox.Observe.Helper); the judge kills it and
-// holds the host to the invariant: every process of the session goes with
-// it, the held connection closes, no canary and no resolver hears from the
-// guest again, and the run ends. What the guest says afterwards can count
-// against the product, never for it.
+// The I11 rows. The proxy and the resolver are parts of the one supervisor
+// that owns the VM (A9), so "the proxy dies" is that process killed, SIGKILL,
+// while the guest holds a connection it served. Every process of the session
+// must go with it, the held connection close, no canary and no resolver hear
+// from the guest again. What the guest says afterwards counts against the product, never for it.
 
-// servable is the sandbox the rows want: an allowed name, bare, so that the
-// host terminates the guest's connections to it and carries each request
-// on to the canary itself, a denied name, the judge as the host's resolver,
-// answering both names with the test host's address, and, so that the
-// product's vetting accepts that address, the host side in a network of its
-// own (SPEC T8). Both canaries share the listener at port 443 there.
+// servable is the sandbox the rows want: a bare allowed name, a denied one,
+// the judge as the host's resolver, and the host side in a network of its own (T8).
 var servable = Want{Allow: []string{"allowed.escape.test"}, Deny: []string{"denied.escape.test"}, Resolver: judgeResolver, Isolated: true}
 
-// bind opens network/addr on the host side of s, where the product reaches
-// the test host (sandbox.Observe.Bind), and as root on the test host when a
-// port in the host's own network needs that.
+// bind opens network/addr on the host side of s (sandbox.Observe.Bind), as
+// root on the test host when a port in the host's own network needs that.
 func bind(ctx context.Context, s Session, network, addr string) (net.Listener, net.PacketConn, error) {
 	ln, pc, err := s.Bind(ctx, network, addr)
 	if errors.Is(err, syscall.EACCES) {

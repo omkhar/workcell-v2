@@ -15,65 +15,47 @@ import (
 )
 
 // SPEC I12, through the self-rollback of B9 and B10. The operator installs a
-// provider layer and runs the provider by name, `workcell run claude`. The
-// host takes an Exit frame that arrives as the guest's first frame, carrying
-// an error text, for the init's own word that the command could not start,
-// and acts on it outside the session: it sets the layer aside, so that every
-// later session runs the version before it, or none. Root in the guest
-// speaks first: the command itself, before it writes a byte, takes the
-// init's connection (pidfd_getfd on pid 1, as the channel rows do) and
-// writes that one frame. Nothing the guest says may change what the host
-// has installed: the layer must still be current for the next session,
-// which the judge sees through the product's own surface, a second
-// `workcell run claude`, and on the host, where the image lies.
-//
-// The layer's binary is the payload itself, served as the bare executable
-// the real claude pin is, so that the command the operator runs by name is
-// the attacker, with no stdin and no output before the forged frame.
-const (
-	rollbackVersion = "5.5.5" // the version the operator installs
-	noExecText      = "nope"  // the forged Exit's error text
-)
+// provider layer and runs it by name, `workcell run claude`. An Exit frame of
+// error text that is the guest's first frame passes for the init's own word
+// that the command could not start, and the host acts on it outside the
+// session: the layer is set aside, and every later session runs the version
+// before it, or none. Here the command itself speaks first: the layer's
+// binary is the payload, served as the bare executable the real claude pin
+// is, and before it writes a byte it takes the init's connection (pidfd_getfd
+// on pid 1, as the channel rows do) and writes that one frame. The layer must
+// still be current for the next session, seen through a second
+// `workcell run claude` and, on the host, where the image lies.
+const rollbackVersion, noExecText = "5.5.5", "nope"
 
-// rollbackProbe is the command the operator ran, as the layer's claude: as
-// "forge" it takes the init's channel at args[1] and writes one Exit frame
-// of error text before anything else, then lingers; as "check" it says
-// whether the layer's claude is on PATH at all.
+// rollbackProbe is the layer's claude: "forge" writes the Exit of error text
+// on the init's channel at args[1] before anything else, then lingers;
+// "check" says whether a claude is on PATH at all.
 func rollbackProbe(args []string) Result {
-	if len(args) == 0 {
+	switch {
+	case len(args) == 1 && args[0] == "check":
+		if path, err := exec.LookPath(layerAgent); err == nil {
+			return Result{Status: "present", Detail: layerAgent + "=" + path}
+		}
+		return Result{Status: "missing", Detail: layerAgent + "=none"}
+	case len(args) != 2 || args[0] != "forge":
 		return Result{Status: "error", Detail: "want forge and channel address, or check"}
 	}
-	switch args[0] {
-	case "check":
-		path, err := exec.LookPath(layerAgent)
-		if err != nil {
-			return Result{Status: "missing", Detail: layerAgent + "=none"}
-		}
-		return Result{Status: "present", Detail: layerAgent + "=" + path}
-	case "forge":
-		if len(args) != 2 {
-			return Result{Status: "error", Detail: "want forge and channel address"}
-		}
-		ch, err := stealChannel(args[1])
-		if err != nil {
-			return Result{Status: "error", Detail: "take the init's channel: " + err.Error()}
-		}
-		defer ch.close()
-		b := frame(typeExit, textTag([]byte(noExecText)))
-		if _, err := ch.write(b, sendWait); err != nil {
-			return Result{Status: "unsent", Detail: "first frame: " + err.Error()}
-		}
-		time.Sleep(shortLinger)
-		return Result{Status: "sent", Detail: fmt.Sprintf("an Exit of error text %q as the guest's first frame, still running %s later", noExecText, shortLinger)}
+	ch, err := stealChannel(args[1])
+	if err != nil {
+		return Result{Status: "error", Detail: "take the init's channel: " + err.Error()}
 	}
-	return Result{Status: "error", Detail: "unknown kind " + args[0]}
+	defer ch.close()
+	if _, err := ch.write(frame(typeExit, textTag([]byte(noExecText))), sendWait); err != nil {
+		return Result{Status: "unsent", Detail: "first frame: " + err.Error()}
+	}
+	time.Sleep(shortLinger)
+	return Result{Status: "sent", Detail: fmt.Sprintf("an Exit of error text %q as the guest's first frame, still running %s later", noExecText, shortLinger)}
 }
 
 // rollbackJudge installs the layer, runs the operator's command once, which
-// forges the first frame, and then has a second session run the same command:
-// the layer the operator installed must still run, and its image must still
-// be on the host. What the hostile run itself returned is detail, held only
-// to what every hostile run is (hostFault): the finding is the host state after.
+// forges the first frame, and then has a second session run it again: the
+// layer must still run and its image must still be on the host. The hostile
+// run itself is detail, held only to what every hostile run is (hostFault).
 func rollbackJudge(ctx context.Context, s Session) (bool, string, error) {
 	payload, err := os.ReadFile(s.Payload)
 	if err != nil {
@@ -119,22 +101,22 @@ func rollbackJudge(ctx context.Context, s Session) (bool, string, error) {
 	if err != nil {
 		return false, "", err
 	}
-	kept := ""
+	kept, gone := "", false
 	if image != "" {
-		if _, err := os.Stat(image); err != nil {
+		_, err := os.Stat(image)
+		if gone, kept = err != nil, "; the layer image is still on the host"; gone {
 			kept = fmt.Sprintf("; the layer image %s is gone from the host", filepath.Base(image))
-		} else {
-			kept = "; the layer image is still on the host"
 		}
 	}
 	r, perr := ParseResult(after.Stdout)
+	prefix := fmt.Sprintf("after the guest's forged first frame, a second `workcell run %s` ", layerAgent)
 	switch {
 	case after.Exit != 0 || perr != nil:
-		return false, fmt.Sprintf("after the guest's forged first frame, a second `workcell run %s` could not run the layer the operator installed: exit %d: %s%s (%s)", layerAgent, after.Exit, firstLine(after.Stderr), kept, hostile), nil
+		return false, fmt.Sprintf("%scould not run the layer the operator installed: exit %d: %s%s (%s)", prefix, after.Exit, firstLine(after.Stderr), kept, hostile), nil
 	case r.Status != "present":
-		return false, fmt.Sprintf("after the guest's forged first frame, a second `workcell run %s` ran, but the layer's %s is gone: %s%s (%s)", layerAgent, layerAgent, r.Detail, kept, hostile), nil
-	case image != "" && kept != "; the layer image is still on the host":
-		return false, fmt.Sprintf("after the guest's forged first frame, a second `workcell run %s` still ran, but the host dropped the layer's image%s (%s)", layerAgent, kept, hostile), nil
+		return false, fmt.Sprintf("%sran, but the layer's %s is gone: %s%s (%s)", prefix, layerAgent, r.Detail, kept, hostile), nil
+	case gone:
+		return false, fmt.Sprintf("%sstill ran, but the host dropped the layer's image%s (%s)", prefix, kept, hostile), nil
 	}
 	return true, fmt.Sprintf("the layer the operator installed is still current after the guest's forged first frame: the second session says %s%s (%s)", r.Detail, kept, hostile), nil
 }
