@@ -6,6 +6,7 @@ package sandbox
 import (
 	"archive/tar"
 	"bytes"
+	"cmp"
 	"context"
 	"crypto/tls"
 	"crypto/x509"
@@ -26,16 +27,15 @@ import (
 )
 
 // control is the plain container of SPEC T2: new mount, pid, uts and ipc
-// namespaces, the host's network and root shared, no cap on what it logs,
-// and a user namespace mapping the caller to root when it is not. Its
-// channel is a unix socket in the session directory, served by naiveHost for
-// each run; the command, pid 1 of its namespace, holds the guest end as an
-// inherited descriptor, since a plain container has no init. Every escape test must fail here.
+// namespaces, the host's network and root shared, no cap on what it logs. Its
+// channel is a unix socket served by naiveHost for each run; the command, pid
+// 1 of its namespace, holds the guest end as descriptor 3. Every escape test must fail here.
 type control struct {
 	dir       string
 	payload   string
 	workspace string
 	env       []string // what a naive sandbox exports to the guest: the real secret
+	command   string   // the provider a run starts by name, instead of the payload (Config.Command)
 	helpers   map[string]*exec.Cmd
 	ln        *net.UnixListener // the host end of the channel
 	relay     *naiveRelay       // the host end of the relay
@@ -43,12 +43,10 @@ type control struct {
 	update    *UpdateConfig     // the channel a naive start installs from, every start
 }
 
-// controlLoader runs as pid 1 of the run's namespaces: $0 is the session's
-// resolv.conf, $1 the payload, the rest its arguments.
+// controlLoader runs as pid 1 of the run's namespaces: $0 the session's resolv.conf, $1 the command, then its arguments.
 const controlLoader = `mount --make-rprivate / && mount --bind "$0" /etc/resolv.conf || { echo "control: cannot bind the session's resolv.conf over /etc/resolv.conf" >&2; exit 125; }; exec "$@"`
 
-// helperNames are the session's helpers. Control starts them on first use,
-// each a payload that sleeps, and they enforce nothing.
+// helperNames are the session's helpers: each a payload that sleeps, started on first use.
 var helperNames = []string{"proxy", "resolver", "broker", "supervisor"}
 
 func newControl() (Sandbox, error) { return &control{}, nil }
@@ -68,7 +66,7 @@ func (c *control) Start(_ context.Context, cfg Config) (string, error) {
 		return "", fmt.Errorf("control: place payload: %w", err)
 	}
 	c.env = []string{"PATH=" + filepath.Join(prefix, "bin") + ":/usr/sbin:/usr/bin:/sbin:/bin", "HOME=/root"}
-	c.workspace, c.update = cfg.Workspace, cfg.Update
+	c.workspace, c.update, c.command = cfg.Workspace, cfg.Update, cfg.Command
 	ln, err := net.Listen("unix", filepath.Join(dir, "channel"))
 	if err != nil {
 		return "", fmt.Errorf("control: open the channel: %w", err)
@@ -80,9 +78,8 @@ func (c *control) Start(_ context.Context, cfg Config) (string, error) {
 	}
 	c.relay = &naiveRelay{ln: rl}
 	go c.relay.serve()
-	// The guest's resolv.conf names the naive resolver, whether or not it
-	// could bind (port 53 needs root): a query then goes there or nowhere,
-	// never to the host's own resolver (SPEC T8, S12).
+	// The guest's resolv.conf names the naive resolver whether or not it could
+	// bind: a query goes there or nowhere, never to the host's own (T8, S12).
 	if c.resolver, err = listenNaiveResolver(naiveResolverAddr); err != nil {
 		fmt.Fprintf(os.Stderr, "escape: control: no naive resolver at %s (%v): the guest's lookups will go unanswered\n", naiveResolverAddr, err)
 	}
@@ -94,9 +91,7 @@ func (c *control) Start(_ context.Context, cfg Config) (string, error) {
 		return "", fmt.Errorf("control: write resolv.conf: %w", err)
 	}
 	if sec := cfg.Secret; sec != nil && sec.Value != "" {
-		// The naive way: the real value in the environment, and in a dotenv
-		// file in the workspace for tools that read one. A row whose source
-		// is a sign-in flow has no value here: the guest signs in itself.
+		// The naive way: the real value in the environment and in a dotenv file in the workspace.
 		c.env = append(c.env, sec.Env+"="+sec.Value)
 		if cfg.Workspace != "" {
 			if err := os.WriteFile(filepath.Join(cfg.Workspace, ".env"), []byte(sec.Env+"="+sec.Value+"\n"), 0o600); err != nil {
@@ -104,13 +99,11 @@ func (c *control) Start(_ context.Context, cfg Config) (string, error) {
 			}
 		}
 	}
-	// The host's root is the guest's: the export is where it lies, live, in
-	// either mode. cfg.Mount changes nothing here.
+	// The host's root is the guest's: the export is where it lies, live, in either mode.
 	return cfg.Workspace, c.record("start")
 }
 
-// record appends one lifecycle record to the session's log: a plain file, as
-// a naive sandbox keeps it, in a directory the guest can reach.
+// record appends one lifecycle record to the session's log, a plain file the guest can reach.
 func (c *control) record(line string) error {
 	f, err := os.OpenFile(filepath.Join(c.dir, "log"), os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0o600)
 	if err != nil {
@@ -125,8 +118,7 @@ func (c *control) Exec(ctx context.Context, args ...string) (Output, error) {
 	if c.update != nil { // a naive daily check: every start, from whatever the channel says
 		c.Update(ctx, *c.update)
 	}
-	// The guest end of the channel: one connection, which the command
-	// inherits as descriptor 3 and the host end serves.
+	// The guest end of the channel: one connection the command inherits as descriptor 3.
 	guest, err := net.Dial("unix", c.ln.Addr().String())
 	if err != nil {
 		return Output{}, fmt.Errorf("control: dial the channel: %w", err)
@@ -143,11 +135,10 @@ func (c *control) Exec(ctx context.Context, args ...string) (Output, error) {
 	stderr := &bounded{limit: MaxStderr}
 	host := &naiveHost{stdout: stdout, stderr: stderr, cancel: cancel}
 	host.wg.Go(func() { host.accept(c.ln) })
-	// The payload starts behind a loader, as the product's does: in the
-	// run's own mount namespace it makes every mount private, so that
-	// nothing it mounts shows on the host, and binds the session's
-	// resolv.conf over /etc/resolv.conf, then becomes the payload.
-	cmd := exec.CommandContext(cctx, "/bin/sh", append([]string{"-c", controlLoader, filepath.Join(c.dir, "resolv.conf"), c.payload}, args...)...)
+	// The loader makes every mount private in the run's own mount namespace,
+	// binds the session's resolv.conf over /etc/resolv.conf, then becomes the
+	// payload, or the command the session runs by name from the prefix's PATH.
+	cmd := exec.CommandContext(cctx, "/bin/sh", append([]string{"-c", controlLoader, filepath.Join(c.dir, "resolv.conf"), cmp.Or(c.command, c.payload)}, args...)...)
 	cmd.Dir = "/"
 	cmd.Env = c.env
 	cmd.ExtraFiles = []*os.File{end}
@@ -161,9 +152,7 @@ func (c *control) Exec(ctx context.Context, args ...string) (Output, error) {
 	}
 	cmd.SysProcAttr = attr
 	cmd.WaitDelay = 2 * time.Second // the payload is pid 1 of its namespace: its death takes the rest
-	// A plain container logs everything the guest says, without a cap: both
-	// streams go whole into the log file in the session directory, after the
-	// record of the run itself.
+	// A plain container logs everything the guest says, without a cap, after the record of the run itself.
 	if err := c.record("exec " + strings.Join(args, " ")); err != nil {
 		return Output{}, err
 	}
@@ -190,13 +179,15 @@ func (c *control) Exec(ctx context.Context, args ...string) (Output, error) {
 	if ctx.Err() != nil {
 		return out, fmt.Errorf("control: payload: %w", ctx.Err())
 	}
+	if c.command != "" && host.couldNotRun() { // a naive self-rollback (B9): the guest's word sets the layer aside
+		os.Remove(filepath.Join(prefix, "bin", c.command))
+	}
 	return host.result(out), nil
 }
 
-// Pull does what a naive sandbox does: it snapshots the guest's work with git
-// in the guest's own repository and configuration, so that every hook, filter
-// and attribute runs on the host and every submodule URL is fetched; then it
-// writes the tree under dest path by path, through whatever a name resolves to.
+// Pull does what a naive sandbox does: git in the guest's own repository and
+// configuration, so every hook, filter, attribute and submodule URL is obeyed,
+// then the tree written under dest through whatever a name resolves to.
 func (c *control) Pull(ctx context.Context, dest string) error {
 	git, err := exec.LookPath("git")
 	if err != nil {
@@ -252,11 +243,7 @@ func (c *control) Audit(context.Context) (string, []string, error) {
 	if err != nil {
 		return path, nil, err
 	}
-	var records []string
-	for line := range strings.SplitSeq(strings.TrimSuffix(string(b), "\n"), "\n") {
-		records = append(records, line)
-	}
-	return path, records, nil
+	return path, strings.Split(strings.TrimSuffix(string(b), "\n"), "\n"), nil
 }
 
 // Verify is what a naive sandbox has: the log is there and holds something.
@@ -309,10 +296,8 @@ func (c *control) startHelpers() error {
 	return nil
 }
 
-// Update does what a naive updater does: it reads the manifest's payload
-// without checking any signature, serial or expiry, fetches the artifact by
-// the URL in it, wherever a redirect sends it, and keeps whatever bytes
-// came, however many, with no digest check.
+// Update does what a naive updater does: no signature, serial, expiry or digest
+// check, the artifact fetched by the manifest's URL wherever a redirect sends it.
 func (c *control) Update(_ context.Context, u UpdateConfig) ([]byte, error) {
 	pool := x509.NewCertPool()
 	pool.AppendCertsFromPEM(u.CA)
@@ -364,10 +349,9 @@ func (c *control) Installed(_ context.Context, name string) ([]byte, error) {
 	return b, err
 }
 
-// Install does what a naive sandbox does: it unpacks the artifact into the
-// one prefix every session's PATH starts with, writable, and keeps no image.
-// It takes the shapes real upstreams serve as the product does: a bare
-// executable, or a tar whose root holds one regular file and no bin/, is bin/<agent>.
+// Install unpacks the artifact into the writable prefix every session's PATH
+// starts with, and keeps no image; a bare executable, or a tar whose root
+// holds one regular file and no bin/, is bin/<agent>.
 func (c *control) Install(ctx context.Context, l Layer) (string, error) {
 	if l.Artifact == nil { // a real pin: fetched as it is, digest checked
 		var err error
@@ -403,8 +387,7 @@ func (c *control) Install(ctx context.Context, l Layer) (string, error) {
 	return "", nil
 }
 
-// Bench: a plain container boots no VM, so there is no start to time. It says
-// so as the CLI reports a boot it could not do: one line on stderr, exit 1, no measurement.
+// Bench: a plain container boots no VM, so it reports as the CLI does a boot it could not do.
 func (c *control) Bench(context.Context) (Output, error) {
 	return Output{Stderr: []byte("control: a plain container boots no VM\n"), Exit: 1}, nil
 }

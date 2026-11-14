@@ -20,14 +20,10 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-// capped is the sandbox the I10 tests want. Each judge holds the host to
-// these caps, with slack for the noise of a shared host, while the probe
-// asks for about twice as much.
+// capped is the sandbox the I10 tests want: each judge holds the host to these caps, with slack, while the probe asks for twice as much.
 var capped = Want{CPUs: 1, MemoryMiB: 256, DiskMiB: 64}
 
-// cappedLive is capped in mount mode: the export served live (`--mount`), so
-// a write inside it lands on the host's disk at once, and the cap must hold
-// there, not in a guest image.
+// cappedLive is capped in mount mode: a write inside the live export lands on the host's disk, where the cap must hold.
 var cappedLive = Want{Workspace: true, Mount: true, CPUs: capped.CPUs, MemoryMiB: capped.MemoryMiB, DiskMiB: capped.DiskMiB}
 
 const (
@@ -121,12 +117,9 @@ var (
 )
 
 // mountDiskJudge is diskJudge for a live export: the probe writes twice the
-// cap under the export itself, and grows a file there far past it without
-// writing. It fails if the host lost more free disk than the cap and its
-// slack, or if a file in the export, as the host sees it, grew past them.
-// A run that did not end in the probe's own "tried" report is never a pass:
-// an error of the run is the row's error, and any other report fails the row
-// with what the guest said, so that a log shows what happened in the guest.
+// cap under the export and grows a file there far past it without writing;
+// neither the host's free disk nor a file in the export may pass the cap and
+// its slack. A run that did not end in the probe's own "tried" report is never a pass.
 func mountDiskJudge(ctx context.Context, s Session) (bool, string, error) {
 	var r Result
 	var size int64
@@ -190,16 +183,33 @@ func cpuJudge(ctx context.Context, s Session) (bool, string, error) {
 	return busy <= allowed, detail, nil
 }
 
+// ints reads args as the n integers a probe wants, and says what it wants when they are not.
+func ints(args []string, n int, want string) ([]int, Result) {
+	out := make([]int, 0, n)
+	for _, a := range args {
+		v, err := strconv.Atoi(a)
+		if err != nil {
+			return nil, Result{Status: "error", Detail: err.Error()}
+		}
+		out = append(out, v)
+	}
+	if len(args) != n {
+		return nil, Result{Status: "error", Detail: "want " + want}
+	}
+	return out, Result{}
+}
+
 // memoryProbe runs itself again as a child that touches args[1] MiB and holds
 // it, so that a guest which kills the child still reports.
 func memoryProbe(args []string) Result {
 	if len(args) != 2 {
 		return Result{Status: "error", Detail: "want parent|child and MiB"}
 	}
-	mib, err := strconv.Atoi(args[1])
-	if err != nil {
-		return Result{Status: "error", Detail: err.Error()}
+	v, r := ints(args[1:], 1, "MiB")
+	if r.Status != "" {
+		return r
 	}
+	mib := v[0]
 	if args[0] == "child" {
 		b := make([]byte, mib<<20)
 		for i := 0; i < len(b); i += 4096 {
@@ -212,12 +222,9 @@ func memoryProbe(args []string) Result {
 	return asChild(os.Args[1], "child", args[1], "asking for "+args[1]+" MiB")
 }
 
-// asChild runs this binary again as a child, in its own process group, with
-// the arguments and returns what the child reports; or child-killed, as a
-// tried result, when the guest killed it, which is what a sandbox that holds
-// I10 does to a flood. A child still running after childWait is killed with
-// everything it forked, and reported the same way, so that a guest thrashing
-// on a flood never takes the session's whole bound without a report.
+// asChild runs this binary again as a child, in its own process group, and
+// returns what it reports; or child-killed, a tried result, when the guest
+// killed it, or when it still runs after childWait and is killed with everything it forked.
 func asChild(args ...string) Result {
 	exe, err := os.Executable()
 	if err != nil {
@@ -249,17 +256,14 @@ func asChild(args ...string) Result {
 }
 
 // diskProbe writes args[0] MiB to an unlinked file in the guest's first temp
-// directory that lies on a disk, syncs it, and holds it. The space is freed
-// when it exits. A directory held in memory would load memory, not disk, and
-// is not what this probe is for.
+// directory on a disk (one in memory would load memory, not disk), syncs it, and holds it.
 func diskProbe(args []string) Result {
-	if len(args) != 1 {
-		return Result{Status: "error", Detail: "want MiB"}
+	v, r := ints(args, 1, "MiB")
+	if r.Status != "" {
+		return r
 	}
-	mib, err := strconv.Atoi(args[0])
-	if err != nil {
-		return Result{Status: "error", Detail: err.Error()}
-	}
+	mib := v[0]
+	var err error
 	var f *os.File
 	var dir string
 	for _, dir = range []string{os.TempDir(), "/var/tmp", "/root", "/"} {
@@ -309,14 +313,11 @@ func mountDiskProbe(args []string) Result {
 	if len(args) != 3 {
 		return Result{Status: "error", Detail: "want export, MiB and GiB"}
 	}
-	mib, err := strconv.Atoi(args[1])
-	if err != nil {
-		return Result{Status: "error", Detail: err.Error()}
+	v, r := ints(args[1:], 2, "MiB and GiB")
+	if r.Status != "" {
+		return r
 	}
-	gib, err := strconv.Atoi(args[2])
-	if err != nil {
-		return Result{Status: "error", Detail: err.Error()}
-	}
+	mib, gib := v[0], v[1]
 	sparse, err := os.Create(filepath.Join(args[0], "escape-sparse"))
 	if err != nil {
 		return Result{Status: "error", Detail: "create in export: " + short(err)}
@@ -324,18 +325,9 @@ func mountDiskProbe(args []string) Result {
 	defer os.Remove(sparse.Name())
 	defer sparse.Close()
 	end := int64(gib) << 30
-	detail := "truncate="
-	if err := sparse.Truncate(end); err != nil {
-		detail += short(err)
-	} else {
-		detail += "ok"
-	}
-	detail += " pwrite="
-	if _, err := sparse.WriteAt([]byte{1}, end-1); err != nil {
-		detail += short(err)
-	} else {
-		detail += "ok"
-	}
+	detail := "truncate=" + status(sparse.Truncate(end))
+	_, err = sparse.WriteAt([]byte{1}, end-1)
+	detail += " pwrite=" + status(err)
 	sparse.Sync()
 	if st, err := sparse.Stat(); err == nil {
 		detail += fmt.Sprintf(" size=%dMiB", st.Size()>>20)
@@ -355,13 +347,12 @@ func mountDiskProbe(args []string) Result {
 // limit when it may as root, and opens up to args[0] descriptors, as pipe
 // ends, then holds them.
 func fileProbe(args []string) Result {
-	if len(args) != 1 {
-		return Result{Status: "error", Detail: "want count"}
+	v, r := ints(args, 1, "count")
+	if r.Status != "" {
+		return r
 	}
-	n, err := strconv.Atoi(args[0])
-	if err != nil {
-		return Result{Status: "error", Detail: err.Error()}
-	}
+	n := v[0]
+	var err error
 	time.Sleep(ms) // the runtime's poller takes two descriptors on first use: make that now, not once the table is full
 	var lim unix.Rlimit
 	unix.Getrlimit(unix.RLIMIT_NOFILE, &lim)
@@ -394,13 +385,11 @@ func fileProbe(args []string) Result {
 // logProbe streams args[0] bytes of noise to stderr, then holds for the
 // judge's samples.
 func logProbe(args []string) Result {
-	if len(args) != 1 {
-		return Result{Status: "error", Detail: "want bytes"}
+	v, r := ints(args, 1, "bytes")
+	if r.Status != "" {
+		return r
 	}
-	n, err := strconv.Atoi(args[0])
-	if err != nil {
-		return Result{Status: "error", Detail: err.Error()}
-	}
+	n := v[0]
 	chunk := bytes.Repeat([]byte("escape log flood\n"), 4096)
 	wrote := 0
 	for wrote < n {
@@ -416,13 +405,11 @@ func logProbe(args []string) Result {
 
 // cpuProbe spins one thread per CPU the guest sees for args[0] seconds.
 func cpuProbe(args []string) Result {
-	if len(args) != 1 {
-		return Result{Status: "error", Detail: "want seconds"}
+	v, r := ints(args, 1, "seconds")
+	if r.Status != "" {
+		return r
 	}
-	secs, err := strconv.Atoi(args[0])
-	if err != nil {
-		return Result{Status: "error", Detail: err.Error()}
-	}
+	secs := v[0]
 	n := min(runtime.NumCPU(), 8)
 	deadline := time.Now().Add(time.Duration(secs) * time.Second)
 	var wg sync.WaitGroup
