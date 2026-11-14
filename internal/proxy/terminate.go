@@ -431,7 +431,6 @@ func (p *Proxy) serveTerminated(client net.Conn, host string, replay []byte) {
 			}
 			// At a token endpoint the body is read whole, its refresh placeholder swapped, and the answer rewritten (signin.go).
 			if rule, ok := p.tokenEndpoint(host, r.URL); ok {
-				_ = http.NewResponseController(w).SetReadDeadline(time.Now().Add(peekTimeout)) // a declared, withheld body cannot park the slot (I12)
 				body, reason := p.tokenRequest(r, rule)
 				if reason != "" {
 					p.Deny(host, tlsPort, reason)
