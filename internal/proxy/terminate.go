@@ -392,6 +392,7 @@ func (p *Proxy) serveTerminated(client net.Conn, host string, replay []byte) {
 	// ponytail: no idle timeout, like splice; a peer that never closes holds the conn.
 	srv := &http.Server{
 		ReadHeaderTimeout: peekTimeout,
+		MaxHeaderBytes:    64 << 10, // a client needs a few KiB; this bounds what a held slot pins (I10, C11)
 		ErrorLog:          discardLog,
 		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// TRACE echoes request headers and CONNECT tunnels past the rewrite, so neither may carry a swapped key.
@@ -430,6 +431,7 @@ func (p *Proxy) serveTerminated(client net.Conn, host string, replay []byte) {
 			}
 			// At a token endpoint the body is read whole, its refresh placeholder swapped, and the answer rewritten (signin.go).
 			if rule, ok := p.tokenEndpoint(host, r.URL); ok {
+				_ = http.NewResponseController(w).SetReadDeadline(time.Now().Add(peekTimeout)) // a declared, withheld body cannot park the slot (I12)
 				body, reason := p.tokenRequest(r, rule)
 				if reason != "" {
 					p.Deny(host, tlsPort, reason)
