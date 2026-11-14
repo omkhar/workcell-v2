@@ -64,24 +64,24 @@ func validPath(p string) bool {
 }
 
 // tokenEndpoint returns the rule whose token endpoint a request to u on host goes to: one whose path a common router would read as u's, taken as sent or as
-// decoded with its dot segments resolved, in either case, and with a ;param suffix dropped from each segment. The match is wide because an answer taken for
-// another path would reach the guest unread (I5), while a request taken for the endpoint is only read whole and rewritten.
+// decoded and folded, in either case. The match is wide because an answer taken for another path would reach the guest unread (I5), while a request taken
+// for the endpoint is only read whole and rewritten.
 func (p *Proxy) tokenEndpoint(host string, u *url.URL) (TerminateRule, bool) {
 	for _, r := range p.signin[host] {
-		if sameEndpoint(u.EscapedPath(), r.SignIn.Path) || sameEndpoint(path.Clean(u.Path), r.SignIn.Path) {
+		if strings.EqualFold(u.EscapedPath(), r.SignIn.Path) || strings.EqualFold(fold(u.Path), r.SignIn.Path) {
 			return r, true
 		}
 	}
 	return TerminateRule{}, false
 }
 
-// sameEndpoint reports whether a router that folds case or drops a ;param suffix from each segment would serve p as endpoint.
-func sameEndpoint(p, endpoint string) bool {
-	segs := strings.Split(p, "/")
+// fold reads a decoded path as a router that takes a backslash for a slash, drops a ;param suffix from each segment and then resolves dot segments does.
+func fold(p string) string {
+	segs := strings.Split(strings.ReplaceAll(p, `\`, "/"), "/")
 	for i, seg := range segs {
 		segs[i], _, _ = strings.Cut(seg, ";")
 	}
-	return strings.EqualFold(strings.Join(segs, "/"), endpoint)
+	return path.Clean(strings.Join(segs, "/"))
 }
 
 // tokenRequest reads the body of a request to rule's token endpoint and swaps the refresh placeholder in its refresh_token field for the refresh token the

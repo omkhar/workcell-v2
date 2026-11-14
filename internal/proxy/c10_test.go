@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Omkhar Arasaratnam
 
-// S-F5, finding C10 of S-1005 (I5). This file waits here, where Go does not compile it, until its fix lands; the fix unit moves it into internal/proxy/. tokenEndpoint and
-// admits judge a path as sent and as decoded with its dot segments resolved, and sameEndpoint drops a ;param suffix from each segment, but neither
+// S-F5, finding C10 of S-1005 (I5). tokenEndpoint and admits judge a path as sent and as decoded with its dot segments resolved, and sameEndpoint drops a ;param suffix from each segment, but neither
 // resolves the dot segments that dropping a ;param or folding a backslash uncovers. A router that drops ;params before it normalises (Tomcat's
 // CoyoteAdapter: parsePathParameters, then normalize; Jetty and Undertow alike) or reads a backslash as a slash (HTTP.sys, IIS) serves
 // /oauth/x/..;/token as the token endpoint, so its answer carries real tokens to the guest unread (a), and serves /v1/..;/admin as /admin, so a

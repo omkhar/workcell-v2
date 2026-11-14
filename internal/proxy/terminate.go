@@ -27,7 +27,6 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"os"
-	"path"
 	"regexp"
 	"slices"
 	"strings"
@@ -120,13 +119,13 @@ func NewTerminateRule(host, header, method, path string, repos []string) (Termin
 }
 
 // admits reports whether the rule swaps on a request of method to u: the rule's method when it names one, and a path under its prefix, or within one of its
-// repositories, when it names either. The path is judged as sent and as decoded with its dot segments resolved, so that neither an encoded slash nor ".." leads
-// out from under the prefix on either reading.
+// repositories, when it names either. The path is judged as sent and as decoded and folded, so that neither an encoded slash, a backslash, a ;param nor ".."
+// leads out from under the prefix on either reading.
 func (r TerminateRule) admits(method string, u *url.URL) bool {
 	if r.Method != "" && method != r.Method {
 		return false
 	}
-	sent, clean := u.EscapedPath(), path.Clean(u.Path)
+	sent, clean := u.EscapedPath(), fold(u.Path)
 	if r.Path != "" {
 		return strings.HasPrefix(sent, r.Path) && (strings.HasPrefix(clean, r.Path) || clean+"/" == r.Path)
 	}
