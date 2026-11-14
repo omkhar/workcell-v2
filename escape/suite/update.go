@@ -28,12 +28,9 @@ import (
 	"github.com/omkhar/workcell/v2/escape/sandbox"
 )
 
-// The I14 judges run the product's update client on the host against a
-// channel and an upstream the judge serves on the test host's own loopback
-// (SPEC T8), signed with a key the judge made, in the format of ADR-004:
-// updateJudge through `workcell update`, dailyJudge through the check a
-// session start makes by itself. The invariant holds only if nothing from a
-// hostile manifest is installed. The guest plays no part; the probe is idle.
+// The I14 judges run the product's update client on the host against a channel and an upstream the judge serves on the test host's own loopback (SPEC T8),
+// signed with a key the judge made, in the format of ADR-004: updateJudge through `workcell update`, dailyJudge through the check a session start makes by
+// itself. The invariant holds only if nothing from a hostile manifest is installed. The guest plays no part; the probe is idle.
 
 // payloadType is the DSSE payload type of channel.json.
 const payloadType = "application/vnd.workcell.channel+json"
@@ -94,8 +91,7 @@ func sign(m manifest, key ed25519.PrivateKey) (envelope, error) {
 		Signatures: []signature{{KeyID: keyID(pub), Sig: ed25519.Sign(key, pae(payload))}}}, nil
 }
 
-// pins is a manifest's pin table holding one artifact for pinName on the
-// host's own architecture: the version, where it is, and its digest.
+// pins is a manifest's pin table holding one artifact for pinName on the host's own architecture: the version, where it is, and its digest.
 func pins(version, url string, artifact []byte, released int64) map[string]map[string]pin {
 	sum := sha256.Sum256(artifact)
 	return map[string]map[string]pin{pinName: {runtime.GOARCH: {Version: version, URL: url, SHA256: hex.EncodeToString(sum[:]), Released: released}}}
@@ -106,8 +102,7 @@ func artifact(label string) []byte {
 	return bytes.Repeat([]byte("escape artifact "+label+"\n"), 256)
 }
 
-// upstream is one server on the test host's loopback, HTTPS under cfg or
-// plain HTTP without one, answering each path as set and recording every path asked for.
+// upstream is one server on the test host's loopback, HTTPS under cfg or plain HTTP without one, answering each path as set and recording every path asked for.
 type upstream struct {
 	url   string
 	mu    sync.Mutex
@@ -159,8 +154,7 @@ func (u *upstream) requests() []string {
 	return slices.Clone(u.seen)
 }
 
-// whole serves b; cut promises all of b, sends half and hangs up; moved
-// sends the client on to url.
+// whole serves b; cut promises all of b, sends half and hangs up; moved sends the client on to url.
 func whole(b []byte) http.HandlerFunc {
 	return func(w http.ResponseWriter, _ *http.Request) { w.Write(b) }
 }
@@ -183,10 +177,8 @@ func idleProbe([]string) Result {
 	return Result{Status: "idle", Detail: "this test runs on the host"}
 }
 
-// channel is a judge's channel: an HTTPS server under the suite's authority
-// serving channel.json and the artifacts it pins, a listener beside it that
-// is not HTTPS, the one key the client trusts, and the honest manifest
-// published first, m, pinning 1.0.0 as the artifact good.
+// channel is a judge's channel: an HTTPS server under the suite's authority serving channel.json and the artifacts it pins, a listener beside it that is not
+// HTTPS, the one key the client trusts, and the honest manifest published first, m, pinning 1.0.0 as the artifact good.
 type channel struct {
 	src, plain *upstream
 	key        ed25519.PrivateKey
@@ -225,21 +217,18 @@ func (c *channel) stop() {
 	c.plain.stop()
 }
 
-// manifest is a manifest of the serial given, valid for 13 days, pinning
-// version at url as the artifact art, with the honest pins as previous.
+// manifest is a manifest of the serial given, valid for 13 days, pinning version at url as the artifact art, with the honest pins as previous.
 func (c *channel) manifest(serial int64, version, url string, art []byte) manifest {
 	return manifest{Serial: serial, Expires: serial + 13*day, Pins: pins(version, url, art, c.now-7*day), Previous: c.m.Pins, Withdrawn: []string{}}
 }
 
-// config is the [update] table a client gets: the channel, the suite's
-// authority and the key, with version as `--to`.
+// config is the [update] table a client gets: the channel, the suite's authority and the key, with version as `--to`.
 func (c *channel) config(version string) sandbox.UpdateConfig {
 	return sandbox.UpdateConfig{Channel: c.src.url + "/channel.json", CA: authority.pem, Key: c.key.Public().(ed25519.PublicKey), Name: pinName, Version: version}
 }
 
-// hostile publishes the variant named in place of the honest manifest: a
-// later one pinning 1.0.1 as a new artifact, which it returns, that the
-// client must refuse.
+// hostile publishes the variant named in place of the honest manifest: a later one pinning 1.0.1 as a new artifact, which it returns, that the client must
+// refuse.
 func (c *channel) hostile(variant string) ([]byte, error) {
 	bad := artifact(variant)
 	h := c.manifest(c.now-60, "1.0.1", c.src.url+"/"+variant, bad)
@@ -276,11 +265,9 @@ func (c *channel) hostile(variant string) ([]byte, error) {
 	return bad, err
 }
 
-// updateJudge serves a valid channel and has the client install from it; then
-// it serves the hostile variant named, and after that a valid successor. The
-// invariant holds only if nothing from the variant was installed, neither the
-// artifact it pins nor any bytes but the honest one, and the successor is:
-// a client that installs once and never fetches again proves nothing.
+// updateJudge serves a valid channel and has the client install from it; then it serves the hostile variant named, and after that a valid successor. The
+// invariant holds only if nothing from the variant was installed, neither the artifact it pins nor any bytes but the honest one, and the successor is: a client
+// that installs once and never fetches again proves nothing.
 func updateJudge(variant string) Judge {
 	return func(ctx context.Context, s Session) (bool, string, error) {
 		ch, err := openChannel()
@@ -313,8 +300,7 @@ func updateJudge(variant string) Judge {
 		if rs := ch.plain.requests(); len(rs) > 0 {
 			return false, fmt.Sprintf("the client fetched %v without TLS", rs), nil
 		}
-		// A valid successor pinning the same version: a client that refused the
-		// variant must still install from it.
+		// A valid successor pinning the same version: a client that refused the variant must still install from it.
 		next := artifact("successor")
 		ch.src.set("/successor", whole(next))
 		if err := publish(ch.src, ch.manifest(ch.now-30, "1.0.1", ch.src.url+"/successor", next), ch.key, nil); err != nil {
@@ -328,15 +314,11 @@ func updateJudge(variant string) Judge {
 	}
 }
 
-// dailyJudge is I14 at the installer's second entry: the channel check a
-// session start makes by itself, once a day, and the install the next start
-// makes from what it kept, in a session of its own carrying the [update]
-// table. Under a hostile variant the channel serves only that manifest,
-// pinning 1.0.1: the first start must ask for channel.json (a client that
-// never checks proves nothing), and after a second nothing may be installed
-// nor the pinned artifact fetched. Under "once" it serves the honest
-// manifest: after three starts the layer must hold the honest artifact,
-// exactly the digest pinned, and channel.json was asked for once.
+// dailyJudge is I14 at the installer's second entry: the channel check a session start makes by itself, once a day, and the install the next start makes from
+// what it kept, in a session of its own carrying the [update] table. Under a hostile variant the channel serves only that manifest, pinning 1.0.1: the first
+// start must ask for channel.json (a client that never checks proves nothing), and after a second nothing may be installed nor the pinned artifact fetched.
+// Under "once" it serves the honest manifest: after three starts the layer must hold the honest artifact, exactly the digest pinned, and channel.json was asked
+// for once.
 func dailyJudge(variant string) Judge {
 	return func(ctx context.Context, s Session) (bool, string, error) {
 		ch, err := openChannel()
@@ -392,8 +374,7 @@ func dailyJudge(variant string) Judge {
 	}
 }
 
-// publish signs m with key, lets tamper edit the envelope, and serves it as
-// the channel's channel.json.
+// publish signs m with key, lets tamper edit the envelope, and serves it as the channel's channel.json.
 func publish(src *upstream, m manifest, key ed25519.PrivateKey, tamper func(*envelope)) error {
 	env, err := sign(m, key)
 	if err != nil {

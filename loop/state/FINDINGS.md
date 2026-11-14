@@ -400,3 +400,114 @@ guest connection, and the unsettled fact is whether the framework closes the old
 low, not medium (no invariant break shown; the supervisor waits as on a sleeping command; workcell stop or two signals end
 it; the loop is bounded by the vCPU cap; the Kill then Close block needs vm.Stop to fail, which the guest does not
 control). The row stays live in the suite as the Linux proof and as the measurement S-1016 runs on the Mac. Not S14.
+
+## S-1004: network path and proxy core: routing, SNI, ECH, connection handling, fail-closed behaviour (I2, I4, I11), as built at main 5f5b941
+
+Trust boundary. Guest root owns every byte on vsock 5001: the 20 B relay header (version, proto, port, 16 B address), all
+that follows it (a ClientHello on 443, raw bytes on a forward port, one DNS frame on UDP 53), and the connect rate and
+timing. The network attacker owns the host resolver's answers for allowed names (the rebind model, map row 14) and the
+upstream bytes. Entry: cmd/workcell/relay.go stream (20 B under 5 s, 1024 slots) to an adapter, then internal/proxy/proxy.go
+Serve, handle, route, connect and splice, then net.Dialer on the host as the operator's uid; DNS goes to internal/resolver
+and never to a host query. Authority: the supervisor dials TCP from the host, writes audit lines, and holds up to 1024 relay
+and 1024 proxy slots. Lenses worked in order: parsing and resources, logic and state, concurrency and check-to-use gaps,
+cryptography and identity, failure modes, downgrade and replay, interaction with other surfaces.
+
+Leads refuted or bounded, with evidence (overlay tests from the scratchpad against the real functions, nothing in the tree
+changed, every probe a process in this session):
+- ECH: a genuine ECH ClientHello (Go client with a config list; outer SNI allowed, inner hidden) is refused by peekSNI and
+  by route even with both names allowed (no_sni); Go 1.27 runs processECHClientHello before GetConfigForClient and, with no
+  keys, hands the outer hello through, so the check sees extension 0xfe0d. A malformed or inner-type ECH extension fails
+  earlier (alert) and is also refused. Chrome-class clients send GREASE ECH on the same codepoint, so they get no_sni:
+  fail-closed, a developer-experience note only.
+- Mixed answer sets, first-dialable-then-host-network, a second answer after a dial (the parked B-836 ideas): one lookup per
+  connection, every address vetted before any dial, one dial loop over that one set; the terminated transport's DialContext
+  re-enters connect per upstream connection (TestConnectVetsEveryAnswerOnEveryConnection rows "public and private mixed"
+  and "answer changes to loopback"). The IPv6 variant: a host prefix 2606:4700:abcd::/64 blocks 2606:4700:abcd::1 and not
+  2606:4700:abce::1; a /128 interface address blocks exactly itself. No check-to-use gap found.
+- Address encodings: Unmap before every check and before the dial; ::ffff:, ::a.b.c.d, 64:ff9b::, 2002::, Teredo, 2001:db8,
+  3fff and 5f00 are all refused (TestBlockedAddr plus overlay); the relay header's own address is never dialled (relay-header-*).
+- Every I4 class per protocol: TCP is the only protocol the host ever dials, always through connect; UDP crosses only as port
+  53 to the in-process resolver; other protocols and versions close the stream; ICMP and QUIC never cross (no device). Host
+  loopback, private, link-local, the host's own interface networks and other sessions (no addresses exist) are refused; of the
+  cloud metadata addresses, one is missing: C7 below.
+- Fail-closed (I11): no error path in route, lookup, dial or Write reaches splice; the Allowed line is noted before traffic on
+  the splice path; adapters close when the relay listener closes (TestRelayCloseEndsAdapters, TestStreamAfterAdaptersClosed);
+  a relay Accept error ends every Serve loop closed, not open; an unreadable host-network list refuses everything; a nil log
+  records nothing and panics nothing.
+- Deadlines as a slot-holding tool: the 5 s header and 10 s peek deadlines are absolute, so a drip cannot extend them
+  (TestPeekSNI 64 KiB case, relay-slow-header); a guest can still hold all 1024 slots with idle spliced or keep-alive
+  connections, bounded at about 64 KiB of io.Copy buffers plus 16 KiB of peek per slot, within ADR-003's vsock budget.
+- Per-connect host cost (the S-F3 lead): at the relay cap a connect costs Accept plus Close; below it one goroutine, one timer
+  and a 20 B read; on a forward port it adds one rooted lookup, one InterfaceAddrs netlink dump and one dial per attempt,
+  bounded at 1024 concurrent and by the vsock path in rate (738 connects in 3 s in S-F3's run). No row floods a forward port
+  (evidence gap, not a finding).
+- Paths that skip SNI: forward ports route by the port's one host with no SNI or Host check, by design (ADR-003,
+  allowlist.go); CONNECT is refused on terminated connections (S-1005).
+- SNI case and fold: ToLower with a length check; a non-ASCII fold either shortens or stays non-ASCII, and the allowlist holds
+  only ASCII names, so no fold matches (TestRouteRefusesUnicodeFoldedSNI; "API.Example.COM" routes to api.example.com);
+  crypto/tls rejects a trailing-dot SNI. Name agreement: resolver names are allow.Hosts(), lowercased and unrooted; the proxy
+  admits by exact port-scoped sets; a forward-only host dialled at 443 gets sni_not_allowed. No panic found (Decode's
+  slice-to-array is exact, the resolver bounds every index, a nil allowlist never reaches route).
+
+Handoffs: S-1005 (serveTerminated's ln.addr is the guest-chosen header address, only its port is used; http.Server bounds the
+TLS handshake by ReadHeaderTimeout and has no idle timeout); S-1006 and S-1007 (resolver parsing; the refused callback's host
+string); S-1010 (Deny ignores Note errors, so after SoftLimit or a failed log connections continue unrecorded, a documented
+design; the lost counter is flushed only by a later queued shed; the terminated path's Allowed line precedes its dial).
+
+Coverage. Read in full: internal/proxy/proxy.go, allowlist.go, terminate.go and the proxy, forward and clients tests;
+internal/relay/relay.go and its test; internal/resolver/resolver.go; cmd/workcell/relay.go, relay_test.go and run_vm.go;
+cmd/workcell-init/net.go as data (A1); internal/audit/audit.go; the Listen and Start paths of both backends; escape/suite
+relay, rebind, packets, https, icmp_linux, dns, tests, floods and lifecycle; escape/sandbox/workcell_vm.go; ADR-003; SPEC
+sections 2, 3, 6, 8, 11 and 13; FINDINGS S-1001 and S-1003; both enforced lists; Go 1.27 crypto/tls readClientHello and
+processECHClientHello. Skimmed: internal/proxy/signin.go (S-1005), escape/suite/host_linux.go. Not opened:
+internal/resolver/resolver_test.go, the control adapters, workcell_linux.go isolate, the pinned vz library's connection type.
+Ran: the proxy, relay, resolver and cmd tests (green) and the overlay probes. Nothing needing a VM was run; no probe left the
+session. proxy.go is ported, so its candidate is an ordinary public one under section 13; relay.go is not ported. No model
+declined, and no safeguard re-ran a request.
+
+### S-1004 candidates
+
+C7. ID I4 (cloud metadata addresses). Attacker: guest root, with the host resolver's answer for an allowed name (the network
+attacker as the LAN DNS, the model of the rebind-* rows). Where: internal/proxy/proxy.go blockedPrefixes, blockedAddr,
+connect. Input: the policy forwards a plain port of an allowed name (`name.example:80`, documented in docs/policy.md); the
+host's resolver answers that name with A 168.63.129.16; the guest opens TCP to it and speaks the Azure WireServer protocol
+(goal state, then the certificates endpoint with a transport certificate it mints). Effect: the host dials Azure's platform
+virtual IP for the guest. blockedPrefixes enumerates the other providers' metadata endpoints (169.254.0.0/16,
+100.100.100.200, 192.0.0.192, fd00:ec2::254) but not this one, the only global-unicast metadata address among the providers
+examined (AWS, GCP, Azure, Oracle, Alibaba, Tencent, Huawei, OpenStack, Hetzner, DigitalOcean, Vultr, Linode, Scaleway, IBM,
+Yandex; all the others are link-local, ULA or CGNAT); it is never an interface address of the host, so B-836's host-network
+check does not catch it either; GitHub-hosted runners and Codespaces are Azure VMs. Reproducing test:
+escape/_pending/S-F4/proxy_azure_test.go, TestBlockedAddrAzure (package proxy, rows 168.63.129.16 and ::ffff:168.63.129.16
+with no host prefixes), run by overlay: fails on 079960b with `blockedAddr(168.63.129.16) = false, want true` for both rows,
+while TestBlockedAddr passes. Outcome: CONFIRMED, medium, by the verifier: a second probe with a stubbed lookup and dial ran
+Proxy.connect("name.example", 80) with the resolver answering 168.63.129.16 and saw dial_failed with 168.63.129.16:80 dialled,
+while the four controls got blocked_address; blockedAddr is the only gate in connect, the resolver filters nothing and the
+plain-port path verifies no TLS, so nothing else refuses it; the attacker is in scope and the test grants no extra power; the
+preconditions the attacker does not control (an Azure host, a policy forwarding port 80 or 32526) make it medium under S6.
+Fix unit: S-F4, below S-1004 in PLAN.md (one /32 in blockedPrefixes; the test folds into TestBlockedAddr as one row).
+also in v1 main: egressproxy/proxy.go
+
+C8. ID I9 with I10. Attacker: guest root. Where: cmd/workcell/relay.go serveRelay (the default branch that closes a stream
+when its 1024 slots are full); internal/proxy/proxy.go Serve (the shed branch that records overloaded). Input: 1024 open
+streams to 5001, then one more. Claimed effect: the 1025th stream is closed with no record, and the proxy's recorded shed
+branch cannot fire in production because every proxy connection also holds a relay slot and the caps are equal. Reproducing
+test: TestRelayRecordsTheShedStream (package main), run by overlay: fails on 079960b with "the shed stream left no record".
+Outcome: REFUTED by the verifier. The mechanism is real, but a stream whose header was never read is not a connection
+attempt in I9's sense: the relay records at header decode only, and dropping an unread stream without a record is proven
+intended by TestRelayDropsAnIncompleteHeader and the rows relay-short-header and relay-slow-header; the test's own 1024
+held streams are such streams, and no destination is known, so a record could only be a count. On Linux the guest cannot
+reach the branch at all: Firecracker's connection limit (ADR-003, measured) resets the 1023rd guest connect before the relay
+sees it, so the slots never fill except in a transient churn race; the test granted itself 1024 accepted streams over
+net.Pipe. Only on vz is the branch reachable. No reach is gained and no record is suppressed, forged or altered; S6's ceiling
+is low, hardening only. What remains is a less-code note: the proxy's queued-or-counted shed path and its lost counter are
+dead code in production (PARKED.md). The test was deleted.
+
+C9. ID I4 (the LAN), the residual of the line B-836 drew. Attacker: guest root with the network attacker as DNS. Where:
+internal/proxy/proxy.go nets (net.InterfaceAddrs only). Input: a host whose interface prefix is narrower than what is on-link
+or routed (a /32 or /128 with a wider on-link route; an enterprise VPN addressing internal hosts from public space); the
+resolver answers an allowed name with a neighbour in that space. Effect: the neighbour is global unicast, outside every
+blocked prefix and outside the host's interface prefix, so it is dialled through the host's tunnel or link. Outcome: not
+reproduced, reasoned only, low: no break of I4's wording is demonstrated, the host is uncommon, and a route-only neighbour
+is indistinguishable from the suite's own canary (CanaryAddr is reachable by a local route and must be dialled), so no test
+can fail on it without redrawing B-836's line; a route-table read costs tens of product lines per OS at the ceiling.
+Recorded as residual risk for docs/security-review.md (PARKED.md).

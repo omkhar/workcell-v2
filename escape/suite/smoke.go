@@ -26,18 +26,12 @@ import (
 	rows "github.com/omkhar/workcell/v2/pins"
 )
 
-// The pin smoke rows (B6), one per provider that installs a binary. The
-// judge serves a fake Messages API under the provider's first host (SPEC T8)
-// and has the host install a fixture agent from its own loopback: it prints
-// its version, and the probe makes the session's call itself, the guest
-// having no curl. The host must refuse bytes whose digest is not the row's,
-// which a naive sandbox does not. Then, if the provider's row under pins/
-// differs from the base branch's (GATE_BASE, else origin/main), the host
-// installs that artifact from upstream by URL and digest (B8) and the real
-// agent runs in the guest: --version, then the smoke command below with
-// the placeholder in the provider's variable. Only the real key makes the
-// fake answer. A provider with no command is smoked by --version and the
-// probe's own call, as the fixture is.
+// The pin smoke rows (B6), one per provider that installs a binary. The judge serves a fake Messages API under the provider's first host (SPEC T8) and has the
+// host install a fixture agent from its own loopback: it prints its version, and the probe makes the session's call itself, the guest having no curl. The host
+// must refuse bytes whose digest is not the row's, which a naive sandbox does not. Then, if the provider's row under pins/ differs from the base branch's
+// (GATE_BASE, else origin/main), the host installs that artifact from upstream by URL and digest (B8) and the real agent runs in the guest: --version, then the
+// smoke command below with the placeholder in the provider's variable. Only the real key makes the fake answer. A provider with no command is smoked by
+// --version and the probe's own call, as the fixture is.
 var smokeCommands = map[string][]string{"claude": {"-p", "hi", "--output-format", "text"}}
 
 const smokeVersion = "5.5.5"
@@ -52,8 +46,8 @@ var events = []string{
 	"message_stop", `{"type":"message_stop"}`,
 }
 
-// messages is the fake API: a POST to /v1/messages carrying want in header
-// gets a 200 stream, the only form claude -p asks for; any other credential 401; any other path 404.
+// messages is the fake API: a POST to /v1/messages carrying want in header gets a 200 stream, the only form claude -p asks for; any other credential 401; any
+// other path 404.
 func messages(header, want string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		switch {
@@ -84,8 +78,7 @@ func pinSmoke() []Test {
 	return out
 }
 
-// changedPin is the guest row the provider installs, when it has an artifact
-// for this architecture and its file differs byte for byte from the base's.
+// changedPin is the guest row the provider installs, when it has an artifact for this architecture and its file differs byte for byte from the base's.
 func changedPin(name string) (*internalpins.Pin, error) {
 	all, err := rows.All()
 	if err != nil {
@@ -164,11 +157,9 @@ func smokeJudge(p providers.Provider) Judge {
 	}
 }
 
-// smokeProbe runs the agent. args: its binary and version, the fake API's
-// name and address, the header and prefix the credential goes in, the
-// variable holding the placeholder and the one the agent reads it from, then
-// its smoke command; with none the probe makes the call itself. "ok" means
-// --version printed the version and exited 0, and the session exited 0.
+// smokeProbe runs the agent. args: its binary and version, the fake API's name and address, the header and prefix the credential goes in, the variable holding
+// the placeholder and the one the agent reads it from, then its smoke command; with none the probe makes the call itself. "ok" means --version printed the
+// version and exited 0, and the session exited 0.
 func smokeProbe(args []string) Result {
 	if len(args) < 8 {
 		return Result{Status: "error", Detail: "want binary, version, name, address, header, prefix, two variables and a command"}
@@ -203,8 +194,7 @@ func printed(out, version string) bool {
 	return regexp.MustCompile(`(^|[^0-9.])v?` + regexp.QuoteMeta(strings.TrimPrefix(version, "v")) + `\.*([^0-9.]|$)`).MatchString(out)
 }
 
-// ran runs name for at most wait with env added: how it ended ("0" for
-// success) and what it printed, one word.
+// ran runs name for at most wait with env added: how it ended ("0" for success) and what it printed, one word.
 func ran(wait time.Duration, env []string, name string, args ...string) (string, string) {
 	ctx, cancel := context.WithTimeout(context.Background(), wait)
 	defer cancel()

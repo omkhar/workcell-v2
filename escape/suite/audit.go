@@ -16,21 +16,16 @@ import (
 	"strings"
 )
 
-// The I9 probe is root in the guest and knows where the host keeps the
-// session's record, as an attacker who read the product's source does. It
-// goes for the record by that path, through the directory holding it, and
-// through everything the guest writes that the host collects. In the control
-// sandbox the guest's root is the host's, so the path is reachable; in a real
-// guest it is not. The judge reads the record on the host, before and after,
-// and the guest's word counts for nothing.
+// The I9 probe is root in the guest and knows where the host keeps the session's record, as an attacker who read the product's source does. It goes for the
+// record by that path, through the directory holding it, and through everything the guest writes that the host collects. In the control sandbox the guest's
+// root is the host's, so the path is reachable; in a real guest it is not. The judge reads the record on the host, before and after, and the guest's word
+// counts for nothing.
 
-// forgedMarker begins the record the forge probe plants. No judge passes it
-// as an argument, so a record holding it was written by the guest.
+// forgedMarker begins the record the forge probe plants. No judge passes it as an argument, so a record holding it was written by the guest.
 const forgedMarker = "forged-record-"
 
-// auditProbe does args[0] to the record at args[1]: forge plants a record
-// (also in args[2], the export, when that is set), suppress sends the path
-// to /dev/null, truncate empties it, and noop is a run that only records.
+// auditProbe does args[0] to the record at args[1]: forge plants a record (also in args[2], the export, when that is set), suppress sends the path to
+// /dev/null, truncate empties it, and noop is a run that only records.
 func auditProbe(args []string) Result {
 	if len(args) < 2 {
 		return Result{Status: "error", Detail: "want a verb and the record's path"}
@@ -79,11 +74,9 @@ func auditProbe(args []string) Result {
 	return Result{Status: "error", Detail: "unknown verb " + verb}
 }
 
-// auditJudge reads the record, has the guest attack it as verb says, runs
-// the guest once more, and reads the record again. Every record seen before
-// must still be there, in order, verify must still accept the record, a run
-// recorded before the attack must still be recorded after it, and no record
-// may hold what the guest planted.
+// auditJudge reads the record, has the guest attack it as verb says, runs the guest once more, and reads the record again. Every record seen before must still
+// be there, in order, verify must still accept the record, a run recorded before the attack must still be recorded after it, and no record may hold what the
+// guest planted.
 func auditJudge(verb string) Judge {
 	return func(ctx context.Context, s Session) (bool, string, error) {
 		path, before, err := s.Audit(ctx)
@@ -129,12 +122,9 @@ func auditJudge(verb string) Judge {
 	}
 }
 
-// offlineJudge edits the record on the host after the fact, as edit says,
-// and expects verify to reject it. Every edit works on a record of two
-// lines, a session's start and its end, which is all a run that does
-// nothing leaves. First the record, with one run in it,
-// must pass verify as the product wrote it, so that a verify which checks
-// nothing cannot pass by having nothing to check.
+// offlineJudge edits the record on the host after the fact, as edit says, and expects verify to reject it. Every edit works on a record of two lines, a
+// session's start and its end, which is all a run that does nothing leaves. First the record, with one run in it, must pass verify as the product wrote it, so
+// that a verify which checks nothing cannot pass by having nothing to check.
 func offlineJudge(edit string) Judge {
 	return func(ctx context.Context, s Session) (bool, string, error) {
 		path, _, err := s.Audit(ctx)
@@ -158,9 +148,8 @@ func offlineJudge(edit string) Judge {
 		var edited []byte
 		switch edit {
 		case "drop": // a whole record: the middle one, or, of two, the first
-			// A session that runs nothing records only its start and its
-			// end. Dropping the start leaves a chain that is consistent
-			// from its second record on, so verify must anchor the first.
+			// A session that runs nothing records only its start and its end. Dropping the start leaves a chain that is consistent from its second record on,
+			// so verify must anchor the first.
 			switch {
 			case len(lines) >= 3:
 				edited = bytes.Join(append(lines[:len(lines)/2:len(lines)/2], lines[len(lines)/2+1:]...), nil)
@@ -209,13 +198,9 @@ func offlineJudge(edit string) Judge {
 	}
 }
 
-// connectProbe opens TLS from the guest to the allowed name and to the
-// denied one, each at the address the judge gave, and says only how each
-// went: never the names. Both sandboxes may keep the guest's words, its
-// command line and its output, so the names come in hex and leave as
-// "served", "refused" and the like; a record naming one can then only be
-// the host's own account of the connection. args: allowed name in hex, its
-// address, denied name in hex, its address.
+// connectProbe opens TLS from the guest to the allowed name and to the denied one, each at the address the judge gave, and says only how each went: never the
+// names. Both sandboxes may keep the guest's words, its command line and its output, so the names come in hex and leave as "served", "refused" and the like; a
+// record naming one can then only be the host's own account of the connection. args: allowed name in hex, its address, denied name in hex, its address.
 func connectProbe(args []string) Result {
 	if len(args) != 4 {
 		return Result{Status: "error", Detail: "want allowed name in hex, address, denied name in hex, address"}
@@ -237,11 +222,9 @@ func connectProbe(args []string) Result {
 	return Result{Status: status, Detail: strings.Join(out, " ")}
 }
 
-// recordedJudge serves a canary for the allowed name and one for the denied
-// name, has the guest try both, and expects the records the run added to
-// name each: a connection attempt the host let through and one it refused
-// are both recorded (I9). The names reach the guest in hex and come back
-// as verdicts, so a record naming one is the host's, not the guest's echo.
+// recordedJudge serves a canary for the allowed name and one for the denied name, has the guest try both, and expects the records the run added to name each: a
+// connection attempt the host let through and one it refused are both recorded (I9). The names reach the guest in hex and come back as verdicts, so a record
+// naming one is the host's, not the guest's echo.
 func recordedJudge(ctx context.Context, s Session) (bool, string, error) {
 	allowed, denied := &canary{name: s.Allow[0]}, &canary{name: s.Deny[0]}
 	ns, stop, err := serveTwo(ctx, s, nil, allowed, denied)

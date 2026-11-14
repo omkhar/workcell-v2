@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Omkhar Arasaratnam
 
-// Package suite declares the escape tests. Each test names the invariant it
-// proves, a probe that runs as root inside the guest (in the payload binary)
-// and the judgement made on the host. A test is added by one entry in All.
+// Package suite declares the escape tests. Each test names the invariant it proves, a probe that runs as root inside the guest (in the payload binary) and the
+// judgement made on the host. A test is added by one entry in All.
 package suite
 
 import (
@@ -16,8 +15,7 @@ import (
 	"github.com/omkhar/workcell/v2/escape/sandbox"
 )
 
-// Result is what a probe reports: a short token such as "connected" and one
-// line of printable ASCII, both bounded and sanitised by Format.
+// Result is what a probe reports: a short token such as "connected" and one line of printable ASCII, both bounded and sanitised by Format.
 type Result struct {
 	Status string
 	Detail string
@@ -40,42 +38,32 @@ type Run func(args ...string) (Result, error)
 // Session is one running sandbox, as the host knows it.
 type Session struct {
 	Run Run
-	// Exec runs the test's probe as Run does, but gives back the run itself,
-	// exit status and streams unparsed, under ctx (I12); a non-zero status is a result.
+	// Exec runs the test's probe as Run does, but gives back the run itself, exit status and streams unparsed, under ctx (I12); a non-zero status is a result.
 	Exec func(ctx context.Context, args ...string) (sandbox.Output, error)
-	// Workspace is the host directory exported into the guest, "" for none; its
-	// parent is the test's alone, so a judge may plant files beside it.
+	// Workspace is the host directory exported into the guest, "" for none; its parent is the test's alone, so a judge may plant files beside it.
 	Workspace string
 	Guest     string // where the guest sees Workspace
-	// Allow and Secret are the session's policy as the runner made it from
-	// Want: the allowed names, and the credential bound to the first, with
-	// its real value, which the guest must never hold.
+	// Allow and Secret are the session's policy as the runner made it from Want: the allowed names, and the credential bound to the first, with its real value,
+	// which the guest must never hold.
 	Allow  []string
 	Deny   []string // names that resolve for the session but no policy allows
 	Secret sandbox.Secret
-	// Payload is the host path of the payload binary: the probe, and the
-	// helper a judge runs through sudo for what needs root on the test host.
+	// Payload is the host path of the payload binary: the probe, and the helper a judge runs through sudo for what needs root on the test host.
 	Payload string
-	// Pull brings the guest's workspace back to the host directory dest, as
-	// the product's pull does.
+	// Pull brings the guest's workspace back to the host directory dest, as the product's pull does.
 	Pull func(dest string) error
-	// Another starts a second session with the same Want, its own export and,
-	// when update is not nil, that [update] table. The runner stops it with the first.
+	// Another starts a second session with the same Want, its own export and, when update is not nil, that [update] table. The runner stops it with the first.
 	Another func(update *sandbox.UpdateConfig) (Session, error)
-	// Observe is the host side of the session: its record, its helpers and
-	// its channel.
+	// Observe is the host side of the session: its record, its helpers and its channel.
 	sandbox.Observe
 }
 
-// Judge runs on the host. It may start canaries (on loopback only, SPEC T8),
-// run the probe through s.Run, and says whether the invariant held.
+// Judge runs on the host. It may start canaries (on loopback only, SPEC T8), run the probe through s.Run, and says whether the invariant held.
 type Judge func(ctx context.Context, s Session) (pass bool, detail string, err error)
 
-// Want is the sandbox a test needs: an export, live (`--mount`, A5) or a
-// clone, the caps (zero: the adapter's default), the names the policy allows
-// and the names it does not, the resolver the host side uses, whether a fresh
-// secret is bound to the first allowed name (NewSecret), and the repo-local
-// policy the hostile repository brings (PlantPolicy).
+// Want is the sandbox a test needs: an export, live (`--mount`, A5) or a clone, the caps (zero: the adapter's default), the names the policy allows and the
+// names it does not, the resolver the host side uses, whether a fresh secret is bound to the first allowed name (NewSecret), and the repo-local policy the
+// hostile repository brings (PlantPolicy).
 type Want struct {
 	Workspace bool
 	Mount     bool
@@ -105,8 +93,7 @@ type Test struct {
 	Probe Probe
 	Host  Judge
 	Want  Want
-	// Bound is the runner's limit on the whole test, start to stop, when
-	// the test needs more than the runner's default; zero is that default.
+	// Bound is the runner's limit on the whole test, start to stop, when the test needs more than the runner's default; zero is that default.
 	Bound time.Duration
 }
 
@@ -120,10 +107,8 @@ func Lookup(name string) (Test, bool) {
 	return Test{}, false
 }
 
-// Select returns the tests whose invariant ID, or whose name, is in only, a
-// comma-separated list, or every test when only is empty. An entry with no
-// test is an error, so that an enforced invariant can never pass by having
-// nothing to run.
+// Select returns the tests whose invariant ID, or whose name, is in only, a comma-separated list, or every test when only is empty. An entry with no test is an
+// error, so that an enforced invariant can never pass by having nothing to run.
 func Select(only string) ([]Test, error) {
 	if strings.TrimSpace(only) == "" {
 		return All, nil
@@ -148,8 +133,7 @@ func Select(only string) ([]Test, error) {
 	return out, nil
 }
 
-// Format encodes a result as the one line the payload prints. It is total:
-// any Result becomes a line that ParseResult accepts.
+// Format encodes a result as the one line the payload prints. It is total: any Result becomes a line that ParseResult accepts.
 func Format(r Result) []byte {
 	status := clean(r.Status, maxStatus, isToken, '-')
 	if status == "" {
@@ -158,8 +142,7 @@ func Format(r Result) []byte {
 	return []byte(prefix + status + " " + clean(r.Detail, maxDetail, isPrint, '?') + "\n")
 }
 
-// ParseResult decodes the payload's stdout. The bytes are hostile: the whole
-// output must be exactly one formatted line, and nothing else.
+// ParseResult decodes the payload's stdout. The bytes are hostile: the whole output must be exactly one formatted line, and nothing else.
 func ParseResult(b []byte) (Result, error) {
 	if len(b) > MaxLine {
 		return Result{}, fmt.Errorf("payload output is %d bytes, limit %d", len(b), MaxLine)
