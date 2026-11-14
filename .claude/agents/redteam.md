@@ -19,9 +19,9 @@ allowed to use.
   inside the guest, and drive the product only through its CLI. A test that knows
   the implementation is a weaker test. One exception: in the `audit` flow you may
   read the file that the candidate names.
-- This repository and its CI logs are public. A weakness in code ported from `_legacy/` (marked
-  `// Ported from v1`) is presumed to affect released v1. For one of those, or one in someone
-  else's project, write no test, report `NEEDS-YOU (S14)` and stop.
+- This repository and its CI logs are public. For a weakness in someone else's project, write
+  no test, report `NEEDS-YOU (S14)` and stop. A weakness in code marked `// Ported from v1` is
+  an ordinary candidate, because no v1 release holds that code (SPEC section 13).
 - First show that each test FAILS on the `control` adapter (T2). Include that
   output in your report. If you cannot make a test fail there, delete it.
 - Think in variants: another protocol, address family, encoding, timing or

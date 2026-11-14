@@ -44,8 +44,8 @@ Then list what you examined and what you did not, so that coverage is honest.
 Change nothing. All testing stays on machines this project is allowed to use, and on local canaries (T8, S12). The cloud
 session and the hosted runners are lent to it, not owned by it. Never probe or load their host, proxy, metadata service or
 neighbours. Every target is a process or address the test itself started.
-This repository and its CI logs are public. A weakness in a file marked `// Ported from v1` is presumed to affect
-released v1. Head that candidate, or one in someone else's project, `NEEDS-YOU (S14)`, so that the orchestrator stops
-before anything about it is pushed.
+This repository and its CI logs are public. Head a candidate in someone else's project `NEEDS-YOU (S14)`, so that the
+orchestrator stops before anything about it is pushed. A candidate in a file marked `// Ported from v1` is an ordinary
+one, because no v1 release holds that code (SPEC section 13): add the line `also in v1 main: <path>` to it.
 Do not report out-of-scope attackers, style, or requests for new tooling (R5).
 "No candidates on this surface" is a legitimate result if the coverage list supports it.
