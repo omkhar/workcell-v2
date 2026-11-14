@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"net/url"
 	"path"
+	"regexp"
 	"strconv"
 	"strings"
 )
@@ -64,24 +65,25 @@ func validPath(p string) bool {
 }
 
 // tokenEndpoint returns the rule whose token endpoint a request to u on host goes to: one whose path a common router would read as u's, taken as sent or as
-// decoded with its dot segments resolved, in either case, and with a ;param suffix dropped from each segment. The match is wide because an answer taken for
-// another path would reach the guest unread (I5), while a request taken for the endpoint is only read whole and rewritten.
+// decoded and folded, in either case. The match is wide because an answer taken for another path would reach the guest unread (I5), while a request taken
+// for the endpoint is only read whole and rewritten.
 func (p *Proxy) tokenEndpoint(host string, u *url.URL) (TerminateRule, bool) {
 	for _, r := range p.signin[host] {
-		if sameEndpoint(u.EscapedPath(), r.SignIn.Path) || sameEndpoint(path.Clean(u.Path), r.SignIn.Path) {
+		if strings.EqualFold(u.EscapedPath(), r.SignIn.Path) || strings.EqualFold(fold(u.EscapedPath()), r.SignIn.Path) {
 			return r, true
 		}
 	}
 	return TerminateRule{}, false
 }
 
-// sameEndpoint reports whether a router that folds case or drops a ;param suffix from each segment would serve p as endpoint.
-func sameEndpoint(p, endpoint string) bool {
-	segs := strings.Split(p, "/")
-	for i, seg := range segs {
-		segs[i], _, _ = strings.Cut(seg, ";")
-	}
-	return strings.EqualFold(strings.Join(segs, "/"), endpoint)
+// params is a ;param suffix of a path segment.
+var params = regexp.MustCompile(`;[^/]*`)
+
+// fold reads a path as sent the way a router that cuts ;params from each segment before it decodes (so a param hides an encoded slash) and again after,
+// takes a backslash for a slash and then resolves dot segments does. PathUnescape cannot fail on a path as sent; were it to, "." matches nothing.
+func fold(escaped string) string {
+	p, _ := url.PathUnescape(params.ReplaceAllString(escaped, ""))
+	return path.Clean(strings.ReplaceAll(params.ReplaceAllString(p, ""), `\`, "/"))
 }
 
 // tokenRequest reads the body of a request to rule's token endpoint and swaps the refresh placeholder in its refresh_token field for the refresh token the

@@ -626,6 +626,16 @@ is an omission, not a design; medium under S6 because the operator's host must s
 below S-1005 in PLAN.md. Residual, unmodelled: IIS trailing-dot and trailing-space stripping, and double decoding.
 also in v1 main: egressproxy/terminate.go
 
+C10 FIXED by S-F5, commits c48a5a2 and 7fa56d7 (PR #201). fold in internal/proxy/signin.go reads a path as sent the way those routers
+do: ;params cut from each raw segment (so a param cannot hide an encoded slash), PathUnescape, ;params cut again, backslash to
+slash, then path.Clean. It replaces sameEndpoint, whose per-segment cut it absorbs, and path.Clean as the second reading in both
+tokenEndpoint and admits; the as-sent reading (EscapedPath) stays first in each. So /oauth/x/..;/token, /oauth%5Ctoken,
+/oauth/./token;a/..;/token and /oauth/token;%2Fx are the token endpoint, read whole and their answers learned and hidden, and the
+placeholder on /v1/..;/admin, /v1/..%5Cadmin, /v1/x;%2Fa%2Fb/../../admin and the three repository spellings is refused 403 with
+the secret withheld. The pending test moved whole to internal/proxy/c10_test.go, its fake upstream cutting raw ;params before it
+decodes as those routers do; it failed on the parent for all seven rows, the review's ;%2F rows failed on the first fix, and all
+ten pass now, with TestTokenEndpoint and TestTerminateNarrowedRule unchanged; escape/_pending/S-F5/ is gone. Product 14995 of 15000.
+
 C11. ID I10 (host memory), with I12's hang. Attacker: guest root. Where: internal/proxy/terminate.go serveTerminated's
 http.Server literal (ReadHeaderTimeout only; MaxHeaderBytes at the 1 MiB default; no ReadTimeout, IdleTimeout or
 post-header deadline anywhere in the package); internal/proxy/signin.go tokenRequest's io.ReadAll with no deadline.

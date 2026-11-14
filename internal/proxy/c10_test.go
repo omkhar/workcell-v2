@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Omkhar Arasaratnam
 
-// S-F5, finding C10 of S-1005 (I5). This file waits here, where Go does not compile it, until its fix lands; the fix unit moves it into internal/proxy/. tokenEndpoint and
-// admits judge a path as sent and as decoded with its dot segments resolved, and sameEndpoint drops a ;param suffix from each segment, but neither
+// S-F5, finding C10 of S-1005 (I5). tokenEndpoint and admits judge a path as sent and as decoded with its dot segments resolved, and sameEndpoint drops a ;param suffix from each segment, but neither
 // resolves the dot segments that dropping a ;param or folding a backslash uncovers. A router that drops ;params before it normalises (Tomcat's
 // CoyoteAdapter: parsePathParameters, then normalize; Jetty and Undertow alike) or reads a backslash as a slash (HTTP.sys, IIS) serves
 // /oauth/x/..;/token as the token endpoint, so its answer carries real tokens to the guest unread (a), and serves /v1/..;/admin as /admin, so a
@@ -16,6 +15,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
+	"net/url"
 	"path"
 	"strings"
 	"testing"
@@ -23,15 +23,17 @@ import (
 )
 
 // foldingFixture is signinFixture with the narrowed rules of terminateFixture, behind an upstream that folds the path as those routers do before it
-// serves it: the provider on login.example.com, elsewhere an echo of the folded path and the credential header. The broker holds "real-secret".
+// serves it (raw ;params cut up to the next raw slash, then decoded, a backslash taken for a slash, then dot segments resolved): the provider on
+// login.example.com, elsewhere an echo of the folded path and the credential header. The broker holds "real-secret".
 func foldingFixture(t *testing.T, prov *provider) *http.Client {
 	t.Helper()
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		segs := strings.Split(strings.ReplaceAll(r.URL.Path, `\`, "/"), "/")
+		segs := strings.Split(r.URL.EscapedPath(), "/")
 		for i, s := range segs {
 			segs[i], _, _ = strings.Cut(s, ";")
 		}
-		r.URL.Path, r.URL.RawPath = path.Clean(strings.Join(segs, "/")), ""
+		p, _ := url.PathUnescape(strings.Join(segs, "/"))
+		r.URL.Path, r.URL.RawPath = path.Clean(strings.ReplaceAll(p, `\`, "/")), ""
 		if r.Host == "login.example.com" {
 			prov.ServeHTTP(w, r)
 			return
@@ -59,12 +61,14 @@ func foldingFixture(t *testing.T, prov *provider) *http.Client {
 func TestFoldedPathEscapesTheEndpointAndTheRule(t *testing.T) {
 	t.Parallel()
 	c := foldingFixture(t, &provider{})
-	for _, target := range []string{"/oauth/x/..;/token", "/oauth%5Ctoken", "/oauth/./token;a/..;/token"} {
+	for _, target := range []string{"/oauth/x/..;/token", "/oauth%5Ctoken", "/oauth/./token;a/..;/token", "/oauth/token;%2Fx"} {
 		send(t, c, "POST", "https://login.example.com"+target, "application/x-www-form-urlencoded", "grant_type=authorization_code&code=c0de")
 	}
 	cases := []struct{ method, target, header, value string }{
 		{"POST", "https://n.example.com/v1/..;/admin", "X-Api-Key", testPlaceholder}, {"POST", "https://n.example.com/v1/..%5Cadmin", "X-Api-Key", testPlaceholder},
+		{"POST", "https://n.example.com/v1/x;%2Fa%2Fb/../../admin", "X-Api-Key", testPlaceholder},
 		{"GET", "https://r.example.com/octo/allowed.git/..;/other.git/info/refs", "Authorization", "Bearer " + testAuthPlaceholder},
+		{"GET", "https://r.example.com/octo/allowed.git/x;%2Fa%2Fb/../../../other.git/info/refs", "Authorization", "Bearer " + testAuthPlaceholder},
 		{"POST", "https://r.example.com/octo/allowed/..;/..;/evil/repo.git/git-receive-pack", "Authorization", "Bearer " + testAuthPlaceholder},
 	}
 	for _, tc := range cases {
