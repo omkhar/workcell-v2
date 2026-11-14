@@ -1123,3 +1123,4 @@ Next: S-1004 to S-1012 (audit, fable, deps S-1001) and S-1014a (mech, haiku, dep
 ## 2026-11-14T09:14Z S-1004 START mode=cloud
 ## 2026-11-14T09:44Z S-1004 BLOCKED mode=cloud model=fable tries=0
 S-1004: needs the maintainer, see the run's transcript
+## 2026-11-14T14:28Z B-835 START mode=cloud
