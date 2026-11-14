@@ -333,6 +333,8 @@ the loop has ended.
       accept: against a local server and a fake asset, `INSTALL_DIR=bin` installs `./bin/workcell`, and an asset that does not run leaves `${dir}/workcell` as it was; shown by running the proposed script, not by reading it; at most 90 lines
 - [x] U-907 | flow:doc | model:opus | env:any | deps:U-901,W-801 | tries:1 | sign:you | `SECURITY.md` for v2, starting from v1's. The text of v1's policy is public at `github.com/omkhar/workcell`, and this repository's history holds `SECURITY.md` as it was before the kit arrived. Propose the file as `proposed/SECURITY.md.txt`
       accept: it covers supported versions, private reporting, response times, scope, and how to verify a release and the update channel, all as they are in v2; until H-905 a first paragraph says that this repository is a building site that publishes no release, and points to `loop/REFERENCE.md` section 9; H-905 removes it; the rest names nothing under `loop/` and does not speak of a building site; at most 130 lines
+- [ ] B-834 | flow:boundary | model:opus | env:any | deps:U-302 | tries:0 | `internal/proxy`: a connection refused at the connection limit gets its deny line through a queue of 64, and a refusal that finds the queue full is left out of the deny log, as the comments in `proxy.go` say, so a flood of connections leaves refused attempts that the log does not count (I9). v1 fixed the same code in its pull request 986. Do the same here: count those refusals and have the queue's reader write the count as one `overloaded` line with port 0, so that accept still never waits for the log. The code budget is full, so delete at least as many product lines as the change adds
+      accept: a test stalls the deny log, sheds more connections than the queue holds, and finds that the listed and the counted refusals together equal the connections shed; it fails without the count; the budgets hold; gate green
 
 ## Phase 10: final security review (SPEC section 11)
 
@@ -341,7 +343,7 @@ runs on the top tier. Each confirmed finding becomes an `S-F<n>` unit (`flow:bou
 audit that found it), added directly below that audit. Its reproducing test waits under `escape/_pending/S-F<n>/`,
 and the fix unit moves it into place (S4).
 
-- [!] S-1001 | flow:audit | model:fable | env:any | deps:above | tries:0 | Map the attack surface as built: every place attacker-controlled bytes enter host code, and the authority that code holds. Compare it with `docs/threat-model.md`
+- [ ] S-1001 | flow:audit | model:fable | env:any | deps:above | tries:0 | Map the attack surface as built: every place attacker-controlled bytes enter host code, and the authority that code holds. Compare it with `docs/threat-model.md`
       accept: `loop/state/FINDINGS.md` opens with the map; any surface missing from S-1002 to S-1013 gets its own unit
 - [ ] S-1002 | flow:audit | model:fable | env:kvm | deps:S-1001 | tries:0 | Audit: host-guest channel, guest init, supervisor lifecycle (I7, I10, I12)
       accept: coverage list and candidates recorded; each candidate confirmed or refuted under S4
