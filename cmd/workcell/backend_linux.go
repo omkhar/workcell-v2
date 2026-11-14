@@ -7,14 +7,11 @@ package main
 
 import (
 	"github.com/omkhar/workcell/v2/internal/vmm"
-	"github.com/omkhar/workcell/v2/internal/vmm/firecracker"
+	fc "github.com/omkhar/workcell/v2/internal/vmm/firecracker"
 )
 
 // vmmBinary is the pinned VMM the data directory must hold here: Firecracker (ADR-001).
 const vmmBinary = "firecracker"
 
 // newMachine is the Linux backend: Firecracker, a child of this process.
-func newMachine(a artifacts, cfg vmm.Config) vmm.Machine {
-	cfg.Binary = a.binary
-	return firecracker.New(cfg)
-}
+func newMachine(a artifacts, c vmm.Config) vmm.Machine { c.Binary = a.binary; return fc.New(c) }

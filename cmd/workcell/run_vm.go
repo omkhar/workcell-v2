@@ -130,8 +130,7 @@ func session(argv []string, caps limits, mount bool, a artifacts, allow *proxy.A
 	if b.ca != nil {
 		req.Env = append(req.Env, guest.TrustEnv(guest.TrustDir)...)
 	}
-	req.Env = append(req.Env, cacheEnv(a.caches)...)
-	req.Env = append(req.Env, placeholderEnv(secrets)...)
+	req.Env = append(append(req.Env, cacheEnv(a.caches)...), placeholderEnv(secrets)...)
 	restore, tty := rawMode(unix.Stdin)
 	defer restore()
 	if tty {
@@ -298,15 +297,14 @@ func boot(a artifacts, caps limits, sigs <-chan os.Signal, session string, log *
 		}
 		os.RemoveAll(dir)
 	}
+	fail := func(code int, err error) (*booted, int, error) { closeAll(); return nil, code, err }
 	ln, err := m.Listen(guest.Port)
 	if err != nil {
-		closeAll()
-		return nil, 0, err
+		return fail(0, err)
 	}
 	streams, err := m.Listen(relay.Port)
 	if err != nil {
-		closeAll()
-		return nil, 0, err
+		return fail(0, err)
 	}
 	// The relay runs until Close closes its listener, and closes the adapters then, which ends Serve.
 	listeners := newAdapters(ports)
@@ -319,8 +317,7 @@ func boot(a artifacts, caps limits, sigs <-chan os.Signal, session string, log *
 				err = bind(p, sessionCA, secrets, log)
 			}
 			if err != nil {
-				closeAll()
-				return nil, 0, err
+				return fail(0, err)
 			}
 			ca = sessionCA.CertPEM()
 		}
@@ -335,20 +332,17 @@ func boot(a artifacts, caps limits, sigs <-chan os.Signal, session string, log *
 			served, err = openMount(mount, caps.disk())
 		}
 		if err != nil {
-			closeAll()
-			return nil, 0, err
+			return fail(0, err)
 		}
 		go serveMount(once{files}, served)
 	}
 	start := time.Now()
 	if err := m.Start(context.Background()); err != nil {
-		closeAll()
-		return nil, 0, err
+		return fail(0, err)
 	}
 	raw, code, err := accept(once{ln}, m, sigs, console)
 	if raw == nil {
-		closeAll()
-		return nil, code, err
+		return fail(code, err)
 	}
 	return &booted{conn: raw, dir: dir, took: time.Since(start), ca: ca, close: func() { raw.Close(); closeAll() }}, 0, nil
 }
@@ -395,12 +389,10 @@ type mountService interface {
 // serveMount answers the guest's FUSE stream, the one connection to fileserve.Port, from the export until either side ends. Nothing is left to release but what
 // close releases.
 func serveMount(ln net.Listener, s mountService) {
-	c, err := ln.Accept()
-	if err != nil {
-		return // the session ended before the guest dialled
+	if c, err := ln.Accept(); err == nil { // an error: the session ended before the guest dialled
+		defer c.Close()
+		_ = s.Serve(c)
 	}
-	defer c.Close()
-	_ = s.Serve(c)
 }
 
 // accept waits for the guest to dial in. A guest that never does is reported with the end of its console. A non-nil conn means the session goes on; otherwise
@@ -647,8 +639,7 @@ type tail struct {
 func (t *tail) Write(p []byte) (int, error) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	t.b = append(t.b, p...)
-	t.b = t.b[max(0, len(t.b)-4096):]
+	t.b = append(t.b, p...)[max(0, len(t.b)+len(p)-4096):]
 	return len(p), nil
 }
 

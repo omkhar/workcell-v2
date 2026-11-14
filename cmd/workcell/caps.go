@@ -4,6 +4,7 @@
 package main
 
 import (
+	"cmp"
 	"flag"
 	"fmt"
 	"io"
@@ -49,12 +50,7 @@ func parseSize(s string) (int, error) {
 
 // disk is how many bytes the guest may write in all: --disk, or 1 GiB (I10). In clone mode
 // it sizes the image's free room; in mount mode it is the export's cap on growth.
-func (l limits) disk() int64 {
-	if l.DiskMiB == 0 {
-		return 1 << 30
-	}
-	return int64(l.DiskMiB) << 20
-}
+func (l limits) disk() int64 { return int64(cmp.Or(l.DiskMiB, 1024)) << 20 }
 
 // cmdline is what the init is told on the kernel command line. The disk size is a courtesy to
 // the guest, so that it sees ENOSPC at the cap; the memory cap above is what holds on the host (A1).

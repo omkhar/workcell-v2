@@ -101,7 +101,7 @@ Tests: [`audit.go`](../escape/suite/audit.go). Rows `audit-forge-record`, `audit
 
 **I10. Resource caps.** The guest cannot exhaust host CPU, memory, disk, file descriptors, processes or log volume.
 Tests: [`floods.go`](../escape/suite/floods.go). Rows `fork-flood`, `memory-flood`, `disk-flood`, `descriptor-flood`,
-`log-flood`, `cpu-flood`, `mount-disk-flood`.
+`log-flood`, `cpu-flood`, `device-cpu-flood`, `mount-disk-flood`.
 
 **I11. Fail closed.** If the proxy, resolver or broker dies, the guest loses network access. It never gains any.
 Tests: [`helpers.go`](../escape/suite/helpers.go). Rows `proxy-killed`, `resolver-killed`, `broker-killed`,
