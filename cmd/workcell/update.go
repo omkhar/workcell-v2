@@ -86,7 +86,7 @@ func update(args []string, stdout, stderr io.Writer) int {
 }
 
 // installer is what update works with: the data directory, the rows under pins/, the client that fetches (an artifact through pins.Redirect, channel.json
-// following no redirect), the channel's URL, "" when nothing is fetched, the keys trusted to sign it and the user's cool-off (B10).
+// following no redirect), the channel's URL, "" when nothing is fetched, the keys trusted to sign it, the user's cool-off (B10) and fresh, the providers whose layer apply installed in this start.
 type installer struct {
 	dir     string
 	rows    []pins.Pin
@@ -94,6 +94,7 @@ type installer struct {
 	channel string
 	keys    []channel.Key
 	cooloff time.Duration
+	fresh   []string
 }
 
 // newInstaller reads the user's [update] table (B10): the channel is fetched unless it is "hold" or no key is trusted, the table's alone when it gives one,
@@ -151,10 +152,9 @@ func (in installer) update(ctx context.Context, p provider.Provider, manifest fu
 		return "", in.refuse(p.Name, "", "", err)
 	}
 	cur, prev := marker(dir, "current"), marker(dir, "previous")
-	if rollback {
-		if cur == "" || prev == "" {
-			return "", in.refuse(p.Name, "", "", errors.New("there is no earlier layer to roll back to"))
-		}
+	if rollback && (cur == "" || prev == "") {
+		return "", in.refuse(p.Name, "", "", errors.New("there is no earlier layer to roll back to"))
+	} else if rollback {
 		return in.point(p.Name, dir, prev, cur, "rolled_back")
 	}
 	m := channel.Build([]pins.Pin{row}, time.Now())
@@ -175,8 +175,10 @@ func (in installer) update(ctx context.Context, p provider.Provider, manifest fu
 	case prev:
 		return in.point(p.Name, dir, prev, cur, "rolled_back")
 	default:
-		if err := in.fetch(ctx, dir, name, p.Binary, pin); err != nil {
-			return "", in.refuse(p.Name, pin.Version, pin.SHA256, err)
+		if _, err := os.Stat(filepath.Join(dir, name)); err != nil || name != marker(dir, "failed") { // the image fail set aside is still on disk; any other is fetched
+			if err := in.fetch(ctx, dir, name, p.Binary, pin); err != nil {
+				return "", in.refuse(p.Name, pin.Version, pin.SHA256, err)
+			}
 		}
 		return in.point(p.Name, dir, name, cur, "installed")
 	}
@@ -198,15 +200,13 @@ func (in installer) row(p provider.Provider) (pins.Pin, error) {
 
 // manifest fetches channel.json, at most channel.MaxBytes and following no redirect (a 3xx is a refusal), and verifies it (verify); it returns the bytes too,
 // for the daily check to keep.
-func (in installer) manifest(ctx context.Context) ([]byte, *channel.Manifest, error) {
+func (in installer) manifest(ctx context.Context) (raw []byte, m *channel.Manifest, err error) {
 	c := http.Client{Transport: in.client.Transport, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	body, err := artifact.Fetch(ctx, &c, in.channel, "", channel.MaxBytes)
-	var raw []byte
 	if err == nil {
 		raw, err = io.ReadAll(body)
 		body.Close()
 	}
-	var m *channel.Manifest
 	if err == nil {
 		m, err = in.verify(raw, time.Now())
 	}
@@ -247,8 +247,8 @@ func (in installer) daily(now time.Time) bool {
 
 // apply is what a session start makes of the manifest the last daily check kept (B9): <data>/channel.next, removed first whatever follows, is verified again
 // and its pin installed for each provider with a row, as the verb does, except that a pin whose image is the one marked failed is skipped (B10); each result or
-// error is one line on stderr, and the session goes on.
-func (in installer) apply(provs []provider.Provider, stderr io.Writer) {
+// error is one line on stderr, and the session goes on. It names the providers whose layer it installed, as against found current or rolled back to: fail's (fresh).
+func (in installer) apply(provs []provider.Provider, stderr io.Writer) (fresh []string) {
 	raw := marker(in.dir, "channel.next")
 	if os.Remove(filepath.Join(in.dir, "channel.next")); raw == "" || in.channel == "" {
 		return
@@ -261,31 +261,34 @@ func (in installer) apply(provs []provider.Provider, stderr io.Writer) {
 	ctx, cancel := context.WithTimeout(context.Background(), channelBound)
 	defer cancel()
 	for _, p := range provs {
-		row, err := in.row(p)
-		if err != nil {
-			continue
-		}
+		dir := filepath.Join(in.dir, "layers", p.Name)
+		row, rerr := in.row(p)
 		pin, err := choose(channel.Select(m, row.Name, runtime.GOARCH), "", in.cooloff, time.Now())
-		if err == nil && pin.Version+"-"+pin.SHA256+".ext4" == marker(filepath.Join(in.dir, "layers", p.Name), "failed") {
+		if rerr != nil || err == nil && pin.Version+"-"+pin.SHA256+".ext4" == marker(dir, "failed") { // no row, or the pin is the layer set aside
 			continue
 		}
+		cur, prev := marker(dir, "current"), marker(dir, "previous")
 		line, err := in.update(ctx, p, func() (*channel.Manifest, error) { return m, nil }, "", false)
 		if err != nil {
 			line = err.Error()
+		} else if now := marker(dir, "current"); now != cur && now != prev {
+			fresh = append(fresh, p.Name)
 		}
 		fmt.Fprintln(stderr, "workcell: update:", line)
 	}
+	return fresh
 }
 
-// fail is the self-rollback (B10): the command's binary is a provider's whose layer is current, and the init could not start it, so that image is named in
-// layers/<agent>/failed, which apply skips until its pin changes, and current goes back to the previous layer by itself, nothing fetched and no manifest read;
-// with no previous, the next session boots without the layer. One record line, "failed", names the layer set aside. With no installer (startup), nothing.
+// fail is the self-rollback (B10): the command's binary is a provider's whose layer apply installed in this very start (fresh), and the init could not start it, so
+// that image is named in layers/<agent>/failed, which apply skips until its pin changes and update brings back from disk, and current goes back to the previous
+// layer by itself, nothing fetched and no manifest read; with no previous, the next session boots without the layer. One record line, "failed", names the layer set
+// aside. For a layer an earlier start installed, nothing: the guest's word alone changes nothing on the host (I12).
 func (in installer) fail(binary string, stderr io.Writer) {
 	provs, _ := provider.All() // startup reported an error here already
 	for _, p := range provs {
 		dir := filepath.Join(in.dir, "layers", p.Name)
 		cur := marker(dir, "current")
-		if in.dir == "" || p.Binary != binary || cur == "" {
+		if p.Binary != binary || cur == "" || !slices.Contains(in.fresh, p.Name) {
 			continue
 		}
 		v, d := parse(cur)
@@ -309,7 +312,7 @@ func startup(stderr io.Writer) installer {
 		fmt.Fprintln(stderr, "workcell: channel:", err)
 		return installer{}
 	}
-	in.apply(provs, stderr)
+	in.fresh = in.apply(provs, stderr)
 	in.daily(time.Now())
 	return in
 }
@@ -375,14 +378,10 @@ func unpack(f *os.File, binary string) (*rootfs.Tree, error) {
 		if _, err := t.Apply(r, maxLayer); err != nil {
 			return nil, err
 		}
-	} else {
-		data, err := io.ReadAll(r)
-		if err != nil {
-			return nil, err
-		}
-		if err := t.Put(binary, rootfs.Node{Kind: rootfs.File, Mode: 0o755, Data: data}); err != nil {
-			return nil, err
-		}
+	} else if data, err := io.ReadAll(r); err != nil {
+		return nil, err
+	} else if err := t.Put(binary, rootfs.Node{Kind: rootfs.File, Mode: 0o755, Data: data}); err != nil {
+		return nil, err
 	}
 	want := "bin/" + binary
 	if t.Lookup(want) != nil {
@@ -396,7 +395,8 @@ func unpack(f *os.File, binary string) (*rootfs.Tree, error) {
 	return t, errors.Join(t.Put("bin", rootfs.Node{Kind: rootfs.Dir, Mode: 0o755}), t.Link(files[0], want), t.Remove(files[0]))
 }
 
-// point makes the complete image current, keeps previous to roll back to, removes any other image, records the result when there is one and reports.
+// point makes the complete image current, keeps previous to roll back to and the image fail set aside, removes any other image, records the result when there is one
+// and reports. The image set aside is kept until a later fail names another, or until it is current again, which ends its being set aside.
 func (in installer) point(agent, dir, current, previous, result string) (string, error) {
 	if err := writeMarker(dir, "previous", previous); err != nil {
 		return "", err
@@ -404,9 +404,13 @@ func (in installer) point(agent, dir, current, previous, result string) (string,
 	if err := writeMarker(dir, "current", current); err != nil {
 		return "", err
 	}
+	failed := marker(dir, "failed")
+	if failed != "" && failed == current {
+		os.Remove(filepath.Join(dir, "failed"))
+	}
 	images, _ := filepath.Glob(filepath.Join(dir, "*.ext4"))
 	for _, img := range images {
-		if b := filepath.Base(img); b != current && b != previous {
+		if b := filepath.Base(img); b != current && b != previous && b != failed {
 			os.Remove(img)
 		}
 	}

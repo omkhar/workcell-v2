@@ -356,8 +356,7 @@ func TestChannel(t *testing.T) {
 	mu.Unlock()
 
 	// B9, B10, with the same installer: the day's first start fetches channel.json once, in a goroutine, and keeps what verified as channel.next; a second start
-	// that day and a held channel fetch nothing; the next start installs what was kept, unless its image is marked failed; a layer whose binary could not run is
-	// set aside, with one record line naming it, and current goes back.
+	// that day and a held channel fetch nothing; the next start installs what was kept, unless its image is marked failed, and names what it installed (fresh).
 	third := []byte("#!/bin/sh\necho third\n")
 	publish(channel.Manifest{Serial: now, Expires: now + 13*day, Pins: pin("1.0.3", "/daily", third), Previous: good.Pins}, key, same)
 	in.cooloff = 0
@@ -397,7 +396,7 @@ func TestChannel(t *testing.T) {
 		t.Errorf("channel.next holds %d bytes, serial %s, %d requests; want the %d served, %d, 1", len(b), marker(in.dir, "channel.serial"), gets("/channel.json")-before, len(raw), now)
 	}
 	sum := func(b []byte) string { s := sha256.Sum256(b); return hex.EncodeToString(s[:]) }
-	img2, img3, provs := "1.0.1-"+sum(bad)+".ext4", "1.0.3-"+sum(third)+".ext4", []provider.Provider{prov}
+	img3, provs := "1.0.3-"+sum(third)+".ext4", []provider.Provider{prov}
 	for _, s := range []struct {
 		name                  string
 		kept                  bool // channel.next holds the served manifest
@@ -425,24 +424,50 @@ func TestChannel(t *testing.T) {
 			t.Errorf("%s: current %q, channel.next %v, %d fetches, said %q; want %s, removed, %d", s.name, cur, err, gets("/daily"), out.String(), s.want, s.fetches)
 		}
 	}
-	real, _ := provider.All() // fail finds the provider by its binary among the built-in ones, so the layers that fail are the first one's
-	layers = filepath.Join(in.dir, "layers", real[0].Name)
+}
+
+// TestFail: the self-rollback (B10) acts on a layer apply installed in this very start alone (fresh). For one an earlier start installed, the guest's first frame
+// changes nothing on the host: markers, images and the record stay as they were (I12). For a fresh one, the image is set aside and kept on disk, the one before
+// it is current, and one record line says failed; a later fail drops the image set aside before it. Then `update --to` the version set aside brings it back from
+// disk, without a fetch, and it is set aside no longer.
+func TestFail(t *testing.T) {
+	p, dir := must(provider.All())[0], t.TempDir() // fail finds the provider by its binary among the built-in ones
+	layers := filepath.Join(dir, "layers", p.Name)
+	sum := func(s string) string { d := sha256.Sum256([]byte(s)); return hex.EncodeToString(d[:]) }
+	img2, img3 := "1.0.1-"+sum("two")+".ext4", "1.0.3-"+sum("three")+".ext4"
 	if err := errors.Join(os.MkdirAll(layers, 0o700), writeMarker(layers, "current", img3), writeMarker(layers, "previous", img2), os.WriteFile(filepath.Join(layers, img3), nil, 0o600), os.WriteFile(filepath.Join(layers, img2), nil, 0o600)); err != nil {
 		t.Fatal(err)
 	}
-	for _, s := range []struct{ name, cur, prev, want string }{
-		{"the layer that could not run is set aside and the one before it is current", img3, img2, img2},
-		{"with none before, the session boots without the layer", img2, "", ""},
+	images := func() string { // the images in the layer directory, by name
+		fs, _ := filepath.Glob(filepath.Join(layers, "*.ext4"))
+		return strings.ReplaceAll(strings.Join(fs, " "), layers+string(filepath.Separator), "")
+	}
+	for _, s := range []struct {
+		name, cur, prev, want, left string   // left: the images afterwards
+		fresh                       []string // the providers whose layer apply installed in this start
+	}{
+		{"a layer an earlier start installed is left as it is", img3, img2, img3, img2 + " " + img3, nil},
+		{"the layer this start installed is set aside, its image kept, and the one before it is current", img3, img2, img2, img2 + " " + img3, []string{p.Name}},
+		{"with none before, the session boots without the layer, and the image set aside before goes", img2, "", "", img2, []string{p.Name}},
 	} {
-		rec, _ := os.ReadFile(filepath.Join(in.dir, "updates.log"))
+		rec, _ := os.ReadFile(filepath.Join(dir, "updates.log"))
 		var out bytes.Buffer
-		in.fail(real[0].Binary, &out)
-		_, err := os.Stat(filepath.Join(layers, s.cur))
-		after, _ := os.ReadFile(filepath.Join(in.dir, "updates.log"))
-		added := strings.Split(strings.TrimSpace(strings.TrimPrefix(string(after), string(rec))), "\n")
-		if cur, prev, failed := marker(layers, "current"), marker(layers, "previous"), marker(layers, "failed"); cur != s.want || prev != "" || failed != s.cur || err == nil ||
-			len(added) != 1 || !strings.HasSuffix(added[0], `"version":"`+s.cur[:5]+`","digest":"`+strings.TrimSuffix(s.cur[6:], ".ext4")+`","result":"failed"}`) || !strings.Contains(out.String(), "could not run") {
-			t.Errorf("%s: current %q previous %q failed %q, image %v, said %q, record added %v; want %q, none, %q, removed, one failed line naming %s", s.name, cur, prev, failed, err, out.String(), added, s.want, s.cur, s.cur)
+		installer{dir: dir, fresh: s.fresh}.fail(p.Binary, &out)
+		after, _ := os.ReadFile(filepath.Join(dir, "updates.log"))
+		added := strings.TrimPrefix(string(after), string(rec))
+		prev, failed, line := s.prev, "", "" // untouched, unless fresh
+		if s.fresh != nil {
+			prev, failed, line = "", s.cur, `"version":"`+s.cur[:5]+`","digest":"`+strings.TrimSuffix(s.cur[6:], ".ext4")+`","result":"failed"}`+"\n"
 		}
+		if cur := marker(layers, "current"); cur != s.want || marker(layers, "previous") != prev || marker(layers, "failed") != failed || images() != s.left ||
+			strings.Count(added, "\n") != strings.Count(line, "\n") || !strings.HasSuffix(added, line) || strings.Contains(out.String(), "could not run") != (s.fresh != nil) {
+			t.Errorf("%s: current %q previous %q failed %q, images %v, said %q, record added %q; want %q, %q, %q, %v, one failed line %q", s.name, cur, marker(layers, "previous"), marker(layers, "failed"), images(), out.String(), added, s.want, prev, failed, s.left, line)
+		}
+	}
+	row := pins.Pin{Name: p.Install.Pin, Release: pins.Release{Version: "1.0.1", Artifacts: map[string]pins.Artifact{runtime.GOARCH: {URL: "https://127.0.0.1:1/unreachable", SHA256: sum("two")}}}}
+	got, err := installer{dir: dir, rows: []pins.Pin{row}, client: &http.Client{}}.update(context.Background(), p, nil, "1.0.1", false) // a fetch would fail here
+	rec, _ := os.ReadFile(filepath.Join(dir, "updates.log"))
+	if want := p.Name + " 1.0.1 " + sum("two")[:16]; err != nil || got != want || marker(layers, "current") != img2 || marker(layers, "failed") != "" || images() != img2 || !strings.HasSuffix(strings.TrimSpace(string(rec)), `"result":"installed"}`) {
+		t.Errorf("update --to the version set aside = %q, %v, current %q failed %q, images %v; want %q from disk, no fetch, %q, no longer set aside, %v, recorded installed", got, err, marker(layers, "current"), marker(layers, "failed"), images(), want, img2, img2)
 	}
 }

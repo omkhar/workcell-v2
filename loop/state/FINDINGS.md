@@ -123,3 +123,10 @@ provider exits 126 until a manual update; the attacker-uncontrolled precondition
 hostile code, since the init Acks the host's first Stdin frame, which in non-tty use with stdin at EOF is sent at once,
 so the forgery must beat both the agent's own first output and any Stdin, and hostile model output cannot do it. The
 test waits under escape/_pending/S-F1/. Fix unit: S-F1, below S-1001 in PLAN.md. Not S14: neither file is ported.
+C1 FIXED by S-F1, commit ad3fac7 (PR #186). The installer's apply now returns the providers whose layer it installed in
+this start, startup keeps them, and fail acts only for one of them, so an Exit forged as the guest's first frame in any
+other session changes nothing on the host (TestFail row 1). point spares the image the failed marker names and clears
+the marker when that image becomes current again; update reinstalls a set-aside image from disk with no fetch, so
+`workcell update <agent> --to <version>` restores it (TestFail tail). The row `I12 channel-first-frame-rollback` is back
+in escape/suite/: on a real VM it failed on e3c24e3 (138 passed, 1 failed, before the fix) and passed on ad3fac7 (139
+passed, 0 failed). The honest B9 self-rollback, a fresh layer whose command cannot run, still works (TestFail rows 2, 3).

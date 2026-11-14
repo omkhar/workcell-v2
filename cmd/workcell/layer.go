@@ -13,10 +13,8 @@ import (
 	"github.com/omkhar/workcell/v2/internal/vmm"
 )
 
-// findLayers is the current layer of every provider that has one under dir, in provider
-// order: the image that layers/<agent>/current names (update). A provider with no marker
-// has no layer, and a session boots as it did without one. A marker naming an image that
-// is not there is a refusal, before anything boots.
+// findLayers is the current layer of every provider that has one under dir, in provider order: the image that layers/<agent>/current names (update). A provider
+// with no marker has no layer, and a session boots as it did without one. A marker naming an image that is not there is a refusal, before anything boots.
 func findLayers(dir string) ([]vmm.Layer, error) {
 	all, err := provider.All()
 	if err != nil {
@@ -38,9 +36,8 @@ func findLayers(dir string) ([]vmm.Layer, error) {
 	return ls, nil
 }
 
-// layerArgs is the init's workcell.layer=<agent>:<device> for each layer, in the order the
-// backend attaches the drives, the first of them at the drive letter first, and the command's
-// PATH: the bin of each layer, in order, before the image's own.
+// layerArgs is the init's workcell.layer=<agent>:<device> for each layer, in the order the backend attaches the drives, the first of them at the drive letter
+// first, and the command's PATH: the bin of each layer, in order, before the image's own.
 func layerArgs(layers []vmm.Layer, first rune) (args, path string) {
 	path = "PATH="
 	for i, l := range layers {
@@ -50,8 +47,7 @@ func layerArgs(layers []vmm.Layer, first rune) (args, path string) {
 	return args, path + "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 }
 
-// cacheArgs is the init's workcell.cache=<name>:<device>:<ro|rw> for each cache, in the order the
-// backend attaches the drives, the first of them at the drive letter next.
+// cacheArgs is the init's workcell.cache=<name>:<device>:<ro|rw> for each cache, in the order the backend attaches the drives, the first of them at the drive letter next.
 func cacheArgs(caches []vmm.Cache, next rune) string {
 	var s strings.Builder
 	for i, c := range caches {
