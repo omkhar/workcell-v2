@@ -29,7 +29,7 @@ const (
 	peekTimeout   = 10 * time.Second
 	dialTimeout   = 10 * time.Second // per resolve and per dial attempt
 	connectBudget = 3 * dialTimeout  // all dial attempts for one connection
-	maxHelloBytes = 1 << 17          // above the 64 KiB handshake message limit plus record framing
+	maxHelloBytes = 16 << 10         // a real hello, post-quantum key share included, is under 2 KiB; bounds what each slot holds while peeking (I10)
 	maxConns      = 1024             // concurrent connections across all ports
 )
 
