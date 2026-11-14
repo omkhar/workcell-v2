@@ -14,6 +14,7 @@ import (
 	"net"
 	"net/http"
 	"net/netip"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -33,9 +34,7 @@ const (
 	maxConns      = 1024             // concurrent connections across all ports
 )
 
-// publicIPv6 is the only IPv6 block allocated for global unicast; everything
-// outside it (IPv4-embedding forms, site-local, SRv6, reserved) is refused.
-var publicIPv6 = netip.MustParsePrefix("2000::/3")
+var publicIPv6 = netip.MustParsePrefix("2000::/3") // the only global unicast IPv6 block; IPv4-embedding forms, site-local and SRv6 lie outside
 
 // blockedPrefixes adds the ranges that netip does not classify: shared,
 // reserved or documentation IPv4 space and special blocks inside 2000::/3.
@@ -55,24 +54,12 @@ var blockedPrefixes = []netip.Prefix{
 	netip.MustParsePrefix("3fff::/20"),       // documentation
 }
 
-// blockedAddr reports whether the proxy must refuse to connect to a.
-// Loopback, link-local (169.254.169.254 metadata included), multicast,
-// unspecified and broadcast are not global unicast; RFC 1918 and fc00::/7
-// (fd00:ec2::254 metadata included) are private.
-func blockedAddr(a netip.Addr) bool {
+// blockedAddr reports whether the proxy must refuse to connect to a, given the networks of the host's own interfaces.
+func blockedAddr(a netip.Addr, host []netip.Prefix) bool {
 	a = a.Unmap()
-	if !a.IsGlobalUnicast() || a.IsPrivate() {
-		return true
-	}
-	if a.Is6() && !publicIPv6.Contains(a) {
-		return true
-	}
-	for _, p := range blockedPrefixes {
-		if p.Contains(a) {
-			return true
-		}
-	}
-	return false
+	in := func(p netip.Prefix) bool { return p.Contains(a) }
+	return !a.IsGlobalUnicast() || a.IsPrivate() || a.Is6() && !publicIPv6.Contains(a) ||
+		slices.ContainsFunc(blockedPrefixes, in) || slices.ContainsFunc(host, in)
 }
 
 // Proxy admits allowlisted connections and logs each denial as one JSONL line.
@@ -80,6 +67,7 @@ type Proxy struct {
 	allow  *Allowlist
 	lookup func(ctx context.Context, host string) ([]netip.Addr, error)
 	dial   func(ctx context.Context, addr netip.AddrPort) (net.Conn, error)
+	nets   func() ([]netip.Prefix, error) // the networks of the host's own interfaces, read at each connect (I4)
 
 	// TLS termination; set by Terminate, upstreamRoots from the system roots and SSL_CERT_FILE.
 	terminate     map[string][]TerminateRule
@@ -109,6 +97,14 @@ func New(allow *Allowlist, rec Recorder) *Proxy {
 		},
 		dial: func(ctx context.Context, addr netip.AddrPort) (net.Conn, error) {
 			return new(net.Dialer).DialContext(ctx, "tcp", addr.String())
+		},
+		nets: func() ([]netip.Prefix, error) {
+			addrs, err := net.InterfaceAddrs()
+			nets := make([]netip.Prefix, len(addrs))
+			for i := 0; err == nil && i < len(addrs); i++ {
+				nets[i], err = netip.ParsePrefix(addrs[i].String())
+			}
+			return nets, err
 		},
 		slots: make(chan struct{}, maxConns),
 		shed:  make(chan uint16, 64),
@@ -204,25 +200,22 @@ func (p *Proxy) route(client net.Conn, port uint16) (host string, replay []byte,
 	return lower, replay, ""
 }
 
-// connect resolves host itself and dials a resolved address, so a later DNS
-// answer cannot change the target. One blocked address refuses the host.
+// connect resolves host itself, as a rooted name so no search suffix is appended, and dials a resolved address, so a
+// later DNS answer cannot change the target. One blocked address, or host networks it cannot read, refuses the host.
 func (p *Proxy) connect(host string, port uint16) (net.Conn, string) {
 	ctx, cancel := context.WithTimeout(context.Background(), dialTimeout)
 	defer cancel()
-	// A rooted name keeps the resolver from appending a DNS search suffix.
 	addrs, err := p.lookup(ctx, host+".")
 	if err != nil || len(addrs) == 0 {
 		return nil, "resolve_failed"
 	}
-	for _, a := range addrs {
-		if blockedAddr(a) {
-			return nil, "blocked_address"
-		}
+	nets, err := p.nets()
+	if err != nil || slices.ContainsFunc(addrs, func(a netip.Addr) bool { return blockedAddr(a, nets) }) {
+		return nil, "blocked_address"
 	}
 	deadline := time.Now().Add(connectBudget)
 	for i, a := range addrs {
-		// Share the remaining budget with the addresses still to try, so
-		// silent early answers cannot starve a reachable later one.
+		// Share the remaining budget with the addresses still to try, so silent early answers cannot starve a later one.
 		share := min(dialTimeout, time.Until(deadline)/time.Duration(len(addrs)-i))
 		if share <= 0 {
 			break
