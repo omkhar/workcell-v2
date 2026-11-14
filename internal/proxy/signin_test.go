@@ -122,20 +122,11 @@ func TestTokenEndpoint(t *testing.T) {
 		host, target string
 		want         bool
 	}{
-		{"login.example.com", "/oauth/token", true},
-		{"login.example.com", "/OAUTH/TOKEN", true},
-		{"login.example.com", "/oauth/Token", true},
-		{"login.example.com", "/oauth/token;jsessionid=1", true},
-		{"login.example.com", "/oauth;v=2/token", true},
-		{"login.example.com", "/oauth/token%3Bx", true},
-		{"login.example.com", "/oauth/%54oken/", true},
-		{"login.example.com", "/oauth/./x/../token?refresh_token=1", true},
-		{"login.example.com", "/oauth/token;", true},
-		{"login.example.com", "/oauth/tokens", false},
-		{"login.example.com", "/oauth/token/x", false},
-		{"login.example.com", "/oauth/revoke", false},
-		{"login.example.com", "/oauth/token%2Fx", false},
-		{"api.example.com", "/oauth/token", false},
+		{"login.example.com", "/oauth/token", true}, {"login.example.com", "/OAUTH/TOKEN", true}, {"login.example.com", "/oauth/Token", true},
+		{"login.example.com", "/oauth/token;jsessionid=1", true}, {"login.example.com", "/oauth;v=2/token", true}, {"login.example.com", "/oauth/token%3Bx", true},
+		{"login.example.com", "/oauth/%54oken/", true}, {"login.example.com", "/oauth/./x/../token?refresh_token=1", true}, {"login.example.com", "/oauth/token;", true},
+		{"login.example.com", "/oauth/tokens", false}, {"login.example.com", "/oauth/token/x", false}, {"login.example.com", "/oauth/revoke", false},
+		{"login.example.com", "/oauth/token%2Fx", false}, {"api.example.com", "/oauth/token", false},
 	}
 	for _, tc := range cases {
 		u := must(url.Parse("https://" + tc.host + tc.target))
@@ -334,7 +325,7 @@ func send(t *testing.T, c *http.Client, method, target, ctype, body string, head
 func TestSignInFlow(t *testing.T) {
 	t.Parallel()
 	p := &provider{}
-	c, rule, px, log := signinFixture(t, p, &tokenBroker{})
+	c, _, px, log := signinFixture(t, p, &tokenBroker{})
 	api, login := "https://api.example.com", "https://login.example.com"
 	form, js := "application/x-www-form-urlencoded", "application/json"
 	bearer, refreshBearer := "Bearer "+testPlaceholder, "Bearer "+testRefreshPlaceholder
@@ -382,7 +373,6 @@ func TestSignInFlow(t *testing.T) {
 	if want := map[string]uint64{"broker_denied": 1, "placeholder_unswapped": 6}; fmt.Sprint(reasons) != fmt.Sprint(want) {
 		t.Errorf("deny reasons = %v, want %v", reasons, want)
 	}
-	_ = rule
 }
 
 // TestTokenAnswerFramings: a pair split inside a token across chunks, under a media type with a charset, one gzipped, and one spelt with JSON escapes all reach
@@ -463,25 +453,7 @@ func FuzzHide(f *testing.F) {
 		got := hide([]byte(body), swaps)
 		var v any
 		if dec := json.NewDecoder(bytes.NewReader(got)); dec.Decode(&v) == nil {
-			var strs []string
-			var walk func(any)
-			walk = func(v any) {
-				switch x := v.(type) {
-				case string:
-					strs = append(strs, x)
-				case map[string]any:
-					for k, e := range x {
-						strs = append(strs, k)
-						walk(e)
-					}
-				case []any:
-					for _, e := range x {
-						walk(e)
-					}
-				}
-			}
-			walk(v)
-			got = append(got, []byte(strings.Join(strs, " "))...)
+			got = append(got, must(json.Marshal(v))...) // every key and string of the reading, verbatim: Marshal escapes no byte of the real values
 		}
 		for _, s := range swaps {
 			if bytes.Contains(got, s.real) {

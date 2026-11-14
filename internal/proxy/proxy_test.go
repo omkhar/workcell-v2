@@ -10,7 +10,9 @@ import (
 	"crypto/ed25519"
 	"crypto/tls"
 	"encoding/binary"
+	"encoding/json"
 	"errors"
+	"io"
 	"net"
 	"net/netip"
 	"sync"
@@ -23,60 +25,26 @@ import (
 func TestBlockedAddr(t *testing.T) {
 	t.Parallel()
 	cases := map[string]bool{
-		"127.0.0.1":                true, // loopback
-		"::1":                      true,
-		"10.1.2.3":                 true, // private
-		"172.16.0.1":               true,
-		"192.168.1.1":              true,
-		"fd00:ec2::254":            true, // AWS IPv6 metadata (ULA)
-		"fc00::1":                  true,
-		"169.254.169.254":          true, // metadata (link-local)
-		"fe80::1":                  true,
-		"0.0.0.0":                  true, // unspecified
-		"::":                       true,
-		"0.1.2.3":                  true, // "this network"
-		"224.0.0.1":                true, // multicast
-		"ff02::1":                  true,
-		"255.255.255.255":          true, // broadcast
-		"100.64.0.1":               true, // CGNAT
-		"100.100.100.200":          true, // Alibaba metadata
-		"192.0.0.192":              true, // Oracle metadata
-		"::ffff:127.0.0.1":         true, // IPv4-mapped
-		"::ffff:169.254.169.254":   true,
-		"::ffff:10.0.0.1":          true,
-		"::127.0.0.1":              true, // IPv4-compatible
-		"64:ff9b::a9fe:a9fe":       true, // NAT64 of 169.254.169.254
-		"64:ff9b:1::1":             true,
-		"2002:a9fe:a9fe::1":        true, // 6to4
-		"2001:0:4136:e378::1":      true, // Teredo
-		"192.0.2.1":                true, // documentation
-		"198.51.100.1":             true,
-		"203.0.113.10":             true,
-		"198.18.0.1":               true, // benchmarking
-		"198.19.255.255":           true,
-		"192.88.99.1":              true,
-		"240.0.0.1":                true, // reserved
-		"100::1":                   true, // discard-only
-		"2001:2::1":                true,
-		"::ffff:0:a9fe:a9fe":       true, // IPv4-translatable of 169.254.169.254
-		"::ffff:0:8.8.8.8":         true,
-		"4000::1":                  true,  // outside 2000::/3
-		"fec0::1":                  true,  // site-local
-		"2001:10::1":               true,  // ORCHID
-		"2001:20::1":               true,  // ORCHIDv2
-		"2001:200::1":              false, // just above 2001::/23
-		"2001:db8::1":              true,  // documentation
-		"3fff::1":                  true,
-		"5f00::1":                  true,
-		"198.17.255.255":           false, // just below benchmarking
-		"198.20.0.0":               false, // just above benchmarking
-		"8.8.8.8":                  false,
-		"100.63.255.255":           false, // just below CGNAT
-		"100.128.0.0":              false, // just above CGNAT
-		"2606:4700:4700::1111":     false,
-		"::ffff:8.8.8.8":           false,
-		"2001:4860:4860::8888":     false,
-		"2a00:1450:4001:80b::200e": false,
+		"127.0.0.1": true, "::1": true, // loopback
+		"10.1.2.3": true, "172.16.0.1": true, "192.168.1.1": true, // private
+		"fd00:ec2::254": true, "fc00::1": true, // AWS IPv6 metadata (ULA)
+		"169.254.169.254": true, "fe80::1": true, // metadata (link-local)
+		"0.0.0.0": true, "::": true, "0.1.2.3": true, // unspecified, "this network"
+		"224.0.0.1": true, "ff02::1": true, "255.255.255.255": true, // multicast, broadcast
+		"100.64.0.1": true, "100.100.100.200": true, "192.0.0.192": true, // CGNAT, Alibaba metadata, Oracle metadata
+		"::ffff:127.0.0.1": true, "::ffff:169.254.169.254": true, "::ffff:10.0.0.1": true, // IPv4-mapped
+		"::127.0.0.1": true, "64:ff9b::a9fe:a9fe": true, "64:ff9b:1::1": true, // IPv4-compatible, NAT64 of 169.254.169.254
+		"2002:a9fe:a9fe::1": true, "2001:0:4136:e378::1": true, // 6to4, Teredo
+		"192.0.2.1": true, "198.51.100.1": true, "203.0.113.10": true, // documentation
+		"198.18.0.1": true, "198.19.255.255": true, // benchmarking
+		"192.88.99.1": true, "240.0.0.1": true, "100::1": true, "2001:2::1": true, // reserved, discard-only
+		"::ffff:0:a9fe:a9fe": true, "::ffff:0:8.8.8.8": true, // IPv4-translatable of 169.254.169.254
+		"4000::1": true, "fec0::1": true, // outside 2000::/3, site-local
+		"2001:10::1": true, "2001:20::1": true, "2001:200::1": false, // ORCHID, ORCHIDv2, just above 2001::/23
+		"2001:db8::1": true, "3fff::1": true, "5f00::1": true, // documentation
+		"198.17.255.255": false, "198.20.0.0": false, // just below and above benchmarking
+		"8.8.8.8": false, "100.63.255.255": false, "100.128.0.0": false, // public; just below and above CGNAT
+		"2606:4700:4700::1111": false, "::ffff:8.8.8.8": false, "2001:4860:4860::8888": false, "2a00:1450:4001:80b::200e": false,
 	}
 	for text, want := range cases {
 		if got := blockedAddr(netip.MustParseAddr(text)); got != want {
@@ -203,8 +171,8 @@ type recorder struct {
 
 func (r *recorder) Note(rec audit.Record) error {
 	r.mu.Lock()
-	defer r.mu.Unlock()
 	r.recs = append(r.recs, rec)
+	r.mu.Unlock()
 	return nil
 }
 
@@ -241,10 +209,8 @@ func TestConnectSharesBudgetAcrossAddresses(t *testing.T) {
 	t.Parallel()
 	p := New(&Allowlist{}, &recorder{})
 	p.lookup = func(context.Context, string) ([]netip.Addr, error) {
-		return []netip.Addr{
-			netip.MustParseAddr("8.8.8.8"), netip.MustParseAddr("8.8.4.4"),
-			netip.MustParseAddr("1.1.1.1"), netip.MustParseAddr("1.0.0.1"),
-		}, nil
+		a := netip.MustParseAddr
+		return []netip.Addr{a("8.8.8.8"), a("8.8.4.4"), a("1.1.1.1"), a("1.0.0.1")}, nil
 	}
 	var timeouts []time.Duration
 	p.dial = func(ctx context.Context, _ netip.AddrPort) (net.Conn, error) {
@@ -365,5 +331,91 @@ func TestConnectVetsEveryAnswerOnEveryConnection(t *testing.T) {
 				t.Fatalf("dialed %v, want %d dials", *dialed, wantDials)
 			}
 		})
+	}
+}
+
+// stalledLog is a Recorder that takes nothing until release is closed, as a log on a slow disk would, and then keeps each record in the wire
+// form the audit log stores and `workcell verify` and the escape suite read: the JSON fields, port omitted when it is 0.
+type stalledLog struct {
+	release chan struct{}
+	mu      sync.Mutex
+	lines   []map[string]any
+}
+
+func (l *stalledLog) Note(r audit.Record) error {
+	<-l.release
+	var line map[string]any
+	must(0, json.Unmarshal(must(json.Marshal(r)), &line))
+	l.mu.Lock()
+	l.lines = append(l.lines, line)
+	l.mu.Unlock()
+	return nil
+}
+
+// countingListener tells accepts of each call to Accept, which Serve makes only after it has queued or counted the connection before.
+type countingListener struct {
+	net.Listener
+	accepts chan struct{}
+}
+
+func (l *countingListener) Accept() (net.Conn, error) {
+	l.accepts <- struct{}{}
+	return l.Listener.Accept()
+}
+
+// TestServeCountsRefusalsTheQueueDropped: at the connection limit every connection is shed and its
+// refusal queued for the log, so that accept never waits for the disk; a refusal the full queue
+// cannot take is counted, and the queue's reader writes the count as one overloaded line with
+// port 0, so that the listed and the counted refusals together are every connection shed (I9).
+func TestServeCountsRefusalsTheQueueDropped(t *testing.T) {
+	t.Parallel()
+	log := &stalledLog{release: make(chan struct{})}
+	p := New(&Allowlist{}, log)
+	for range cap(p.slots) {
+		p.slots <- struct{}{} // the limit, without a thousand connections
+	}
+	shed := cap(p.shed) + 36 // more than the queue holds while the log is stalled
+	ln := &countingListener{must(net.Listen("tcp", "127.0.0.1:0")), make(chan struct{}, shed+1)}
+	t.Cleanup(func() { _ = ln.Close() })
+	go func() { _ = p.Serve(ln, 443) }()
+	for i := range shed {
+		c := must(net.Dial("tcp", ln.Addr().String()))
+		_ = c.SetReadDeadline(time.Now().Add(5 * time.Second))
+		if _, err := c.Read(make([]byte, 1)); err != io.EOF {
+			t.Fatalf("connection %d at the limit: read = %v, want EOF without waiting for the log", i+1, err)
+		}
+		_ = c.Close()
+	}
+	for range shed + 1 {
+		select {
+		case <-ln.accepts:
+		case <-time.After(5 * time.Second):
+			t.Fatal("Serve did not come back to Accept after the shed connections")
+		}
+	}
+	close(log.release)
+	var listed, counted, counts int
+	for deadline := time.Now().Add(3 * time.Second); ; time.Sleep(10 * time.Millisecond) {
+		log.mu.Lock()
+		listed, counted, counts = 0, 0, 0
+		for _, line := range log.lines {
+			switch count, _ := line["count"].(float64); {
+			case line["result"] != "overloaded":
+				t.Fatalf("line %v, want only overloaded refusals", line)
+			case line["port"] != nil:
+				listed++
+			case count == 0:
+				t.Fatalf("line %v, want a count on a line with no port", line)
+			default:
+				counted, counts = counted+int(count), counts+1
+			}
+		}
+		log.mu.Unlock()
+		if listed+counted >= shed || time.Now().After(deadline) {
+			break
+		}
+	}
+	if listed+counted != shed || counts > listed {
+		t.Fatalf("refusals logged: %d listed + %d counted on %d lines = %d, want the %d connections shed, with at most one count per listed refusal", listed, counted, counts, listed+counted, shed)
 	}
 }

@@ -5,6 +5,7 @@
 package proxy
 
 import (
+	"maps"
 	"slices"
 	"strings"
 	"testing"
@@ -40,30 +41,18 @@ func TestParseAllowlist(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			got, err := ParseAllowlist(tc.text, "allowlist")
-			if tc.wantErr != "" {
-				if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
-					t.Fatalf("ParseAllowlist(%q) error = %v, want %q", tc.text, err, tc.wantErr)
-				}
-				return
+			if (err != nil) != (tc.wantErr != "") || err != nil && !strings.Contains(err.Error(), tc.wantErr) {
+				t.Fatalf("ParseAllowlist(%q) error = %v, want %q", tc.text, err, tc.wantErr)
 			}
 			if err != nil {
-				t.Fatalf("ParseAllowlist(%q) unexpected error: %v", tc.text, err)
+				return
 			}
+			sni := map[string]bool{}
 			for _, host := range tc.sni {
-				if !got.sni[host] {
-					t.Errorf("sni[%q] = false, want true", host)
-				}
+				sni[host] = true
 			}
-			if len(got.sni) != len(tc.sni) {
-				t.Errorf("sni = %v, want %v", got.sni, tc.sni)
-			}
-			if len(got.forward) != len(tc.forward) {
-				t.Errorf("forward = %v, want %v", got.forward, tc.forward)
-			}
-			for port, host := range tc.forward {
-				if got.forward[port] != host {
-					t.Errorf("forward[%d] = %q, want %q", port, got.forward[port], host)
-				}
+			if !maps.Equal(got.sni, sni) || !maps.Equal(got.forward, tc.forward) {
+				t.Errorf("ParseAllowlist(%q) = sni %v, forward %v; want %v and %v", tc.text, got.sni, got.forward, tc.sni, tc.forward)
 			}
 		})
 	}
@@ -71,10 +60,7 @@ func TestParseAllowlist(t *testing.T) {
 
 func TestAllowlistPorts(t *testing.T) {
 	t.Parallel()
-	a, err := ParseAllowlist("db.example:5432\napi.example.com:443\nssh.example:22\nDB.example:443\n", "allowlist")
-	if err != nil {
-		t.Fatalf("ParseAllowlist: %v", err)
-	}
+	a := must(ParseAllowlist("db.example:5432\napi.example.com:443\nssh.example:22\nDB.example:443\n", "allowlist"))
 	if got, want := a.Ports(), []uint16{22, 443, 5432}; !slices.Equal(got, want) {
 		t.Fatalf("Ports() = %v, want %v", got, want)
 	}

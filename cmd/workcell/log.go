@@ -159,6 +159,8 @@ func denyMessage(d audit.Record, cfg string) string {
 		return "denied a TLS connection with no server name (tls): there is no host name to allow"
 	case "port_not_allowed":
 		return fmt.Sprintf("denied port %d (tcp): a bare name allows 443 only, and host:%d forwards this port: %s", d.Port, d.Port, allow(fmt.Sprintf("host:%d", d.Port)))
+	case "overloaded": // a line with a count stands for that many refusals, on any port
+		return fmt.Sprintf("denied %d connection(s) at the proxy's connection limit: close some and retry", max(d.Count, 1))
 	case "host_mismatch":
 		return fmt.Sprintf("denied %s (tls): the request named another host than its TLS name", host)
 	}

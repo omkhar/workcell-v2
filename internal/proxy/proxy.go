@@ -15,6 +15,8 @@ import (
 	"net/http"
 	"net/netip"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/omkhar/workcell/v2/internal/audit"
@@ -74,7 +76,6 @@ func blockedAddr(a netip.Addr) bool {
 }
 
 // Proxy admits allowlisted connections and logs each denial as one JSONL line.
-// Overload refusals are best-effort and are dropped if the log writer stalls.
 type Proxy struct {
 	allow  *Allowlist
 	lookup func(ctx context.Context, host string) ([]netip.Addr, error)
@@ -90,6 +91,7 @@ type Proxy struct {
 
 	slots chan struct{} // one token per live connection
 	shed  chan uint16   // ports of shed connections awaiting a deny line
+	lost  atomic.Uint64 // shed connections the full queue could not take, awaiting one count line
 
 	rec Recorder
 }
@@ -100,22 +102,24 @@ type Recorder interface{ Note(audit.Record) error }
 
 // New returns a proxy for allow that records every attempt it decides to rec.
 func New(allow *Allowlist, rec Recorder) *Proxy {
-	var dialer net.Dialer
 	p := &Proxy{
 		allow: allow,
 		lookup: func(ctx context.Context, host string) ([]netip.Addr, error) {
 			return net.DefaultResolver.LookupNetIP(ctx, "ip", host)
 		},
 		dial: func(ctx context.Context, addr netip.AddrPort) (net.Conn, error) {
-			return dialer.DialContext(ctx, "tcp", addr.String())
+			return new(net.Dialer).DialContext(ctx, "tcp", addr.String())
 		},
 		slots: make(chan struct{}, maxConns),
 		shed:  make(chan uint16, 64),
 		rec:   rec,
 	}
-	go func() {
+	go func() { // each queued refusal's line, then one line counting those the full queue could not take
 		for port := range p.shed {
 			p.Deny("", port, "overloaded")
+			if n := p.lost.Swap(0); n > 0 {
+				_ = p.rec.Note(audit.Record{Event: audit.Connect, Result: "overloaded", Count: n})
+			}
 		}
 	}()
 	return p
@@ -140,12 +144,11 @@ func (p *Proxy) Serve(ln net.Listener, port uint16) error {
 				p.handle(conn, port)
 			}()
 		default:
-			_ = conn.Close() // at the limit: shed load instead of exhausting descriptors
-			// The deny line goes through a queue so a blocked log cannot stall accept.
-			// ponytail: a flood past the queue depth goes unlogged; add a dropped counter if audits need it.
+			_ = conn.Close() // at the limit: shed load, its refusal queued or counted so a stalled log cannot stall accept
 			select {
 			case p.shed <- port:
 			default:
+				p.lost.Add(1)
 			}
 		}
 	}
@@ -276,7 +279,7 @@ func peekSNI(conn net.Conn) (sni string, read []byte, ok bool) {
 }
 
 func splice(client, upstream net.Conn) {
-	done := make(chan struct{})
+	var wg sync.WaitGroup
 	pipe := func(dst, src net.Conn) {
 		_, _ = io.Copy(dst, src)
 		if cw, ok := dst.(interface{ CloseWrite() error }); ok {
@@ -284,13 +287,11 @@ func splice(client, upstream net.Conn) {
 		} else {
 			_ = dst.Close()
 		}
-		done <- struct{}{}
 	}
 	// ponytail: no idle timeout; a peer that never closes holds its goroutines.
-	go pipe(upstream, client)
-	go pipe(client, upstream)
-	<-done
-	<-done
+	wg.Go(func() { pipe(upstream, client) })
+	wg.Go(func() { pipe(client, upstream) })
+	wg.Wait()
 }
 
 // Deny records one connection attempt, admitted or refused, the proxy's own or one from outside

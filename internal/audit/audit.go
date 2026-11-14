@@ -63,6 +63,7 @@ type Record struct {
 	Name   string `json:"name,omitempty"`
 	Header string `json:"header,omitempty"`
 	Result string `json:"result,omitempty"`
+	Count  uint64 `json:"count,omitempty"` // on a connect line with no port: the refused attempts it stands for
 }
 
 // Log appends records to one session's audit.log and keeps audit.seal current. A nil *Log takes

@@ -26,9 +26,6 @@ type Allowlist struct {
 	forward map[uint16]string // each non-443 port to its single host
 }
 
-// maxLogHost is the longest DNS name.
-const maxLogHost = 253
-
 // canonicalHost lower-cases a host name and drops a trailing dot, so every
 // lookup keyed by host agrees on one spelling.
 func canonicalHost(host string) string {
@@ -36,9 +33,9 @@ func canonicalHost(host string) string {
 }
 
 // dnsName reports whether host, already canonical, is a DNS name: dot-separated
-// labels of 1 to 63 letters, digits and inner hyphens, at most maxLogHost bytes.
+// labels of 1 to 63 letters, digits and inner hyphens, at most 253 bytes, the longest DNS name.
 func dnsName(host string) bool {
-	if host == "" || len(host) > maxLogHost {
+	if host == "" || len(host) > 253 {
 		return false
 	}
 	for _, label := range strings.Split(host, ".") {
@@ -114,12 +111,9 @@ func (a *Allowlist) Forward(port uint16) (string, bool) {
 
 // Ports lists the ports the proxy must listen on, in ascending order.
 func (a *Allowlist) Ports() []uint16 {
-	var ports []uint16
+	ports := slices.Collect(maps.Keys(a.forward))
 	if len(a.sni) > 0 {
 		ports = append(ports, tlsPort)
-	}
-	for port := range a.forward {
-		ports = append(ports, port)
 	}
 	slices.Sort(ports)
 	return ports
