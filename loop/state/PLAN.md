@@ -343,8 +343,10 @@ runs on the top tier. Each confirmed finding becomes an `S-F<n>` unit (`flow:bou
 audit that found it), added directly below that audit. Its reproducing test waits under `escape/_pending/S-F<n>/`,
 and the fix unit moves it into place (S4).
 
-- [ ] S-1001 | flow:audit | model:fable | env:any | deps:above | tries:0 | Map the attack surface as built: every place attacker-controlled bytes enter host code, and the authority that code holds. Compare it with `docs/threat-model.md`
+- [x] S-1001 | flow:audit | model:fable | env:any | deps:above | tries:0 | Map the attack surface as built: every place attacker-controlled bytes enter host code, and the authority that code holds. Compare it with `docs/threat-model.md`
       accept: `loop/state/FINDINGS.md` opens with the map; any surface missing from S-1002 to S-1013 gets its own unit
+- [ ] S-F1 | flow:boundary | model:fable | env:kvm | deps:S-1001 | tries:0 | Fix finding C1 of S-1001 (I12, medium): an Exit frame forged by guest root as the guest's first frame makes `workcell run` call the installer's `fail`, which sets the provider layer aside, deletes its image and makes the daily `apply` refuse that digest. Only a provider whose layer `apply` installed in this very start may trigger B9's self-rollback, and the set-aside image stays on disk so `workcell update --to` can restore it. First move `escape/_pending/S-F1/rollback.go` back to `escape/suite/` and its row back into `escape/suite/tests.go`, as the comment at its head says
+      accept: the row `channel-first-frame-rollback` is back in the suite, fails on `control` and passes in the hosted `gate` on a real VM; the first session after an automatic update still rolls back when its command cannot run (the existing unit tests of `run` and `fail` pass); `loop/state/FINDINGS.md` records C1 as fixed with the commit
 - [ ] S-1002 | flow:audit | model:fable | env:kvm | deps:S-1001 | tries:0 | Audit: host-guest channel, guest init, supervisor lifecycle (I7, I10, I12)
       accept: coverage list and candidates recorded; each candidate confirmed or refuted under S4
 - [ ] S-1003 | flow:audit | model:fable | env:kvm | deps:S-1001 | tries:0 | Audit: VM configuration and device model, Linux and macOS backends (I1, I4, A7)

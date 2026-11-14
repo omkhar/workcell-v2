@@ -113,4 +113,13 @@ connection (pidfd_getfd, as the suite's stealChannel does) and writes one Exit f
 exits 126, writes layers/claude/failed, sets current to previous or empty, deletes the current image, appends a failed
 line to updates.log; later sessions run the previous provider version or none, and the daily apply refuses that
 digest until the pin changes. Host state outside the workspace export changes persistently at the guest's say-so.
-Outcome: pending.
+Outcome: CONFIRMED, medium. Reproducing test: escape row `I12 channel-first-frame-rollback` (probe and judge in
+rollback.go; the harness's Command plumbing and the control adapter's naive rollback stay in escape/sandbox/). T2:
+fails on control (exit 127, claude not found after the hostile run's exit 126). On a real VM, hosted gate on commit
+edf1791 of PR #185: 138 passed, 1 failed, the row's detail says the layer image 5.5.5-<sha256>.ext4 is gone from the
+host after the hostile run's "could not run, so its layer is set aside". The verifier confirmed from that log, and
+restated the precondition: `previous` is not it, since without one the layer is deleted and every later run of the
+provider exits 126 until a manual update; the attacker-uncontrolled precondition is that no guest frame precedes the
+hostile code, since the init Acks the host's first Stdin frame, which in non-tty use with stdin at EOF is sent at once,
+so the forgery must beat both the agent's own first output and any Stdin, and hostile model output cannot do it. The
+test waits under escape/_pending/S-F1/. Fix unit: S-F1, below S-1001 in PLAN.md. Not S14: neither file is ported.
