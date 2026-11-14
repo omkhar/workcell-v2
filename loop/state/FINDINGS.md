@@ -400,5 +400,3 @@ guest connection, and the unsettled fact is whether the framework closes the old
 low, not medium (no invariant break shown; the supervisor waits as on a sleeping command; workcell stop or two signals end
 it; the loop is bounded by the vCPU cap; the Kill then Close block needs vm.Stop to fail, which the guest does not
 control). The row stays live in the suite as the Linux proof and as the measurement S-1016 runs on the Mac. Not S14.
-
-S-1004: needs the maintainer, see the run's transcript
