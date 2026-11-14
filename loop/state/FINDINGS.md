@@ -681,3 +681,15 @@ power. The auditor rated it low because no allowlisted provider was shown to ech
 the verifier read S6's letter as medium, since the break is demonstrated under preconditions the attacker does not
 control. Recorded at medium on the verifier's reading, so S7 fixes it before cutover; the fix is two lines in hide
 (the QueryEscape spelling, and the JSON-marshalled form of it). Fix unit: S-F7, below S-1005 in PLAN.md.
+
+C12 FIXED by S-F7, commits 34b8e83 and 8b957b0 (PR #203). hide in internal/proxy/signin.go now widens swaps, before both of
+its passes, with every spelling of a real value that swapRefresh itself puts on the wire and that differs from the value: the
+url-encoded one of a form body (url.QueryEscape) and the json-escaped one of a JSON object body (encoding/json, which spells
+& < > as \u0026 \u003c \u003e), so an echo of either spelling, as text or inside a JSON string, reaches the guest as the
+placeholder. The second spelling came from the review round: a refresh token holding & went on the wire as "a\u0026b" and the
+first round hid only the url-encoded form (same class, I5, S6 medium). The pending test became internal/proxy/c12_test.go
+TestLearnHidesTheEncodedSpelling with a broker refresh token a+b/c=& and three rows: the form echo, the form echo inside a
+JSON string, and the JSON wire body echoed as text; all three failed on the parent and the third on 34b8e83. FuzzHide's
+seeds hold a base64-shaped refresh value with &, one seed echoes both spellings, and its assertion refuses the real value,
+its url-encoded and its json-escaped spelling, plain and in the re-marshalled JSON reading. escape/_pending/S-F7/ is gone.
+Product 15000 of 15000, paid by folding the doc comments of learn and hide; test 27486 of 27500.
