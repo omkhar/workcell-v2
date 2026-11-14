@@ -653,6 +653,17 @@ the verifier: the effect is real and the attacker needs only a sign-in row in po
 because maxConns bounds the total and no exhaustion of host memory or hang of the host process is demonstrated. Fix unit:
 S-F6, below S-1005 in PLAN.md (one line, MaxHeaderBytes 64 KiB; optionally a read deadline before tokenRequest).
 also in v1 main: egressproxy/terminate.go
+C11 FIXED by S-F6, commits 8814d3b and 85e56f8 (PR #202). serveTerminated's http.Server literal in internal/proxy/terminate.go
+now sets MaxHeaderBytes to 64 KiB, so net/http refuses a header block above that with 431 and Connection: close before the handler
+runs, and a held slot can pin no more than ADR-003 budgets; the 431 body is Go's fixed string, so no swapped key or placeholder is
+echoed. The pending measured test became internal/proxy/c11_test.go TestOversizedHeaderBlockRefused, two rows on raw TLS
+connections: a 98 KiB block to the sign-in token endpoint with a declared, withheld body (answered 100 Continue on the parent) and
+a 97 KiB block to a plain terminated host (answered 200 on the parent); both now see 431 and then EOF. escape/_pending/S-F6/ is
+gone. The optional read deadline before tokenRequest went in and came out again in the review round: set under a bodyless token
+request, net/http's background read hit it after 10 s against a slow upstream and cancelled the connection's context, so every
+later keep-alive request on it was answered 502, and no test in the suite would have noticed the line going away. So the hang half
+of C11 (a sub-64 KiB header block with a withheld body parks one slot and one goroutine until the guest closes, bounded by maxConns)
+stays as recorded under low, in PARKED.md for S-1013. Product 14996 of 15000.
 
 C12. ID I5 (sign-in: a real token the broker holds never appears in an answer). Attacker: guest root, with two
 preconditions it does not control. Where: internal/proxy/signin.go hide's plain-bytes pass and hideIn (not ported); the
