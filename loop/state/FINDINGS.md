@@ -264,3 +264,125 @@ the user ends it with two signals or workcell stop. On Firecracker reboot=k ends
 here; severity low if real (a command that never exits, which the user already can end). Handed to S-1003 (device
 model, both backends) and to the Mac triage of S-1016; the check is one guest reboot -f under vz with the channel open,
 and the fix if needed is that vz's Start goroutine closes the accepted connections on a state change. Not S14.
+
+## S-1003: VM configuration and device model, Linux and macOS backends (I1, I4, A7), as built at main 278bf48
+
+Trust boundary. Attacker bytes on this surface are what the guest does with the devices the host hands it (the virtio-blk
+drives, the vsock device, the serial or virtio console, the kernel cmdline it reads back), the guest-written ext4 images
+the host later reattaches (sessions/<id>/workspace.ext4 to pull, caches/<name>.ext4 to later guests of any repository
+with --cache), the VMM process's exit and the vz state channel. Entry points: internal/vmm/firecracker/firecracker.go
+(encode, Start, Wait, Close), internal/vmm/vz/vz.go (configure, listener pump, Wait, Kill, Close), cmd/workcell/run_vm.go
+boot, accept and closeAll, cmd/workcell/cache_vm.go openCaches, cmd/workcell/layer.go findLayers. Authority: the
+supervisor (operator uid) and, for the Firecracker child, the same uid with the VMM's default seccomp and no jailer. No
+attacker byte reaches the kernel cmdline: it is built from integers (caps, ports), fixed strings, provider names (build-time
+TOML, ^[a-z][a-z0-9-]*$) and cache names (^[a-z0-9][a-z0-9_-]{0,31}$); the repository path, session id, TERM and argv
+travel in the Exec frame, never on the cmdline. Host paths attached as drives: <data>/root.ext4 read-only (host-written,
+shared), sessions/<id>/workspace.ext4 read-write (the session's own, 0600 in a 0700 directory), layers/<agent>/<current>
+read-only (host-written by update), caches/<name>.ext4 read-only or read-write by flag (operator opt-in, flock-gated).
+No other host path is attached on either backend; mount mode attaches no disk and serves cwd over vsock 5002 (S-1008).
+Network devices: none on either backend (Firecracker's config has no network-interfaces; vz configures serial, socket,
+entropy and storage only, no network, shared-directory, Rosetta or clipboard device). vsock ports: 5000 (channel, closed
+by once after the init's one connection), 5001 (relay to the proxy, S-1004), 5002 (FUSE, mount mode, one accept).
+Firecracker forwards guest connections only to CID 2 as <dir>/vsock_<port> and resets any port with no socket; vz
+delivers only to a registered listener. No MMDS (it needs a network device), no balloon, no API socket (--no-api), default
+seccomp on. The temp directory is MkdirTemp 0700 with firecracker.json 0600; the attach socket and the VMM's own
+host-initiated socket live inside it, so another local user reaches neither, and a guest reaches no host path at all.
+
+Lenses (S9). Parsing and resources: no parser of guest bytes on this surface; the console tail is 4 KiB; vz backlog 16 and
+the pump close excess connections; Firecracker's vsock muxer caps connections; disk is bounded by fixed image sizes
+(WriteExt4File truncates to content plus free, free capped); host CPU of device threads is the one unbounded figure (C6).
+Logic and state: once takes one connection then unlinks or removes the listener; drive order and the cmdline's letters
+agree on both backends (root, workspace, layers, caches); Firecracker's reboot=k and panic=-1 end the VMM; vz's Wait
+returns only on Stopped or Error by design (C5). Concurrency and check-to-use: openCaches stats, locks, then creates under
+LOCK_EX with a rename into place, readers take LOCK_SH, the lock is released after the VMM is gone; m.mu covers Start,
+Listen, Kill and Wait; Firecracker's exitErr is written before exited is closed. Cryptography and identity: none here; the
+vsock peer is the VMM by construction (per-session socket in a 0700 directory; a per-VM socket device). Failure modes: no
+fail-open found; a boot that gets no connection in 20 s, a VMM that dies, or a signal all tear down and exit 125 or
+128+sig; export failure removes the session directory; the one unbounded wait is vz Close after a failed Kill (C5).
+Downgrade, rollback, replay: not applicable to the device model; the only persistent host state a guest changes through a
+device is its own workspace image and an rw cache it was given. Interaction with other surfaces: caches (S-1013 chain),
+the layer marker (S-1011), the relay and proxy behind 5001 (S-1004), FUSE behind 5002 (S-1008), the channel's unbounded
+first-frame wait (S-1002), the environment-chosen data directory (S-1009).
+
+Refuted by the auditor before any candidate was raised: a nil audit log in pull and bench (Recorder is an interface and
+audit.Log's methods take a nil receiver, so a relay header or DNS frame from a pull guest records nothing and panics
+nothing); findLayers joining the marker's text without filepath.Base (only update.go and the host user write the marker,
+from Pin.Version, whose author is the key holder K, out of scope; hardening noted by S-1011 already); caches as a
+guest-to-guest channel (row 18: the host never mounts or parses workspace.ext4 or caches/*.ext4; a hostile rw-cache writer
+poisons the next guest's cache or hands its kernel a crafted ext4, which is the operator's opt-in by --cache and the chain
+handed to S-1013; the flock and the read-only flag hold as designed); cmdline length (many --cache flags or hundreds of
+ports could truncate the trailing workcell.ports= or run drive letters past z: operator-controlled, and the init then
+mounts less, never more); guest halt without reboot (idles or spins one vCPU within the cap); virtio reset or hot-unplug
+(no hotplug on either backend; a VMM fault is a hypervisor bug, out of scope, and surfaces as EOF then 125); console
+floods (tail bounded, TestTailIsBounded); CID 3 on every session (Firecracker bypasses vhost-vsock; vz ignores the CID);
+a repository's .envrc pointing XDG_DATA_HOME or TMPDIR at hostile artifacts through the operator's own shell tooling (out
+of scope; S-1009 row 40); every error path in boot and teardown (closeAll on each exit from boot; Firecracker Close safe
+before Start and after exit; recordBoot before Start so rm finds the directory after SIGKILL; session's defers run
+listener, terminal, VM, session_end, lock, signal.Stop in order); A7 (Machine has exactly six methods; Binary and CID are
+Config fields only Firecracker reads; mount_darwin.go refuses --mount rather than taking a backend path).
+
+Coverage. Read in full: internal/vmm/vmm.go; internal/vmm/firecracker/{firecracker,doc,firecracker_test,run_test,
+init_test,mount_test}.go and testdata/guest/main.go; internal/vmm/vz/{vz,args,doc,vz_test,args_test}.go;
+cmd/workcell/{run_vm,backend_linux,backend_darwin,caps,cache,cache_vm,layer,mount_linux,mount_darwin,session,data,relay,
+pull_vm,bench_vm,run_other,main,policy,run_vm_test,cache_vm_test,caps_test,layer_test}.go; cmd/workcell-init/{root,main,
+mount,net,exec,pull}.go; cmd/mkimage/main.go; internal/workspace/workspace.go; escape/suite/{device,floods,floods_linux,
+layer,files,files_linux,files_other,tests,helpers,host_linux}.go; escape/sandbox/{workcell_vm,workcell_linux,
+workcell_darwin,workcell,sandbox}.go; docs/adr/accepted/001-vmm.md, 002-workspace-default.md, docs/adr/005-mount-mode.md,
+docs/threat-model.md; both enforced lists; the vsock and argument documentation of the pinned Firecracker release and the
+socket, lifecycle and listener code of the pinned vz library (fetched into the scratchpad, read as data). Skimmed:
+internal/proxy/proxy.go New, Recorder and Deny (ported; only the nil-recorder path, nothing found); internal/audit/audit.go
+nil-receiver methods; internal/policy/policy.go resources (read past, never applied to caps, so I13 on caps holds because
+caps come from flags alone); internal/provider/provider.go name regexes; internal/fileserve/serve_linux.go Open and grow;
+internal/rootfs/ext4file.go and ext4.go size constants; cmd/workcell/update.go marker, writeMarker, point; escape/suite/
+channel.go judges, suite.go Want, channel_linux.go stealChannel. Not opened: cmd/workcell/{explain,log,ocsf,pull,
+pull_linux,pull_darwin,bench,term_*}.go and their tests, cmd/workcell-init/root_test.go, firecracker/testdata/probe,
+internal/rootfs/tree.go and the ext4 writer body, internal/guest, internal/wire, internal/relay, internal/resolver,
+internal/secret, the other escape rows, escape/cmd, pins/*.json, _legacy/. Ran: go test ./internal/vmm/... ./cmd/... (all
+pass; VM-booting tests skip without /dev/kvm), go vet on the backends, supervisor and init. No file of this surface is
+ported from v1, so nothing falls under S14. No model declined. Two observations about a third-party library were not
+reachable by a section-2 attacker through the product and stay in this run's transcript.
+
+Evidence gaps, not findings (for S-1013, S-1016 or a redteam unit if test lines are freed): the vz reset path (C5) has no
+Mac run yet; reboot variants (HALT and POWER_OFF, sysrq-trigger b, kexec, a reboot racing the init's first connect); a
+write flood with O_DIRECT and O_SYNC on the workspace drive (host fsync cost); many /dev/vd? at once (layers and caches,
+one virtqueue each); a virtio-rng read loop on vz; serial output while the supervisor stops reading the console pipe; a
+vsock connect loop at port 5000 after the host closed the listener, measured as host CPU; cpuJudge's bound (system-wide
+/proc/stat, 1.0 CPU-second slack) is thin on a noisy runner.
+
+### S-1003 candidates
+
+C6. ID I10 (host CPU), with A7's minimal device model as the only mitigation named. Attacker: guest root. Where:
+internal/vmm/firecracker/firecracker.go Start (exec with Pdeathsig and Setpgid; no rlimit, affinity or cgroup);
+internal/vmm/vz/vz.go configure (vCPU count only); docs/adr/accepted/001-vmm.md promises rlimits on the child, which the
+code does not set. Input: in a --cpus 1 guest, for the suite's cpuSpin window at once, O_DIRECT 1 MiB reads of the first
+/dev/vd? device, a connect-then-close loop on vsock 2:5001, and a serial-console writer. Effect: host CPU time beyond the
+vCPU cap, because device emulation runs on the VMM's device thread and the supervisor's relay goroutines, outside the
+vCPU count; the existing row cpu-flood spins vCPUs only, so this had never been measured. Reproducing test: escape row
+I10 device-cpu-flood (probe emulationProbe, judge cpuJudge(true), the same judge as cpu-flood with the relay address
+passed through). T2: fails on control (the host spent 10.5 CPU seconds in 3.0 s of wall time, allowed 4.0). On a real
+VM, hosted gate on commit ea45d64 of PR #189: 141 passed, 1 failed; the row's detail says the host spent 4.8 CPU seconds
+in 3.4 s of wall time while the guest, capped at 1 CPU, loaded it (allowed 4.4; disk 49 MiB, 267 connects, console under 1
+MiB), where cpu-flood in the same run spent 3.4 CPU seconds in 3.5 s (allowed 4.5), so the judge's noise floor was about
+0.4 and the device path cost about 1.4 CPU seconds above the vCPU line. Outcome: CONFIRMED, low, by the verifier from
+that log: the effect is real, not noise (same judge, same runner, sequential rows); the console arm cannot explain it
+(every byte is a vCPU exit, counted inside the vCPU); the attacker is in scope (guest root opens /dev/vd?, /dev/ttyS0 and
+dials 2:5001, a public constant; the harness passing the relay address is convenience, not power); I10's text is not
+broken (1.4 CPUs on a 4-CPU runner is not exhaustion, and Firecracker serves every device on one thread, so the overrun
+is bounded near vCPUs plus one plus the supervisor's share), so this is hardening under S6 and the ADR's unkept promise.
+Fix unit: S-F3, below S-1003 in PLAN.md (pin the Firecracker child to --cpus cores, or cpu.max in a per-session cgroup
+child). The test waits under escape/_pending/S-F3/emulation.go; cpuJudge(relay bool), onDisk and the row guest-reboot
+stay live. Not S14: no file of the candidate is ported.
+
+C5 (restated from S-1002; I12 hang and I7, vz only). Reproducing test: escape row I12 guest-reboot (probe rebootGuest:
+one line of output, sync, reboot(RESTART), refused unless the channel address is vsock so it never reboots the control
+container or the session host under S12; judge rebootJudge: the run ends within hangBound with exit 125, no descendant of
+the supervisor survives within deathWait, a plain run after works). T2: fails on control (reboot: exit 0 after 0s, want
+one of [125]). Firecracker: REFUTED by the verifier from the hosted gate on ea45d64: the row passed (the run ended with
+exit 125 once the guest restarted its kernel, the session's 2 processes went with it, and a plain run after still works);
+125 can only come from the channel's EOF when the VMM died of reboot=k, and the probe's own return would be 0 and fail.
+vz: UNVERIFIED, needs a Mac (vz.go builds only on darwin arm64 cgo; the hosted gate-macos runner has no hypervisor; the
+mechanism exists in the code, since once closes the 5000 listener after the first accept and vz then refuses every later
+guest connection, and the unsettled fact is whether the framework closes the old connection on a guest reset). If real:
+low, not medium (no invariant break shown; the supervisor waits as on a sleeping command; workcell stop or two signals end
+it; the loop is bounded by the vCPU cap; the Kill then Close block needs vm.Stop to fail, which the guest does not
+control). The row stays live in the suite as the Linux proof and as the measurement S-1016 runs on the Mac. Not S14.

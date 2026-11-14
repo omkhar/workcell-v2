@@ -19,27 +19,20 @@ import (
 	"time"
 )
 
-// The resolver tests (I3) ask the resolver named in the guest's
-// /etc/resolv.conf what it does with a name: an allowed name must come back
-// with an address, and every other name must be refused, promptly, with a DNS
-// answer that carries no address. A resolver that answers nothing passes the
-// leak tests above and fails here: the invariant says the host resolver
-// answers. The probe speaks the wire format itself (dns.go), so nothing in
-// the guest's libc stands between it and the resolver; a response that never
-// came is a failure too. The control sandbox (SPEC T2) names a naive resolver
-// that answers every name, so every row here fails there.
+// The resolver tests (I3) ask the resolver named in the guest's /etc/resolv.conf what it does with a name: an allowed name must come back with an address, and
+// every other name must be refused, promptly, with a DNS answer that carries no address. A resolver that answers nothing passes the leak tests above and fails
+// here: the invariant says the host resolver answers. The probe speaks the wire format itself (dns.go), so nothing in the guest's libc stands between it and
+// the resolver; a response that never came is a failure too. The control sandbox (SPEC T2) names a naive resolver that answers every name, so every row here
+// fails there.
 
-// A lookup is one question a judge has the guest ask, and what the
-// invariant demands of the answer: "addr", an address; "refused", a DNS
-// answer with no address (REFUSED, NXDOMAIN, or NOERROR and no record), or
-// "answered", any DNS answer at all. Each must come within fast.
+// A lookup is one question a judge has the guest ask, and what the invariant demands of the answer: "addr", an address; "refused", a DNS answer with no address
+// (REFUSED, NXDOMAIN, or NOERROR and no record), or "answered", any DNS answer at all. Each must come within fast.
 type lookup struct {
 	label, spec, want string
 }
 
-// The spec a judge hands the probe for one question: "type:name", where
-// type is A, AAAA, TXT, PTR or ANY, "+edns" after it adds an OPT record,
-// and TOKEN in the name stands for the run's token.
+// The spec a judge hands the probe for one question: "type:name", where type is A, AAAA, TXT, PTR or ANY, "+edns" after it adds an OPT record, and TOKEN in the
+// name stands for the run's token.
 const (
 	fast        = 2 * time.Second             // a refusal or an answer must come within this
 	lookupWait  = fast + 500*time.Millisecond // the probe's deadline, past fast so that slow is told from silent
@@ -50,12 +43,9 @@ const (
 	deniedName  = "denied.escape.test."
 )
 
-// The lookups the rows ask. The allowed name must resolve however it is
-// spelled; every other name, every other type for it, and the allowed name
-// under a policy that allows nothing must be refused. The allowed row asks
-// one denied name too: a resolver that answers everything, the control
-// sandbox's, is then no pass (SPEC T2), and "only for allowed names" is
-// shown on the one resolver that answered.
+// The lookups the rows ask. The allowed name must resolve however it is spelled; every other name, every other type for it, and the allowed name under a policy
+// that allows nothing must be refused. The allowed row asks one denied name too: a resolver that answers everything, the control sandbox's, is then no pass
+// (SPEC T2), and "only for allowed names" is shown on the one resolver that answered.
 var (
 	allowedLookups = []lookup{
 		{"a", "A:" + allowedName, "addr"},
@@ -82,14 +72,12 @@ var (
 	nothingLookups = []lookup{{"a", "A:" + allowedName, "refused"}, {"d", "A:" + deniedName, "refused"}}
 )
 
-// reachable is the sandbox the resolver rows want: one allowed name and one
-// denied, both of which the host resolver is to know of.
+// reachable is the sandbox the resolver rows want: one allowed name and one denied, both of which the host resolver is to know of.
 var reachable = Want{Allow: []string{"allowed.escape.test"}, Deny: []string{"denied.escape.test"}}
 
 var queryTypes = map[string]uint16{"A": dnsTypeA, "AAAA": dnsTypeAAAA, "TXT": dnsTypeTXT, "PTR": dnsTypePTR, "ANY": dnsTypeANY}
 
-// resolverAddr turns the target the judge named into an address: the first
-// nameserver of the guest's /etc/resolv.conf at port 53, or a literal.
+// resolverAddr turns the target the judge named into an address: the first nameserver of the guest's /etc/resolv.conf at port 53, or a literal.
 func resolverAddr(target string) (string, error) {
 	if target != resolvConf {
 		return target, nil
@@ -102,8 +90,7 @@ func resolverAddr(target string) (string, error) {
 	return firstNameserver(f)
 }
 
-// firstNameserver reads a resolv.conf and returns its first nameserver as
-// an address at port 53.
+// firstNameserver reads a resolv.conf and returns its first nameserver as an address at port 53.
 func firstNameserver(r io.Reader) (string, error) {
 	sc := bufio.NewScanner(r)
 	for sc.Scan() {
@@ -138,10 +125,8 @@ func encode(spec, token string) ([]byte, uint16, error) {
 	return msg, q.ID, nil
 }
 
-// ask sends one query to addr and says what came back and how soon:
-// "addr:<ip>", "answered:<n>" (records, none an address), "nodata", an
-// rcode's name, "garbled" (a reply that is not one, or not to this id),
-// "unreachable" (the kernel's own refusal) or "timeout".
+// ask sends one query to addr and says what came back and how soon: "addr:<ip>", "answered:<n>" (records, none an address), "nodata", an rcode's name,
+// "garbled" (a reply that is not one, or not to this id), "unreachable" (the kernel's own refusal) or "timeout".
 func ask(addr string, msg []byte, id uint16, wait time.Duration) (string, time.Duration) {
 	start := time.Now()
 	c, err := net.DialTimeout("udp", addr, wait)
@@ -187,15 +172,10 @@ func outcome(r dnsReply) string {
 	return "nodata"
 }
 
-// lookupProbe asks the resolver args[0] names, every "label=spec" in
-// args[3:], all at once, and reports "label=outcome/ms" for each. args[1]
-// is the token. First, as args[2] says, it sends nothing ("plain"), the
-// hostile datagrams of garbage ("garbage"), each given garbageWait for an
-// answer (the host must survive them, I12, and answer and refuse as
-// before), or a burst of burstSize queries from one socket ("burst"),
-// counting what came back within lookupWait; the burst is reported as one
-// more field, "burst=sent/answered/refused/ms". Every question goes at once
-// so that the run stays short when the resolver answers nothing.
+// lookupProbe asks the resolver args[0] names, every "label=spec" in args[3:], all at once, and reports "label=outcome/ms" for each. args[1] is the token.
+// First, as args[2] says, it sends nothing ("plain"), the hostile datagrams of garbage ("garbage"), each given garbageWait for an answer (the host must survive
+// them, I12, and answer and refuse as before), or a burst of burstSize queries from one socket ("burst"), counting what came back within lookupWait; the burst
+// is reported as one more field, "burst=sent/answered/refused/ms". Every question goes at once so that the run stays short when the resolver answers nothing.
 func lookupProbe(args []string) Result {
 	if len(args) < 4 {
 		return Result{Status: "error", Detail: "want target, token, plain|garbage|burst and label=spec..."}
@@ -240,10 +220,8 @@ func lookupProbe(args []string) Result {
 	return Result{Status: "asked", Detail: addr + " " + first + strings.Join(out, " ")}
 }
 
-// burst sends burstSize queries for distinct names under token.invalid to
-// addr from one socket, as fast as it can, and tallies "sent/answered/
-// refused/ms": how many went, how many got any answer within lookupWait,
-// and how many of those were refusals.
+// burst sends burstSize queries for distinct names under token.invalid to addr from one socket, as fast as it can, and tallies "sent/answered/ refused/ms": how
+// many went, how many got any answer within lookupWait, and how many of those were refusals.
 func burst(addr, token string) string {
 	c, err := net.DialTimeout("udp", addr, lookupWait)
 	if err != nil {
@@ -279,9 +257,8 @@ func burst(addr, token string) string {
 	return fmt.Sprintf("%d/%d/%d/%dms", sent, len(seen), refused, time.Since(start).Milliseconds())
 }
 
-// poke sends one hostile datagram and says whether anything came back
-// within garbageWait. What came is not judged: silence and FORMERR are both
-// fine; only the lookups after it count.
+// poke sends one hostile datagram and says whether anything came back within garbageWait. What came is not judged: silence and FORMERR are both fine; only the
+// lookups after it count.
 func poke(addr string, g []byte) bool {
 	c, err := net.DialTimeout("udp", addr, garbageWait)
 	if err != nil {
@@ -296,10 +273,8 @@ func poke(addr string, g []byte) bool {
 	return err == nil && n > 0
 }
 
-// garbage is the hostile datagrams: a lone byte, a header that promises a
-// question and brings none, a name that points at itself, a label past the
-// limit, a question count of 65535 for one question, a query with the
-// response bit set, and 65000 bytes of noise behind a valid header.
+// garbage is the hostile datagrams: a lone byte, a header that promises a question and brings none, a name that points at itself, a label past the limit, a
+// question count of 65535 for one question, a query with the response bit set, and 65000 bytes of noise behind a valid header.
 func garbage(token string) [][]byte {
 	hdr := func(qd uint16) []byte {
 		b := make([]byte, 12)
@@ -321,10 +296,8 @@ func garbage(token string) [][]byte {
 	return [][]byte{{0x55}, hdr(1), loop, long, many, response, noise}
 }
 
-// resolverJudge has the guest ask target, resolvConf or a literal address
-// with hostAddr in it, the lookups, after what first names (plain, garbage
-// or burst, see lookupProbe), and holds every answer to what the lookup
-// wants, the burst's tally too. The invariant holds only if all of them do.
+// resolverJudge has the guest ask target, resolvConf or a literal address with hostAddr in it, the lookups, after what first names (plain, garbage or burst,
+// see lookupProbe), and holds every answer to what the lookup wants, the burst's tally too. The invariant holds only if all of them do.
 func resolverJudge(target, first string, qs []lookup) Judge {
 	if first == "burst" {
 		qs = append([]lookup{{"burst", "a burst of " + strconv.Itoa(burstSize) + " queries", "burst"}}, qs...)
