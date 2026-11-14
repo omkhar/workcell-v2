@@ -215,6 +215,7 @@ var All = append([]Test{
 	// run adds must name both attempts, let through and refused. The names
 	// reach the guest in hex, so its own words cannot put them in the record.
 	{ID: "I9", Name: "audit-records-connection", Probe: connectProbe, Host: recordedJudge, Want: servable},
+	{ID: "I9", Name: "run-stdout-reader-closed", Probe: chatterProbe, Host: chatterJudge, Want: Want{Head: true}},
 	// Each host helper is killed with SIGKILL while the guest holds a connection
 	// it was served through, and the proxy once more while the guest is still
 	// booting. After, nothing of the session may run, the held connection must
