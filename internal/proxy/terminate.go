@@ -392,6 +392,7 @@ func (p *Proxy) serveTerminated(client net.Conn, host string, replay []byte) {
 	// ponytail: no idle timeout, like splice; a peer that never closes holds the conn.
 	srv := &http.Server{
 		ReadHeaderTimeout: peekTimeout,
+		MaxHeaderBytes:    64 << 10, // a client needs a few KiB; this bounds what a held slot pins (I10, C11)
 		ErrorLog:          discardLog,
 		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// TRACE echoes request headers and CONNECT tunnels past the rewrite, so neither may carry a swapped key.
