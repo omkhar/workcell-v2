@@ -518,3 +518,145 @@ reproduced, reasoned only, low: no break of I4's wording is demonstrated, the ho
 is indistinguishable from the suite's own canary (CanaryAddr is reachable by a local route and must be dialled), so no test
 can fail on it without redrawing B-836's line; a route-table read costs tens of product lines per OS at the ceiling.
 Recorded as residual risk for docs/security-review.md (PARKED.md).
+
+## S-1005: TLS termination and HTTP handling: smuggling, HTTP/2, WebSocket, redirects, CONNECT, CA handling (I5, I6), as built at main 8ca74f0
+
+Trust boundary. Guest root (G) and hostile model output (M) own every byte after the relay header on a 443 stream: the
+ClientHello (peeked by S-1004's path, then replayed), then everything the per-connection tls.Server decrypts and net/http
+parses in internal/proxy/terminate.go serveTerminated: request line, headers, bodies, pipelining, timing, and the request
+path that admits and signin.go tokenEndpoint judge. The network attacker (N) owns the host resolver's answers for allowed
+names and the TCP path to whatever they name; it does not own an allowed host's TLS identity. Authority: the supervisor's uid
+dials the vetted address of the SNI host (p.transport.DialContext re-enters p.connect), verifies the upstream chain against
+system roots plus SSL_CERT_FILE with ServerName = SNI host, calls broker.Lookup or Refresh (a host process per use for cmd:
+and secret-service: sources) and writes the real value into the outgoing header or token body, records every refusal, and
+rewrites token-endpoint answers before the guest sees a byte. sameHost's port is the relay header's port, which must be
+443 to reach the 443 adapter (cmd/workcell/relay.go), so in production only ":443" or no port passes. Lenses worked in
+order: parsing and resources, logic and state, concurrency and check-to-use gaps, cryptography and identity, failure
+modes, downgrade and replay, interaction with other surfaces.
+
+Leads refuted or bounded, with evidence (overlay probes from the scratchpad against the real package, 28 raw request
+shapes and nine upstream certificates among them; nothing in the tree changed; every listener on loopback):
+- Smuggling: CL.TE (Content-Length plus chunked, a second request with another allowed Host inside) is re-framed by
+  net/http, which drops Content-Length when chunked; the upstream saw one request and the proxy parsed the "smuggled" one as
+  the next request and refused it 421 host_mismatch. TE.CL with a malformed chunk: 502, nothing crossed. "xchunked" and
+  "chunked, identity": 501; "Transfer-Encoding : chunked": 400; duplicate Host: 400. An undeclared trailer and a chunk
+  extension carrying the placeholder are not forwarded; declared trailers are refused by carriesPlaceholder (existing test).
+- Host versus SNI on a kept-alive connection: every request is re-judged by sameHost against the connection's SNI host and
+  Rewrite forces the upstream Host to the SNI host (I6). Pipelined example.com then a.example.com: 200 then 421.
+  Absolute-form target naming another allowed host: 421; naming the SNI host with a foreign Host header: 200 and the
+  upstream saw the SNI host. Host with another port, an empty port, HTTP/1.0 without Host: 421. Trailing dot, capitals and
+  :443 are the same name (TestSameHost). An opaque target reaches the right host as a malformed request-target only.
+- HTTP/2: h2-only ALPN is refused (existing test); a "PRI * HTTP/2.0" preface is a method without Host, 421, and with a Host
+  it crosses as "PRI * HTTP/1.1" with no key; an h2c upgrade is forwarded as a plain request with HTTP2-Settings dropped, no
+  101; the upstream transport has ForceAttemptHTTP2 false and no ALPN, so :authority exists on neither side.
+- Upgrade: a 101 from the allowed host opens a raw tunnel to that host only (DialContext admits terminate hosts alone); the
+  placeholder crosses unswapped, useless there; a bare 101 to a plain request gives 502 and no tunnel.
+- CONNECT: refused 405 before any check, authority form included; lowercase "connect" crosses as an ordinary method with
+  the swapped key to the bound host, no tunnel; "Connection: X-Api-Key" makes ReverseProxy drop the swapped header, self-harm.
+- obs-fold: Go 1.27 joins folded header lines with a space, so a placeholder folded across lines crosses broken and
+  unswapped: no secret.
+- CA and leaf: P-256, at most 24 h, name-constrained (critical) to the allowed names and their subdomains with every IP range
+  excluded, pathlen 0, key only in host memory; leaves are minted once per allowed name under a mutex, SAN = host, so the
+  cache is bounded by the allowlist; GetCertificate uses the peeked host, the same bytes replayed. Resumption across
+  connections is impossible: ticket keys live in the tls.Config and serveTerminated makes one per connection; three
+  connections sharing a client session cache all showed DidResume false (TLS 1.3). No client certificate is requested.
+- Upstream verification: expired, not-yet-valid, other-SAN, CN-only and other-authority leaves and a TLS 1.1-only upstream
+  all gave 502 with the real secret never written, since the handshake fails first; a wildcard leaf is accepted for the
+  subdomain and refused for the apex, as x509 says. ServerName is the SNI host; Transport.Proxy is nil, so no proxy
+  environment is honoured; an unreadable SSL_CERT_FILE refuses termination (existing test).
+- Secret injection forms: bare, Bearer and Basic (strict base64, 4 KiB) only; case, two values, suffixes, the placeholder
+  as the Basic user, query strings, path, header names and trailers are refused or left unswapped (existing tests and
+  FuzzCarriesPlaceholder); bodies of non-token requests are never scanned. Sign-in: form and JSON refresh swaps, gzip and
+  chunked answers, a 2xx that is not one JSON object, an over-bound answer and an unrecordable one are refused whole
+  (existing tests). Accept-Encoding is added only when the guest sent none and dropped at the token endpoint.
+- Failure modes: every error path answers 4xx or 5xx or closes (leaf error, Lookup error, tokenRequest reasons, a
+  ModifyResponse error gives an empty 502 before any upstream header is copied); handler panics are recovered per
+  connection. Nothing fails open. The handshake and each header read are bounded by ReadHeaderTimeout, 10 s absolute; idle
+  keep-alive holds are by design (S-1004) and cost about 69 KiB each.
+
+Handoffs: S-1006 (p.transport has no TLSHandshakeTimeout or ResponseHeaderTimeout, so with N as DNS naming a public host
+that accepts TCP and stalls, the guest's request hangs in its own slot until the guest gives up; nothing is written before
+verification). S-1007 (each swap is one broker.Lookup, one Resolve and one host process for cmd: and secret-service:
+sources per request under the 300 per minute window, PARKED line 10; the Lookup error text is dropped; the header string
+and the transport's write buffer are transient host-side copies of a value; nested token shapes stay parked, U-403).
+S-1010 (one kept-alive terminated connection produced about 57,000 refusal records per second, 20,000 pipelined requests
+with a foreign Host in 349 ms, so the 8 MiB SoftLimit fills in about 1.3 s and connection records then stop while the
+session continues: the terminated path makes I9's recording budget exhaustible at request rate, where the splice path is
+bound by the vsock connect rate). S-1013 (a real token obtained through C10 chains with "a key the guest made up is not
+swapped" into a working credential used through the proxy; the Upgrade tunnel to a WebSocket-speaking allowed host carries
+raw bytes with no further check, bounded to that host).
+
+Coverage. Read in full: internal/proxy/terminate.go, signin.go, proxy.go, allowlist.go, terminate_test.go, signin_test.go,
+proxy_test.go, clients_test.go, git_test.go, providers_test.go; internal/secret/broker.go; internal/guest/trust.go;
+cmd/workcell/policy.go and relay.go; escape/suite/terminate.go, secrets.go and signin.go; SPEC; PARKED; FINDINGS lines
+1-133 and 404-520; Go 1.27 net/http readRequest (both), parseTransferEncoding, fixLength, ReverseProxy ServeHTTP and
+handleUpgradeResponse, crypto/tls ticketKeys. Skimmed: cmd/workcell/run_vm.go boot and bind, escape/suite/https.go and
+tests.go, internal/audit/audit.go limits, internal/provider/*.toml (no method, path or signin rows ship), ADR-003,
+docs/policy.md, crypto/tls checkForResumption. Not opened: internal/secret/source.go and its tests (S-1007),
+internal/proxy/allowlist_test.go and forward_test.go, internal/resolver (S-1006), internal/guest/guest.go, cmd/workcell-init,
+the escape sandbox adapters, FINDINGS lines 134-403. Ran: go test ./internal/proxy/ (green) and the overlay probes named
+above; nothing needing a VM; no probe left the session. terminate.go is ported, signin.go is not. No model declined, and
+no safeguard re-ran a request.
+
+### S-1005 candidates
+
+C10. ID I5 (sign-in flow: a real token the broker holds never appears in an answer; narrowing: a placeholder sent any other
+way to the host is refused), with I6's Host leg intact. Attacker: hostile model output choosing the request path, and guest
+root. Where: internal/proxy/signin.go tokenEndpoint and sameEndpoint (not ported); internal/proxy/terminate.go admits
+(ported). Input: (a) with a signin row for login.example.com/oauth/token, the guest POSTs an authorization-code grant to
+/oauth/x/..;/token, /oauth%5Ctoken or /oauth/./token;a/..;/token; (b) with a rule narrowed to POST /v1/ or to one
+repository, the guest sends the placeholder to POST /v1/..;/admin, /v1/..%5Cadmin, GET /octo/allowed.git/..;/other.git/info/refs
+or POST /octo/allowed/..;/..;/evil/repo.git/git-receive-pack. Effect: (a) tokenEndpoint matches neither reading, since
+sameEndpoint strips ;params but never re-resolves the dot segments that uncovers and knows nothing of backslashes, so the
+request crosses as an ordinary one; a router that drops ;params before normalising (Tomcat, Jetty, Undertow) or folds a
+backslash to a slash (HTTP.sys, IIS) serves it as the token endpoint and answers real access and refresh tokens that the
+proxy never reads, learns or hides: the guest holds working credentials, and "a key the guest made up is not swapped" lets
+it use them through the proxy. (b) admits judges the path as sent and as decoded with dot segments resolved, but ..; and
+..\ are not dot segments to path.Clean, so the real secret reaches /admin or another repository on the bound host, outside
+the rule. Reproducing test: escape/_pending/S-F5/c10_test.go, TestFoldedPathEscapesTheEndpointAndTheRule (package proxy;
+the fake upstream folds the path as those routers do and the head comment names that as the precondition), run by overlay:
+fails on 6294e07 with "the guest read a real token: 200 {access_token sk-acc-1, refresh_token sk-ref-1}" for all three
+token spellings and "got (200, /admin real-secret), want it refused" and "/octo/other.git/info/refs Bearer real-secret" for
+the narrowed rows, while the package's own tests pass. Outcome: CONFIRMED, medium, by the verifier: the test reaches the
+proxy through the session CA as a guest does and takes the same fixture arrangement as signinFixture, the only modelled
+element being the router's folding, which is the stated precondition and standard behaviour of those servers, not a
+compromise of an allowlisted provider; the product's own comments promise the router's reading and that no ".." leads
+out from under a prefix on either reading, and the suite already pins ;jsessionid and %2e%2e forms, so the combination
+is an omission, not a design; medium under S6 because the operator's host must sit behind such a router. Fix unit: S-F5,
+below S-1005 in PLAN.md. Residual, unmodelled: IIS trailing-dot and trailing-space stripping, and double decoding.
+also in v1 main: egressproxy/terminate.go
+
+C11. ID I10 (host memory), with I12's hang. Attacker: guest root. Where: internal/proxy/terminate.go serveTerminated's
+http.Server literal (ReadHeaderTimeout only; MaxHeaderBytes at the 1 MiB default; no ReadTimeout, IdleTimeout or
+post-header deadline anywhere in the package); internal/proxy/signin.go tokenRequest's io.ReadAll with no deadline.
+Input: up to 1024 terminated connections, each sending a complete header block just under 1 MiB with Content-Length: 100
+and no body, to a sign-in row's token endpoint (held with no deadline and no upstream dialled, since tokenRequest reads
+the body whole first) or to any bound host (held while the upstream waits for the body). Effect: each held slot pins the
+parsed header map, about 1.0 MiB of live heap and 1.3 to 1.65 MiB of RSS, against ADR-003's 55 KiB per held stream:
+about 1 to 1.7 GiB at the slot cap, for as long as the guest likes. Reproducing test: escape/_pending/S-F6/c11_test.go,
+TestTokenEndpointHoldsOversizedHeaders (16 raw TLS connections send 979 KiB of headers with Expect: 100-continue; the
+proxy's own 100 Continue proves the block was parsed and the handler is blocked in ReadAll; live heap per held connection
+is compared with 512 KiB), run by overlay: fails on 6294e07 with "pin 1038 KiB of live heap each, over 512 KiB; a client
+needs a few KiB", stable at 1037 to 1042 across eight runs by the redteam and the verifier. Outcome: CONFIRMED, low, by
+the verifier: the effect is real and the attacker needs only a sign-in row in policy and ordinary TLS connections; the
+"no idle timeout" comment accepts a held connection, not a held slot at twenty times the budget; low stands under S6
+because maxConns bounds the total and no exhaustion of host memory or hang of the host process is demonstrated. Fix unit:
+S-F6, below S-1005 in PLAN.md (one line, MaxHeaderBytes 64 KiB; optionally a read deadline before tokenRequest).
+also in v1 main: egressproxy/terminate.go
+
+C12. ID I5 (sign-in: a real token the broker holds never appears in an answer). Attacker: guest root, with two
+preconditions it does not control. Where: internal/proxy/signin.go hide's plain-bytes pass and hideIn (not ported); the
+spelling comes from swapRefresh's url.QueryEscape. Input: a broker refresh token holding +, / or = (base64-shaped, as
+some providers' tokens are), which the proxy sends to the token endpoint as refresh_token=a%2Bb%2Fc%3D, and a token-endpoint
+error answer that echoes the parameter as received, in text or inside a JSON string. Effect: hide replaces the verbatim
+bytes and the JSON-escaped spellings of the real values but not the percent-encoded spelling the proxy itself put on the
+wire, so the answer reaches the guest one decode away from the real refresh token. Reproducing test:
+escape/_pending/S-F7/c12_test.go, TestLearnHidesTheEncodedSpelling (through learn, with a broker holding a+b/c=), run by
+overlay: fails on 6294e07 with learn("error=invalid_grant&refresh_token=a%2Bb%2Fc%3D") returned unchanged, and the same
+inside a JSON string. Outcome: CONFIRMED by the verifier, who also ran it end to end through the real terminating proxy
+with a loopback token endpoint echoing its raw form body in a 400: the endpoint received refresh_token=a%2Bb%2Fc%3D and the
+guest received that 400 body untouched. The guest sends only the placeholder, the documented flow, and gains no extra
+power. The auditor rated it low because no allowlisted provider was shown to echo raw parameters (T8 forbids probing one);
+the verifier read S6's letter as medium, since the break is demonstrated under preconditions the attacker does not
+control. Recorded at medium on the verifier's reading, so S7 fixes it before cutover; the fix is two lines in hide
+(the QueryEscape spelling, and the JSON-marshalled form of it). Fix unit: S-F7, below S-1005 in PLAN.md.

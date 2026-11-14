@@ -45,8 +45,7 @@ func hostFiles() (int64, error) {
 	return procField("/proc/sys/fs/file-nr", "", 1)
 }
 
-// hostBusy is the host's CPU time spent on anything but idle and iowait, in
-// clock ticks, summed over every CPU.
+// hostBusy is the host's CPU time spent on anything but idle and iowait, in clock ticks, summed over every CPU.
 func hostBusy() (int64, error) {
 	f, err := os.Open("/proc/stat")
 	if err != nil {
@@ -62,8 +61,7 @@ func hostBusy() (int64, error) {
 	return 0, errors.New("/proc/stat has no cpu line")
 }
 
-// busyTicks sums the columns of a /proc/stat cpu line that are both busy and
-// counted once: user nice system irq softirq steal, skipping idle, iowait,
+// busyTicks sums the columns of a /proc/stat cpu line that are both busy and counted once: user nice system irq softirq steal, skipping idle, iowait,
 // and guest and guest_nice, which user and nice already hold.
 func busyTicks(line string) (int64, error) {
 	fields := strings.Fields(line)
@@ -83,8 +81,7 @@ func busyTicks(line string) (int64, error) {
 	return busy, nil
 }
 
-// hostDiskFree sums the free bytes of every real filesystem the host has
-// mounted, each counted once.
+// hostDiskFree sums the free bytes of every real filesystem the host has mounted, each counted once.
 func hostDiskFree() (int64, error) {
 	f, err := os.Open("/proc/self/mounts")
 	if err != nil {
@@ -109,8 +106,7 @@ func hostDiskFree() (int64, error) {
 	return free, nil
 }
 
-// helperAlive says whether the process runs on the host: it has a /proc
-// entry and is neither a zombie nor dead.
+// helperAlive says whether the process runs on the host: it has a /proc entry and is neither a zombie nor dead.
 func helperAlive(pid int) (bool, error) {
 	b, err := os.ReadFile(fmt.Sprintf("/proc/%d/stat", pid))
 	if errors.Is(err, fs.ErrNotExist) || errors.Is(err, syscall.ESRCH) {
@@ -140,8 +136,7 @@ func processGroup(pid int) (int, error) {
 	return pgid, err
 }
 
-// descendants lists every process below pid, children first, as the tree
-// stands now.
+// descendants lists every process below pid, children first, as the tree stands now.
 func descendants(pid int) ([]int, error) {
 	children := map[int][]int{}
 	if err := sandbox.EachProcess(func(p, ppid, _ int) { children[ppid] = append(children[ppid], p) }); err != nil {
@@ -161,8 +156,7 @@ func groupMembers(pgid int) ([]int, error) {
 	return out, err
 }
 
-// procField reads the first number after the label (or the first number of
-// the file, when label is "") and scales it.
+// procField reads the first number after the label (or the first number of the file, when label is "") and scales it.
 func procField(path, label string, scale int64) (int64, error) {
 	b, err := os.ReadFile(path)
 	if err != nil {

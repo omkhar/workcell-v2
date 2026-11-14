@@ -10,10 +10,8 @@ import (
 	"strings"
 )
 
-// A minimal DNS wire codec (RFC 1035 section 4.1) for the I3 probes and their
-// canaries. The bytes a canary parses come from the guest and are hostile, so
-// parseDNSQuery is total and fuzzed. A name is "label.label.", always with the
-// trailing dot, every label 1 to 63 bytes of printable ASCII without a dot.
+// A minimal DNS wire codec (RFC 1035 section 4.1) for the I3 probes and their canaries. The bytes a canary parses come from the guest and are hostile, so
+// parseDNSQuery is total and fuzzed. A name is "label.label.", always with the trailing dot, every label 1 to 63 bytes of printable ASCII without a dot.
 
 const (
 	dnsTypeA        = 1
@@ -39,8 +37,7 @@ type dnsQuestion struct {
 	Type uint16
 }
 
-// dnsQuery encodes a standard recursive query with one question. A name the
-// rules above forbid still encodes, so that a probe can send what it likes.
+// dnsQuery encodes a standard recursive query with one question. A name the rules above forbid still encodes, so that a probe can send what it likes.
 func dnsQuery(q dnsQuestion) []byte {
 	b := make([]byte, 12, 12+len(q.Name)+5)
 	binary.BigEndian.PutUint16(b[0:], q.ID)
@@ -50,8 +47,7 @@ func dnsQuery(q dnsQuestion) []byte {
 	return binary.BigEndian.AppendUint16(binary.BigEndian.AppendUint16(b, q.Type), dnsClassIN)
 }
 
-// encodeName is name in wire form: each label behind its length, then the
-// root. A name the rules above forbid still encodes.
+// encodeName is name in wire form: each label behind its length, then the root. A name the rules above forbid still encodes.
 func encodeName(name string) []byte {
 	var b []byte
 	for _, label := range strings.Split(strings.TrimSuffix(name, "."), ".") {
@@ -61,8 +57,7 @@ func encodeName(name string) []byte {
 	return append(b, 0)
 }
 
-// parseDNSQuery decodes a message as a query (QR 0) whose first question has
-// an uncompressed, well-formed name of class IN. Anything else is not a query
+// parseDNSQuery decodes a message as a query (QR 0) whose first question has an uncompressed, well-formed name of class IN. Anything else is not a query
 // the canary counts.
 func parseDNSQuery(b []byte) (dnsQuestion, bool) {
 	if len(b) < 12 || b[2]&0x80 != 0 || binary.BigEndian.Uint16(b[4:]) == 0 {
@@ -97,22 +92,19 @@ func parseDNSQuery(b []byte) (dnsQuestion, bool) {
 	return dnsQuestion{ID: binary.BigEndian.Uint16(b), Name: name.String(), Type: binary.BigEndian.Uint16(b[i:])}, true
 }
 
-// dnsFrame adds the two-byte length prefix of DNS over TCP and TLS (RFC 1035
-// section 4.2.2, RFC 7858).
+// dnsFrame adds the two-byte length prefix of DNS over TCP and TLS (RFC 1035 section 4.2.2, RFC 7858).
 func dnsFrame(msg []byte) []byte {
 	return append(binary.BigEndian.AppendUint16(make([]byte, 0, 2+len(msg)), uint16(len(msg))), msg...)
 }
 
-// withEDNS0 adds an OPT pseudo-record (RFC 6891) to a query: ARCOUNT 1, root
-// name, type OPT, a 4096-byte UDP size in the class field, no options.
+// withEDNS0 adds an OPT pseudo-record (RFC 6891) to a query: ARCOUNT 1, root name, type OPT, a 4096-byte UDP size in the class field, no options.
 func withEDNS0(msg []byte) []byte {
 	msg = bytes.Clone(msg)
 	binary.BigEndian.PutUint16(msg[10:], 1)
 	return append(msg, 0, 0, dnsTypeOPT, 0x10, 0, 0, 0, 0, 0, 0, 0)
 }
 
-// dnsReply is what a resolver's response says, as far as a probe judges it:
-// the id it answers, its rcode, and the type and data of each answer record.
+// dnsReply is what a resolver's response says, as far as a probe judges it: the id it answers, its rcode, and the type and data of each answer record.
 type dnsReply struct {
 	ID      uint16
 	Rcode   uint16
@@ -124,10 +116,8 @@ type dnsRR struct {
 	Data []byte
 }
 
-// parseDNSReply decodes a message as a response (QR 1) whose answer section
-// it can walk: names are skipped, compressed or not, and nothing is followed.
-// The bytes come from whatever answered the guest and are hostile, so the
-// parser is total: anything it cannot walk is not a reply.
+// parseDNSReply decodes a message as a response (QR 1) whose answer section it can walk: names are skipped, compressed or not, and nothing is followed.
+// The bytes come from whatever answered the guest and are hostile, so the parser is total: anything it cannot walk is not a reply.
 func parseDNSReply(b []byte) (dnsReply, bool) {
 	if len(b) < 12 || b[2]&0x80 == 0 {
 		return dnsReply{}, false
@@ -156,8 +146,7 @@ func parseDNSReply(b []byte) (dnsReply, bool) {
 	return r, true
 }
 
-// skipName returns the offset after the name at i, or -1 if it runs off the
-// message. A compression pointer ends the name where it stands.
+// skipName returns the offset after the name at i, or -1 if it runs off the message. A compression pointer ends the name where it stands.
 func skipName(b []byte, i int) int {
 	for {
 		if i >= len(b) {

@@ -12,8 +12,7 @@ import (
 	"testing"
 )
 
-// A fresh copy of a Go binary, signed, carries the virtualization
-// entitlement and still runs. The copy is this test binary.
+// A fresh copy of a Go binary, signed, carries the virtualization entitlement and still runs. The copy is this test binary.
 func TestSign(t *testing.T) {
 	if err := hostReady(); err != nil {
 		t.Skip(err)

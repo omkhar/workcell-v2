@@ -12,8 +12,7 @@ import (
 	"time"
 )
 
-// The host figures behave as the Linux ones: the available memory is a
-// plausible size, and a process shows while it runs, not once reaped.
+// The host figures behave as the Linux ones: the available memory is a plausible size, and a process shows while it runs, not once reaped.
 func TestHostMemAvailable(t *testing.T) {
 	mem, err := hostMemAvailable()
 	if err != nil || mem < 64<<20 {

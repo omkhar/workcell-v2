@@ -49,8 +49,7 @@ func TestEncodeLookup(t *testing.T) {
 	}
 }
 
-// TestLookupJudge checks what each want accepts: an address, a refusal
-// without one, any answer; never silence, never a slow one.
+// TestLookupJudge checks what each want accepts: an address, a refusal without one, any answer; never silence, never a slow one.
 func TestLookupJudge(t *testing.T) {
 	cases := []struct {
 		want, got string
@@ -84,8 +83,7 @@ func TestLookupJudge(t *testing.T) {
 	}
 }
 
-// TestResolverJudges runs the judges on a guest that says what a canned
-// resolver answered.
+// TestResolverJudges runs the judges on a guest that says what a canned resolver answered.
 func TestResolverJudges(t *testing.T) {
 	session := func(detail string) Session {
 		return Session{Run: func(args ...string) (Result, error) {

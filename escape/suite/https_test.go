@@ -11,8 +11,7 @@ import (
 	"time"
 )
 
-// The judges on canaries that never listened: the product's pass path, and
-// the path where the guest reached nothing, must each return at once.
+// The judges on canaries that never listened: the product's pass path, and the path where the guest reached nothing, must each return at once.
 func TestJudgesOnFakeCanaries(t *testing.T) {
 	sec := NewSecret(withSecret)
 	placeholder := secretPrefix + strings.Repeat("0", secretHex)
@@ -83,8 +82,7 @@ func TestJudgesOnFakeCanaries(t *testing.T) {
 	}
 }
 
-// TestExchange checks the parser of an exchange and what the swap rule
-// admits under a binding, narrowed and not.
+// TestExchange checks the parser of an exchange and what the swap rule admits under a binding, narrowed and not.
 func TestExchange(t *testing.T) {
 	wide, narrow := NewSecret(withSecret), NewSecret(narrowed)
 	cases := []struct {

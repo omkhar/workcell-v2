@@ -7,8 +7,7 @@ package suite
 
 import "errors"
 
-// The I10 judges read the host's load from /proc on Linux and from Mach on
-// a Mac with cgo. Any other host gets an error, never a pass.
+// The I10 judges read the host's load from /proc on Linux and from Mach on a Mac with cgo. Any other host gets an error, never a pass.
 var errLinuxHost = errors.New("reading the host's load is Linux or macOS with cgo only")
 
 func hostProcs() (int64, error)        { return 0, errLinuxHost }

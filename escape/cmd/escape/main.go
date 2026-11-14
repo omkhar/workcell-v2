@@ -5,8 +5,7 @@
 //
 //	escape -sandbox control|workcell [-list] [-only I1,I2,...]
 //
-// It exits 0 only when every selected test passed. "not-implemented" and
-// "error" exit non-zero too: an invariant that was not tested is not proven.
+// It exits 0 only when every selected test passed. "not-implemented" and "error" exit non-zero too: an invariant that was not tested is not proven.
 package main
 
 import (

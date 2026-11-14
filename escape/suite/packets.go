@@ -5,16 +5,14 @@ package suite
 
 import "bytes"
 
-// Pure encoders and parsers for the probes' packets. The bytes a judge parses
-// come from the guest and are hostile, so quicDCID is total and fuzzed.
+// Pure encoders and parsers for the probes' packets. The bytes a judge parses come from the guest and are hostile, so quicDCID is total and fuzzed.
 
 const (
 	maxCID      = 20   // RFC 9000: a connection ID is at most 20 bytes
 	quicInitMin = 1200 // RFC 9000: a client Initial is padded to at least this
 )
 
-// quicInitial builds a QUIC version 1 Initial packet with the destination
-// connection ID dcid, padded as a client's first flight must be. Its payload
+// quicInitial builds a QUIC version 1 Initial packet with the destination connection ID dcid, padded as a client's first flight must be. Its payload
 // is not a valid handshake; a canary only needs the invariant header.
 func quicInitial(dcid []byte) []byte {
 	b := []byte{0xC3, 0, 0, 0, 1, byte(len(dcid))} // long header, fixed bit, Initial, 4-byte packet number; version 1
@@ -25,8 +23,7 @@ func quicInitial(dcid []byte) []byte {
 	return append(b, make([]byte, rem)...)      // packet number and payload
 }
 
-// quicDCID parses a datagram as a QUIC version 1 Initial packet and returns
-// its destination connection ID.
+// quicDCID parses a datagram as a QUIC version 1 Initial packet and returns its destination connection ID.
 func quicDCID(b []byte) ([]byte, bool) {
 	if len(b) < quicInitMin || b[0]&0xF0 != 0xC0 || !bytes.Equal(b[1:5], []byte{0, 0, 0, 1}) {
 		return nil, false
@@ -46,8 +43,7 @@ func icmpEcho(id, seq uint16, payload []byte) []byte {
 	return b
 }
 
-// icmpReply parses what a socket returned, with the IPv4 header still on it
-// when raw is set, and returns the payload if it is an echo reply.
+// icmpReply parses what a socket returned, with the IPv4 header still on it when raw is set, and returns the payload if it is an echo reply.
 func icmpReply(b []byte, raw bool) ([]byte, bool) {
 	if raw {
 		if len(b) < 20 {

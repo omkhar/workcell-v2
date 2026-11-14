@@ -15,8 +15,7 @@ import (
 	"github.com/omkhar/workcell/v2/escape/suite"
 )
 
-// fake is a sandbox whose payload prints canned bytes; nothing of Observe is
-// called, so a nil interface stands for it.
+// fake is a sandbox whose payload prints canned bytes; nothing of Observe is called, so a nil interface stands for it.
 type fake struct {
 	sandbox.Observe
 	start      error
@@ -83,8 +82,7 @@ func TestRunOutcomes(t *testing.T) {
 	}
 }
 
-// TestSessions checks that each session gets its own export, the judge can
-// open a second one, and every session is stopped and its export removed.
+// TestSessions checks that each session gets its own export, the judge can open a second one, and every session is stopped and its export removed.
 func TestSessions(t *testing.T) {
 	var got []suite.Session
 	sb := &fake{stdout: "escape-result ok \n"}

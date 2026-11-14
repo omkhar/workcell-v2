@@ -10,8 +10,7 @@ import (
 	"testing"
 )
 
-// A KVM host reports a guest's vCPU time in guest and guest_nice and again in
-// user and nice; the judge must count it once, or a capped guest looks like
+// A KVM host reports a guest's vCPU time in guest and guest_nice and again in user and nice; the judge must count it once, or a capped guest looks like
 // it spent twice its CPU.
 func TestBusyTicksCountsGuestTimeOnce(t *testing.T) {
 	// user nice system idle iowait irq softirq steal guest guest_nice
@@ -27,8 +26,7 @@ func TestBusyTicksCountsGuestTimeOnce(t *testing.T) {
 	}
 }
 
-// A mount-mode disk flood whose run failed, or whose probe never reported
-// the flood as tried, must not pass on a zero loss: the error is the row's,
+// A mount-mode disk flood whose run failed, or whose probe never reported the flood as tried, must not pass on a zero loss: the error is the row's,
 // and any other report fails the row with the guest's own words in it.
 func TestMountDiskJudgeNeverPassesWithoutATriedReport(t *testing.T) {
 	ws := t.TempDir()

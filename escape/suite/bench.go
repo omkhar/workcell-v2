@@ -10,21 +10,17 @@ import (
 	"time"
 )
 
-// SPEC P1: warm session start p50 under 2.5 s on a hosted CI runner, measured
-// by `workcell bench start` over 20 samples. The product does the timing; the
+// SPEC P1: warm session start p50 under 2.5 s on a hosted CI runner, measured by `workcell bench start` over 20 samples. The product does the timing; the
 // judge only runs it, reads its one line and holds it to the budget.
 const (
 	benchSamples  = 20
 	benchBudgetMs = 2500
-	// benchBound gives the twenty-one boots room to be slow and still end
-	// as a measured fail, not a timeout: seven seconds each, and teardown.
+	// benchBound gives the twenty-one boots room to be slow and still end as a measured fail, not a timeout: seven seconds each, and teardown.
 	benchBound = 150 * time.Second
 )
 
-// benchJudge runs the benchmark through the adapter. A start the product
-// could not do, a line it did not print as SPEC P1 says, or a median not
-// under the budget (the product prints whole milliseconds, truncated, so
-// 2500 may stand for 2500.9) is a fail, with the product's own words as
+// benchJudge runs the benchmark through the adapter. A start the product could not do, a line it did not print as SPEC P1 says, or a median not
+// under the budget (the product prints whole milliseconds, truncated, so 2500 may stand for 2500.9) is a fail, with the product's own words as
 // the detail so that the number is in the run log.
 func benchJudge(ctx context.Context, s Session) (bool, string, error) {
 	out, err := s.Bench(ctx)
@@ -42,8 +38,7 @@ func benchJudge(ctx context.Context, s Session) (bool, string, error) {
 	return p50 < benchBudgetMs, clean(string(bytes.TrimSpace(out.Stdout)), maxDetail, isPrint, '?'), nil
 }
 
-// parseBench reads the one line `bench start n=20 p50=<ms> min=<ms> max=<ms>`
-// and returns the median. It is strict: the whole output must be that line
+// parseBench reads the one line `bench start n=20 p50=<ms> min=<ms> max=<ms>` and returns the median. It is strict: the whole output must be that line
 // and nothing else, with n the sample count and min <= p50 <= max.
 func parseBench(b []byte) (int, error) {
 	line, ok := bytes.CutSuffix(b, []byte("\n"))

@@ -81,8 +81,7 @@ func FuzzParseDNSQuery(f *testing.F) {
 	})
 }
 
-// TestTunnelled checks that the tunnel judge counts the pieces that arrived:
-// a tunnel that lost a datagram still carried the rest of the token out.
+// TestTunnelled checks that the tunnel judge counts the pieces that arrived: a tunnel that lost a datagram still carried the rest of the token out.
 func TestTunnelled(t *testing.T) {
 	token := "0123456789abcdef0123456789abcdef"
 	txt := func(seq int, chunk string) dnsQuestion {
