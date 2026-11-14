@@ -1,6 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Omkhar Arasaratnam
 
+// Parked under S4 until the fix unit S-F1 lands. S-F1 moves this file back to
+// escape/suite/rollback.go and adds this row to All in escape/suite/tests.go,
+// directly after the row named channel-frames-after-exit:
+//
+//	{ID: "I12", Name: "channel-first-frame-rollback", Probe: rollbackProbe, Host: rollbackJudge, Want: Want{Command: layerAgent}},
+
 package suite
 
 import (

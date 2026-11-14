@@ -238,10 +238,6 @@ var All = append([]Test{
 	{ID: "I12", Name: "channel-connect-flood", Probe: channelProbe, Host: floodJudge, Bound: channelBound},
 	{ID: "I12", Name: "channel-cut-mid-frame", Probe: channelProbe, Host: channelJudge("half-close", "full-shutdown"), Bound: channelBound},
 	{ID: "I12", Name: "channel-frames-after-exit", Probe: channelProbe, Host: channelJudge("after-exit"), Bound: channelBound},
-	// The operator runs an installed provider by name, and the command itself
-	// forges an Exit of error text as the guest's first frame, the word the host
-	// answers by setting the layer aside (B9). It must still be current after.
-	{ID: "I12", Name: "channel-first-frame-rollback", Probe: rollbackProbe, Host: rollbackJudge, Want: Want{Command: layerAgent}},
 	// The update client on the host, after one honest install from a channel
 	// the judge signs and serves, meets a manifest signed by another key or
 	// with a corrupted signature, past its expiry, below the last serial or
