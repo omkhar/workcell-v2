@@ -95,6 +95,7 @@ type Want struct {
 	Shape     string
 	// Command is a provider the session runs by name (sandbox.Config.Command).
 	Command string
+	Head    bool // the operator's stdout reader goes away after its first read (sandbox.Config.Head)
 }
 
 // Test is one escape test.

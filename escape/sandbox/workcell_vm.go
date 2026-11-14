@@ -27,8 +27,7 @@ import (
 	"time"
 )
 
-// The adapter on a host with a hypervisor the product drives: Firecracker on
-// Linux, Virtualization.framework on macOS. What differs per OS lives in
+// The adapter on a host with a hypervisor the product drives: Firecracker on Linux, Virtualization.framework on macOS. What differs per OS lives in
 // workcell_linux.go and workcell_darwin.go; the session itself is the same.
 const (
 	maxDownload = 256 << 20 // more than any pinned download; a runaway body stops here
@@ -38,15 +37,12 @@ const (
 // loader runs inside the guest: it takes the payload from stdin and runs it with the test's arguments.
 const loader = `cat >/tmp/p && chmod 755 /tmp/p && exec /tmp/p "$@"`
 
-// isolatedAddr is the one address the test host holds in a session's own
-// network (Config.Isolated): AS112 space (RFC 7534), global unicast that the
-// product's vetting accepts and no operator's; nothing sent to it leaves the host (T8, S12).
+// isolatedAddr is the one address the test host holds in a session's own network (Config.Isolated): AS112 space (RFC 7534), global unicast that the product's
+// vetting accepts and no operator's; nothing sent to it leaves the host (T8, S12).
 const isolatedAddr = "192.175.48.1"
 
-// RootBind binds network/addr as root on the test host, by a helper that
-// hands the socket back over a unix socket (rootBindArgv), in the session's
-// own network when ns is set; "host" in addr is the test host's address
-// there. A socket handed over dead is bound again.
+// RootBind binds network/addr as root on the test host, by a helper that hands the socket back over a unix socket (rootBindArgv), in the session's own network
+// when ns is set; "host" in addr is the test host's address there. A socket handed over dead is bound again.
 func RootBind(network, addr, payload string, ns int) (net.Listener, net.PacketConn, error) {
 	host, port, err := net.SplitHostPort(addr)
 	if err != nil {
@@ -83,9 +79,8 @@ func RootBind(network, addr, payload string, ns int) (net.Listener, net.PacketCo
 	}
 }
 
-// handedOver runs argv with its last word replaced by a unix socket of its
-// own and takes the descriptor sent there, polling: on macOS a socket queued
-// on a connection not yet accepted is dead once its sender exits (U-701).
+// handedOver runs argv with its last word replaced by a unix socket of its own and takes the descriptor sent there, polling: on macOS a socket queued on a
+// connection not yet accepted is dead once its sender exits (U-701).
 func handedOver(argv []string, network, where string) (*os.File, error) {
 	dir, err := os.MkdirTemp("", "escape-bind-")
 	if err != nil {
@@ -145,8 +140,8 @@ var prepared struct {
 	repo string // the module's directory, for a build the product's rows are swapped in (Install)
 }
 
-// workcell is one session of the product: a directory holding its policy, its
-// secret and its cwd, the payload and the caps. A VM lives only as long as one Exec or one Pull.
+// workcell is one session of the product: a directory holding its policy, its secret and its cwd, the payload and the caps. A VM lives only as long as one Exec
+// or one Pull.
 type workcell struct {
 	dir     string
 	bin     string // the product with the suite's row compiled in, once Install ran; "" is prepared.bin
@@ -262,8 +257,7 @@ func fetch(ctx context.Context, url, sum string) ([]byte, error) {
 	return b, nil
 }
 
-// goBuild compiles pkg of the module at repo into out with env added to the
-// environment, under the build overlay file named when one is.
+// goBuild compiles pkg of the module at repo into out with env added to the environment, under the build overlay file named when one is.
 func goBuild(ctx context.Context, repo, out, pkg, overlay string, env ...string) error {
 	args := []string{"build", "-trimpath", "-o", out}
 	if overlay != "" {
@@ -292,9 +286,8 @@ func (w *workcell) Start(_ context.Context, cfg Config) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	// The secret's value, where only the host reads it: a file of the
-	// session's own, mode 0600, beside the policy and outside any export.
-	// A row with a source of its own (a sign-in flow) has no value to write.
+	// The secret's value, where only the host reads it: a file of the session's own, mode 0600, beside the policy and outside any export. A row with a source
+	// of its own (a sign-in flow) has no value to write.
 	source := filepath.Join(dir, "secret")
 	if cfg.Secret != nil && cfg.Secret.Source == "" {
 		if err := os.WriteFile(source, []byte(cfg.Secret.Value), 0o600); err != nil {
@@ -313,8 +306,7 @@ func (w *workcell) Start(_ context.Context, cfg Config) (string, error) {
 		os.RemoveAll(dir)
 		return "", fmt.Errorf("workcell: %w", err)
 	}
-	// The session's policy, where `workcell run` reads it with XDG_CONFIG_HOME
-	// at the session's config directory: <dir>/config/workcell/config.toml.
+	// The session's policy, where `workcell run` reads it with XDG_CONFIG_HOME at the session's config directory: <dir>/config/workcell/config.toml.
 	file := filepath.Join(dir, "config", policyFile)
 	if err := errors.Join(os.MkdirAll(filepath.Dir(file), 0o755), os.Mkdir(filepath.Join(dir, "cwd"), 0o755)); err == nil {
 		err = os.WriteFile(file, policy, 0o644)
@@ -336,11 +328,9 @@ func (w *workcell) Start(_ context.Context, cfg Config) (string, error) {
 	return "", nil
 }
 
-// Exec is one `workcell run`: a fresh VM boots, the guest's shell takes the
-// payload from stdin and runs it, and the VM goes away. Every exit status is
-// a result, 125 and 126 included. With a Command, the product runs that name
-// from the layer the test installed, on a stdin nothing writes, held open:
-// no Stdin frame, nothing for the guest to acknowledge before the command speaks.
+// Exec is one `workcell run`: a fresh VM boots, the guest's shell takes the payload from stdin and runs it, and the VM goes away. Every exit status is a
+// result, 125 and 126 included. With a Command, the product runs that name from the layer the test installed, on a stdin nothing writes, held open: no Stdin
+// frame, nothing for the guest to acknowledge before the command speaks.
 func (w *workcell) Exec(ctx context.Context, args ...string) (Output, error) {
 	if w.dir == "" {
 		return Output{}, errors.New("workcell: Exec before Start")
@@ -391,10 +381,8 @@ func (w *workcell) Bench(ctx context.Context) (Output, error) {
 	return w.cli(ctx, nil, "bench", "start")
 }
 
-// cli runs the product once with the prepared artifacts, the session's policy
-// and trust store, in its export, stdin from in, both streams bounded, steered
-// when the session names a resolver. An exit status is a result, not an error.
-// On cancel the product gets SIGTERM and a little while; then its group is killed.
+// cli runs the product once with the prepared artifacts, the session's policy and trust store, in its export, stdin from in, both streams bounded, steered when
+// the session names a resolver. An exit status is a result, not an error. On cancel the product gets SIGTERM and a little while; then its group is killed.
 func (w *workcell) cli(ctx context.Context, in io.Reader, args ...string) (Output, error) {
 	env := append(os.Environ(), "XDG_DATA_HOME="+prepared.xdg, "XDG_CONFIG_HOME="+filepath.Join(w.dir, "config"))
 	if w.cfg.Roots != "" {
@@ -420,6 +408,14 @@ func (w *workcell) cli(ctx context.Context, in io.Reader, args ...string) (Outpu
 	cmd.Stdin = in
 	stdout, stderr := &bounded{limit: MaxStdout}, &bounded{limit: MaxStderr}
 	cmd.Stdout, cmd.Stderr = stdout, stderr
+	finish := func() {}
+	if w.cfg.Head {
+		head, fin, err := headPipe(stdout)
+		if err != nil {
+			return Output{}, err
+		}
+		cmd.Stdout, finish = head, fin
+	}
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true} // the product and what it forks, in a group of their own
 	cmd.Cancel = func() error { return cmd.Process.Signal(syscall.SIGTERM) }
 	cmd.WaitDelay = 3 * time.Second
@@ -430,14 +426,13 @@ func (w *workcell) cli(ctx context.Context, in io.Reader, args ...string) (Outpu
 	w.run = cmd
 	w.mu.Unlock()
 	err := cmd.Wait()
+	finish()
 	w.mu.Lock()
 	w.run = nil
 	w.mu.Unlock()
 	if ctx.Err() != nil && cmd.Process != nil {
-		// The kill Go sent after WaitDelay reached only cmd.Process, which
-		// under steering is sudo: what is left of the group, a product that
-		// ignored the SIGTERM and its hypervisor, goes now. They run as the
-		// suite's user, so that needs no sudo.
+		// The kill Go sent after WaitDelay reached only cmd.Process, which under steering is sudo: what is left of the group, a product that ignored the
+		// SIGTERM and its hypervisor, goes now. They run as the suite's user, so that needs no sudo.
 		_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
 	}
 	out := Output{Stdout: stdout.bytes(), Stderr: stderr.bytes()}
@@ -454,12 +449,10 @@ func (w *workcell) cli(ctx context.Context, in io.Reader, args ...string) (Outpu
 	return out, nil
 }
 
-// A session of the suite is several of the product's, one per `workcell run`
-// (A2), each with sessions/<id>/audit.log under the data directory, one JSON
-// line per record; the suite's record is theirs, in order, the file itself.
+// A session of the suite is several of the product's, one per `workcell run` (A2), each with sessions/<id>/audit.log under the data directory, one JSON line
+// per record; the suite's record is theirs, in order, the file itself.
 
-// sessions lists the product's sessions of this one with a record, oldest
-// first: an id begins with the session's UTC start time.
+// sessions lists the product's sessions of this one with a record, oldest first: an id begins with the session's UTC start time.
 func (w *workcell) sessions() ([]string, error) {
 	entries, err := os.ReadDir(filepath.Join(prepared.xdg, "workcell", "sessions"))
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
@@ -479,9 +472,8 @@ func record(id string) string {
 	return filepath.Join(prepared.xdg, "workcell", "sessions", id, "audit.log")
 }
 
-// Audit reads every record of the product's sessions of this one, oldest
-// first, and returns the newest file's path. With no session yet it runs one
-// that does nothing in the guest, under the session's own policy and caps.
+// Audit reads every record of the product's sessions of this one, oldest first, and returns the newest file's path. With no session yet it runs one that does
+// nothing in the guest, under the session's own policy and caps.
 func (w *workcell) Audit(ctx context.Context) (string, []string, error) {
 	if w.dir == "" {
 		return "", nil, errors.New("workcell: Audit before Start")
@@ -520,8 +512,7 @@ func (w *workcell) Audit(ctx context.Context) (string, []string, error) {
 	return path, records, nil
 }
 
-// Verify runs `workcell verify <id>` for every session of this one: nil only
-// when each exits 0; no session at all is an error, since nothing is not intact.
+// Verify runs `workcell verify <id>` for every session of this one: nil only when each exits 0; no session at all is an error, since nothing is not intact.
 func (w *workcell) Verify(ctx context.Context) error {
 	if w.dir == "" {
 		return errors.New("workcell: Verify before Start")
@@ -554,9 +545,8 @@ func (w *workcell) Bind(_ context.Context, network, addr string) (net.Listener, 
 	return bindHere(network, addr)
 }
 
-// Helper names the process whose death I11 is about: the proxy, the resolver
-// and the broker are the one `workcell run` that owns the VM (A9), found
-// below the run in flight (productProcess), given a moment to appear.
+// Helper names the process whose death I11 is about: the proxy, the resolver and the broker are the one `workcell run` that owns the VM (A9), found below the
+// run in flight (productProcess), given a moment to appear.
 func (w *workcell) Helper(ctx context.Context, name string) (int, error) {
 	switch name {
 	case "proxy", "resolver", "broker", "supervisor":
@@ -581,8 +571,7 @@ func (w *workcell) Helper(ctx context.Context, name string) (int, error) {
 // rows maps a provider to its pin row, as the product's install table does.
 var rows = map[string]string{"claude": "claude-code", "codex": "codex", "copilot": "copilot-cli"}
 
-// Install builds the product once more with the row l needs in place of the
-// file under pins/, by a build overlay (A11), has it run `workcell update --to
+// Install builds the product once more with the row l needs in place of the file under pins/, by a build overlay (A11), has it run `workcell update --to
 // <version> <agent>`, and names the image `current` then points at. Runs use that binary.
 func (w *workcell) Install(ctx context.Context, l Layer) (string, error) {
 	name, ok := rows[l.Agent]
@@ -642,8 +631,8 @@ func updateTable(dir string, u UpdateConfig) ([]byte, error) {
 	return table, os.WriteFile(ca, u.CA, 0o644)
 }
 
-// Update runs the plain product once as a user with an [update] table would,
-// under a configuration of its own holding the table alone; what it installed is the answer (Installed).
+// Update runs the plain product once as a user with an [update] table would, under a configuration of its own holding the table alone; what it installed is the
+// answer (Installed).
 func (w *workcell) Update(ctx context.Context, u UpdateConfig) ([]byte, error) {
 	agent := agentOf(u.Name)
 	if w.dir == "" || agent == "" {
@@ -711,8 +700,7 @@ func (w *workcell) Installed(ctx context.Context, name string) ([]byte, error) {
 	return b, nil
 }
 
-// Stop removes the session's directory, every session image the product kept
-// (no `workcell rm` exists yet), every layer and what the update client keeps
+// Stop removes the session's directory, every session image the product kept (no `workcell rm` exists yet), every layer and what the update client keeps
 // between runs, so that the next test finds only its own.
 func (w *workcell) Stop() error {
 	if w.dir == "" {
