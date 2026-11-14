@@ -18,6 +18,7 @@ import (
 
 	"github.com/omkhar/workcell/v2/internal/guest"
 	"github.com/omkhar/workcell/v2/internal/wire"
+	"golang.org/x/sys/unix"
 )
 
 func TestLastLines(t *testing.T) {
@@ -176,19 +177,35 @@ func TestSeat(t *testing.T) {
 	}
 }
 
-// TestClientEndsWithItsConnection is the regression test for a session that ends in error (a malformed frame from the guest, I12): no Exit frame reaches the
-// client, so only the closing of its connection ends it, and the supervisor, which waits for it, must not hang.
-func TestClientEndsWithItsConnection(t *testing.T) {
-	ours, theirs := net.Pipe()
-	ended := make(chan int, 1)
-	go func() { code, _ := client(theirs, func() {}, false); ended <- code }()
-	ours.Close()
-	select {
-	case code := <-ended:
-		if code != 0 {
-			t.Errorf("client ended with %d, want 0", code)
+// TestClientEndsAsADetach: the client ends with code 0 and the terminal restored when its connection closes with no Exit frame (a session that ended in error, I12:
+// the supervisor waits for it, so it must not hang) and when the reader of its stdout is gone (`| head -1`, C3 of S-1002, I9): not the SIGPIPE death that skipped session_end.
+func TestClientEndsAsADetach(t *testing.T) {
+	saved, _ := unix.Dup(unix.Stdout) // fd 1 becomes a pipe whose reader is gone, for the whole test
+	r, w, _ := os.Pipe()
+	r.Close()
+	if err := unix.Dup2(int(w.Fd()), unix.Stdout); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { unix.Dup2(saved, unix.Stdout); unix.Close(saved) }()
+	w.Close()
+	out := wire.Frame{Type: guest.TypeStdout, Payload: []byte("chatter 1\n")}
+	for name, end := range map[string]func(net.Conn) error{
+		"connection closed": func(ours net.Conn) error { return ours.Close() },
+		"reader gone":       func(ours net.Conn) error { return wire.New(ours, time.Second).WriteFrame(out) },
+	} {
+		ours, theirs := net.Pipe()
+		restored, ended := false, make(chan int, 1)
+		go func() { code, _ := client(theirs, func() { restored = true }, false); ended <- code }()
+		if err := end(ours); err != nil {
+			t.Fatal(name, err)
 		}
-	case <-time.After(10 * time.Second):
-		t.Fatal("client still running 10 s after its connection closed")
+		select {
+		case code := <-ended:
+			if code != 0 || !restored {
+				t.Errorf("%s: client ended with code %d, restored %t; want 0, true", name, code, restored)
+			}
+		case <-time.After(10 * time.Second):
+			t.Fatalf("%s: client still running after 10 s", name)
+		}
 	}
 }
