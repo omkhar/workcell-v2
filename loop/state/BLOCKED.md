@@ -10,3 +10,5 @@ When it is resolved, delete the entry, and in `PLAN.md` set the unit back to `[ 
 split the unit if it was too big or too vague. Land both files with `land.sh`.
 
 
+
+S-1004: needs the maintainer, see the run's transcript
