@@ -20,6 +20,8 @@ import (
 	"sync"
 	"syscall"
 
+	"golang.org/x/sys/unix"
+
 	"github.com/omkhar/workcell/v2/internal/vmm"
 )
 
@@ -57,12 +59,8 @@ func (m *Machine) Check(context.Context) error {
 	if m.cfg.Binary == "" {
 		return nil
 	}
-	fi, err := os.Stat(m.cfg.Binary)
-	if err != nil {
+	if _, err := exec.LookPath(m.cfg.Binary); err != nil { // an absolute path: no search, just the file and its mode
 		return fmt.Errorf("firecracker binary: %w", err)
-	}
-	if !fi.Mode().IsRegular() || fi.Mode().Perm()&0o111 == 0 {
-		return fmt.Errorf("firecracker binary %s is not an executable file", m.cfg.Binary)
 	}
 	return nil
 }
@@ -94,11 +92,7 @@ func (m *Machine) Start(ctx context.Context) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	b, err := encode(m.cfg)
-	if err != nil {
-		return err
-	}
-	if err := os.WriteFile(m.configPath(), b, 0o600); err != nil {
+	if err := os.WriteFile(m.configPath(), encode(m.cfg), 0o600); err != nil {
 		return err
 	}
 	cmd := exec.Command(m.cfg.Binary, "--no-api", "--config-file", m.configPath()) // no API server, one config file
@@ -111,7 +105,15 @@ func (m *Machine) Start(ctx context.Context) error {
 		// Pdeathsig fires when the thread that forked the child exits, so that thread
 		// stays locked to this goroutine for as long as the child lives (A9).
 		runtime.LockOSThread()
-		err := cmd.Start()
+		var set unix.CPUSet
+		err := unix.SchedGetaffinity(0, &set) // this thread's CPUs: the child inherits the mask, and a start the host cannot bound is refused (I10)
+		if err == nil {
+			pin(&set, m.cfg.CPUs)
+			err = unix.SchedSetaffinity(0, &set)
+		}
+		if err == nil {
+			err = cmd.Start()
+		}
 		started <- err
 		if err != nil {
 			return
@@ -208,8 +210,16 @@ type vsockConfig struct {
 	UDSPath string `json:"uds_path"`
 }
 
-// encode is the config file for cfg.
-func encode(cfg vmm.Config) ([]byte, error) {
+// pin keeps the first n CPUs of set: Firecracker's vCPU and device threads inherit the mask of the thread that forks it, so the guest costs the host n
+// CPUs at most, devices included (I10). Sessions share cores as the scheduler sees fit: the count is the bound, not the placement.
+func pin(set *unix.CPUSet, n int) {
+	for c := 64*len(set) - 1; c >= 0 && set.Count() > n; c-- { // from the top (64 CPUs a word), until n remain
+		set.Clear(c)
+	}
+}
+
+// encode is the config file for cfg: json.Marshal of strings, integers and booleans, which cannot fail.
+func encode(cfg vmm.Config) []byte {
 	c := fcConfig{
 		BootSource: bootSource{Kernel: cfg.Kernel, Initrd: cfg.Initrd, BootArgs: bootArgs},
 		Drives:     []drive{},
@@ -231,5 +241,6 @@ func encode(cfg vmm.Config) ([]byte, error) {
 	for _, k := range cfg.Caches { // the drive_id of a layer is a bare agent name, so a cache's is prefixed
 		c.Drives = append(c.Drives, drive{ID: "cache-" + k.Name, Path: k.Image, ReadOnly: !k.Writable})
 	}
-	return json.Marshal(c)
+	b, _ := json.Marshal(c)
+	return b
 }

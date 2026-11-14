@@ -31,6 +31,8 @@ import (
 	"testing"
 	"time"
 
+	"golang.org/x/sys/unix"
+
 	"github.com/omkhar/workcell/v2/internal/vmm"
 )
 
@@ -75,14 +77,32 @@ func TestConfig(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got, err := encode(tc.cfg)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if string(got) != tc.want {
+			if got := encode(tc.cfg); string(got) != tc.want {
 				t.Errorf("encode:\n got %s\nwant %s", got, tc.want)
 			}
 		})
+	}
+}
+
+// TestPin is the regression test of C6 (S-1003, I10): the mask Firecracker is forked under holds --cpus of the CPUs the supervisor may run on, and no other.
+func TestPin(t *testing.T) {
+	all, odd := unix.CPUSet{}, unix.CPUSet{0xaaaa} // every CPU; CPUs 1, 3, ... 15
+	all.Fill()
+	tests := []struct {
+		name string
+		cur  unix.CPUSet
+		n    int
+		want uint64 // bit c is CPU c
+	}{
+		{"the first two", all, 2, 0b11},
+		{"only CPUs it may run on", odd, 3, 0b101010},
+		{"all it has when asked for more", odd, 9, 0xaaaa},
+		{"none", all, 0, 0},
+	}
+	for _, tc := range tests {
+		if pin(&tc.cur, tc.n); uint64(tc.cur[0]) != tc.want {
+			t.Errorf("%s: pin(%d) = %b, want %b", tc.name, tc.n, tc.cur[0], tc.want)
+		}
 	}
 }
 
