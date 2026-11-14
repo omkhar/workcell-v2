@@ -6,10 +6,12 @@
 package firecracker
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"net"
 	"os"
@@ -19,6 +21,7 @@ import (
 	"strconv"
 	"sync"
 	"syscall"
+	"time"
 
 	"golang.org/x/sys/unix"
 
@@ -39,15 +42,10 @@ type Machine struct {
 	exitErr error          // valid after exited is closed
 }
 
-var _ vmm.Machine = (*Machine)(nil)
-
 // New prepares a machine and boots nothing.
 func New(cfg vmm.Config) *Machine {
 	return &Machine{cfg: cfg, exited: make(chan struct{})}
 }
-
-func (m *Machine) configPath() string { return filepath.Join(m.cfg.Dir, "firecracker.json") }
-func (m *Machine) vsockPath() string  { return filepath.Join(m.cfg.Dir, "vsock") }
 
 // Check opens /dev/kvm for writing and looks at the pinned binary, if the Config names one.
 func (m *Machine) Check(context.Context) error {
@@ -73,12 +71,11 @@ func (m *Machine) Listen(port uint32) (net.Listener, error) {
 	if m.cmd != nil {
 		return nil, errors.New("firecracker: Listen after Start")
 	}
-	ln, err := net.Listen("unix", m.vsockPath()+"_"+strconv.FormatUint(uint64(port), 10))
-	if err != nil {
-		return nil, err
+	ln, err := net.Listen("unix", filepath.Join(m.cfg.Dir, "vsock_"+strconv.FormatUint(uint64(port), 10)))
+	if err == nil {
+		m.lns = append(m.lns, ln)
 	}
-	m.lns = append(m.lns, ln)
-	return ln, nil
+	return ln, err
 }
 
 // Start writes the config file and execs Firecracker. It returns once the child
@@ -92,34 +89,38 @@ func (m *Machine) Start(ctx context.Context) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if err := os.WriteFile(m.configPath(), encode(m.cfg), 0o600); err != nil {
+	conf := filepath.Join(m.cfg.Dir, "firecracker.json")
+	if err := os.WriteFile(conf, encode(m.cfg), 0o600); err != nil {
 		return err
 	}
-	cmd := exec.Command(m.cfg.Binary, "--no-api", "--config-file", m.configPath()) // no API server, one config file
-	if m.cfg.Console != nil {
-		cmd.Stdout, cmd.Stderr = m.cfg.Console, m.cfg.Console
+	cmd := exec.Command(m.cfg.Binary, "--no-api", "--config-file", conf) // no API server, one config file
+	var fds [2]int
+	if err := syscall.Pipe2(fds[:], syscall.O_CLOEXEC); err != nil {
+		return err
 	}
+	pr, pw := os.NewFile(uintptr(fds[0]), "console"), os.NewFile(uintptr(fds[1]), "console")
+	cmd.Stdout, cmd.Stderr = pw, pw
 	cmd.SysProcAttr = &syscall.SysProcAttr{Pdeathsig: syscall.SIGKILL, Setpgid: true} // its own group: a hangup of the supervisor's terminal does not reach it
 	started := make(chan error, 1)
 	go func() {
-		// Pdeathsig fires when the thread that forked the child exits, so that thread
-		// stays locked to this goroutine for as long as the child lives (A9).
+		// Pdeathsig fires when the thread that forked the child exits, so that thread stays locked to this goroutine for as long as the child lives (A9).
 		runtime.LockOSThread()
 		var set unix.CPUSet
 		err := unix.SchedGetaffinity(0, &set) // this thread's CPUs: the child inherits the mask, and a start the host cannot bound is refused (I10)
-		if err == nil {
-			pin(&set, m.cfg.CPUs)
+		if pin(&set, m.cfg.CPUs); err == nil {
 			err = unix.SchedSetaffinity(0, &set)
 		}
 		if err == nil {
 			err = cmd.Start()
 		}
+		pw.Close() // the child holds its own end
 		started <- err
-		if err != nil {
-			return
+		if err == nil {
+			_, _ = io.CopyBuffer(cmp.Or[io.Writer](m.cfg.Console, io.Discard), paced{pr}, make([]byte, 4096)) // to EOF: the child is gone, its console all in
+			m.exitErr = cmd.Wait()
+			close(m.exited)
 		}
-		m.exitErr = cmd.Wait()
-		close(m.exited)
+		pr.Close()
 	}()
 	if err := <-started; err != nil {
 		return fmt.Errorf("start firecracker: %w", err)
@@ -169,8 +170,8 @@ func (m *Machine) Close() error {
 	for _, ln := range m.lns {
 		_ = ln.Close() // unlinks vsock_<port>; an error means it was closed already
 	}
-	for _, p := range []string{m.configPath(), m.vsockPath()} {
-		if e := os.Remove(p); e != nil && !errors.Is(e, fs.ErrNotExist) {
+	for _, p := range []string{"firecracker.json", "vsock"} {
+		if e := os.Remove(filepath.Join(m.cfg.Dir, p)); e != nil && !errors.Is(e, fs.ErrNotExist) {
 			err = errors.Join(err, e)
 		}
 	}
@@ -200,15 +201,20 @@ type drive struct {
 }
 
 type machineConfig struct {
-	CPUs   int  `json:"vcpu_count"`
-	MemMiB int  `json:"mem_size_mib"`
-	SMT    bool `json:"smt"`
+	CPUs   int `json:"vcpu_count"`
+	MemMiB int `json:"mem_size_mib"`
 }
 
 type vsockConfig struct {
 	CID     uint32 `json:"guest_cid"`
 	UDSPath string `json:"uds_path"`
 }
+
+// paced is the guest's console, read a batch at a time with a millisecond between reads: a guest flooding its serial port costs the host at most a
+// thousand reads a second, not one per byte (I10). The pipe is a blocking one the poller never sees: a pipe once polled wakes the poller on every write.
+type paced struct{ f *os.File }
+
+func (p paced) Read(b []byte) (int, error) { time.Sleep(time.Millisecond); return p.f.Read(b) }
 
 // pin keeps the first n CPUs of set: Firecracker's vCPU and device threads inherit the mask of the thread that forks it, so the guest costs the host n
 // CPUs at most, devices included (I10). Sessions share cores as the scheduler sees fit: the count is the bound, not the placement.

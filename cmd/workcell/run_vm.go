@@ -130,8 +130,7 @@ func session(argv []string, caps limits, mount bool, a artifacts, allow *proxy.A
 	if b.ca != nil {
 		req.Env = append(req.Env, guest.TrustEnv(guest.TrustDir)...)
 	}
-	req.Env = append(req.Env, cacheEnv(a.caches)...)
-	req.Env = append(req.Env, placeholderEnv(secrets)...)
+	req.Env = append(append(req.Env, cacheEnv(a.caches)...), placeholderEnv(secrets)...)
 	restore, tty := rawMode(unix.Stdin)
 	defer restore()
 	if tty {
@@ -640,8 +639,7 @@ type tail struct {
 func (t *tail) Write(p []byte) (int, error) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	t.b = append(t.b, p...)
-	t.b = t.b[max(0, len(t.b)-4096):]
+	t.b = append(t.b, p...)[max(0, len(t.b)+len(p)-4096):]
 	return len(p), nil
 }
 
