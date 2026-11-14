@@ -36,11 +36,7 @@ func TestForwardStaysSplicedBesideTermination(t *testing.T) {
 			echo := must(net.Listen("tcp", "127.0.0.1:0"))
 			defer echo.Close()
 			go func() {
-				for {
-					c, err := echo.Accept()
-					if err != nil {
-						return
-					}
+				for c, err := echo.Accept(); err == nil; c, err = echo.Accept() {
 					go func() { _, _ = io.Copy(c, c); c.Close() }()
 				}
 			}()

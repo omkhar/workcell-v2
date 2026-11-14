@@ -24,6 +24,7 @@ type ocsfEvent struct {
 	StatusID     int           `json:"status_id"` // 1 success, 2 failure
 	StatusDetail string        `json:"status_detail,omitempty"`
 	Message      string        `json:"message"`
+	Count        uint64        `json:"count,omitempty"`     // the refusals a count line stands for
 	ActionID     int           `json:"action_id,omitempty"` // 1 allowed, 2 denied
 	App          *ocsfApp      `json:"app,omitempty"`
 	Dst          *ocsfEndpoint `json:"dst_endpoint,omitempty"`
@@ -56,6 +57,7 @@ type ocsfUnmapped struct {
 func ocsfLine(d audit.Record) []byte {
 	ev := ocsfEvent{
 		Message:  d.Event,
+		Count:    d.Count,
 		StatusID: 1,
 		Metadata: ocsfMetadata{Version: "1.3.0", Product: ocsfApp{Name: "workcell"}},
 	}

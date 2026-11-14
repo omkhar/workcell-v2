@@ -101,16 +101,10 @@ func caPool(t *testing.T, ca *SessionCA) *x509.CertPool {
 }
 
 func clientVia(proxyAddr string, roots *x509.CertPool) *http.Client {
-	return &http.Client{
-		Timeout: 5 * time.Second,
-		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{RootCAs: roots},
-			DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
-				var d net.Dialer
-				return d.DialContext(ctx, "tcp", proxyAddr)
-			},
-		},
+	dial := func(ctx context.Context, _, _ string) (net.Conn, error) {
+		return (&net.Dialer{}).DialContext(ctx, "tcp", proxyAddr)
 	}
+	return &http.Client{Timeout: 5 * time.Second, Transport: &http.Transport{TLSClientConfig: &tls.Config{RootCAs: roots}, DialContext: dial}}
 }
 
 func get(t *testing.T, c *http.Client, url, key string) (int, string) {
@@ -159,14 +153,10 @@ func TestTerminateSwapsOnlyExactPlaceholder(t *testing.T) {
 			t.Errorf("Host %s: got (%d, %q), want %d", host, got, body, code)
 		}
 	}
-	if n := broker.callCount(); n != 4 {
-		t.Errorf("broker calls = %d, want 4 (placeholder values only)", n)
+	if n := broker.callCount(); n != 4 || broker.calls[0] != "example.com x-api-key" {
+		t.Errorf("broker calls = %q, want 4 (placeholder values only), the first host and header", broker.calls)
 	}
-	if broker.calls[0] != "example.com x-api-key" {
-		t.Errorf("broker call = %q, want host and header", broker.calls[0])
-	}
-	want := denyLine{Host: "example.com", Port: 443, Reason: "host_mismatch", Count: 2, Seq: 2}
-	if d := denies(t, p, log); len(d) != 2 || d[1] != want {
+	if d, want := denies(t, p, log), (denyLine{Host: "example.com", Port: 443, Reason: "host_mismatch", Count: 2, Seq: 2}); len(d) != 2 || d[1] != want {
 		t.Errorf("deny lines = %+v, want 2 ending in %+v", d, want)
 	}
 
@@ -223,23 +213,16 @@ func TestTerminateRefusesUnswappedPlaceholder(t *testing.T) {
 		target string
 		header map[string][]string
 	}{
-		"query string":          {"/v1?key=" + testPlaceholder, nil},
-		"encoded query string":  {"/v1?key=" + encoded, nil},
-		"path":                  {"/v1/" + testPlaceholder, nil},
-		"undecodable target":    {"/v1?x=%zz&key=" + encoded, nil},
-		"other header":          {"/", map[string][]string{"X-Goog-Api-Key": {testPlaceholder}}},
-		"other header upper":    {"/", map[string][]string{"X-Goog-Api-Key": {strings.ToUpper(testPlaceholder)}}},
-		"header name":           {"/", map[string][]string{"X-" + testPlaceholder: {"v"}}},
-		"suffixed value":        {"/", map[string][]string{"X-Api-Key": {testPlaceholder + "x"}}},
-		"basic scheme":          {"/", map[string][]string{"X-Api-Key": {"Basic " + testPlaceholder}}},
-		"two values":            {"/", map[string][]string{"X-Api-Key": {testPlaceholder, "user-key"}}},
-		"wrong header for rule": {"/", map[string][]string{"Authorization": {"Bearer " + testPlaceholder}}},
+		"query string": {"/v1?key=" + testPlaceholder, nil}, "encoded query string": {"/v1?key=" + encoded, nil}, "path": {"/v1/" + testPlaceholder, nil},
+		"undecodable target": {"/v1?x=%zz&key=" + encoded, nil}, "other header": {"/", map[string][]string{"X-Goog-Api-Key": {testPlaceholder}}},
+		"other header upper": {"/", map[string][]string{"X-Goog-Api-Key": {strings.ToUpper(testPlaceholder)}}}, "header name": {"/", map[string][]string{"X-" + testPlaceholder: {"v"}}},
+		"suffixed value": {"/", map[string][]string{"X-Api-Key": {testPlaceholder + "x"}}}, "basic scheme": {"/", map[string][]string{"X-Api-Key": {"Basic " + testPlaceholder}}},
+		"two values": {"/", map[string][]string{"X-Api-Key": {testPlaceholder, "user-key"}}}, "wrong header for rule": {"/", map[string][]string{"Authorization": {"Bearer " + testPlaceholder}}},
 		"one of two swapped":    {"/", map[string][]string{"X-Api-Key": {testPlaceholder}, "X-Other": {testAuthPlaceholder}}},
-		"basic in other header": {"/", map[string][]string{"X-Goog-Api-Key": {basic(testPlaceholder)}}},
-		"basic of other rule":   {"/", map[string][]string{"Authorization": {basic(testPlaceholder)}}},
-		"basic upper-case":      {"/", map[string][]string{"Authorization": {basic(strings.ToUpper(testAuthPlaceholder))}}},
-		"basic as the user":     {"/", map[string][]string{"Authorization": {"Basic " + base64.StdEncoding.EncodeToString([]byte(testAuthPlaceholder+":x"))}}},
-		"basic with no colon":   {"/", map[string][]string{"Authorization": {"Basic " + base64.StdEncoding.EncodeToString([]byte(testAuthPlaceholder))}}},
+		"basic in other header": {"/", map[string][]string{"X-Goog-Api-Key": {basic(testPlaceholder)}}}, "basic of other rule": {"/", map[string][]string{"Authorization": {basic(testPlaceholder)}}},
+		"basic upper-case":    {"/", map[string][]string{"Authorization": {basic(strings.ToUpper(testAuthPlaceholder))}}},
+		"basic as the user":   {"/", map[string][]string{"Authorization": {"Basic " + base64.StdEncoding.EncodeToString([]byte(testAuthPlaceholder+":x"))}}},
+		"basic with no colon": {"/", map[string][]string{"Authorization": {"Basic " + base64.StdEncoding.EncodeToString([]byte(testAuthPlaceholder))}}},
 	}
 	for name, tc := range cases {
 		req, _ := http.NewRequest(http.MethodGet, "https://example.com"+tc.target, nil)
@@ -261,10 +244,8 @@ func TestTerminateRefusesUnswappedPlaceholder(t *testing.T) {
 			t.Errorf("trailer %s: got (%d, %q), want 502 from the proxy", name, code, body)
 		}
 	}
-	d := denies(t, p, log)
-	total := len(cases) + len(trailers)
-	want := denyLine{Host: "example.com", Port: 443, Reason: "placeholder_unswapped", Count: uint64(total), Seq: uint64(total)}
-	if len(d) != total || d[len(d)-1] != want {
+	d, total := denies(t, p, log), len(cases)+len(trailers)
+	if want := (denyLine{Host: "example.com", Port: 443, Reason: "placeholder_unswapped", Count: uint64(total), Seq: uint64(total)}); len(d) != total || d[len(d)-1] != want {
 		t.Fatalf("deny lines = %+v, want %d ending in %+v", d, total, want)
 	}
 }
@@ -277,8 +258,7 @@ func TestTerminateBrokerErrorIs502(t *testing.T) {
 	if code != http.StatusBadGateway || strings.Contains(body, testPlaceholder) {
 		t.Fatalf("broker error GET = (%d, %q), want 502 without reaching upstream", code, body)
 	}
-	want := denyLine{Host: "example.com", Port: 443, Reason: "broker_denied", Count: 1, Seq: 1}
-	if d := denies(t, p, log); len(d) != 1 || d[0] != want {
+	if d, want := denies(t, p, log), (denyLine{Host: "example.com", Port: 443, Reason: "broker_denied", Count: 1, Seq: 1}); len(d) != 1 || d[0] != want {
 		t.Fatalf("deny lines = %+v, want [%+v]", d, want)
 	}
 }
@@ -542,14 +522,10 @@ func TestTerminateRefusesTraceAndConnect(t *testing.T) {
 			t.Errorf("%s: got (%d, %q), want 405 from the proxy", method, code, body)
 		}
 	}
-	d := denies(t, p, log)
-	want := denyLine{Host: "example.com", Port: 443, Reason: "method_refused", Count: 2, Seq: 2}
-	if len(d) != 2 || d[1] != want {
+	if d, want := denies(t, p, log), (denyLine{Host: "example.com", Port: 443, Reason: "method_refused", Count: 2, Seq: 2}); len(d) != 2 || d[1] != want {
 		t.Fatalf("deny lines = %+v, want 2 ending in %+v", d, want)
 	}
-	req := must(http.NewRequest(http.MethodGet, "https://example.com/v1", nil))
-	req.Header.Set("X-Api-Key", testPlaceholder)
-	if code, _ := do(t, c, req); code == http.StatusMethodNotAllowed {
+	if code, _ := get(t, c, "https://example.com/v1", testPlaceholder); code == http.StatusMethodNotAllowed {
 		t.Fatalf("GET got 405, want it forwarded")
 	}
 }
