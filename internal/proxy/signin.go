@@ -196,9 +196,8 @@ func readToken(resp *http.Response) ([]byte, error) {
 	return body, err
 }
 
-// learn hands the tokens a 2xx JSON object issues to the broker and returns body with every real token the broker holds for the row, before and after,
-// hidden behind its placeholder. A 2xx that is not a JSON object is refused: a success answer is one (RFC 6749 section 5.1), and a body that only a lenient
-// client reads, with a BOM or a trailing comma, could carry tokens the broker never sees (I5).
+// learn hands the tokens a 2xx JSON object issues to the broker and returns body with every real token the broker holds for the row, old and new, hidden
+// behind its placeholder. A 2xx that is not a JSON object (RFC 6749 section 5.1) is refused: read leniently, past a BOM or trailing comma, it could leak (I5).
 func (p *Proxy) learn(rule TerminateRule, status int, body []byte) ([]byte, error) {
 	access, refresh := p.broker.Tokens(rule.Host, rule.Header)
 	swaps := []swap{{access, rule.Placeholder}, {refresh, rule.SignIn.Refresh}}
@@ -232,13 +231,15 @@ type swap struct {
 	placeholder string
 }
 
-// hide replaces every real value of swaps in body with its placeholder, and the url-encoded spelling swapRefresh sent, which an endpoint may echo: in each
-// string of every JSON value the body starts with, where an escape could spell a value differently to a client that reads the first value and stops, and then
-// in the plain bytes of the whole.
+// hide replaces every real value of swaps in body with its placeholder, and the spellings swapRefresh sent, which an endpoint may echo: in each string of every
+// JSON value the body starts with, where an escape could respell a value to a client that stops at the first, then in the plain bytes of the whole.
 func hide(body []byte, swaps []swap) []byte {
 	for _, s := range swaps {
-		if e := url.QueryEscape(string(s.real)); len(s.real) > 0 && e != string(s.real) {
-			swaps = append(swaps, swap{[]byte(e), s.placeholder})
+		m, _ := json.Marshal(string(s.real)) // the two spellings swapRefresh sends: url-encoded in a form, json-escaped in an object
+		for _, e := range []string{url.QueryEscape(string(s.real)), string(m[1 : len(m)-1])} {
+			if e != string(s.real) {
+				swaps = append(swaps, swap{[]byte(e), s.placeholder})
+			}
 		}
 	}
 	dec := json.NewDecoder(bytes.NewReader(body))

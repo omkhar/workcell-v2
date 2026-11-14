@@ -444,22 +444,24 @@ func FuzzSwapRefresh(f *testing.F) {
 }
 
 // FuzzHide: whatever the token endpoint answers, no real value is left in the bytes the guest reads, nor in any string a JSON reading of them holds, in its
-// own spelling or the url-encoded one swapRefresh sends (C12).
+// own spelling or either one swapRefresh sends, url-encoded in a form or json-escaped in an object (C12).
 func FuzzHide(f *testing.F) {
-	f.Add(`{"access_token":"sk-acc\/1","refresh_token":"sk-ref+1=","n":1e400}`)
-	f.Add("sk-acc/1 sk-ref+1=")
-	f.Add(`"sk-acc\/1"0`)                                                       // a first value a lenient client reads, then what is not JSON
-	f.Add(`error=invalid_grant&refresh_token=sk-ref%2B1%3D {"e":"sk-acc%2F1"}`) // the endpoint echoes the parameter as the proxy spelled it
-	swaps := []swap{{[]byte("sk-acc/1"), testPlaceholder}, {[]byte("sk-ref+1="), testRefreshPlaceholder}}
+	f.Add(`{"access_token":"sk-acc\/1","refresh_token":"sk-ref+1=&","n":1e400}`)
+	f.Add("sk-acc/1 sk-ref+1=&")
+	f.Add(`"sk-acc\/1"0`)                                                                              // a first value a lenient client reads, then what is not JSON
+	f.Add(`error=invalid_grant&refresh_token=sk-ref%2B1%3D%26 {"e":"sk-acc%2F1"}`)                     // the endpoint echoes the parameter as the proxy spelled it
+	f.Add("bad body: " + string(must(json.Marshal(map[string]string{"refresh_token": "sk-ref+1=&"})))) // the endpoint echoes the JSON body as the proxy spelled it, as text
+	swaps := []swap{{[]byte("sk-acc/1"), testPlaceholder}, {[]byte("sk-ref+1=&"), testRefreshPlaceholder}}
 	f.Fuzz(func(t *testing.T, body string) {
 		got := hide([]byte(body), swaps)
 		var v any
 		if dec := json.NewDecoder(bytes.NewReader(got)); dec.Decode(&v) == nil {
-			got = append(got, must(json.Marshal(v))...) // every key and string of the reading, verbatim: Marshal escapes no byte of the real values
+			got = append(got, must(json.Marshal(v))...) // every key and string of the reading, each byte of a real value verbatim or in the json-escaped spelling
 		}
 		for _, s := range swaps {
-			if e := url.QueryEscape(string(s.real)); bytes.Contains(got, s.real) || bytes.Contains(got, []byte(e)) {
-				t.Fatalf("hide(%q) = %q, carries %q or %q", body, got, s.real, e)
+			m := must(json.Marshal(string(s.real)))
+			if e := url.QueryEscape(string(s.real)); bytes.Contains(got, s.real) || bytes.Contains(got, []byte(e)) || bytes.Contains(got, m[1:len(m)-1]) {
+				t.Fatalf("hide(%q) = %q, carries %q, %q or %q", body, got, s.real, e, m[1:len(m)-1])
 			}
 		}
 	})
