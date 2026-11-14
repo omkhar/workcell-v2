@@ -486,6 +486,13 @@ plain-port path verifies no TLS, so nothing else refuses it; the attacker is in 
 preconditions the attacker does not control (an Azure host, a policy forwarding port 80 or 32526) make it medium under S6.
 Fix unit: S-F4, below S-1004 in PLAN.md (one /32 in blockedPrefixes; the test folds into TestBlockedAddr as one row).
 also in v1 main: egressproxy/proxy.go
+C7 FIXED by S-F4, commit ce316be (PR #199). blockedPrefixes in internal/proxy/proxy.go gains the row 168.63.129.16/32, named as
+Azure's platform virtual IP (WireServer) metadata address, and its header comment now says the list also holds a cloud
+metadata address on public space. blockedAddr unmaps before matching, so ::ffff:168.63.129.16 is refused by the same row.
+The pending test became one row of TestBlockedAddr (168.63.129.16 and ::ffff:168.63.129.16 with no host prefixes); it
+failed on the parent commit for both forms and passes now; escape/_pending/ is gone. The reviewer's overlay probe also saw
+the IPv4-compatible, NAT64 and 6to4 encodings refused and 168.63.129.15, .17 and 168.63.128.16 still allowed, so the /32 is
+the whole platform address and no wider. Product 14994 of 15000.
 
 C8. ID I9 with I10. Attacker: guest root. Where: cmd/workcell/relay.go serveRelay (the default branch that closes a stream
 when its 1024 slots are full); internal/proxy/proxy.go Serve (the shed branch that records overloaded). Input: 1024 open
