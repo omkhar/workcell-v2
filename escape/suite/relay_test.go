@@ -71,6 +71,16 @@ func (relayAt) Relay(context.Context) (sandbox.Channel, error) {
 	return sandbox.Channel{Addr: "unix:/nowhere/relay"}, nil
 }
 
+// Bind is in the host's one network, at the literal address a test gives.
+func (relayAt) Bind(_ context.Context, network, addr string) (net.Listener, net.PacketConn, error) {
+	if strings.HasPrefix(network, "udp") {
+		pc, err := net.ListenPacket(network, addr)
+		return nil, pc, err
+	}
+	ln, err := net.Listen(network, addr)
+	return ln, nil, err
+}
+
 // guest is a fake Session whose probe runs are the function: it gets the
 // probe's arguments as the judge passes them and gives the line the payload
 // would print.

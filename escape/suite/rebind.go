@@ -16,47 +16,39 @@ import (
 	"time"
 )
 
-// The rebinding rows (I4). The policy allows one name, and the judge is the
-// resolver the host side of the session asks about it (sandbox.Config
-// .Resolver, at judgeResolver port 53): it answers the allowed name with an
-// address the host must never dial, the host's own loopback, a LAN address,
-// the metadata address, in one spelling or another, with TTL 0, and refuses
-// every other name. The guest connects to the allowed name as a program
-// would, by the forward port or by SNI at 443, twice. A canary listens at
-// the answer. The host must resolve the name itself (a host that never asked
-// vetted nothing: an error, never a pass) and the canary must see nothing.
-// On control the guest resolves and dials for itself, so the canary sees it
-// on every row.
+// The rebinding rows (I4). The policy allows one name, and the judge is the resolver the host side of the session asks about it (sandbox.Config.Resolver, at
+// judgeResolver port 53): it answers the allowed name with an address the host must never dial, the host's own loopback, a LAN address, the metadata address,
+// in one spelling or another, or, in a network of the session's own, an address on a network the host itself holds (sandbox.Neighbour), with TTL 0, and
+// refuses every other name. The guest connects to the allowed name as a program would, by the forward port or by SNI at 443, twice. A canary listens at the
+// answer. The host must resolve the name itself (a host that never asked vetted nothing: an error, never a pass) and the canary must see nothing. On control
+// the guest resolves and dials for itself, so the canary sees it on every row.
 //
-// Missing, and said so in the report: the row where the first answer is an
-// address the host may dial and the second is not, and the row where one
-// answer set holds both. Each needs a global unicast address the test host
-// owns, and every range set aside for that (RFC 5737, 2001:db8::/32,
-// 3fff::/20) is one the host refuses; every other address is someone's.
+// Missing, and said so in the report: the row where the first answer is an address the host may dial and the second is not, and the row where one answer set
+// holds both. Each needs a global unicast address the test host owns, and every range set aside for that (RFC 5737, 2001:db8::/32, 3fff::/20) is one the host
+// refuses; every other address is someone's.
 
 // judgeResolver is where the judge's resolver listens, at port 53.
 const judgeResolver = "127.5.3.53"
 
 var (
-	rebinding      = Want{Allow: []string{"allowed.escape.test:" + forwardPort}, Resolver: judgeResolver}
-	rebindingSNI   = Want{Allow: []string{"allowed.escape.test"}, Resolver: judgeResolver}
-	rebindingCNAME = Want{Allow: []string{"allowed.escape.test:" + forwardPort}, Deny: []string{"denied.escape.test"}, Resolver: judgeResolver}
+	rebinding       = Want{Allow: []string{"allowed.escape.test:" + forwardPort}, Resolver: judgeResolver}
+	rebindingSNI    = Want{Allow: []string{"allowed.escape.test"}, Resolver: judgeResolver}
+	rebindingCNAME  = Want{Allow: []string{"allowed.escape.test:" + forwardPort}, Deny: []string{"denied.escape.test"}, Resolver: judgeResolver}
+	rebindingOwn    = Want{Allow: rebinding.Allow, Resolver: judgeResolver, Isolated: true}
+	rebindingOwnSNI = Want{Allow: rebindingSNI.Allow, Resolver: judgeResolver, Isolated: true}
 )
 
-// rebind is one row's answer and canary: the A and AAAA records the allowed
-// name gets, owned by cname when that is set (the allowed name is then an
-// alias of it), the address the canary listens at, and whether the guest
-// offers TLS with the allowed name as SNI at 443 rather than a line at the
-// forward port.
+// rebind is one row's answer and canary: the A and AAAA records the allowed name gets, owned by cname when that is set (the allowed name is then an alias of
+// it), the address the canary listens at ("neighbour" standing for an address on a network of the test host's own, as the session's Bind places it; with no
+// record given, the one A record is wherever the canary came to listen), and whether the guest offers TLS with the allowed name as SNI at 443 rather than a
+// line at the forward port.
 type rebind struct {
 	a, aaaa []string
 	cname   string
 	canary  string
 	sni     bool
-	// names are the names answered with the records, as the resolver hears
-	// them, with the trailing dot; allowedName alone when empty. A denied
-	// name among them lets a session whose policy the guest widened reach
-	// a canary under it (sandbox.Config.Deny).
+	// names are the names answered with the records, as the resolver hears them, with the trailing dot; allowedName alone when empty. A denied name among
+	// them lets a session whose policy the guest widened reach a canary under it (sandbox.Config.Deny).
 	names []string
 }
 
@@ -75,13 +67,10 @@ func (r rebind) answers() string {
 	return strings.Join(out, ", ")
 }
 
-// rebindProbe connects to the allowed name args[0] (name:port) as a program
-// would, through the guest's own resolver, and sends the token args[1] on
-// one line; with args[2] "sni" it offers a TLS ClientHello naming the host
-// instead and, if the handshake completes, sends the token inside TLS as the
-// path of a request for the host, since a host that terminates the
-// connection resolves the name only to forward a request. It tries twice,
-// the second time after a pause, and reports both.
+// rebindProbe connects to the allowed name args[0] (name:port) as a program would, through the guest's own resolver, and sends the token args[1] on one line;
+// with args[2] "sni" it offers a TLS ClientHello naming the host instead and, if the handshake completes, sends the token inside TLS as the path of a request
+// for the host, since a host that terminates the connection resolves the name only to forward a request. It tries twice, the second time after a pause, and
+// reports both.
 func rebindProbe(args []string) Result {
 	if len(args) != 3 {
 		return Result{Status: "error", Detail: "want name:port, token and line|sni"}
@@ -118,26 +107,30 @@ func connectName(addr, token string, sni bool) Result {
 	return Result{Status: "connected", Detail: "to " + addr}
 }
 
-// rebindJudge runs the judge's resolver and a canary at the row's address, has
-// the guest connect to the allowed name, and holds the host to the answer:
-// the canary must see nothing, and the resolver must have been asked.
+// rebindJudge runs a canary at the row's address, where the product reaches the test host, and the judge's resolver, has the guest connect to the allowed
+// name, and holds the host to the answer: the canary must see nothing, and the resolver must have been asked.
 func rebindJudge(r rebind) Judge {
 	return func(ctx context.Context, s Session) (bool, string, error) {
+		port, mode := forwardPort, "line"
+		if r.sni {
+			port, mode = "443", "sni"
+		}
+		ln, _, err := bind(ctx, s, "tcp4", net.JoinHostPort(r.canary, port))
+		if err != nil {
+			return false, "", fmt.Errorf("canary listener: %w", err)
+		}
+		t := trapOn(ln, nil)
+		defer t.stop()
+		if len(r.a) == 0 && len(r.aaaa) == 0 {
+			host, _, _ := net.SplitHostPort(ln.Addr().String())
+			r.a = []string{host}
+		}
 		_, pc, err := bind(ctx, s, "udp4", net.JoinHostPort(judgeResolver, "53"))
 		if err != nil {
 			return false, "", fmt.Errorf("the judge's resolver: %w", err)
 		}
 		ns := serveNamesOn(pc, r)
 		defer ns.stop()
-		port, mode := forwardPort, "line"
-		if r.sni {
-			port, mode = "443", "sni"
-		}
-		t, err := listenTrap("tcp4", net.JoinHostPort(r.canary, port), s.Payload)
-		if err != nil {
-			return false, "", err
-		}
-		defer t.stop()
 		want := newToken()
 		res, err := s.Run(net.JoinHostPort(strings.TrimSuffix(allowedName, "."), port), want, mode)
 		got := t.stop()
@@ -157,8 +150,7 @@ func rebindJudge(r rebind) Judge {
 	}
 }
 
-// nameServer is the judge as a resolver: one UDP socket, the row it answers
-// for, and every question it was asked.
+// nameServer is the judge as a resolver: one UDP socket, the row it answers for, and every question it was asked.
 type nameServer struct {
 	pc    net.PacketConn
 	r     rebind
@@ -216,9 +208,8 @@ func (ns *nameServer) questions() []string {
 // typeNames names the types a resolver is asked, for the record of it.
 var typeNames = map[uint16]string{dnsTypeA: "A", dnsTypeAAAA: "AAAA", dnsTypeCNAME: "CNAME", dnsTypeTXT: "TXT", dnsTypePTR: "PTR", dnsTypeANY: "ANY"}
 
-// answer is the response to q: for a name of the row's, the CNAME when the
-// row has one and then the row's records of the type asked, NOERROR with no
-// record when it has none of that type; REFUSED for every other name.
+// answer is the response to q: for a name of the row's, the CNAME when the row has one and then the row's records of the type asked, NOERROR with no record
+// when it has none of that type; REFUSED for every other name.
 func (r rebind) answer(q dnsQuestion) []byte {
 	names := r.names
 	if len(names) == 0 {
@@ -253,9 +244,8 @@ type dnsRecord struct {
 	Data []byte
 }
 
-// dnsResponse encodes the response to q: its id, QR, RD and RA set, the
-// rcode, the question again and the records, each with TTL 0, so that
-// nothing may cache what the judge said and every connection asks again.
+// dnsResponse encodes the response to q: its id, QR, RD and RA set, the rcode, the question again and the records, each with TTL 0, so that nothing may cache
+// what the judge said and every connection asks again.
 func dnsResponse(q dnsQuestion, rcode uint16, rrs []dnsRecord) []byte {
 	b := make([]byte, 12, 512)
 	binary.BigEndian.PutUint16(b[0:], q.ID)

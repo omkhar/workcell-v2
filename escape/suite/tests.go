@@ -9,21 +9,19 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"net"
 	"net/http"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 
 	"github.com/omkhar/workcell/v2/escape/sandbox"
 )
 
 // All is the suite. Add a test by adding an entry; no other plumbing exists. Every canary a Judge starts is an address of the test host itself: its loopback,
-// its own interface address (hostAddr), or an address the judge adds to loopback for the test's duration (onLoopback). No packet leaves the host (SPEC T8,
-// S12). The guest gets a literal address, never a name.
+// its own interface address (hostAddr), an address the judge adds to loopback for the test's duration (onLoopback), or one the session's own network holds
+// ("neighbour", sandbox.Neighbour). No packet leaves the host (SPEC T8, S12). The guest gets a literal address, never a name.
 var All = append([]Test{
 	// The first row runs under a policy that opens one port (forwarded), so that an allowlist is shown to open no other port.
 	{ID: "I2", Name: "raw-ip-odd-port-tcp4", Probe: dialProbe, Host: tcpCanary("tcp4", hostAddr+":0", ""), Want: forwarded},
@@ -67,6 +65,10 @@ var All = append([]Test{
 	{ID: "I4", Name: "rebind-cname-denied-forward", Probe: rebindProbe, Host: rebindJudge(rebind{cname: deniedName, a: []string{"127.0.0.1"}, canary: "127.0.0.1"}), Want: rebindingCNAME},
 	// Last: its A answer is empty, which a Mac's resolver holds for 100 s (U-701).
 	{ID: "I4", Name: "rebind-mapped-loopback-forward", Probe: rebindProbe, Host: rebindJudge(rebind{aaaa: []string{"::ffff:127.0.0.1"}, canary: "127.0.0.1"}), Want: rebinding},
+	// The answer is a public address on a network the host itself holds, in the session's own network (sandbox.IsolatedNet): no range set aside catches it,
+	// and the canary there is the host itself, or its neighbour on that network.
+	{ID: "I4", Name: "rebind-host-network-forward", Probe: rebindProbe, Host: rebindJudge(rebind{canary: "neighbour"}), Want: rebindingOwn},
+	{ID: "I4", Name: "rebind-host-network-sni", Probe: rebindProbe, Host: rebindJudge(rebind{canary: "neighbour", sni: true}), Want: rebindingOwnSNI},
 	// DNS for a name no policy allows, sent past the guest's resolver straight to a host-side capture: as plain DNS, as DoT, as DoH, and as a tunnel.
 	{ID: "I3", Name: "direct-resolver-udp4", Probe: dnsUDPProbe, Host: dnsCanary(dnsOverUDP, queried)},
 	{ID: "I3", Name: "direct-resolver-tcp4", Probe: dnsTCPProbe, Host: dnsCanary(dnsOverTCP(false), queried)},
@@ -227,7 +229,8 @@ var All = append([]Test{
 	{ID: "P1", Name: "warm-start", Probe: idleProbe, Host: benchJudge, Bound: benchBound},
 }, pinSmoke()...) // and B6, a smoke test of each guest pin that changed (smoke.go)
 
-// hostAddr, in a canary address, stands for the host's own first non-loopback IPv4 address: what a real guest sees as the host.
+// hostAddr, in a canary address, stands for where the product reaches the test host (sandbox.Observe.Bind): its first non-loopback IPv4 address, or in a
+// session's own network sandbox.CanaryAddr, which lies on no network of the host's.
 const hostAddr = "host"
 
 // forwardPort is the one port the policy forwarded opens, as a forward entry for one name: above the privileged range and below the ephemeral one, so that a
@@ -316,24 +319,11 @@ type trap struct {
 	done bool
 }
 
-// listenTrap starts a trap on network ("tcp4", "tcp6" or "udp4") at addr. A port below 1024 needs root; helper, when set, is the payload, which binds it
-// through sudo (privileged) when the suite is not root itself.
-func listenTrap(network, addr string, helper ...string) (*trap, error) {
-	t := &trap{}
-	var err error
-	if strings.HasPrefix(network, "udp") {
-		t.pc, err = net.ListenPacket(network, addr)
-	} else {
-		t.ln, err = net.Listen(network, addr)
-	}
-	if errors.Is(err, syscall.EACCES) && len(helper) == 1 {
-		t.ln, t.pc, err = privileged(network, addr, helper[0])
-	}
-	if err != nil {
-		return nil, fmt.Errorf("canary listener: %w", err)
-	}
+// trapOn starts a trap on the listener or the packet socket the judge bound where the product reaches the test host (bind).
+func trapOn(ln net.Listener, pc net.PacketConn) *trap {
+	t := &trap{ln: ln, pc: pc}
 	t.wg.Go(t.serve)
-	return t, nil
+	return t
 }
 
 func (t *trap) serve() {
@@ -426,17 +416,15 @@ func udpCanary(addr string, carries func(b []byte, token string) bool) Judge {
 
 func trapJudge(network, addr, dialHost string, carries func([]byte, string) bool, stream bool) Judge {
 	return func(ctx context.Context, s Session) (bool, string, error) {
-		addr, err := resolve(addr)
-		if err == nil {
-			dialHost, err = resolve(dialHost)
-		}
+		dialHost, err := resolve(dialHost)
 		if err != nil {
 			return false, "", err
 		}
-		t, err := listenTrap(network, addr)
+		ln, pc, err := bind(ctx, s, network, addr)
 		if err != nil {
-			return false, "", err
+			return false, "", fmt.Errorf("canary listener: %w", err)
 		}
+		t := trapOn(ln, pc)
 		defer t.stop()
 		target := t.addr()
 		if dialHost != "" {

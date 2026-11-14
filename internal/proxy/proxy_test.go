@@ -47,11 +47,11 @@ func TestBlockedAddr(t *testing.T) {
 		"2606:4700:4700::1111": false, "::ffff:8.8.8.8": false, "2001:4860:4860::8888": false, "2a00:1450:4001:80b::200e": false,
 	}
 	for text, want := range cases {
-		if got := blockedAddr(netip.MustParseAddr(text)); got != want {
+		if got := blockedAddr(netip.MustParseAddr(text), nil); got != want {
 			t.Errorf("blockedAddr(%s) = %v, want %v", text, got, want)
 		}
 	}
-	if !blockedAddr(netip.Addr{}) {
+	if !blockedAddr(netip.Addr{}, nil) {
 		t.Error("blockedAddr(zero Addr) = false, want true")
 	}
 }
@@ -257,20 +257,6 @@ func TestPeekSNIRefusesECH(t *testing.T) {
 	}
 }
 
-func TestConnectLooksUpRootedName(t *testing.T) {
-	t.Parallel()
-	p := New(&Allowlist{}, &recorder{})
-	var looked string
-	p.lookup = func(_ context.Context, host string) ([]netip.Addr, error) {
-		looked = host
-		return nil, errors.New("stop")
-	}
-	p.connect("db", 5432)
-	if looked != "db." {
-		t.Fatalf("lookup host = %q, want %q", looked, "db.")
-	}
-}
-
 func TestRouteRefusesUnicodeFoldedSNI(t *testing.T) {
 	p := New(&Allowlist{sni: map[string]bool{"k.example": true}}, &recorder{})
 	c, srv := net.Pipe()
@@ -282,21 +268,26 @@ func TestRouteRefusesUnicodeFoldedSNI(t *testing.T) {
 
 func TestConnectVetsEveryAnswerOnEveryConnection(t *testing.T) {
 	t.Parallel()
-	a := netip.MustParseAddr
+	a, home := netip.MustParseAddr, []netip.Prefix{netip.MustParsePrefix("192.175.48.0/25")}
 	cases := []struct {
 		name    string
 		answers [][]netip.Addr // one answer set per lookup; a nil set is a lookup error
+		nets    []netip.Prefix // the host's own networks
+		netsErr error          // the error reading them
 		reasons []string
 	}{
-		{"public and private mixed", [][]netip.Addr{{a("8.8.8.8"), a("10.255.255.254")}}, []string{"blocked_address"}},
-		{"private listed first", [][]netip.Addr{{a("10.255.255.254"), a("8.8.8.8")}}, []string{"blocked_address"}},
-		{"mapped loopback", [][]netip.Addr{{a("::ffff:127.0.0.1")}}, []string{"blocked_address"}},
-		{"unspecified", [][]netip.Addr{{a("0.0.0.0")}}, []string{"blocked_address"}},
-		{"metadata", [][]netip.Addr{{a("169.254.169.254")}}, []string{"blocked_address"}},
-		{"lookup error", [][]netip.Addr{nil}, []string{"resolve_failed"}},
-		{"empty answer", [][]netip.Addr{{}}, []string{"resolve_failed"}},
-		{"answer changes to loopback", [][]netip.Addr{{a("8.8.8.8")}, {a("127.0.0.1")}}, []string{"", "blocked_address"}},
-		{"answer changes to public", [][]netip.Addr{{a("127.0.0.1")}, {a("8.8.8.8")}}, []string{"blocked_address", ""}},
+		{"public and private mixed", [][]netip.Addr{{a("8.8.8.8"), a("10.255.255.254")}}, nil, nil, []string{"blocked_address"}},
+		{"private listed first", [][]netip.Addr{{a("10.255.255.254"), a("8.8.8.8")}}, nil, nil, []string{"blocked_address"}},
+		{"mapped loopback", [][]netip.Addr{{a("::ffff:127.0.0.1")}}, nil, nil, []string{"blocked_address"}},
+		{"unspecified", [][]netip.Addr{{a("0.0.0.0")}}, nil, nil, []string{"blocked_address"}},
+		{"metadata", [][]netip.Addr{{a("169.254.169.254")}}, nil, nil, []string{"blocked_address"}},
+		{"lookup error", [][]netip.Addr{nil}, nil, nil, []string{"resolve_failed"}},
+		{"empty answer", [][]netip.Addr{{}}, nil, nil, []string{"resolve_failed"}},
+		{"answer changes to loopback", [][]netip.Addr{{a("8.8.8.8")}, {a("127.0.0.1")}}, nil, nil, []string{"", "blocked_address"}},
+		{"answer changes to public", [][]netip.Addr{{a("127.0.0.1")}, {a("8.8.8.8")}}, nil, nil, []string{"blocked_address", ""}},
+		{"public inside a host network", [][]netip.Addr{{a("::ffff:192.175.48.1")}}, home, nil, []string{"blocked_address"}},
+		{"public outside the host networks", [][]netip.Addr{{a("192.175.48.129")}}, home, nil, []string{""}},
+		{"host networks unreadable", [][]netip.Addr{{a("8.8.8.8")}}, nil, errors.New("netlink"), []string{"blocked_address"}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -305,11 +296,12 @@ func TestConnectVetsEveryAnswerOnEveryConnection(t *testing.T) {
 			defer upstream.Close()
 			p, log, dialed := testProxy(t, "example.com:443", nil, upstream.Addr().String())
 			var lookups int
-			p.lookup = func(context.Context, string) ([]netip.Addr, error) {
+			p.nets = func() ([]netip.Prefix, error) { return tc.nets, tc.netsErr }
+			p.lookup = func(_ context.Context, host string) ([]netip.Addr, error) {
 				answer := tc.answers[lookups]
 				lookups++
-				if answer == nil {
-					return nil, errors.New("lookup failed")
+				if answer == nil || host != "example.com." { // a rooted name: no DNS search suffix
+					return nil, errors.New("lookup failed or name not rooted")
 				}
 				return answer, nil
 			}

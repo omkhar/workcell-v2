@@ -203,17 +203,41 @@ func LoopbackHolds(ip string) error {
 	return fmt.Errorf("%s is not an address of the host's loopback interface, which its setup must hold", ip)
 }
 
-// bindHere binds network/addr in this process's own network, "host" standing for HostAddr.
-func bindHere(network, addr string) (net.Listener, net.PacketConn, error) {
+// A session's own network (Config.Isolated) is AS112 space (RFC 7534): global unicast that the product's vetting accepts and no operator's, and nothing sent
+// to it leaves the host (T8, S12). There the test host holds IsolatedNet on its loopback device, so Neighbour lies on a network of the host's own, and the
+// judge's canaries listen at CanaryAddr, outside that prefix, which a local route alone makes the host's: a product that dials only off the host's networks
+// reaches them still.
+const (
+	IsolatedNet = "192.175.48.1/25"
+	Neighbour   = "192.175.48.2"
+	CanaryAddr  = "192.175.48.129"
+)
+
+// placed is addr with "host" or "neighbour" replaced: where the judge's canaries listen, or an address on a network the test host holds, in the network the
+// product reaches the test host in. In a session's own network (isolated) those are CanaryAddr and Neighbour; in the host's own, both are HostAddr.
+func placed(addr string, isolated bool) (string, error) {
 	host, port, err := net.SplitHostPort(addr)
 	if err != nil {
-		return nil, nil, err
+		return "", err
 	}
-	if host == "host" {
-		if host, err = HostAddr(); err != nil {
-			return nil, nil, err
-		}
-		addr = net.JoinHostPort(host, port)
+	switch {
+	case host != "host" && host != "neighbour":
+		return addr, nil
+	case !isolated:
+		host, err = HostAddr()
+	case host == "host":
+		host = CanaryAddr
+	default:
+		host = Neighbour
+	}
+	return net.JoinHostPort(host, port), err
+}
+
+// bindHere binds network/addr in this process's own network, "host" and "neighbour" standing for HostAddr (placed).
+func bindHere(network, addr string) (net.Listener, net.PacketConn, error) {
+	addr, err := placed(addr, false)
+	if err != nil {
+		return nil, nil, err
 	}
 	if strings.HasPrefix(network, "udp") {
 		pc, err := net.ListenPacket(network, addr)

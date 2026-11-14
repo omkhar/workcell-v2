@@ -13,15 +13,10 @@ import (
 	"time"
 )
 
-// SPEC I2, I4 and I12 on the network path of ADR-003. Every address is local
-// to the guest: its kernel completes a TCP handshake to a listed port and the
-// init carries the stream to the host as its own vsock stream, behind a
-// 20-byte header that names the destination. Root in the guest (A1) can skip
-// the init and speak that header itself, with any address, port, proto or
-// version. The host must dial none of it: the canary's catch is the evidence
-// of reach. A stream whose header never completes must be dropped, or a guest
-// that sent ten bytes holds a slot of a bounded relay; the guest's side is
-// the only witness.
+// SPEC I2, I4 and I12 on the network path of ADR-003. Every address is local to the guest: its kernel completes a TCP handshake to a listed port and the init
+// carries the stream to the host as its own vsock stream, behind a 20-byte header that names the destination. Root in the guest (A1) can skip the init and
+// speak that header itself, with any address, port, proto or version. The host must dial none of it: the canary's catch is the evidence of reach. A stream
+// whose header never completes must be dropped, or a guest that sent ten bytes holds a slot of a bounded relay; the guest's side is the only witness.
 const (
 	relayVersion = 1
 	protoTCP     = 6
@@ -39,8 +34,7 @@ const (
 // errHeld is read's answer when the peer neither wrote nor closed in time.
 var errHeld = errors.New("the stream is still open")
 
-// relayHeader encodes the relay's header: version, proto, the port big-endian
-// and the address as 16 bytes, an IPv4 address mapped.
+// relayHeader encodes the relay's header: version, proto, the port big-endian and the address as 16 bytes, an IPv4 address mapped.
 func relayHeader(version, proto byte, ip net.IP, port uint16) []byte {
 	h := []byte{version, proto, byte(port >> 8), byte(port)}
 	ip16 := ip.To16()
@@ -50,15 +44,11 @@ func relayHeader(version, proto byte, ip net.IP, port uint16) []byte {
 	return append(h, ip16...)
 }
 
-// framed is a datagram as the relay carries it on a UDP stream: a two-byte
-// big-endian length, then the bytes.
+// framed is a datagram as the relay carries it on a UDP stream: a two-byte big-endian length, then the bytes.
 func framed(b []byte) []byte { return append([]byte{byte(len(b) >> 8), byte(len(b))}, b...) }
 
-// relayProbe dials the host end of the relay at args[1] afresh and speaks the
-// header itself. The kinds tcp, udp, version-N and proto-N name args[2], a
-// canary, as the destination and send the token args[3] behind the header;
-// short and slow send part of a header and wait for the host to drop the
-// stream.
+// relayProbe dials the host end of the relay at args[1] afresh and speaks the header itself. The kinds tcp, udp, version-N and proto-N name args[2], a canary,
+// as the destination and send the token args[3] behind the header; short and slow send part of a header and wait for the host to drop the stream.
 func relayProbe(args []string) Result {
 	if len(args) < 2 {
 		return Result{Status: "error", Detail: "want kind and relay address"}
@@ -107,8 +97,7 @@ func relayProbe(args []string) Result {
 	return relayAnswer(c, what, answerWait)
 }
 
-// headless sends shortHeader bytes of a header at once, or dripBytes of it a
-// byte at a time, and reports whether the host dropped the stream.
+// headless sends shortHeader bytes of a header at once, or dripBytes of it a byte at a time, and reports whether the host dropped the stream.
 func headless(c *rawConn, kind string) Result {
 	start := time.Now()
 	h := relayHeader(relayVersion, protoTCP, net.IPv4(127, 0, 0, 1), 443)
@@ -129,8 +118,7 @@ func headless(c *rawConn, kind string) Result {
 	return relayAnswer(c, fmt.Sprintf("slow: %d of %d header bytes over %s, then silence", dripBytes, headerLen, time.Since(start).Round(ms)), headerWait)
 }
 
-// relayAnswer waits at most wait for the host's side of the stream: it
-// answered, it closed, or it held the stream open.
+// relayAnswer waits at most wait for the host's side of the stream: it answered, it closed, or it held the stream open.
 func relayAnswer(c *rawConn, what string, wait time.Duration) Result {
 	start := time.Now()
 	n, err := c.read(make([]byte, 64), wait)
@@ -144,10 +132,8 @@ func relayAnswer(c *rawConn, what string, wait time.Duration) Result {
 	return Result{Status: "closed", Detail: fmt.Sprintf("%s; the host closed the stream after %s (%v)", what, took, err)}
 }
 
-// relayRun runs the relay probe with args and holds the host process to I12
-// as channelRun does: it must end within relayWait, must not crash and must
-// write no control bytes. It returns the probe's result, or why the host end
-// fell short. A run the host could not complete is an error, never a pass.
+// relayRun runs the relay probe with args and holds the host process to I12 as channelRun does: it must end within relayWait, must not crash and must write no
+// control bytes. It returns the probe's result, or why the host end fell short. A run the host could not complete is an error, never a pass.
 func relayRun(ctx context.Context, s Session, args ...string) (Result, string, error) {
 	rctx, cancel := context.WithTimeout(ctx, relayWait)
 	defer cancel()
@@ -172,23 +158,19 @@ func relayRun(ctx context.Context, s Session, args ...string) (Result, string, e
 	return r, "", err
 }
 
-// relayCanary listens on network at listen and has the guest name that canary
-// in a relay header of each kind in turn, all against the same canary. The
+// relayCanary listens on network at listen and has the guest name that canary in a relay header of each kind in turn, all against the same canary. The
 // invariant holds only if nothing arrives there and the host end stands.
 func relayCanary(network, listen string, kinds ...string) Judge {
 	return func(ctx context.Context, s Session) (bool, string, error) {
-		addr, err := resolve(listen)
-		if err != nil {
-			return false, "", err
-		}
 		relay, err := s.Relay(ctx)
 		if err != nil {
 			return false, "", err
 		}
-		t, err := listenTrap(network, addr)
+		ln, pc, err := bind(ctx, s, network, listen)
 		if err != nil {
-			return false, "", err
+			return false, "", fmt.Errorf("canary listener: %w", err)
 		}
+		t := trapOn(ln, pc)
 		defer t.stop()
 		want := newToken()
 		var say []string
@@ -205,9 +187,8 @@ func relayCanary(network, listen string, kinds ...string) Judge {
 	}
 }
 
-// relayHeld has the guest offer the host end a header that never completes,
-// of the kind, and holds the host to dropping the stream within headerWait.
-// A host end that is not there cannot hold anything.
+// relayHeld has the guest offer the host end a header that never completes, of the kind, and holds the host to dropping the stream within headerWait. A host
+// end that is not there cannot hold anything.
 func relayHeld(kind string) Judge {
 	return func(ctx context.Context, s Session) (bool, string, error) {
 		relay, err := s.Relay(ctx)

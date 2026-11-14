@@ -16,7 +16,7 @@ func Bind(network, addr, _ string) int {
 	return 1
 }
 
-func Hold(string, string) int {
+func Hold(string) int {
 	fmt.Fprintln(os.Stderr, "netns: Linux only")
 	return 1
 }

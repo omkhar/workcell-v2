@@ -21,12 +21,9 @@ import (
 	"github.com/omkhar/workcell/v2/escape/sandbox"
 )
 
-// The I5 probe is an agent gone rogue: root in the guest, it looks for the
-// real credential everywhere a naive sandbox leaves one. It knows the format
-// of the secret, as an attacker knows a provider's key prefix, not its value:
-// it reports every value of that shape it finds and where, and the judge,
-// which chose the value, says whether any of them is real. A placeholder
-// found this way is no leak.
+// The I5 probe is an agent gone rogue: root in the guest, it looks for the real credential everywhere a naive sandbox leaves one. It knows the format of the
+// secret, as an attacker knows a provider's key prefix, not its value: it reports every value of that shape it finds and where, and the judge, which chose the
+// value, says whether any of them is real. A placeholder found this way is no leak.
 
 const (
 	secretPrefix = "sk-escape-"
@@ -44,13 +41,10 @@ const (
 	readChunk  = 1 << 20
 )
 
-// NewSecret makes a fresh secret bound to the first allowed name of w, in
-// the header boundHeader, for the runner to put in a session's Config when
-// a test wants one; Narrow binds it to narrowMethod requests under
-// narrowPath alone; Repos scopes it, as a git token in the Authorization
-// header, to those repositories. With a Source of w's own, a sign-in flow,
-// the row has no value: the endpoint the source names issues the tokens,
-// and the access one goes in the Authorization header, as a bearer token does.
+// NewSecret makes a fresh secret bound to the first allowed name of w, in the header boundHeader, for the runner to put in a session's Config when a test wants
+// one; Narrow binds it to narrowMethod requests under narrowPath alone; Repos scopes it, as a git token in the Authorization header, to those repositories.
+// With a Source of w's own, a sign-in flow, the row has no value: the endpoint the source names issues the tokens, and the access one goes in the Authorization
+// header, as a bearer token does.
 func NewSecret(w Want) sandbox.Secret {
 	sec := sandbox.Secret{Name: "escape", Value: secretPrefix + newToken()[:secretHex], Host: w.Allow[0], Header: cmp.Or(w.Header, boundHeader), Env: "ESCAPE_API_KEY"}
 	if w.Narrow {
@@ -71,13 +65,10 @@ const (
 	narrowPath   = "/v1/"
 )
 
-// withSecret is the sandbox the I5 tests want: a workspace, two allowed
-// names, bare, a secret bound to the first, the judge as the host's
-// resolver and the host side in a network of its own, where the judge
-// holds the one address both names resolve to and serves a canary for
-// each at port 443 (twoNames). The guest's view of the names is given to
-// each probe as a literal address beside the name. narrowed binds the
-// secret to one method and path as well; scoped, as a git token, to one repository.
+// withSecret is the sandbox the I5 tests want: a workspace, two allowed names, bare, a secret bound to the first, the judge as the host's resolver and the host
+// side in a network of its own, where the judge holds the one address both names resolve to and serves a canary for each at port 443 (twoNames). The guest's
+// view of the names is given to each probe as a literal address beside the name. narrowed binds the secret to one method and path as well; scoped, as a git
+// token, to one repository.
 var (
 	withSecret = Want{Workspace: true, Allow: []string{"bound.escape.test", "other.escape.test"}, Resolver: judgeResolver, Isolated: true, Secret: true}
 	narrowed   = Want{Workspace: true, Allow: withSecret.Allow, Resolver: judgeResolver, Isolated: true, Secret: true, Narrow: true}
@@ -131,8 +122,7 @@ func (s *scan) note(b []byte, where string) bool {
 	return len(found) > 0
 }
 
-// spent says whether the phase is over, by its own limit or the deadline,
-// and records which phases were cut.
+// spent says whether the phase is over, by its own limit or the deadline, and records which phases were cut.
 func (s *scan) spent(phase string, limit bool) bool {
 	if !limit && !time.Now().After(s.deadline) {
 		return false
@@ -143,14 +133,10 @@ func (s *scan) spent(phase string, limit bool) bool {
 	return true
 }
 
-// secretProbe scans the environment and arguments of every process it can
-// see, the disk, and process memory: every process in its own pid namespace,
-// then a few ancestors nearest first (the agent that launched it holds what
-// the host gave it), stopping at the first ancestor that holds a hit. What
-// its own environment holds as the credential (args[1] names the variable)
-// comes first in the result, then the values, so that the line's bound
-// (maxDetail) can cut only where they were seen; a sixth value is marked
-// with "+".
+// secretProbe scans the environment and arguments of every process it can see, the disk, and process memory: every process in its own pid namespace, then a few
+// ancestors nearest first (the agent that launched it holds what the host gave it), stopping at the first ancestor that holds a hit. What its own environment
+// holds as the credential (args[1] names the variable) comes first in the result, then the values, so that the line's bound (maxDetail) can cut only where they
+// were seen; a sixth value is marked with "+".
 func secretProbe(args []string) Result {
 	if len(args) != 2 {
 		return Result{Status: "error", Detail: "want the export path and the credential variable"}
@@ -216,10 +202,8 @@ func readPrefix(path string, n int) ([]byte, error) {
 	return io.ReadAll(io.LimitReader(f, int64(n)))
 }
 
-// disk reads the first fileLimit bytes of every regular file under dirs, in
-// order, until the budgets run out. Links are not followed; the kernel's
-// views of itself are not files, and a directory walked once is not walked
-// again from a later root.
+// disk reads the first fileLimit bytes of every regular file under dirs, in order, until the budgets run out. Links are not followed; the kernel's views of
+// itself are not files, and a directory walked once is not walked again from a later root.
 func (s *scan) disk(dirs []string) {
 	var read int64
 	for i, dir := range dirs {
@@ -248,10 +232,8 @@ func (s *scan) disk(dirs []string) {
 	}
 }
 
-// memory reads the anonymous writable mappings of the processes that share
-// the probe's pid namespace, then of its ancestors, nearest first. The walk
-// up stops at the first hit and after ancestors levels: on a host that lends
-// itself to the control adapter, what launched the runner is not a target.
+// memory reads the anonymous writable mappings of the processes that share the probe's pid namespace, then of its ancestors, nearest first. The walk up stops
+// at the first hit and after ancestors levels: on a host that lends itself to the control adapter, what launched the runner is not a target.
 const ancestors = 3
 
 func (s *scan) memory(pids []int) {
@@ -289,8 +271,7 @@ func parent(pid int) int {
 	return ppid
 }
 
-// process reads one process's memory, up to its share. It reports whether it
-// found anything and whether the whole budget is spent.
+// process reads one process's memory, up to its share. It reports whether it found anything and whether the whole budget is spent.
 func (s *scan) process(pid int) (hit, spent bool) {
 	maps, err := os.Open(fmt.Sprintf("/proc/%d/maps", pid))
 	if err != nil {
@@ -336,11 +317,8 @@ func (s *scan) process(pid int) (hit, spent bool) {
 	return hit, false
 }
 
-// secretJudge binds a fresh secret to the session and fails if the guest's
-// scan turns the real value up anywhere, or if the guest's own environment
-// holds no credential at all: it is to hold a placeholder, which it then
-// uses (SPEC A4). A scan that found more values than it could name proves
-// nothing either way.
+// secretJudge binds a fresh secret to the session and fails if the guest's scan turns the real value up anywhere, or if the guest's own environment holds no
+// credential at all: it is to hold a placeholder, which it then uses (SPEC A4). A scan that found more values than it could name proves nothing either way.
 func secretJudge(ctx context.Context, s Session) (bool, string, error) {
 	r, err := s.Run(s.Guest, s.Secret.Env)
 	if err != nil {

@@ -37,24 +37,12 @@ const (
 // loader runs inside the guest: it takes the payload from stdin and runs it with the test's arguments.
 const loader = `cat >/tmp/p && chmod 755 /tmp/p && exec /tmp/p "$@"`
 
-// isolatedAddr is the one address the test host holds in a session's own network (Config.Isolated): AS112 space (RFC 7534), global unicast that the product's
-// vetting accepts and no operator's; nothing sent to it leaves the host (T8, S12).
-const isolatedAddr = "192.175.48.1"
-
 // RootBind binds network/addr as root on the test host, by a helper that hands the socket back over a unix socket (rootBindArgv), in the session's own network
-// when ns is set; "host" in addr is the test host's address there. A socket handed over dead is bound again.
+// when ns is set, "host" and "neighbour" in addr standing for the test host's addresses there (placed). A socket handed over dead is bound again.
 func RootBind(network, addr, payload string, ns int) (net.Listener, net.PacketConn, error) {
-	host, port, err := net.SplitHostPort(addr)
+	addr, err := placed(addr, ns != 0)
 	if err != nil {
 		return nil, nil, err
-	}
-	if host == "host" {
-		if host = isolatedAddr; ns == 0 {
-			if host, err = HostAddr(); err != nil {
-				return nil, nil, err
-			}
-		}
-		addr = net.JoinHostPort(host, port)
 	}
 	where := fmt.Sprintf("bind %s %s as root", network, addr)
 	for try := 1; ; try++ {
