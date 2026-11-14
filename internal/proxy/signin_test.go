@@ -443,12 +443,14 @@ func FuzzSwapRefresh(f *testing.F) {
 	})
 }
 
-// FuzzHide: whatever the token endpoint answers, no real value is left in the bytes the guest reads, nor in any string a JSON reading of them holds.
+// FuzzHide: whatever the token endpoint answers, no real value is left in the bytes the guest reads, nor in any string a JSON reading of them holds, in its
+// own spelling or the url-encoded one swapRefresh sends (C12).
 func FuzzHide(f *testing.F) {
-	f.Add(`{"access_token":"sk-acc\/1","refresh_token":"sk-ref-1","n":1e400}`)
-	f.Add("sk-acc/1 sk-ref-1")
-	f.Add(`"sk-acc\/1"0`) // a first value a lenient client reads, then what is not JSON
-	swaps := []swap{{[]byte("sk-acc/1"), testPlaceholder}, {[]byte("sk-ref-1"), testRefreshPlaceholder}}
+	f.Add(`{"access_token":"sk-acc\/1","refresh_token":"sk-ref+1=","n":1e400}`)
+	f.Add("sk-acc/1 sk-ref+1=")
+	f.Add(`"sk-acc\/1"0`)                                                       // a first value a lenient client reads, then what is not JSON
+	f.Add(`error=invalid_grant&refresh_token=sk-ref%2B1%3D {"e":"sk-acc%2F1"}`) // the endpoint echoes the parameter as the proxy spelled it
+	swaps := []swap{{[]byte("sk-acc/1"), testPlaceholder}, {[]byte("sk-ref+1="), testRefreshPlaceholder}}
 	f.Fuzz(func(t *testing.T, body string) {
 		got := hide([]byte(body), swaps)
 		var v any
@@ -456,8 +458,8 @@ func FuzzHide(f *testing.F) {
 			got = append(got, must(json.Marshal(v))...) // every key and string of the reading, verbatim: Marshal escapes no byte of the real values
 		}
 		for _, s := range swaps {
-			if bytes.Contains(got, s.real) {
-				t.Fatalf("hide(%q) = %q, carries %q", body, got, s.real)
+			if e := url.QueryEscape(string(s.real)); bytes.Contains(got, s.real) || bytes.Contains(got, []byte(e)) {
+				t.Fatalf("hide(%q) = %q, carries %q or %q", body, got, s.real, e)
 			}
 		}
 	})

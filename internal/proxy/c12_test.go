@@ -1,11 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Omkhar Arasaratnam
 
-// S-F7, finding C12 of S-1005 (I5). This file waits here, where Go does not compile it, until its fix lands; the fix unit moves it into internal/proxy/. swapRefresh sends a
-// refresh token to the endpoint as url.QueryEscape spells it, so a token holding +, / or = (base64-shaped) goes out as a%2Bb%2Fc%3D, but hide
-// replaces only the verbatim bytes of each real value: an error answer that echoes the parameter as received, in text or inside a JSON string,
-// carries the proxy's own spelling to the guest, one decode away from the real refresh token. That an IdP echoes the raw parameter is a
-// precondition the attacker does not control.
+// S-F7, finding C12 of S-1005 (I5). swapRefresh sends a refresh token to the endpoint as url.QueryEscape spells it, so a token holding +, / or =
+// (base64-shaped) goes out as a%2Bb%2Fc%3D. hide must replace that spelling as well as the verbatim bytes: an error answer that echoes the parameter
+// as received, in text or inside a JSON string, would otherwise carry the proxy's own spelling to the guest, one decode away from the real refresh
+// token. That an IdP echoes the raw parameter is a precondition the attacker does not control.
 package proxy
 
 import (
