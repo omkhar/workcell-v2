@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"net/url"
 	"path"
+	"regexp"
 	"strconv"
 	"strings"
 )
@@ -68,20 +69,21 @@ func validPath(p string) bool {
 // for the endpoint is only read whole and rewritten.
 func (p *Proxy) tokenEndpoint(host string, u *url.URL) (TerminateRule, bool) {
 	for _, r := range p.signin[host] {
-		if strings.EqualFold(u.EscapedPath(), r.SignIn.Path) || strings.EqualFold(fold(u.Path), r.SignIn.Path) {
+		if strings.EqualFold(u.EscapedPath(), r.SignIn.Path) || strings.EqualFold(fold(u.EscapedPath()), r.SignIn.Path) {
 			return r, true
 		}
 	}
 	return TerminateRule{}, false
 }
 
-// fold reads a decoded path as a router that takes a backslash for a slash, drops a ;param suffix from each segment and then resolves dot segments does.
-func fold(p string) string {
-	segs := strings.Split(strings.ReplaceAll(p, `\`, "/"), "/")
-	for i, seg := range segs {
-		segs[i], _, _ = strings.Cut(seg, ";")
-	}
-	return path.Clean(strings.Join(segs, "/"))
+// params is a ;param suffix of a path segment.
+var params = regexp.MustCompile(`;[^/]*`)
+
+// fold reads a path as sent the way a router that cuts ;params from each segment before it decodes (so a param hides an encoded slash) and again after,
+// takes a backslash for a slash and then resolves dot segments does. PathUnescape cannot fail on a path as sent; were it to, "." matches nothing.
+func fold(escaped string) string {
+	p, _ := url.PathUnescape(params.ReplaceAllString(escaped, ""))
+	return path.Clean(strings.ReplaceAll(params.ReplaceAllString(p, ""), `\`, "/"))
 }
 
 // tokenRequest reads the body of a request to rule's token endpoint and swaps the refresh placeholder in its refresh_token field for the refresh token the
