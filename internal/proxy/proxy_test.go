@@ -95,15 +95,17 @@ func TestPeekSNI(t *testing.T) {
 		t.Fatalf("peekSNI read %d bytes, want the %d-byte ClientHello", len(read), len(hello))
 	}
 
+	record := append([]byte{0x16, 3, 3, 0x40, 0, 1, 1, 0, 0}, make([]byte, 16380)...) // a full-size record opening a 64 KiB hello
 	for name, data := range map[string][]byte{
-		"empty":     nil,
-		"plaintext": []byte("GET / HTTP/1.1\r\nHost: api.example.com\r\n\r\n"),
-		"truncated": hello[:len(hello)/2],
-		"no sni":    clientHello(t, ""),
+		"empty":                   nil,
+		"plaintext":               []byte("GET / HTTP/1.1\r\nHost: api.example.com\r\n\r\n"),
+		"truncated":               hello[:len(hello)/2],
+		"no sni":                  clientHello(t, ""),
+		"unfinished 64 KiB hello": bytes.Repeat(record, 4), // stops 4 bytes short of the hello; the peek must give up within 16 KiB (I10)
 	} {
 		conn := feed(data)
-		if sni, _, ok := peekSNI(conn); ok {
-			t.Errorf("%s: peekSNI ok with sni %q, want failure", name, sni)
+		if sni, read, ok := peekSNI(conn); ok || len(read) > 16<<10 {
+			t.Errorf("%s: peekSNI = (%q, ok=%v) after %d bytes, want failure within 16 KiB", name, sni, ok, len(read))
 		}
 		_ = conn.Close()
 	}

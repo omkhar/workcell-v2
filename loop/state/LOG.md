@@ -1123,3 +1123,10 @@ Next: S-1004 to S-1012 (audit, fable, deps S-1001) and S-1014a (mech, haiku, dep
 ## 2026-11-14T09:14Z S-1004 START mode=cloud
 ## 2026-11-14T09:44Z S-1004 BLOCKED mode=cloud model=fable tries=0
 S-1004: needs the maintainer, see the run's transcript
+## 2026-11-14T14:28Z B-835 START mode=cloud
+## 2026-11-14T14:40Z B-835 PASS mode=cloud model=opus tries=0
+Changed internal/proxy/proxy.go line 32 only: maxHelloBytes from 1<<17 to 16<<10, comment reworded (a real hello with a post-quantum key share is under 2 KiB; the cap bounds what each slot holds while peeking, I10). Product stays at exactly 15000.
+Test: the row "unfinished 64 KiB hello" joined the failure map of TestPeekSNI in internal/proxy/proxy_test.go (redteam, test-first): four full-size 16389-byte handshake records open a 65536-byte ClientHello that never completes, and the check now also wants len(read) <= 16 KiB. With the old cap it fails after 65556 bytes read; with the new one the peek stops at exactly 16384. Test 27498 of 27500, +2 lines.
+Proved: local gate GATE PASS in 25s; guard pass; hosted gate (287 s), gate-macos, gate-arm64 and guard green on 3b505b8 and on the claim e052627. Review: no findings, four notes parked (the cap is 5 bytes short of one full-size record, so a hello padded to one maximum record is refused; no real client sends one). No model declined. No S14 trigger: proxy.go is ported, but SPEC section 13 now handles a weakness in a ported file in public, and v1's pull request 987 landed the same change.
+Learned: the per-slot peek cost is now about 50 to 65 KiB (buffer, crypto/tls rawInput and hand buffer), about 50 to 65 MiB at 1024 slots against about 320 MiB before; a boundary row that is a new map entry plus a tightened check costs 2 test lines, which is the cheapest shape at the ceiling; crypto/tls reads a whole record before parsing, so any cap below 16389 refuses a hello padded to a full record.
+Next: B-836 (boundary, opus, env:kvm, deps B-835) is takeable for the cloud and must delete at least as many product lines as it adds; S-1004 to S-1012 (audit, fable) and S-1014a stay takeable. The claim was PR #196, which this run gives its final title.
