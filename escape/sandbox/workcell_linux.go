@@ -97,16 +97,16 @@ func sign(context.Context, string, string) error { return nil }
 // steersResolver: on Linux the product can be run under a /etc/resolv.conf of the session's own, so a session may name a resolver.
 const steersResolver = true
 
-// holder is a session's own network namespace, holding isolatedAddr on its loopback device and nothing else, so that no other address has a route: the payload
-// that made it and holds it, as root, and the connection whose closing lets it go. The product starts inside it (steered); the judge's canaries listen in it
-// (bind).
+// holder is a session's own network namespace, whose loopback device holds IsolatedNet and a route to CanaryAddr and nothing else, so that no other address has
+// a route: the payload that made it and holds it, as root, and the connection whose closing lets it go. The product starts inside it (steered); the judge's
+// canaries listen in it (bind).
 type holder struct {
 	pid     int
 	payload string
 	conn    *net.UnixConn
 }
 
-// isolate starts the holder: the payload under `unshare -n`, as root (sudo when the suite is not), which brings its loopback up with isolatedAddr, dials back
+// isolate starts the holder: the payload under `unshare -n`, as root (sudo when the suite is not), which sets its loopback device up (suite.Hold), dials back
 // at a socket under dir and says its pid.
 func isolate(dir, payload string) (*holder, error) {
 	path := filepath.Join(dir, "netns")
@@ -115,7 +115,7 @@ func isolate(dir, payload string) (*holder, error) {
 		return nil, err
 	}
 	defer ln.Close()
-	argv := asRoot("unshare", "-n", payload, "netns", path, isolatedAddr)
+	argv := asRoot("unshare", "-n", payload, "netns", path)
 	cmd := exec.Command(argv[0], argv[1:]...)
 	stderr := &bounded{limit: MaxStderr}
 	cmd.Stderr = stderr
@@ -136,7 +136,7 @@ func isolate(dir, payload string) (*holder, error) {
 	return h, nil
 }
 
-// bind binds network/addr in the namespace, "host" in addr standing for isolatedAddr, through the payload as root inside it (RootBind).
+// bind binds network/addr in the namespace, "host" in addr standing for CanaryAddr, through the payload as root inside it (RootBind).
 func (h *holder) bind(network, addr string) (net.Listener, net.PacketConn, error) {
 	return RootBind(network, addr, h.payload, h.pid)
 }

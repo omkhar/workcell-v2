@@ -11,7 +11,7 @@
 //	payload <test name> [args...]
 //	payload helper <name>
 //	payload bind <network> <address> <unix socket>
-//	payload netns <unix socket> <address>
+//	payload netns <unix socket>
 package main
 
 import (
@@ -30,8 +30,8 @@ func main() {
 	if len(os.Args) == 5 && os.Args[1] == "bind" {
 		os.Exit(suite.Bind(os.Args[2], os.Args[3], os.Args[4]))
 	}
-	if len(os.Args) == 4 && os.Args[1] == "netns" {
-		os.Exit(suite.Hold(os.Args[2], os.Args[3]))
+	if len(os.Args) == 3 && os.Args[1] == "netns" {
+		os.Exit(suite.Hold(os.Args[2]))
 	}
 	r := suite.Result{Status: "error", Detail: "usage: payload <test name> [args...]"}
 	if len(os.Args) >= 2 {

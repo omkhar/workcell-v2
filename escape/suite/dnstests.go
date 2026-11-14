@@ -21,12 +21,9 @@ import (
 	"time"
 )
 
-// The I3 probes send a DNS query for a name no policy can allow straight to a
-// listener the judge started on the host, bypassing whatever resolver the guest
-// was given: over plain UDP and TCP, inside TLS (DoT, RFC 7858) and inside
-// HTTPS (DoH, RFC 8484), and as a tunnel that carries data out in the labels.
-// A query that arrives is the proof; the guest's word is not. Every probe is
-// given a literal address and never looks a name up.
+// The I3 probes send a DNS query for a name no policy can allow straight to a listener the judge started on the host, bypassing whatever resolver the guest was
+// given: over plain UDP and TCP, inside TLS (DoT, RFC 7858) and inside HTTPS (DoH, RFC 8484), and as a tunnel that carries data out in the labels. A query that
+// arrives is the proof; the guest's word is not. Every probe is given a literal address and never looks a name up.
 
 // dnsName is the name the guest asks for: unique per run, never allowed.
 func dnsName(token string) string { return token + ".invalid." }
@@ -39,9 +36,8 @@ func dnsUDPProbe(args []string) Result {
 	return sendUDP(args[0], dnsQuery(dnsQuestion{Name: dnsName(args[1]), Type: dnsTypeA}))
 }
 
-// dnsTCPProbe and dotProbe send the same query, length-prefixed, over a TCP
-// connection to args[0], bare or inside TLS to a server the guest does not
-// verify (it is the attacker, and the server is its own).
+// dnsTCPProbe and dotProbe send the same query, length-prefixed, over a TCP connection to args[0], bare or inside TLS to a server the guest does not verify (it
+// is the attacker, and the server is its own).
 func dnsTCPProbe(args []string) Result { return dnsStream(args, false) }
 func dotProbe(args []string) Result    { return dnsStream(args, true) }
 
@@ -69,8 +65,7 @@ func dnsStream(args []string, withTLS bool) Result {
 	return Result{Status: "connected", Detail: "sent a query for " + dnsName(args[1]) + " to " + args[0]}
 }
 
-// dohProbe sends the query to https://args[0]/dns-query as RFC 8484 says: in
-// the body of a POST, or base64url in the dns parameter of a GET.
+// dohProbe sends the query to https://args[0]/dns-query as RFC 8484 says: in the body of a POST, or base64url in the dns parameter of a GET.
 func dohProbe(method string) Probe {
 	return func(args []string) Result {
 		if len(args) != 2 {
@@ -96,8 +91,7 @@ func dohProbe(method string) Probe {
 	}
 }
 
-// The tunnel carries the token out in pieces, each the data label of a TXT
-// query under one apex, the way DNS tunnels move data: seq.data.tunnel.invalid.
+// The tunnel carries the token out in pieces, each the data label of a TXT query under one apex, the way DNS tunnels move data: seq.data.tunnel.invalid.
 const (
 	tunnelApex  = "tunnel.invalid."
 	tunnelChunk = 8
@@ -125,15 +119,13 @@ func tunnelProbe(args []string) Result {
 	return Result{Status: "sent", Detail: fmt.Sprintf("%d TXT queries carrying %d bytes to %s", n, len(token), args[0])}
 }
 
-// hostileTLS is the client side of the attacker's own channel: it verifies
-// nothing and names a server that is not the address it dials.
+// hostileTLS is the client side of the attacker's own channel: it verifies nothing and names a server that is not the address it dials.
 func hostileTLS() *tls.Config {
 	return &tls.Config{InsecureSkipVerify: true, ServerName: "dns.invalid"} //nolint:gosec // the probe is the attacker
 }
 
-// dialFailed turns a dial error into the result dialProbe reports for it:
-// no route, a refusal (the guest kernel's own RST under ADR-003), a reset,
-// or a timeout.
+// dialFailed turns a dial error into the result dialProbe reports for it: no route, a refusal (the guest kernel's own RST under ADR-003), a reset, or a
+// timeout.
 func dialFailed(err error) Result {
 	var ne net.Error
 	switch {
@@ -147,12 +139,10 @@ func dialFailed(err error) Result {
 	return Result{Status: "unreachable", Detail: err.Error()}
 }
 
-// A dnsListener starts a capture on the host at addr, reports every DNS query
-// it receives through got, and returns the address the guest is told to use.
+// A dnsListener starts a capture on the host at addr, reports every DNS query it receives through got, and returns the address the guest is told to use.
 type dnsListener func(addr string, got func(dnsQuestion)) (target string, stop func(), err error)
 
-// dnsCanary starts listen on the host's own address and has the guest send its
-// queries there. The invariant holds only if no query for the token's name
+// dnsCanary starts listen on the host's own address and has the guest send its queries there. The invariant holds only if no query for the token's name
 // arrived, as leaked judges, and the guest reports no connection.
 func dnsCanary(listen dnsListener, leaked func(qs []dnsQuestion, token string) (string, bool)) Judge {
 	return func(ctx context.Context, s Session) (bool, string, error) {
@@ -200,9 +190,8 @@ func queried(qs []dnsQuestion, token string) (string, bool) {
 	return "", false
 }
 
-// tunnelled says whether the TXT queries under the tunnel apex carried pieces
-// of the token out. One piece is a leak: a tunnel that loses a datagram still
-// moved the rest, so the judge never waits for the whole token to reassemble.
+// tunnelled says whether the TXT queries under the tunnel apex carried pieces of the token out. One piece is a leak: a tunnel that loses a datagram still moved
+// the rest, so the judge never waits for the whole token to reassemble.
 func tunnelled(qs []dnsQuestion, token string) (string, bool) {
 	n := 0
 	for _, q := range qs {
@@ -242,8 +231,7 @@ func dnsOverUDP(addr string, got func(dnsQuestion)) (string, func(), error) {
 	return pc.LocalAddr().String(), func() { pc.Close(); wg.Wait() }, nil
 }
 
-// dnsOverTCP captures one length-prefixed query per connection, bare or
-// inside TLS with a certificate nothing verifies.
+// dnsOverTCP captures one length-prefixed query per connection, bare or inside TLS with a certificate nothing verifies.
 func dnsOverTCP(withTLS bool) dnsListener {
 	return func(addr string, got func(dnsQuestion)) (string, func(), error) {
 		ln, err := net.Listen("tcp4", addr)
@@ -258,10 +246,8 @@ func dnsOverTCP(withTLS bool) dnsListener {
 			}
 			ln = tls.NewListener(ln, cfg)
 		}
-		// wg covers the accept loop and every connection it spawned; a
-		// connection's goroutine is added from inside the loop, so the count
-		// never reaches zero while one can still be added. The 2 s deadline
-		// bounds each connection, so Wait never blocks for long.
+		// wg covers the accept loop and every connection it spawned; a connection's goroutine is added from inside the loop, so the count never reaches zero
+		// while one can still be added. The 2 s deadline bounds each connection, so Wait never blocks for long.
 		var wg sync.WaitGroup
 		wg.Go(func() {
 			for {
@@ -294,8 +280,7 @@ func readFramed(r io.Reader) (dnsQuestion, bool) {
 	return parseDNSQuery(msg)
 }
 
-// dnsOverHTTPS captures RFC 8484 requests to any path, POST body or GET dns
-// parameter, on a TLS server with a certificate nothing verifies.
+// dnsOverHTTPS captures RFC 8484 requests to any path, POST body or GET dns parameter, on a TLS server with a certificate nothing verifies.
 func dnsOverHTTPS(addr string, got func(dnsQuestion)) (string, func(), error) {
 	ln, err := net.Listen("tcp4", addr)
 	if err != nil {
@@ -323,9 +308,8 @@ func dnsOverHTTPS(addr string, got func(dnsQuestion)) (string, func(), error) {
 			w.WriteHeader(http.StatusOK)
 		}),
 	}
-	// stop refuses new connections, waits for handlers in flight (each bounded
-	// by ReadTimeout) and only then returns, so that every query that arrived
-	// has been reported. Close is the backstop should Shutdown give up.
+	// stop refuses new connections, waits for handlers in flight (each bounded by ReadTimeout) and only then returns, so that every query that arrived has been
+	// reported. Close is the backstop should Shutdown give up.
 	var wg sync.WaitGroup
 	wg.Go(func() { srv.ServeTLS(ln, "", "") })
 	return ln.Addr().String(), func() {

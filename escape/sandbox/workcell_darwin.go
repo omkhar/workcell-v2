@@ -47,8 +47,8 @@ func hostReady() error {
 }
 
 // A Mac has no namespaces to give a session a network and a resolver of its own. The maintainer set this host up instead, once, as root; the adapter relies on
-// it, checks for it and never changes it: lo0 holds isolatedAddr and the judge's addresses as aliases, so nothing bound at one is reached from off the host
-// (SPEC T8); /etc/resolver/<judgeDomain> sends every question for a name under it to the judge's resolver, as `scutil --dns` shows, the product resolving
+// it, checks for it and never changes it: lo0 holds CanaryAddr, Neighbour and the judge's addresses as aliases, so nothing bound at one is reached from off the
+// host (SPEC T8); /etc/resolver/<judgeDomain> sends every question for a name under it to the judge's resolver, as `scutil --dns` shows, the product resolving
 // through the system as any program would; and bindHelper, root-owned, which sudo runs for the suite's user without a password, binds a port below 1024 at an
 // alias of lo0 and hands the descriptor over as suite.Bind does. No other sudo exists.
 const (
@@ -75,17 +75,17 @@ func steered(_, resolver string, _, argv []string, _ int) ([]string, error) {
 	return nil, fmt.Errorf("scutil --dns lists no resolver for %s at %s: /etc/resolver/%s must name it, or a question for the suite's names would leave the host", judgeDomain, resolver, judgeDomain)
 }
 
-// holder is a session's own network on a Mac: the host's own, with isolatedAddr an alias of lo0 that isolate checks; pid is the suite's own.
+// holder is a session's own network on a Mac: the host's own, with CanaryAddr an alias of lo0 that isolate checks; pid is the suite's own.
 type holder struct{ pid int }
 
 func isolate(string, string) (*holder, error) {
-	if err := LoopbackHolds(isolatedAddr); err != nil {
+	if err := LoopbackHolds(CanaryAddr); err != nil {
 		return nil, err
 	}
 	return &holder{pid: os.Getpid()}, nil
 }
 
-// bind binds network/addr, "host" standing for isolatedAddr, as root (RootBind).
+// bind binds network/addr, "host" standing for CanaryAddr, as root (RootBind).
 func (h *holder) bind(network, addr string) (net.Listener, net.PacketConn, error) {
 	return RootBind(network, addr, "", h.pid)
 }
