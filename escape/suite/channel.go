@@ -16,18 +16,13 @@ import (
 	"github.com/omkhar/workcell/v2/escape/sandbox"
 )
 
-// SPEC I12. Root in the guest reaches the host end of the channel as a
-// duplicate of the init's connection (pidfd_getfd on pid 1), where a forged
-// frame is indistinguishable from the init's own, and as fresh connections to
-// the same port. The evidence is the host's: what `workcell run` returned for
-// the hostile run and whether a plain run after still works. I12 holds only if
-// the run ends within hangBound without a crash or control bytes on stderr,
-// reporting the command's own status or a clean refusal, never one the frame named.
+// SPEC I12. Root in the guest reaches the host end of the channel as a duplicate of the init's connection (pidfd_getfd on pid 1), where a forged frame is
+// indistinguishable from the init's own, and as fresh connections to the same port. The evidence is the host's: what `workcell run` returned for the hostile
+// run and whether a plain run after still works. I12 holds only if the run ends within hangBound without a crash or control bytes on stderr, reporting the
+// command's own status or a clean refusal, never one the frame named.
 //
-// Frames: a 6-byte header of version 1, a type and a big-endian length of at
-// most 65536, then the payload. Guest-to-host types are Stdout 5, Stderr 6,
-// Exit 7 and Ack 8. An Exit payload is a tag byte and a value: 0 then one
-// byte of status, 1 then one byte of signal, 2 then up to 256 bytes of text.
+// Frames: a 6-byte header of version 1, a type and a big-endian length of at most 65536, then the payload. Guest-to-host types are Stdout 5, Stderr 6, Exit 7
+// and Ack 8. An Exit payload is a tag byte and a value: 0 then one byte of status, 1 then one byte of signal, 2 then up to 256 bytes of text.
 const (
 	typeStdout = 5
 	typeExit   = 7
@@ -67,8 +62,7 @@ func frame(kind byte, payload []byte) []byte {
 func exitTag(code byte) []byte   { return []byte{tagCode, code} }
 func textTag(text []byte) []byte { return append([]byte{tagText}, text...) }
 
-// hostileText is an error text of n bytes that would retitle, clear and
-// recolour a terminal and plant a fake result line, were it printed raw.
+// hostileText is an error text of n bytes that would retitle, clear and recolour a terminal and plant a fake result line, were it printed raw.
 func hostileText(n int) []byte {
 	b := []byte("\x1b]0;owned\x07\x1b[2J\x1b[H\r\x1b[1;31mFAKE: pass\x1b[0m\n\x07\x08\x08\x00\x7f\x1b[?1049h\nescape: workcell: I12: pass\n")
 	for len(b) < n {
@@ -77,10 +71,8 @@ func hostileText(n int) []byte {
 	return b[:n]
 }
 
-// channelProbe takes the init's channel to the host at args[1] and sends the
-// hostile traffic of kind args[0], then stays alive so that the host's answer
-// to the frame, and not the command's end, is what ends the run. The storm
-// kind uses fresh connections instead; plain sends nothing.
+// channelProbe takes the init's channel to the host at args[1] and sends the hostile traffic of kind args[0], then stays alive so that the host's answer to the
+// frame, and not the command's end, is what ends the run. The storm kind uses fresh connections instead; plain sends nothing.
 func channelProbe(args []string) Result {
 	if len(args) != 2 {
 		return Result{Status: "error", Detail: "want kind and channel address"}
@@ -93,6 +85,8 @@ func channelProbe(args []string) Result {
 		return storm(addr)
 	case "storm-flood":
 		return flood(addr)
+	case "reboot":
+		return rebootGuest(addr)
 	}
 	ch, err := stealChannel(addr)
 	if err != nil {
@@ -143,8 +137,7 @@ func channelProbe(args []string) Result {
 	return Result{Status: "sent", Detail: fmt.Sprintf("%s: %d bytes on the init's channel, still running %s later", kind, len(b), linger)}
 }
 
-// drip writes the frame one byte per dripInterval, over and over, for
-// longLinger or until the host stops taking bytes.
+// drip writes the frame one byte per dripInterval, over and over, for longLinger or until the host stops taking bytes.
 func drip(ch *rawConn, f []byte) Result {
 	sent := 0
 	for by := time.Now().Add(longLinger); time.Now().Before(by); sent++ {
@@ -156,9 +149,8 @@ func drip(ch *rawConn, f []byte) Result {
 	return Result{Status: "sent", Detail: fmt.Sprintf("%d bytes dripped over %s", sent, longLinger)}
 }
 
-// swarm opens n fresh connections to the host end at once, has each handled
-// by each (which returns a count), holds them for wait, and says how many
-// opened, the counts' sum and the last dial error as a suffix.
+// swarm opens n fresh connections to the host end at once, has each handled by each (which returns a count), holds them for wait, and says how many opened, the
+// counts' sum and the last dial error as a suffix.
 func swarm(addr string, n int, wait time.Duration, each func(c *rawConn) int) (opened, sum int, last string) {
 	var mu sync.Mutex
 	var wg sync.WaitGroup
@@ -184,8 +176,7 @@ func swarm(addr string, n int, wait time.Duration, each func(c *rawConn) int) (o
 	return
 }
 
-// storm opens stormSize fresh connections to the host end at once, sends a
-// forged Exit on each, holds them open, and counts.
+// storm opens stormSize fresh connections to the host end at once, sends a forged Exit on each, holds them open, and counts.
 func storm(addr string) Result {
 	opened, sent, last := swarm(addr, stormSize, stormHold, func(c *rawConn) int {
 		if _, err := c.write(frame(typeExit, exitTag(forgedCode)), sendWait); err != nil {
@@ -196,10 +187,8 @@ func storm(addr string) Result {
 	return Result{Status: "stormed", Detail: fmt.Sprintf("%d of %d connections opened, %d forged Exit frames sent%s", opened, stormSize, sent, last)}
 }
 
-// flood opens floodSize fresh connections at once and offers the host side
-// floodBytes on each, under one header that promises 4 GiB, until it stops
-// taking them; then holds them all for the judge's samples. Whatever the
-// host side took it holds somewhere for as long as the connections stand.
+// flood opens floodSize fresh connections at once and offers the host side floodBytes on each, under one header that promises 4 GiB, until it stops taking
+// them; then holds them all for the judge's samples. Whatever the host side took it holds somewhere for as long as the connections stand.
 func flood(addr string) Result {
 	chunk := frame(typeStdout, make([]byte, floodBytes-6))
 	binary.BigEndian.PutUint32(chunk[2:], 0xffffffff)
@@ -210,10 +199,8 @@ func flood(addr string) Result {
 	return Result{Status: "flooded", Detail: fmt.Sprintf("%d of %d connections opened, the host side took %d MiB%s", opened, floodSize, taken>>20, last)}
 }
 
-// allowed is the exit status each kind lets a sound host report: 0, the
-// command's own, when the host ignored the frame or the connections; 125, a
-// clean refusal of the session; 126, the error path a forged error text
-// reaches. Never the forged code, and never a crash.
+// allowed is the exit status each kind lets a sound host report: 0, the command's own, when the host ignored the frame or the connections; 125, a clean refusal
+// of the session; 126, the error path a forged error text reaches. Never the forged code, and never a crash.
 var allowed = map[string][]int{
 	"exit-empty":    {0, rawCleanExit},
 	"ack-short":     {0, rawCleanExit},
@@ -227,11 +214,11 @@ var allowed = map[string][]int{
 	"after-exit":    {0, rawCleanExit},
 	"half-close":    {rawCleanExit},
 	"full-shutdown": {rawCleanExit},
+	"reboot":        {rawCleanExit},
 }
 
-// channelRun runs kind against the session's channel and holds the host end
-// to what every kind demands. It returns the run's exit status, or the reason
-// the host end fell short, "" when it did not.
+// channelRun runs kind against the session's channel and holds the host end to what every kind demands. It returns the run's exit status, or the reason the
+// host end fell short, "" when it did not.
 func channelRun(ctx context.Context, s Session, addr, kind string) (int, string, error) {
 	rctx, cancel := context.WithTimeout(ctx, hangBound)
 	defer cancel()
@@ -254,9 +241,8 @@ func channelRun(ctx context.Context, s Session, addr, kind string) (int, string,
 	return out.Exit, "", nil
 }
 
-// hostFault says how the host process fell short of I12 on a run, by its
-// exit status and stderr: it crashed, or it wrote control bytes raw. It is
-// "" when it did neither.
+// hostFault says how the host process fell short of I12 on a run, by its exit status and stderr: it crashed, or it wrote control bytes raw. It is "" when it
+// did neither.
 func hostFault(out sandbox.Output) string {
 	line := firstLine(out.Stderr)
 	switch {
@@ -284,9 +270,8 @@ func firstLine(b []byte) string {
 	return clean(string(line), 120, isPrint, '?')
 }
 
-// channelJudge runs each kind in turn, each in its own session boot, and
-// then a plain run, which must still work: the hostile run's VM, sockets
-// and files must be gone. The first kind the host end fails under decides.
+// channelJudge runs each kind in turn, each in its own session boot, and then a plain run, which must still work: the hostile run's VM, sockets and files must
+// be gone. The first kind the host end fails under decides.
 func channelJudge(kinds ...string) Judge {
 	return func(ctx context.Context, s Session) (bool, string, error) {
 		ch, err := s.Channel(ctx)
@@ -308,10 +293,8 @@ func channelJudge(kinds ...string) Judge {
 	}
 }
 
-// floodJudge runs the flood with the host's available memory sampled, as
-// the I10 judges do, against a plain run's own cost measured the same way
-// just before: the host may hold no more for a guest's connections than
-// for none. The flood run must also end as any hostile run must.
+// floodJudge runs the flood with the host's available memory sampled, as the I10 judges do, against a plain run's own cost measured the same way just before:
+// the host may hold no more for a guest's connections than for none. The flood run must also end as any hostile run must.
 func floodJudge(ctx context.Context, s Session) (bool, string, error) {
 	ch, err := s.Channel(ctx)
 	if err != nil {
@@ -337,6 +320,61 @@ func floodJudge(ctx context.Context, s Session) (bool, string, error) {
 		return false, why, err
 	}
 	return true, say + "; a plain run after still works", nil
+}
+
+// rebootJudge has root restart the guest's kernel while the run stands (reboot -f, after one line of output) and holds the host to I12 and I7 after: the
+// run ends within hangBound with a clean refusal of the session, exit 125, not a hang at the vCPU cap on a kernel booted again with no host end to
+// talk to; no process of the session, the VMM first, outlives the run; and a plain run after still works. The session's processes are listed while the
+// run stands, below its supervisor. Off the product's VM the probe refuses to restart anything (S12), and the run's exit 0 is the honest failure.
+func rebootJudge(ctx context.Context, s Session) (bool, string, error) {
+	ch, err := s.Channel(ctx)
+	if err != nil {
+		return false, "", err
+	}
+	type outcome struct {
+		exit int
+		why  string
+		err  error
+	}
+	run := make(chan outcome, 1)
+	go func() {
+		exit, why, err := channelRun(ctx, s, ch.Addr, "reboot")
+		run <- outcome{exit, why, err}
+	}()
+	pid, err := s.Helper(ctx, "supervisor")
+	if err != nil {
+		return false, "", err
+	}
+	kin := []int{pid}
+	var over outcome
+	for done := false; !done; {
+		if below, err := descendants(pid); err == nil {
+			for _, p := range below {
+				if !slices.Contains(kin, p) {
+					kin = append(kin, p)
+				}
+			}
+		}
+		select {
+		case over = <-run:
+			done = true
+		case <-time.After(20 * ms):
+		}
+	}
+	if over.err != nil || over.why != "" {
+		return false, over.why, over.err
+	}
+	left := survivors(kin, 0)
+	for by := time.Now().Add(deathWait); len(left) > 0 && time.Now().Before(by); left = survivors(kin, 0) {
+		time.Sleep(50 * ms)
+	}
+	if len(left) > 0 {
+		return false, fmt.Sprintf("the run ended with exit %d, yet %d processes of the session were still running %s later: pids %v", over.exit, len(left), deathWait, left), nil
+	}
+	if why, err := plainAfter(s, ch.Addr, "the reboot"); err != nil || why != "" {
+		return false, why, err
+	}
+	return true, fmt.Sprintf("the run ended with exit %d once the guest restarted its kernel, the session's %d processes went with it, and a plain run after still works", over.exit, len(kin)), nil
 }
 
 func plainAfter(s Session, addr, after string) (string, error) {

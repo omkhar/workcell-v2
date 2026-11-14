@@ -14,15 +14,13 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-// rawConn is one end of the channel as a raw descriptor. The duplicate of the
-// init's connection shares its file description, so nothing here changes a
-// flag on it; every write polls first and gives up after a wait.
+// rawConn is one end of the channel as a raw descriptor. The duplicate of the init's connection shares its file description, so nothing here changes a flag on
+// it; every write polls first and gives up after a wait.
 type rawConn struct{ fd int }
 
 func (c *rawConn) close() { unix.Close(c.fd) }
 
-// write sends b, waiting at most wait for the peer to take it, and returns
-// how much it took; less than all of it is an error.
+// write sends b, waiting at most wait for the peer to take it, and returns how much it took; less than all of it is an error.
 func (c *rawConn) write(b []byte, wait time.Duration) (int, error) {
 	by, sent := time.Now().Add(wait), 0
 	for sent < len(b) {
@@ -46,8 +44,7 @@ func (c *rawConn) write(b []byte, wait time.Duration) (int, error) {
 	return sent, nil
 }
 
-// read waits at most wait for the peer to write or to close, and returns what
-// it wrote, io.EOF when it closed, and errHeld when it did neither.
+// read waits at most wait for the peer to write or to close, and returns what it wrote, io.EOF when it closed, and errHeld when it did neither.
 func (c *rawConn) read(b []byte, wait time.Duration) (int, error) {
 	by := time.Now().Add(wait)
 	for {
@@ -72,8 +69,7 @@ func (c *rawConn) read(b []byte, wait time.Duration) (int, error) {
 	}
 }
 
-// shutdown closes the socket's write side, or both sides, for every holder
-// of it: on the init's connection, the init's too.
+// shutdown closes the socket's write side, or both sides, for every holder of it: on the init's connection, the init's too.
 func (c *rawConn) shutdown(both bool) error {
 	how := unix.SHUT_WR
 	if both {
@@ -82,8 +78,7 @@ func (c *rawConn) shutdown(both bool) error {
 	return unix.Shutdown(c.fd, how)
 }
 
-// channelPeer is the host end as the guest's socket names it: cid and port
-// for vsock:<cid>:<port>, path for unix:<path>.
+// channelPeer is the host end as the guest's socket names it: cid and port for vsock:<cid>:<port>, path for unix:<path>.
 type channelPeer struct {
 	vsock     bool
 	cid, port uint32
@@ -127,10 +122,8 @@ func (p channelPeer) matches(sa unix.Sockaddr) bool {
 	return false
 }
 
-// stealChannel takes a duplicate of the channel connection that pid 1 holds,
-// as root with CAP_SYS_PTRACE may (pidfd_getfd), found among its descriptors
-// by the peer it is connected to. What is written on it is indistinguishable
-// from what the init writes.
+// stealChannel takes a duplicate of the channel connection that pid 1 holds, as root with CAP_SYS_PTRACE may (pidfd_getfd), found among its descriptors by the
+// peer it is connected to. What is written on it is indistinguishable from what the init writes.
 func stealChannel(addr string) (*rawConn, error) {
 	peer, err := parsePeer(addr)
 	if err != nil {
@@ -182,4 +175,20 @@ func dialChannel(addr string) (*rawConn, error) {
 	}
 	unix.SetNonblock(fd, true) // write polls; a host that stops taking bytes never holds the probe
 	return &rawConn{fd: fd}, nil
+}
+
+// rebootGuest writes one line, as a command does, syncs and restarts the kernel (reboot -f); from there the host must end the run by itself (I12, I7).
+// It refuses when the init's channel to the host is no vsock: then this is not the product's VM but the test host's own container, which it may not
+// restart (S12). A restart that returns is a result too.
+func rebootGuest(addr string) Result {
+	peer, err := parsePeer(addr)
+	if err != nil {
+		return Result{Status: "error", Detail: err.Error()}
+	}
+	if !peer.vsock {
+		return Result{Status: "refused", Detail: "the channel " + addr + " is no vsock, so this is no VM of the product's: not restarting it"}
+	}
+	fmt.Println("rebooting")
+	unix.Sync()
+	return Result{Status: "still-running", Detail: "reboot: " + status(unix.Reboot(unix.LINUX_REBOOT_CMD_RESTART))}
 }

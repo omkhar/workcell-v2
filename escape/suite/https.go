@@ -28,14 +28,10 @@ import (
 	"github.com/omkhar/workcell/v2/escape/sandbox"
 )
 
-// The I6 probes and the placeholder replay drive HTTPS requests from the
-// guest to canaries the judge runs under the session's two allowed names:
-// the bound one (the one a secret is bound to, when there is one) and
-// another. A request names a host three ways, in the TLS SNI, in the HTTP
-// Host or :authority, and in the URL; the probes make them disagree, hide
-// the SNI with ECH, or let a redirect carry the credential from the bound
-// name to the other. What a canary received is the evidence; the guest's
-// word is not.
+// The I6 probes and the placeholder replay drive HTTPS requests from the guest to canaries the judge runs under the session's two allowed names: the bound one
+// (the one a secret is bound to, when there is one) and another. A request names a host three ways, in the TLS SNI, in the HTTP Host or :authority, and in the
+// URL; the probes make them disagree, hide the SNI with ECH, or let a redirect carry the credential from the bound name to the other. What a canary received is
+// the evidence; the guest's word is not.
 
 // request is one HTTP request a canary received.
 type request struct {
@@ -44,11 +40,9 @@ type request struct {
 	headers                       http.Header
 }
 
-// canary is one HTTPS server the judge runs for one allowed name, and what
-// it received. ech is the config list under which it accepts a hidden name;
-// respond writes the response once the request is recorded (else 200);
-// leafFor is the name its certificate is for instead of its own. Canaries
-// share one listener (serveCanaries), told apart by the connection's SNI.
+// canary is one HTTPS server the judge runs for one allowed name, and what it received. ech is the config list under which it accepts a hidden name; respond
+// writes the response once the request is recorded (else 200); leafFor is the name its certificate is for instead of its own. Canaries share one listener
+// (serveCanaries), told apart by the connection's SNI.
 type canary struct {
 	name, addr string
 	ech        []byte
@@ -58,9 +52,8 @@ type canary struct {
 	seen       []request
 }
 
-// serveCanaries serves the canaries on ln, which is theirs from here, under
-// one certificate of the suite's authority for all their names. A request
-// is the canary's whose name the SNI gave, the first's when none did.
+// serveCanaries serves the canaries on ln, which is theirs from here, under one certificate of the suite's authority for all their names. A request is the
+// canary's whose name the SNI gave, the first's when none did.
 func serveCanaries(ln net.Listener, keys []tls.EncryptedClientHelloKey, cs ...*canary) (func(), error) {
 	var names []string
 	for _, c := range cs {
@@ -108,16 +101,14 @@ func serveCanaries(ln net.Listener, keys []tls.EncryptedClientHelloKey, cs ...*c
 	}, nil
 }
 
-// requests is a copy of what the canary has received, taken under its lock,
-// so that nothing else ever holds the lock while it reads.
+// requests is a copy of what the canary has received, taken under its lock, so that nothing else ever holds the lock while it reads.
 func (c *canary) requests() []request {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return slices.Clone(c.seen)
 }
 
-// carried says whether a request's URL or headers held the secret, the
-// header it is bound to not counted.
+// carried says whether a request's URL or headers held the secret, the header it is bound to not counted.
 func (c *canary) carried(secret, bound string) (string, bool) {
 	for _, r := range c.requests() {
 		if strings.Contains(r.url, secret) {
@@ -149,8 +140,7 @@ func (c *canary) served() string {
 	return c.name + " served " + strings.Join(out, "; ")
 }
 
-// wellFormed says whether the request named the canary's name in the SNI and
-// the Host alike, in the open.
+// wellFormed says whether the request named the canary's name in the SNI and the Host alike, in the open.
 func (r request) wellFormed(name string) bool {
 	h, _, err := net.SplitHostPort(r.host)
 	if err != nil {
@@ -159,8 +149,7 @@ func (r request) wellFormed(name string) bool {
 	return r.sni == name && h == name && !r.ech
 }
 
-// echKeys makes an ECH key pair whose public name is publicName: the config
-// list a client is given, and the keys the canary holds (RFC 9849).
+// echKeys makes an ECH key pair whose public name is publicName: the config list a client is given, and the keys the canary holds (RFC 9849).
 func echKeys(publicName string) ([]byte, []tls.EncryptedClientHelloKey, error) {
 	key, err := ecdh.X25519().GenerateKey(rand.Reader)
 	if err != nil {
@@ -184,10 +173,8 @@ func echKeys(publicName string) ([]byte, []tls.EncryptedClientHelloKey, error) {
 	return list, []tls.EncryptedClientHelloKey{{Config: cfg, PrivateKey: key.Bytes(), SendAsRetry: true}}, nil
 }
 
-// targets is what every HTTPS probe is given: the bound name and the other,
-// each with the address of the judge's canary for it, the variable holding
-// the credential as the guest sees it ("-" for none), and whatever else the
-// test adds.
+// targets is what every HTTPS probe is given: the bound name and the other, each with the address of the judge's canary for it, the variable holding the
+// credential as the guest sees it ("-" for none), and whatever else the test adds.
 type targets struct {
 	bound, other string
 	addrs        map[string]string
@@ -220,9 +207,8 @@ func (t targets) get(name, path string) *http.Request {
 	return req
 }
 
-// check sends the bound name the request a well-behaved client would: SNI,
-// Host and URL all name it, in the open. A correct product serves it, so the
-// judge can tell "refused the attack" from "reached nothing".
+// check sends the bound name the request a well-behaved client would: SNI, Host and URL all name it, in the open. A correct product serves it, so the judge can
+// tell "refused the attack" from "reached nothing".
 func (t targets) check() string {
 	return "check=" + report(fetch(t.get(t.bound, "/check"), t.addrs, &tls.Config{}, false)).Status
 }
@@ -232,11 +218,9 @@ func port(addr string) string {
 	return p
 }
 
-// fetch sends req from the guest to the name in its URL, dialled at the
-// address the judge gave for the name when nothing else resolves it (the
-// address of a canary is chosen per run), through whatever proxy the
-// environment names. The guest is the attacker: it verifies nothing, and it
-// forwards every header, credential included, wherever a redirect points.
+// fetch sends req from the guest to the name in its URL, dialled at the address the judge gave for the name when nothing else resolves it (the address of a
+// canary is chosen per run), through whatever proxy the environment names. The guest is the attacker: it verifies nothing, and it forwards every header,
+// credential included, wherever a redirect points.
 func fetch(req *http.Request, addrs map[string]string, cfg *tls.Config, h2 bool) (*http.Response, error) {
 	return fetchWithin(req, addrs, cfg, h2, 4*time.Second)
 }
@@ -258,8 +242,7 @@ func fetchWithin(req *http.Request, addrs map[string]string, cfg *tls.Config, h2
 	return resp, err
 }
 
-// transport is the guest's transport of fetch: dialling the judge's address
-// for a name, verifying nothing, HTTP/1.1 unless h2.
+// transport is the guest's transport of fetch: dialling the judge's address for a name, verifying nothing, HTTP/1.1 unless h2.
 func transport(addrs map[string]string, cfg *tls.Config, h2 bool) *http.Transport {
 	cfg.InsecureSkipVerify = true //nolint:gosec // the probe is the attacker
 	tr := &http.Transport{
@@ -293,8 +276,7 @@ func after(check string, r Result) Result {
 	return r
 }
 
-// mismatchProbe opens TLS to the bound name and asks, on that connection, for
-// the other name in the Host header or the :authority pseudo-header.
+// mismatchProbe opens TLS to the bound name and asks, on that connection, for the other name in the Host header or the :authority pseudo-header.
 func mismatchProbe(h2 bool) Probe {
 	return func(args []string) Result {
 		t, bad := parseTargets(args)
@@ -308,8 +290,7 @@ func mismatchProbe(h2 bool) Probe {
 	}
 }
 
-// echProbe connects to the bound name with the name hidden by ECH under the
-// config list in args[5] (base64), whose public name is the other.
+// echProbe connects to the bound name with the name hidden by ECH under the config list in args[5] (base64), whose public name is the other.
 func echProbe(args []string) Result {
 	t, bad := parseTargets(args)
 	if bad.Status != "" {
@@ -337,8 +318,7 @@ func echProbe(args []string) Result {
 	return after(check, r)
 }
 
-// run gives the probe its targets, for a canary that accepts ECH the
-// config list, and whatever else the judge adds.
+// run gives the probe its targets, for a canary that accepts ECH the config list, and whatever else the judge adds.
 func run(s Session, bound, other *canary, extra ...string) (Result, error) {
 	credential := s.Secret.Env
 	if credential == "" {
@@ -351,12 +331,9 @@ func run(s Session, bound, other *canary, extra ...string) (Result, error) {
 	return s.Run(append(args, extra...)...)
 }
 
-// strictJudge expects every request at the bound name to name it in the
-// open, in the SNI and the Host alike, and the other name to see nothing. A
-// request that named another host, hid its name, or reached the other name
-// was a mismatch served; one the product rewrote to the name it terminated
-// for is as a client's own. No request at all means the product reached
-// nothing, which proves nothing.
+// strictJudge expects every request at the bound name to name it in the open, in the SNI and the Host alike, and the other name to see nothing. A request that
+// named another host, hid its name, or reached the other name was a mismatch served; one the product rewrote to the name it terminated for is as a client's
+// own. No request at all means the product reached nothing, which proves nothing.
 func strictJudge(s Session, bound, other *canary) (bool, string, error) {
 	r, err := run(s, bound, other)
 	if err != nil {
@@ -380,25 +357,19 @@ func strictJudge(s Session, bound, other *canary) (bool, string, error) {
 	return true, fmt.Sprintf("%s (guest says %s: %s)", bound.served(), r.Status, r.Detail), nil
 }
 
-// redirectTo has the bound name send the guest on to the other; the guest
-// follows, headers and all (fetchWithin).
+// redirectTo has the bound name send the guest on to the other; the guest follows, headers and all (fetchWithin).
 func redirectTo(other *canary) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "https://"+other.name+":"+port(other.addr)+"/leak", http.StatusFound)
 	}
 }
 
-// The placeholder rows have the guest send a table of requests, each
-// carrying the credential it holds somewhere, and hold the canaries to the
-// swap rule: the credential alone, behind "Bearer ", or as the password of
-// a Basic value, in the bound header of a request to the bound name, of the
-// method, under the path and within a repository the binding names when it
-// names them, reaches the canary as the real value; anything else reaches
-// no canary. An exchange is "method,name,path,where": name is bound or
-// other, and where says where the credential goes: header (x-api-key),
-// bearer (x-api-key, "Bearer "), auth (Authorization, "Bearer "), basic
-// (Authorization, as git sends a token: Basic base64("x-access-token:" +
-// credential)), path (a last element of the path), query (?key=), or none.
+// The placeholder rows have the guest send a table of requests, each carrying the credential it holds somewhere, and hold the canaries to the swap rule: the
+// credential alone, behind "Bearer ", or as the password of a Basic value, in the bound header of a request to the bound name, of the method, under the path
+// and within a repository the binding names when it names them, reaches the canary as the real value; anything else reaches no canary. An exchange is
+// "method,name,path,where": name is bound or other, and where says where the credential goes: header (x-api-key), bearer (x-api-key, "Bearer "), auth
+// (Authorization, "Bearer "), basic (Authorization, as git sends a token: Basic base64("x-access-token:" + credential)), path (a last element of the path),
+// query (?key=), or none.
 type exchange struct{ method, name, path, where string }
 
 // headerOf is the header each where kind puts the credential in; none for the rest.
@@ -419,11 +390,9 @@ func parseExchange(spec string) (exchange, bool) {
 	return exchange{f[0], f[1], f[2], f[3]}, true
 }
 
-// admitted says whether the binding swaps the exchange's credential: it is
-// in the bound header, to the bound name, of the bound method, under the
-// bound path, and, when the binding names repositories, the path as sent
-// and the path decoded and cleaned both lie within one of them (SPEC I5: a
-// placeholder is useless anywhere else).
+// admitted says whether the binding swaps the exchange's credential: it is in the bound header, to the bound name, of the bound method, under the bound path,
+// and, when the binding names repositories, the path as sent and the path decoded and cleaned both lie within one of them (SPEC I5: a placeholder is useless
+// anywhere else).
 func (e exchange) admitted(sec sandbox.Secret) bool {
 	raw, _, _ := strings.Cut(e.path, "?")
 	decoded, _ := url.PathUnescape(raw)
@@ -466,8 +435,7 @@ func (e exchange) at(c *canary) []request {
 	return out
 }
 
-// exchangeProbe sends every exchange in args[5:], in order, and reports the
-// credential it holds and what each got.
+// exchangeProbe sends every exchange in args[5:], in order, and reports the credential it holds and what each got.
 func exchangeProbe(args []string) Result {
 	t, bad := parseTargets(args)
 	if bad.Status != "" {
@@ -484,13 +452,9 @@ func exchangeProbe(args []string) Result {
 	return Result{Status: "sent", Detail: detail}
 }
 
-// swapJudge has the guest send the exchanges and holds the canaries to the
-// swap rule: an exchange the binding admits must have reached the bound
-// canary with the real value in the bound header, no other may have
-// reached either canary, nor anything the admitted ones did not send (a
-// path rewritten on the way), and the other name sees nothing at all. The
-// real value anywhere else, or in the guest's own hands, is a leak.
-// Canaries that saw nothing proved nothing.
+// swapJudge has the guest send the exchanges and holds the canaries to the swap rule: an exchange the binding admits must have reached the bound canary with
+// the real value in the bound header, no other may have reached either canary, nor anything the admitted ones did not send (a path rewritten on the way), and
+// the other name sees nothing at all. The real value anywhere else, or in the guest's own hands, is a leak. Canaries that saw nothing proved nothing.
 func swapJudge(specs ...string) func(s Session, bound, other *canary) (bool, string, error) {
 	return func(s Session, bound, other *canary) (bool, string, error) {
 		r, err := run(s, bound, other, specs...)

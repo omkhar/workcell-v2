@@ -46,9 +46,8 @@ const (
 	ms          = time.Millisecond
 )
 
-// sampled runs the probe while read samples the host every 50 ms. It returns
-// the result with how far below and above the sample taken just before the
-// run the host went meanwhile.
+// sampled runs the probe while read samples the host every 50 ms. It returns the result with how far below and above the sample taken just before the run the
+// host went meanwhile.
 func sampled(s Session, read func() (int64, error), args ...string) (r Result, below, above int64, err error) {
 	var rerr error
 	below, above, err = sampledRun(read, func() { r, rerr = s.Run(args...) })
@@ -87,10 +86,8 @@ func sampledRun(read func() (int64, error), run func()) (below, above int64, err
 	return base - low, high - base, nil
 }
 
-// loadJudge runs the probe with args while read samples the host, and fails
-// if the host gained (gained) or lost more than bound meanwhile: a guest's
-// processes, memory, disk or descriptors counted as the host's. The detail
-// says what in the words given, the figure in units of unit.
+// loadJudge runs the probe with args while read samples the host, and fails if the host gained (gained) or lost more than bound meanwhile: a guest's processes,
+// memory, disk or descriptors counted as the host's. The detail says what in the words given, the figure in units of unit.
 func loadJudge(read func() (int64, error), gained bool, bound, unit int64, what string, args ...string) Judge {
 	return func(ctx context.Context, s Session) (bool, string, error) {
 		r, below, above, err := sampled(s, read, args...)
@@ -105,9 +102,8 @@ func loadJudge(read func() (int64, error), gained bool, bound, unit int64, what 
 	}
 }
 
-// The I10 judges on one figure each: the probe asks for about twice the cap,
-// and the host may lose no more than the cap and its slack, or gain no more
-// than the slack. The log judge holds the host's disk to one session's log.
+// The I10 judges on one figure each: the probe asks for about twice the cap, and the host may lose no more than the cap and its slack, or gain no more than the
+// slack. The log judge holds the host's disk to one session's log.
 var (
 	forkJudge   = loadJudge(hostProcs, true, forkSlack, 1, "gained %d processes while the guest forked", "parent", strconv.Itoa(forkCount))
 	memoryJudge = loadJudge(hostMemAvailable, false, int64(capped.MemoryMiB+memorySlack)<<20, 1<<20, fmt.Sprintf("lost %%d MiB of available memory while the guest, capped at %d MiB, touched %d MiB", capped.MemoryMiB, memoryTouch), "parent", strconv.Itoa(memoryTouch))
@@ -116,10 +112,8 @@ var (
 	logJudge    = loadJudge(hostDiskFree, false, logCap+diskSlack<<20, 1<<20, fmt.Sprintf("lost %%d MiB of free disk while the guest streamed %d MiB of output, log cap %d MiB", logWrite>>20, logCap>>20), strconv.Itoa(logWrite))
 )
 
-// mountDiskJudge is diskJudge for a live export: the probe writes twice the
-// cap under the export and grows a file there far past it without writing;
-// neither the host's free disk nor a file in the export may pass the cap and
-// its slack. A run that did not end in the probe's own "tried" report is never a pass.
+// mountDiskJudge is diskJudge for a live export: the probe writes twice the cap under the export and grows a file there far past it without writing; neither
+// the host's free disk nor a file in the export may pass the cap and its slack. A run that did not end in the probe's own "tried" report is never a pass.
 func mountDiskJudge(ctx context.Context, s Session) (bool, string, error) {
 	var r Result
 	var size int64
@@ -143,9 +137,8 @@ func mountDiskJudge(ctx context.Context, s Session) (bool, string, error) {
 	return below <= bound && size <= bound, detail, nil
 }
 
-// exportSize is the largest apparent size of a file directly in the export,
-// as the host sees it: what a sparse growth costs the host in a quota or a
-// later copy, though not in free disk.
+// exportSize is the largest apparent size of a file directly in the export, as the host sees it: what a sparse growth costs the host in a quota or a later
+// copy, though not in free disk.
 func exportSize(dir string) (int64, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -160,27 +153,37 @@ func exportSize(dir string) (int64, error) {
 	return size, nil
 }
 
-// cpuJudge fails if the host spent more CPU time on the probe's run than its
-// one CPU could have, plus slack. A host with one CPU cannot show this.
-func cpuJudge(ctx context.Context, s Session) (bool, string, error) {
-	before, err := hostBusy()
-	if err != nil {
-		return false, "", err
+// cpuJudge runs the probe for cpuSpin seconds, told the host end of the relay too when relay is set, and fails if the host spent more CPU time on
+// the run than the guest's one CPU could have, plus slack. A host with one CPU cannot show this.
+func cpuJudge(relay bool) Judge {
+	return func(ctx context.Context, s Session) (bool, string, error) {
+		args := []string{strconv.Itoa(cpuSpin)}
+		if relay {
+			ch, err := s.Relay(ctx)
+			if err != nil {
+				return false, "", err
+			}
+			args = append(args, ch.Addr)
+		}
+		before, err := hostBusy()
+		if err != nil {
+			return false, "", err
+		}
+		start := time.Now()
+		r, err := s.Run(args...)
+		wall := time.Since(start).Seconds()
+		if err != nil {
+			return false, "", err
+		}
+		after, err := hostBusy()
+		if err != nil {
+			return false, "", err
+		}
+		busy := float64(after-before) / ticksPerSec
+		allowed := float64(capped.CPUs)*wall + cpuSlack
+		detail := fmt.Sprintf("the host spent %.1f CPU seconds in %.1f s of wall time while the guest, capped at %d CPU, loaded it (allowed %.1f; guest says %s: %s)", busy, wall, capped.CPUs, allowed, r.Status, r.Detail)
+		return busy <= allowed, detail, nil
 	}
-	start := time.Now()
-	r, err := s.Run(strconv.Itoa(cpuSpin))
-	wall := time.Since(start).Seconds()
-	if err != nil {
-		return false, "", err
-	}
-	after, err := hostBusy()
-	if err != nil {
-		return false, "", err
-	}
-	busy := float64(after-before) / ticksPerSec
-	allowed := float64(capped.CPUs)*wall + cpuSlack
-	detail := fmt.Sprintf("the host spent %.1f CPU seconds in %.1f s of wall time while the guest, capped at %d CPU, spun (allowed %.1f; guest says %s: %s)", busy, wall, capped.CPUs, allowed, r.Status, r.Detail)
-	return busy <= allowed, detail, nil
 }
 
 // ints reads args as the n integers a probe wants, and says what it wants when they are not.
@@ -199,8 +202,7 @@ func ints(args []string, n int, want string) ([]int, Result) {
 	return out, Result{}
 }
 
-// memoryProbe runs itself again as a child that touches args[1] MiB and holds
-// it, so that a guest which kills the child still reports.
+// memoryProbe runs itself again as a child that touches args[1] MiB and holds it, so that a guest which kills the child still reports.
 func memoryProbe(args []string) Result {
 	if len(args) != 2 {
 		return Result{Status: "error", Detail: "want parent|child and MiB"}
@@ -222,9 +224,8 @@ func memoryProbe(args []string) Result {
 	return asChild(os.Args[1], "child", args[1], "asking for "+args[1]+" MiB")
 }
 
-// asChild runs this binary again as a child, in its own process group, and
-// returns what it reports; or child-killed, a tried result, when the guest
-// killed it, or when it still runs after childWait and is killed with everything it forked.
+// asChild runs this binary again as a child, in its own process group, and returns what it reports; or child-killed, a tried result, when the guest killed it,
+// or when it still runs after childWait and is killed with everything it forked.
 func asChild(args ...string) Result {
 	exe, err := os.Executable()
 	if err != nil {
@@ -262,31 +263,32 @@ func diskProbe(args []string) Result {
 	if r.Status != "" {
 		return r
 	}
-	mib := v[0]
-	var err error
-	var f *os.File
-	var dir string
+	f, dir, err := onDisk()
+	if err != nil {
+		return Result{Status: "error", Detail: err.Error()}
+	}
+	os.Remove(f.Name())
+	defer f.Close()
+	detail := fill(f, v[0]) + " in " + dir
+	time.Sleep(hold)
+	return Result{Status: "tried", Detail: detail}
+}
+
+// onDisk makes a temp file in the guest's first temp directory on a disk (one in memory would load memory, not disk), and says which directory.
+func onDisk() (f *os.File, dir string, err error) {
 	for _, dir = range []string{os.TempDir(), "/var/tmp", "/root", "/"} {
 		if memoryBacked(dir) {
 			err = errors.New("memory-backed")
 			continue
 		}
 		if f, err = os.CreateTemp(dir, "escape-disk-"); err == nil {
-			break
+			return f, dir, nil
 		}
 	}
-	if err != nil {
-		return Result{Status: "error", Detail: "no writable directory on a disk: " + err.Error()}
-	}
-	os.Remove(f.Name())
-	defer f.Close()
-	detail := fill(f, mib) + " in " + dir
-	time.Sleep(hold)
-	return Result{Status: "tried", Detail: detail}
+	return nil, "", errors.New("no writable directory on a disk: " + err.Error())
 }
 
-// fill writes mib MiB to f a MiB at a time, stops at the first error, syncs,
-// and says how far it got.
+// fill writes mib MiB to f a MiB at a time, stops at the first error, syncs, and says how far it got.
 func fill(f *os.File, mib int) string {
 	chunk := bytes.Repeat([]byte{0x5a}, 1<<20)
 	wrote := 0
@@ -304,11 +306,9 @@ func fill(f *os.File, mib int) string {
 	return detail
 }
 
-// mountDiskProbe is diskProbe for a live export: in the export at args[0] it
-// grows a file to args[2] GiB without writing it, by ftruncate and then by a
-// byte at the end, then writes args[1] MiB to a second file, syncs, holds
-// both for the judge's samples, and removes them. The growth comes first so
-// that it is judged on its own, not as what a byte count of the writes left.
+// mountDiskProbe is diskProbe for a live export: in the export at args[0] it grows a file to args[2] GiB without writing it, by ftruncate and then by a byte at
+// the end, then writes args[1] MiB to a second file, syncs, holds both for the judge's samples, and removes them. The growth comes first so that it is judged
+// on its own, not as what a byte count of the writes left.
 func mountDiskProbe(args []string) Result {
 	if len(args) != 3 {
 		return Result{Status: "error", Detail: "want export, MiB and GiB"}
@@ -343,9 +343,8 @@ func mountDiskProbe(args []string) Result {
 	return Result{Status: "tried", Detail: detail}
 }
 
-// fileProbe raises its own descriptor limit as far as it goes, past the hard
-// limit when it may as root, and opens up to args[0] descriptors, as pipe
-// ends, then holds them.
+// fileProbe raises its own descriptor limit as far as it goes, past the hard limit when it may as root, and opens up to args[0] descriptors, as pipe ends, then
+// holds them.
 func fileProbe(args []string) Result {
 	v, r := ints(args, 1, "count")
 	if r.Status != "" {
@@ -382,8 +381,7 @@ func fileProbe(args []string) Result {
 	return Result{Status: "tried", Detail: detail}
 }
 
-// logProbe streams args[0] bytes of noise to stderr, then holds for the
-// judge's samples.
+// logProbe streams args[0] bytes of noise to stderr, then holds for the judge's samples.
 func logProbe(args []string) Result {
 	v, r := ints(args, 1, "bytes")
 	if r.Status != "" {
