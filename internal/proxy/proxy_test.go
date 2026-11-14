@@ -32,6 +32,7 @@ func TestBlockedAddr(t *testing.T) {
 		"0.0.0.0": true, "::": true, "0.1.2.3": true, // unspecified, "this network"
 		"224.0.0.1": true, "ff02::1": true, "255.255.255.255": true, // multicast, broadcast
 		"100.64.0.1": true, "100.100.100.200": true, "192.0.0.192": true, // CGNAT, Alibaba metadata, Oracle metadata
+		"168.63.129.16": true, "::ffff:168.63.129.16": true, // Azure platform virtual IP (WireServer), plain and IPv4-mapped
 		"::ffff:127.0.0.1": true, "::ffff:169.254.169.254": true, "::ffff:10.0.0.1": true, // IPv4-mapped
 		"::127.0.0.1": true, "64:ff9b::a9fe:a9fe": true, "64:ff9b:1::1": true, // IPv4-compatible, NAT64 of 169.254.169.254
 		"2002:a9fe:a9fe::1": true, "2001:0:4136:e378::1": true, // 6to4, Teredo

@@ -36,22 +36,23 @@ const (
 
 var publicIPv6 = netip.MustParsePrefix("2000::/3") // the only global unicast IPv6 block; IPv4-embedding forms, site-local and SRv6 lie outside
 
-// blockedPrefixes adds the ranges that netip does not classify: shared,
-// reserved or documentation IPv4 space and special blocks inside 2000::/3.
+// blockedPrefixes adds what netip does not classify: shared, reserved or documentation
+// IPv4 space, special blocks inside 2000::/3 and a cloud metadata address on public space.
 var blockedPrefixes = []netip.Prefix{
-	netip.MustParsePrefix("0.0.0.0/8"),       // "this network"
-	netip.MustParsePrefix("100.64.0.0/10"),   // CGNAT; holds the 100.100.100.200 metadata address
-	netip.MustParsePrefix("192.0.0.0/24"),    // IETF assignments; holds the 192.0.0.192 metadata address
-	netip.MustParsePrefix("2001::/23"),       // IETF protocol assignments: Teredo, benchmarking, ORCHID
-	netip.MustParsePrefix("2002::/16"),       // 6to4
-	netip.MustParsePrefix("192.0.2.0/24"),    // documentation (TEST-NET-1)
-	netip.MustParsePrefix("192.88.99.0/24"),  // deprecated 6to4 relay anycast
-	netip.MustParsePrefix("198.18.0.0/15"),   // benchmarking
-	netip.MustParsePrefix("198.51.100.0/24"), // documentation (TEST-NET-2)
-	netip.MustParsePrefix("203.0.113.0/24"),  // documentation (TEST-NET-3)
-	netip.MustParsePrefix("240.0.0.0/4"),     // reserved
-	netip.MustParsePrefix("2001:db8::/32"),   // documentation
-	netip.MustParsePrefix("3fff::/20"),       // documentation
+	netip.MustParsePrefix("0.0.0.0/8"),        // "this network"
+	netip.MustParsePrefix("100.64.0.0/10"),    // CGNAT; holds the 100.100.100.200 metadata address
+	netip.MustParsePrefix("192.0.0.0/24"),     // IETF assignments; holds the 192.0.0.192 metadata address
+	netip.MustParsePrefix("168.63.129.16/32"), // Azure platform virtual IP (WireServer) metadata address
+	netip.MustParsePrefix("2001::/23"),        // IETF protocol assignments: Teredo, benchmarking, ORCHID
+	netip.MustParsePrefix("2002::/16"),        // 6to4
+	netip.MustParsePrefix("192.0.2.0/24"),     // documentation (TEST-NET-1)
+	netip.MustParsePrefix("192.88.99.0/24"),   // deprecated 6to4 relay anycast
+	netip.MustParsePrefix("198.18.0.0/15"),    // benchmarking
+	netip.MustParsePrefix("198.51.100.0/24"),  // documentation (TEST-NET-2)
+	netip.MustParsePrefix("203.0.113.0/24"),   // documentation (TEST-NET-3)
+	netip.MustParsePrefix("240.0.0.0/4"),      // reserved
+	netip.MustParsePrefix("2001:db8::/32"),    // documentation
+	netip.MustParsePrefix("3fff::/20"),        // documentation
 }
 
 // blockedAddr reports whether the proxy must refuse to connect to a, given the networks of the host's own interfaces.
