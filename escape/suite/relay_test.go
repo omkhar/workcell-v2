@@ -81,9 +81,7 @@ func (relayAt) Bind(_ context.Context, network, addr string) (net.Listener, net.
 	return ln, nil, err
 }
 
-// guest is a fake Session whose probe runs are the function: it gets the
-// probe's arguments as the judge passes them and gives the line the payload
-// would print.
+// guest is a fake Session whose probe runs are the function: it gets the probe's arguments as the judge passes them and gives the line the payload would print.
 func guest(run func(args ...string) Result) Session {
 	exec := func(_ context.Context, args ...string) (sandbox.Output, error) {
 		return sandbox.Output{Stdout: Format(run(args...))}, nil
@@ -106,8 +104,7 @@ func deliver(args ...string) Result {
 	return Result{Status: "connected-closed", Detail: "delivered"}
 }
 
-// Under ADR-003 every address is local to the guest, so a connect that the
-// relay then drops must pass, as a refusal must; anything at the canary fails.
+// Under ADR-003 every address is local to the guest, so a connect that the relay then drops must pass, as a refusal must; anything at the canary fails.
 func TestTCPCanaryJudge(t *testing.T) {
 	ctx := context.Background()
 	judge := tcpCanary("tcp4", "127.0.0.1:0", "")

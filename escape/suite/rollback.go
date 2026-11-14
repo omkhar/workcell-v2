@@ -14,21 +14,15 @@ import (
 	"github.com/omkhar/workcell/v2/escape/sandbox"
 )
 
-// SPEC I12, through the self-rollback of B9 and B10. The operator installs a
-// provider layer and runs it by name, `workcell run claude`. An Exit frame of
-// error text that is the guest's first frame passes for the init's own word
-// that the command could not start, and the host acts on it outside the
-// session: the layer is set aside, and every later session runs the version
-// before it, or none. Here the command itself speaks first: the layer's
-// binary is the payload, served as the bare executable the real claude pin
-// is, and before it writes a byte it takes the init's connection (pidfd_getfd
-// on pid 1, as the channel rows do) and writes that one frame. The layer must
-// still be current for the next session, seen through a second
+// SPEC I12, through the self-rollback of B9 and B10. The operator installs a provider layer and runs it by name, `workcell run claude`. An Exit frame of
+// error text that is the guest's first frame passes for the init's own word that the command could not start, and the host acts on it outside the
+// session: the layer is set aside, and every later session runs the version before it, or none. Here the command itself speaks first: the layer's
+// binary is the payload, served as the bare executable the real claude pin is, and before it writes a byte it takes the init's connection (pidfd_getfd
+// on pid 1, as the channel rows do) and writes that one frame. The layer must still be current for the next session, seen through a second
 // `workcell run claude` and, on the host, where the image lies.
 const rollbackVersion, noExecText = "5.5.5", "nope"
 
-// rollbackProbe is the layer's claude: "forge" writes the Exit of error text
-// on the init's channel at args[1] before anything else, then lingers;
+// rollbackProbe is the layer's claude: "forge" writes the Exit of error text on the init's channel at args[1] before anything else, then lingers;
 // "check" says whether a claude is on PATH at all.
 func rollbackProbe(args []string) Result {
 	switch {
@@ -52,10 +46,8 @@ func rollbackProbe(args []string) Result {
 	return Result{Status: "sent", Detail: fmt.Sprintf("an Exit of error text %q as the guest's first frame, still running %s later", noExecText, shortLinger)}
 }
 
-// rollbackJudge installs the layer, runs the operator's command once, which
-// forges the first frame, and then has a second session run it again: the
-// layer must still run and its image must still be on the host. The hostile
-// run itself is detail, held only to what every hostile run is (hostFault).
+// rollbackJudge installs the layer, runs the operator's command once, which forges the first frame, and then has a second session run it again: the
+// layer must still run and its image must still be on the host. The hostile run itself is detail, held only to what every hostile run is (hostFault).
 func rollbackJudge(ctx context.Context, s Session) (bool, string, error) {
 	payload, err := os.ReadFile(s.Payload)
 	if err != nil {

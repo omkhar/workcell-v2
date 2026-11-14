@@ -11,8 +11,7 @@ import (
 	"syscall"
 )
 
-// icmpProbe sends an ICMPv4 echo request to args[0] with the token args[1] as
-// its payload, on a raw socket (root) or a ping socket, and waits 3 seconds
+// icmpProbe sends an ICMPv4 echo request to args[0] with the token args[1] as its payload, on a raw socket (root) or a ping socket, and waits 3 seconds
 // for an echo reply that carries the token back.
 func icmpProbe(args []string) Result {
 	if len(args) != 2 {

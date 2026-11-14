@@ -21,14 +21,10 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-// TestCLICancel checks that a cancelled steered session ends when its
-// context does, and leaves no product behind: at once when the product
-// exits on the SIGTERM, and after WaitDelay when it ignores the signal.
-// When the suite is not root the product sits behind root's sudo, and the
-// kill Go sends then reaches only sudo, so the adapter must kill the
-// product's group itself. The product is a shell that notes its pid in the
-// session's directory. It needs unshare and, unless the test is root, sudo
-// without a password; elsewhere it is skipped.
+// TestCLICancel checks that a cancelled steered session ends when its context does, and leaves no product behind: at once when the product
+// exits on the SIGTERM, and after WaitDelay when it ignores the signal. When the suite is not root the product sits behind root's sudo, and the
+// kill Go sends then reaches only sudo, so the adapter must kill the product's group itself. The product is a shell that notes its pid in the
+// session's directory. It needs unshare and, unless the test is root, sudo without a password; elsewhere it is skipped.
 func TestCLICancel(t *testing.T) {
 	if _, err := exec.LookPath("unshare"); err != nil {
 		t.Skip(err)

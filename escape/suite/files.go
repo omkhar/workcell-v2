@@ -24,8 +24,7 @@ var live = Want{Workspace: true, Mount: true}
 // residueDirs are the places a guest writes that another guest must not see.
 var residueDirs = []string{"/tmp", "/var/tmp", "/dev/shm", "/root", "/run"}
 
-// target is what an I1 probe gets: where the guest sees its export, and the
-// host path, inode and content of a secret the judge planted beside it. An
+// target is what an I1 probe gets: where the guest sees its export, and the host path, inode and content of a secret the judge planted beside it. An
 // attacker knows the host's layout; the invariant must hold anyway.
 type target struct {
 	guest, secret, token string
@@ -43,8 +42,7 @@ func outsideArgs(args []string) (target, error) {
 	return target{guest: args[0], secret: args[1], token: args[2], ino: ino}, nil
 }
 
-// outside judges an I1 probe. It plants a secret beside the export on the host,
-// lets plant (if any) add hostile content to the export itself, and fails if
+// outside judges an I1 probe. It plants a secret beside the export on the host, lets plant (if any) add hostile content to the export itself, and fails if
 // the probe reports the secret's token or a file appears beside the export.
 func outside(plant func(workspace string) error) Judge {
 	return func(ctx context.Context, s Session) (bool, string, error) {
@@ -78,8 +76,7 @@ func outside(plant func(workspace string) error) Judge {
 	}
 }
 
-// plantLinks puts a hostile repository's symlinks in the export: one to the
-// secret beside it, one to the directory beside it.
+// plantLinks puts a hostile repository's symlinks in the export: one to the secret beside it, one to the directory beside it.
 func plantLinks(workspace string) error {
 	if err := os.Symlink("../secret", filepath.Join(workspace, "link")); err != nil {
 		return err
@@ -97,8 +94,7 @@ func traversalProbe(args []string) Result {
 	return Result{Status: "tried", Detail: "read=" + tryRead(t.guest+"/../secret") + " write=" + tryWrite(t.guest+"/../written-"+t.token)}
 }
 
-// symlinkProbe follows the planted links, and one of its own to the secret's
-// host path, and writes through the link to the directory beside the export.
+// symlinkProbe follows the planted links, and one of its own to the secret's host path, and writes through the link to the directory beside the export.
 func symlinkProbe(args []string) Result {
 	t, err := outsideArgs(args)
 	if err != nil {
@@ -112,10 +108,8 @@ func symlinkProbe(args []string) Result {
 		" write=" + tryWrite(filepath.Join(t.guest, "updir", "written-"+t.token))}
 }
 
-// moveProbe takes entries across the top of the export without a write of
-// its own: a hard link to the secret's host path made inside the export and
-// read, a directory renamed out through "..", and a file hard-linked out,
-// the last two to names beside the export.
+// moveProbe takes entries across the top of the export without a write of its own: a hard link to the secret's host path made inside the export and
+// read, a directory renamed out through "..", and a file hard-linked out, the last two to names beside the export.
 func moveProbe(args []string) Result {
 	t, err := outsideArgs(args)
 	if err != nil {
@@ -135,8 +129,7 @@ func moveProbe(args []string) Result {
 	return Result{Status: "tried", Detail: "hardlink=" + in + " rename=" + out + " linkout=" + link}
 }
 
-// tryRead returns the first line of the file (of its first 64 KiB), or the
-// error, in a few words.
+// tryRead returns the first line of the file (of its first 64 KiB), or the error, in a few words.
 func tryRead(path string) string {
 	f, err := os.Open(path)
 	if err != nil {
@@ -157,8 +150,7 @@ func tryRead(path string) string {
 // tryWrite creates the file and says whether it could.
 func tryWrite(path string) string { return status(os.WriteFile(path, []byte("escape\n"), 0o644)) }
 
-// short is an error as the underlying errno or a few words, so that several
-// fit one result line.
+// short is an error as the underlying errno or a few words, so that several fit one result line.
 func short(err error) string {
 	var pe *os.PathError
 	if errors.As(err, &pe) {
@@ -175,10 +167,8 @@ func short(err error) string {
 	return strings.ReplaceAll(s, " ", "_")
 }
 
-// residueJudge has the guest leave a token in every place a session writes,
-// starts a second session, and fails if that one can read any of them. The
-// second session also looks where the first saw its export: in a real guest
-// that path is its own, empty export.
+// residueJudge has the guest leave a token in every place a session writes, starts a second session, and fails if that one can read any of them. The
+// second session also looks where the first saw its export: in a real guest that path is its own, empty export.
 func residueJudge(ctx context.Context, s Session) (bool, string, error) {
 	token := newToken()
 	r, err := s.Run("plant", token, s.Guest)
@@ -218,8 +208,7 @@ func inode(fi os.FileInfo) uint64 {
 	return 0
 }
 
-// residueProbe plants the token in every residue directory and the export,
-// seeks it from another session, or cleans it up: args[0] says which.
+// residueProbe plants the token in every residue directory and the export, seeks it from another session, or cleans it up: args[0] says which.
 func residueProbe(args []string) Result {
 	if len(args) < 3 {
 		return Result{Status: "error", Detail: "want plant|seek|clean, token and export paths"}

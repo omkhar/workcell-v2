@@ -17,24 +17,18 @@ import (
 	"strings"
 )
 
-// A repository the guest writes by hand: the guest has no git, so the probe
-// lays .git down itself in the formats git reads, and which git's own tools
-// would refuse to make. Loose objects are zlib streams of "<kind> <size>\0"
-// and the content, named by the SHA-1 of that. A tree is entries of
-// "<mode> <name>\0" and a raw id, in git's order. A commit names its tree.
-// The index is version 2: a header, entries with no stat data, a checksum.
+// A repository the guest writes by hand: the guest has no git, so the probe lays .git down itself in the formats git reads, and which git's own tools
+// would refuse to make. Loose objects are zlib streams of "<kind> <size>\0" and the content, named by the SHA-1 of that. A tree is entries of
+// "<mode> <name>\0" and a raw id, in git's order. A commit names its tree. The index is version 2: a header, entries with no stat data, a checksum.
 
 // repo is a work tree whose .git the probe writes.
 type repo struct{ dir string }
 
-// entry is one tree or index entry: a mode as git writes it in a tree
-// ("100644", "100755", "120000", "40000", "160000"), a name, a hex id.
+// entry is one tree or index entry: a mode as git writes it in a tree ("100644", "100755", "120000", "40000", "160000"), a name, a hex id.
 type entry struct{ mode, name, id string }
 
-// create removes any .git in the work tree and writes an empty repository:
-// HEAD on main, a config of the core section with extra lines after
-// repositoryformatversion and filemode, and the two directories git looks
-// for. Nothing else: no template, no hooks.
+// create removes any .git in the work tree and writes an empty repository: HEAD on main, a config of the core section with extra lines after
+// repositoryformatversion and filemode, and the two directories git looks for. Nothing else: no template, no hooks.
 func (r repo) create(extra string) error {
 	g := filepath.Join(r.dir, ".git")
 	if err := os.RemoveAll(g); err != nil {
@@ -68,8 +62,7 @@ func (r repo) object(kind string, content []byte) (string, error) {
 	return id, os.WriteFile(filepath.Join(dir, id[2:]), z.Bytes(), 0o444)
 }
 
-// tree writes a tree of the entries, in git's order: by name, a subtree's
-// name taken with a "/" after it. Any name goes: "..", ".git", a duplicate.
+// tree writes a tree of the entries, in git's order: by name, a subtree's name taken with a "/" after it. Any name goes: "..", ".git", a duplicate.
 func (r repo) tree(entries ...entry) (string, error) {
 	key := func(e entry) string {
 		if e.mode == "40000" {
@@ -99,8 +92,7 @@ func (r repo) commit(tree string) error {
 	return os.WriteFile(filepath.Join(r.dir, ".git", "refs", "heads", "main"), []byte(id+"\n"), 0o644)
 }
 
-// index writes a version 2 index of the entries with no stat data, as
-// `update-index --cacheinfo` leaves them. The mode is the tree mode.
+// index writes a version 2 index of the entries with no stat data, as `update-index --cacheinfo` leaves them. The mode is the tree mode.
 func (r repo) index(entries ...entry) error {
 	slices.SortFunc(entries, func(a, b entry) int { return strings.Compare(a.name, b.name) })
 	b := []byte("DIRC")

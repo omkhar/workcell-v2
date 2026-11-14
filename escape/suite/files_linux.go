@@ -15,8 +15,7 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-// deviceProbe makes a block device node with the numbers args[0]:args[1]
-// and reads through it.
+// deviceProbe makes a block device node with the numbers args[0]:args[1] and reads through it.
 func deviceProbe(args []string) Result {
 	if len(args) != 2 {
 		return Result{Status: "error", Detail: "want major and minor"}
@@ -38,8 +37,7 @@ func deviceProbe(args []string) Result {
 	return Result{Status: "tried", Detail: fmt.Sprintf("%d:%d read=%s", maj, min, tryRead(node))}
 }
 
-// mountProbe bind-mounts the directory above the export into the export and
-// reads and writes through the mount.
+// mountProbe bind-mounts the directory above the export into the export and reads and writes through the mount.
 func mountProbe(args []string) Result {
 	t, err := outsideArgs(args)
 	if err != nil {
@@ -58,8 +56,7 @@ func mountProbe(args []string) Result {
 	return Result{Status: "tried", Detail: "mount=ok read=" + tryRead(filepath.Join(mnt, "secret")) + " write=" + tryWrite(filepath.Join(mnt, "written-"+t.token))}
 }
 
-// handleProbe opens the secret by a file handle it forges from the inode
-// number, with generation 0, relative to the export: open_by_handle_at
+// handleProbe opens the secret by a file handle it forges from the inode number, with generation 0, relative to the export: open_by_handle_at
 // reaches any file on the export's filesystem when that is the host's.
 func handleProbe(args []string) Result {
 	t, err := outsideArgs(args)

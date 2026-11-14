@@ -13,8 +13,7 @@ import (
 	"testing"
 )
 
-// TestAuditReadsTheProductsRecords lays out sessions as the product keeps
-// them under the data directory and checks that Audit returns the newest
+// TestAuditReadsTheProductsRecords lays out sessions as the product keeps them under the data directory and checks that Audit returns the newest
 // record's own path and every record oldest session first.
 func TestAuditReadsTheProductsRecords(t *testing.T) {
 	defer func(xdg string) { prepared.xdg = xdg }(prepared.xdg)

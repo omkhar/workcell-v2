@@ -10,8 +10,7 @@ import (
 	"time"
 )
 
-// TestNaiveResolver asks the naive resolver, on an ephemeral port, for a
-// name of each kind and checks that each gets one record, and that what is
+// TestNaiveResolver asks the naive resolver, on an ephemeral port, for a name of each kind and checks that each gets one record, and that what is
 // not a query gets nothing.
 func TestNaiveResolver(t *testing.T) {
 	r, err := listenNaiveResolver("127.0.0.1:0")

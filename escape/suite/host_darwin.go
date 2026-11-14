@@ -9,10 +9,8 @@ package suite
 #include <mach/mach.h>
 #include <mach/mach_host.h>
 
-// freePages fills pages with the host's free, speculative and purgeable
-// page counts: what it can hand out at once, as MemAvailable is on Linux.
-// The port that mach_host_self hands out is given back, since the judges
-// sample often.
+// freePages fills pages with the host's free, speculative and purgeable page counts: what it can hand out at once, as MemAvailable is on Linux.
+// The port that mach_host_self hands out is given back, since the judges sample often.
 static kern_return_t freePages(unsigned long long pages[3]) {
 	vm_statistics64_data_t s;
 	mach_msg_type_number_t n = HOST_VM_INFO64_COUNT;
@@ -38,8 +36,7 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-// The host as the judge sees it, from Mach and sysctl: the memory the I12
-// flood row reads and the processes the I11 rows kill and count. The other
+// The host as the judge sees it, from Mach and sysctl: the memory the I12 flood row reads and the processes the I11 rows kill and count. The other
 // load figures serve I10 rows not enforced on a Mac: an error, never a pass.
 
 // hostMemAvailable is the memory the host can hand out at once, in bytes.
@@ -58,8 +55,7 @@ func hostFiles() (int64, error)    { return 0, errLinuxOnly }
 func hostBusy() (int64, error)     { return 0, errLinuxOnly }
 func hostDiskFree() (int64, error) { return 0, errLinuxOnly }
 
-// szomb is the state of a process that exited and has not been reaped
-// (sys/proc.h SZOMB).
+// szomb is the state of a process that exited and has not been reaped (sys/proc.h SZOMB).
 const szomb = 5
 
 // processGroup is the process group of pid.
@@ -71,8 +67,7 @@ func processGroup(pid int) (int, error) {
 	return int(kp.Eproc.Pgid), nil
 }
 
-// descendants lists every process below pid, children first, as the tree
-// stands now.
+// descendants lists every process below pid, children first, as the tree stands now.
 func descendants(pid int) ([]int, error) {
 	ps, err := unix.SysctlKinfoProcSlice("kern.proc.all")
 	if err != nil {
@@ -100,8 +95,7 @@ func groupMembers(pgid int) ([]int, error) {
 	return out, nil
 }
 
-// helperAlive says whether the process runs on the host: the kernel knows
-// it and it is not a zombie.
+// helperAlive says whether the process runs on the host: the kernel knows it and it is not a zombie.
 func helperAlive(pid int) (bool, error) {
 	kp, err := unix.SysctlKinfoProc("kern.proc.pid", pid)
 	if err != nil {
