@@ -6,6 +6,7 @@ package sandbox
 import (
 	"archive/tar"
 	"bytes"
+	"cmp"
 	"context"
 	"crypto/tls"
 	"crypto/x509"
@@ -36,6 +37,7 @@ type control struct {
 	payload   string
 	workspace string
 	env       []string // what a naive sandbox exports to the guest: the real secret
+	command   string   // the provider a run starts by name, instead of the payload (Config.Command)
 	helpers   map[string]*exec.Cmd
 	ln        *net.UnixListener // the host end of the channel
 	relay     *naiveRelay       // the host end of the relay
@@ -68,7 +70,7 @@ func (c *control) Start(_ context.Context, cfg Config) (string, error) {
 		return "", fmt.Errorf("control: place payload: %w", err)
 	}
 	c.env = []string{"PATH=" + filepath.Join(prefix, "bin") + ":/usr/sbin:/usr/bin:/sbin:/bin", "HOME=/root"}
-	c.workspace, c.update = cfg.Workspace, cfg.Update
+	c.workspace, c.update, c.command = cfg.Workspace, cfg.Update, cfg.Command
 	ln, err := net.Listen("unix", filepath.Join(dir, "channel"))
 	if err != nil {
 		return "", fmt.Errorf("control: open the channel: %w", err)
@@ -146,8 +148,9 @@ func (c *control) Exec(ctx context.Context, args ...string) (Output, error) {
 	// The payload starts behind a loader, as the product's does: in the
 	// run's own mount namespace it makes every mount private, so that
 	// nothing it mounts shows on the host, and binds the session's
-	// resolv.conf over /etc/resolv.conf, then becomes the payload.
-	cmd := exec.CommandContext(cctx, "/bin/sh", append([]string{"-c", controlLoader, filepath.Join(c.dir, "resolv.conf"), c.payload}, args...)...)
+	// resolv.conf over /etc/resolv.conf, then becomes the payload, or the
+	// command the session runs by name, found on the prefix's PATH.
+	cmd := exec.CommandContext(cctx, "/bin/sh", append([]string{"-c", controlLoader, filepath.Join(c.dir, "resolv.conf"), cmp.Or(c.command, c.payload)}, args...)...)
 	cmd.Dir = "/"
 	cmd.Env = c.env
 	cmd.ExtraFiles = []*os.File{end}
@@ -189,6 +192,11 @@ func (c *control) Exec(ctx context.Context, args ...string) (Output, error) {
 	}
 	if ctx.Err() != nil {
 		return out, fmt.Errorf("control: payload: %w", ctx.Err())
+	}
+	if c.command != "" && host.couldNotRun() {
+		// A naive self-rollback (SPEC B9): the guest's word that the command
+		// could not run is believed, and the layer it came from is set aside.
+		os.Remove(filepath.Join(prefix, "bin", c.command))
 	}
 	return host.result(out), nil
 }

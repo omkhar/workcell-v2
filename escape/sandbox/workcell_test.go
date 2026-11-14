@@ -91,5 +91,10 @@ func TestRunArgs(t *testing.T) {
 		if got := runArgs(c.cfg, "L", "probe", "x"); !slices.Equal(got, want) {
 			t.Errorf("%+v: argv %q, want %q", c.cfg, got, want)
 		}
+		// A command run by name takes the loader's place, after the same caps.
+		want = append(append([]string{"run"}, c.caps...), "--", "claude", "probe", "x")
+		if got := runCommand(c.cfg, "claude", "probe", "x"); !slices.Equal(got, want) {
+			t.Errorf("%+v: command argv %q, want %q", c.cfg, got, want)
+		}
 	}
 }

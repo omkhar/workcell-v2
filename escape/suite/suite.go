@@ -101,6 +101,10 @@ type Want struct {
 	Repos     []string // the repositories a git token is scoped to (sandbox.Secret.Repos)
 	Policy    string
 	Shape     string
+	// Command is a provider the session runs by name, as `workcell run
+	// <Command>` does, in place of the loader that carries the payload in; the
+	// judge installs a layer whose binary is the payload (sandbox.Config.Command).
+	Command string
 }
 
 // Test is one escape test.
@@ -125,9 +129,10 @@ func Lookup(name string) (Test, bool) {
 	return Test{}, false
 }
 
-// Select returns the tests whose invariant ID is in only, a comma-separated
-// list, or every test when only is empty. An ID with no test is an error, so
-// that an enforced invariant can never pass by having nothing to run.
+// Select returns the tests whose invariant ID, or whose name, is in only, a
+// comma-separated list, or every test when only is empty. An entry with no
+// test is an error, so that an enforced invariant can never pass by having
+// nothing to run.
 func Select(only string) ([]Test, error) {
 	if strings.TrimSpace(only) == "" {
 		return All, nil
@@ -140,13 +145,13 @@ func Select(only string) ([]Test, error) {
 		}
 		n := 0
 		for _, t := range All {
-			if t.ID == id {
+			if t.ID == id || t.Name == id {
 				out = append(out, t)
 				n++
 			}
 		}
 		if n == 0 {
-			return nil, fmt.Errorf("no test for invariant %q", id)
+			return nil, fmt.Errorf("no test for invariant or name %q", id)
 		}
 	}
 	return out, nil

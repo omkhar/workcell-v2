@@ -124,9 +124,15 @@ func quoted(b []byte, what, s string) ([]byte, error) {
 }
 
 // runArgs is the argv of one `workcell run` for a session with cfg's mode
-// and caps: `--mount` for a live export, each non-zero cap as its flag,
-// all before `--`, then the guest's loader shell and the test's arguments.
+// and caps, then the guest's loader shell and the test's arguments.
 func runArgs(cfg Config, loader string, args ...string) []string {
+	return runCommand(cfg, append([]string{"/bin/sh", "-c", loader, "sh"}, args...)...)
+}
+
+// runCommand is the argv of one `workcell run` of command in the guest, for
+// a session with cfg's mode and caps: `--mount` for a live export, each
+// non-zero cap as its flag, all before `--`, then the command.
+func runCommand(cfg Config, command ...string) []string {
 	argv := []string{"run"}
 	if cfg.Mount {
 		argv = append(argv, "--mount")
@@ -140,8 +146,7 @@ func runArgs(cfg Config, loader string, args ...string) []string {
 	if cfg.DiskMiB != 0 {
 		argv = append(argv, "--disk", fmt.Sprintf("%dMiB", cfg.DiskMiB))
 	}
-	argv = append(argv, "--", "/bin/sh", "-c", loader, "sh")
-	return append(argv, args...)
+	return append(append(argv, "--"), command...)
 }
 
 // cpioEntry writes one newc ("070701") cpio entry: a header of the magic and

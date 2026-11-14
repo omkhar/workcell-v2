@@ -351,10 +351,23 @@ func (w *workcell) Start(_ context.Context, cfg Config) (string, error) {
 // payload from stdin and runs it with the arguments, and the VM goes away.
 // Every exit status is a result, 125 (no session) and 126 (the guest could
 // not run it) included: the runner reads a non-zero one as the probe not
-// having run, an I12 judge as the host's answer to the guest.
+// having run, an I12 judge as the host's answer to the guest. With a
+// Command, the product runs that name with the arguments, as an operator
+// does, from the layer the test installed; stdin is a pipe nothing writes,
+// held open until the run ends, so that the host has no Stdin frame to send
+// and the guest none to acknowledge before the command speaks.
 func (w *workcell) Exec(ctx context.Context, args ...string) (Output, error) {
 	if w.dir == "" {
 		return Output{}, errors.New("workcell: Exec before Start")
+	}
+	if w.cfg.Command != "" {
+		r, wr, err := os.Pipe()
+		if err != nil {
+			return Output{}, err
+		}
+		defer r.Close()
+		defer wr.Close()
+		return w.cli(ctx, r, runCommand(w.cfg, append([]string{w.cfg.Command}, args...)...)...)
 	}
 	payload, err := os.Open(w.payload)
 	if err != nil {

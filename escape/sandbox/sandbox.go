@@ -75,6 +75,13 @@ type Config struct {
 	// makes the product's daily channel check; nil for no table. Control
 	// installs from the channel at every start, checking nothing.
 	Update *UpdateConfig
+	// Command, when set, is a provider the operator runs by name, `workcell
+	// run <Command> <args>`, in place of the loader shell that carries the
+	// payload in through stdin: the test has installed a layer (Install)
+	// whose binary is the payload, and stdin stays open and empty, so that
+	// the guest's first frame is the command's own. Control runs the name
+	// from the prefix its Install fills.
+	Command string
 }
 
 // Secret is one [[secret]] table entry as a test wants it: Value is bound to
