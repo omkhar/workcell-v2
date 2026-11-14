@@ -23,8 +23,8 @@ followed by the evidence: the command, or the place in the log, and the decisive
 output. If you can neither run the test nor read a log of it, the answer is
 `UNVERIFIED: needs the CI log`. That is not a refutation.
 
-This repository and its CI logs are public. If the candidate is a weakness in a file marked `// Ported from v1`, it is
-presumed to affect released v1. For that, or for one in someone else's project, answer `NEEDS-YOU (S14)`, and ask for no
-hosted run.
+This repository and its CI logs are public. For a candidate that is a weakness in someone else's project, answer
+`NEEDS-YOU (S14)`, and ask for no hosted run. A candidate in a file marked `// Ported from v1` is an ordinary one,
+because no v1 release holds that code (SPEC section 13).
 
 Change nothing.

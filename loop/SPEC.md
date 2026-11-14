@@ -245,7 +245,11 @@ messages and CI logs. v1 is released and in use. Some v2 code is ported from it.
 
 - A weakness that also affects released v1 code, or someone else's project, is never written to any public place
   until it is fixed there or disclosed. A weakness is a defect that an attacker from section 2 could use.
-- A weakness in code ported from `_legacy/` is presumed to affect released v1.
+- No v1 release holds the code that v2 ported. Its origins (`egressproxy`, `credbroker` and `auditlog/read.go`) are
+  only on v1's unreleased `main`: v1.0.2, the newest release, has none of them (checked on 2026-11-14). So a weakness
+  in a ported file is handled in public like any other finding. Its record in `FINDINGS.md` also says
+  `also in v1 main: <path>`, so that the maintainer sends the same fix to v1. If a v1 release ever ships a ported
+  origin, the maintainer puts the old presumption back here.
 - Every ported file says where it came from, in a comment below its licence header: `// Ported from v1: <path>`. So
   the origin is still known after `_legacy/` is deleted.
 - Whoever finds such a weakness stops. No test, fix, comment, title or branch name that shows it is pushed, and

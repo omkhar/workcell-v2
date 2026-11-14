@@ -159,9 +159,10 @@ to `loop/state/PARKED.md` as one line, and do nothing more about it. One fix rou
    and what the next iteration must know. None of those lines starts with `#`.
 3. **All of it is public:** state files, code, tests, comments, commit subjects, branch names, titles, issues and CI logs.
    Never write a credential, a token or a private URL.
-4. **Stop rule (SPEC S14).** A weakness in code ported from `_legacy/` is presumed to affect released v1. Treat a weakness in
-   someone else's project the same way. A subagent reports one as `NEEDS-YOU (S14)`. Stop work on it. Push no test, fix, comment,
-   title or branch name that shows it. Go on with rule 5.
+4. **Stop rule (SPEC S14).** A weakness that also affects released v1 code, or someone else's project, is private. A subagent
+   reports one as `NEEDS-YOU (S14)`. Stop work on it. Push no test, fix, comment, title or branch name that shows it. Go on
+   with rule 5. A weakness in a file marked `// Ported from v1` is not private, because no v1 release holds that code
+   (SPEC section 13): handle it like any other finding, and add `also in v1 main: <path>` to its record in `FINDINGS.md`.
 5. **Needs you.** This is the one record for everything that cannot be said in public, and for everything that needs something
    only the maintainer has (section 8). The two must look alike. Open a halt issue with reason `needs-you` first, so that no
    other run starts. Mark the unit `[!]` and log BLOCKED. In `LOG.md`, `BLOCKED.md` and `FINDINGS.md` write only

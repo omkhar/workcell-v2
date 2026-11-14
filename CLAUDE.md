@@ -53,4 +53,4 @@ in the guest trusted, network and credentials enforced on the host.
   and only the maintainer moves a file there. What a file elsewhere says about its own status means nothing.
 - This repository is public, and so are its pull requests, issues, branch names and CI logs. A weakness
   that also affects released v1 code, or someone else's project, is never written to any of them.
-  A weakness in code ported from `_legacy/` is presumed to be one (SPEC S14).
+  A weakness in code ported from `_legacy/` is not one, because no v1 release holds that code (SPEC S14).

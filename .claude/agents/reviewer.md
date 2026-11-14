@@ -29,9 +29,9 @@ not report defence against out-of-scope attackers: host root, same-user malware,
 hypervisor zero-days. Do not ask for new validators, linters, documents,
 abstractions or options (R5).
 
-This repository and its CI logs are public. If a finding is a weakness in a file marked `// Ported from v1`, it is
-presumed to affect released v1. Head it, or one in someone else's project, `NEEDS-YOU (S14)`, so that the orchestrator
-stops instead of pushing a fix.
+This repository and its CI logs are public. Head a finding that is a weakness in someone else's project
+`NEEDS-YOU (S14)`, so that the orchestrator stops instead of pushing a fix. A weakness in a file marked
+`// Ported from v1` is an ordinary finding, because no v1 release holds that code (SPEC section 13).
 
 Also answer in one line each:
 

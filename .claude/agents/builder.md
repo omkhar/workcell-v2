@@ -15,8 +15,9 @@ You implement one unit and nothing else.
 - Start every Go file with the two lines that v1 uses:
   `// SPDX-License-Identifier: Apache-2.0` and `// Copyright 2026 Omkhar Arasaratnam`.
 - Below them, in a file you port from `_legacy/`, write `// Ported from v1: <path under _legacy/>`.
-  If you find a weakness in such code, or in someone else's project, do not fix it and do
-  not write it down. Report `NEEDS-YOU (S14)` and stop.
+  If you find a weakness in someone else's project, do not fix it and do not write it down.
+  Report `NEEDS-YOU (S14)` and stop. A weakness in ported code is an ordinary finding
+  (SPEC section 13): report it with the v1 path from that comment.
 - No speculative options, flags, interfaces or layers. Build what `accept`
   needs.
 - No shell on a trust path (A8). No test hooks in product code (A11). No
