@@ -373,6 +373,20 @@ Fix unit: S-F3, below S-1003 in PLAN.md (pin the Firecracker child to --cpus cor
 child). The test waits under escape/_pending/S-F3/emulation.go; cpuJudge(relay bool), onDisk and the row guest-reboot
 stay live. Not S14: no file of the candidate is ported.
 
+C6 FIXED by S-F3, commit 1854647 (PR #190). Two causes, both outside the vCPU count. First, Firecracker's device threads:
+Start now pins the thread that forks Firecracker to the first --cpus CPUs of the supervisor's own mask (sched_setaffinity;
+the vCPU and device threads inherit it; a start the host cannot bound is refused), with the table-driven regression test
+TestPin beside TestConfig. Second, and larger, the console: Firecracker flushes every serial byte as its own write, and the
+supervisor read the exec pipe through Go's poller, which wakes on every write, so a guest flooding ttyS0 cost the host one
+wakeup and read per byte, about 1.1 CPU s per 3 s at serial speed, the same before and after the pin (4.8 then 4.6 CPU s,
+allowed 4.4). Start now reads the console from a blocking pipe the poller never sees, in 4 KiB batches a millisecond apart,
+so a flood costs at most a thousand reads a second; measured here against a child writing a byte per write: parent CPU
+1.97 s per 1.5 MB before, 0.16 s per 7.4 MB after. The row `I10 device-cpu-flood` is back in escape/suite/floods_linux.go:
+on a real VM it failed on 0ccb160 (141 passed, 1 failed, 4.8 CPU s in 3.4 s, before the fix) and passed on 1854647 (142
+passed, 0 failed, 3.6 CPU s in 3.3 s, allowed 4.3, while the guest read 66 MiB, made 738 connects and wrote under 1 MiB to
+the console); cpu-flood 3.4 in the same run. vz unchanged. Product 15000 of 15000, paid by folds in cmd/workcell and the
+firecracker package (smt:false dropped from the config, Firecracker's default).
+
 C5 (restated from S-1002; I12 hang and I7, vz only). Reproducing test: escape row I12 guest-reboot (probe rebootGuest:
 one line of output, sync, reboot(RESTART), refused unless the channel address is vsock so it never reboots the control
 container or the session host under S12; judge rebootJudge: the run ends within hangBound with exit 125, no descendant of
