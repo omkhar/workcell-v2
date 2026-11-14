@@ -9,21 +9,17 @@ import (
 	"sync"
 )
 
-// naiveResolver is the resolver the control sandbox gives its guest, the
-// deliberately weak counterpart of the product's host resolver (SPEC T2,
-// I3): it answers every query with one record, as an open resolver that knew
-// every name would: an A gets the test host's own address, an AAAA its
-// loopback, anything else a TXT. It stands in for the host's resolver, so
-// that no query of the suite's reaches that one (SPEC T8, S12). The guest
-// finds it in /etc/resolv.conf, which Exec binds over the host's.
+// naiveResolver is the resolver the control sandbox gives its guest, the deliberately weak counterpart of the product's host resolver (SPEC T2, I3): it answers
+// every query with one record, as an open resolver that knew every name would: an A gets the test host's own address, an AAAA its loopback, anything else a
+// TXT. It stands in for the host's resolver, so that no query of the suite's reaches that one (SPEC T8, S12). The guest finds it in /etc/resolv.conf, which
+// Exec binds over the host's.
 type naiveResolver struct {
 	pc   net.PacketConn
 	host net.IP
 	wg   sync.WaitGroup
 }
 
-// naiveResolverAddr is where the naive resolver listens: a loopback address
-// of its own, since resolv.conf names no port, and port 53 needs root.
+// naiveResolverAddr is where the naive resolver listens: a loopback address of its own, since resolv.conf names no port, and port 53 needs root.
 const naiveResolverAddr = "127.1.0.53:53"
 
 func listenNaiveResolver(addr string) (*naiveResolver, error) {
@@ -49,9 +45,8 @@ func (r *naiveResolver) serve() {
 	}
 }
 
-// answer builds the reply to a query: its header with QR, RD and RA set,
-// its question as it came, and one record for the question's own name
-// (a pointer to offset 12). A message it cannot read gets nothing.
+// answer builds the reply to a query: its header with QR, RD and RA set, its question as it came, and one record for the question's own name (a pointer to
+// offset 12). A message it cannot read gets nothing.
 func (r *naiveResolver) answer(q []byte) []byte {
 	if len(q) < 12 || q[2]&0x80 != 0 || binary.BigEndian.Uint16(q[4:]) == 0 {
 		return nil
@@ -91,8 +86,7 @@ func (r *naiveResolver) stop() {
 	r.wg.Wait()
 }
 
-// hostIPv4 is the host's first non-loopback IPv4 address, where the
-// judges' canaries listen, or loopback when it has none.
+// hostIPv4 is the host's first non-loopback IPv4 address, where the judges' canaries listen, or loopback when it has none.
 func hostIPv4() net.IP {
 	ifs, _ := net.Interfaces()
 	for _, i := range ifs {

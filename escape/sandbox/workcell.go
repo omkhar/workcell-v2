@@ -13,19 +13,13 @@ import (
 	"strconv"
 )
 
-// The workcell adapter drives the product through its CLI alone: one
-// `workcell run` per Exec, each a fresh microVM carrying the payload in
-// through stdin (SPEC T1, A8), with the test's export as its working
-// directory, and one `workcell pull` per Pull. It runs on Linux and macOS;
-// elsewhere every operation reports ErrNotImplemented. The session policy
-// goes in as the product's own config.toml under a directory of the
-// session's own (XDG_CONFIG_HOME), a secret's value in a file beside it. What
-// the CLI cannot honour yet is refused at Start with ErrNotImplemented, never a false pass.
+// The workcell adapter drives the product through its CLI alone: one `workcell run` per Exec, each a fresh microVM carrying the payload in through stdin (SPEC
+// T1, A8), with the test's export as its working directory, and one `workcell pull` per Pull. It runs on Linux and macOS; elsewhere every operation reports
+// ErrNotImplemented. The session policy goes in as the product's own config.toml under a directory of the session's own (XDG_CONFIG_HOME), a secret's value in
+// a file beside it. What the CLI cannot honour yet is refused at Start with ErrNotImplemented, never a false pass.
 
-// Prepare does the one-time setup the named adapter needs, under dir, which
-// the caller removes when the process ends. For workcell that is the four
-// artifacts `workcell run` wants and the binary itself, which takes longer
-// than one test may, so it runs once, outside any test's context.
+// Prepare does the one-time setup the named adapter needs, under dir, which the caller removes when the process ends. For workcell that is the four artifacts
+// `workcell run` wants and the binary itself, which takes longer than one test may, so it runs once, outside any test's context.
 func Prepare(ctx context.Context, name, dir string) error {
 	if name == "workcell" {
 		return prepareWorkcell(ctx, dir)
@@ -37,10 +31,8 @@ func Prepare(ctx context.Context, name, dir string) error {
 // prefix is where a plain container installs every provider, as /usr/local: on every session's PATH, writable.
 var prefix string
 
-// unsupported says why the CLI cannot honour cfg today, "" when it can: it
-// takes an export, a network policy, a secret, any caps (a zero meaning the
-// CLI's default; one outside its bounds it refuses itself), and on Linux a
-// resolver of the test's own and, with one, a network of its own.
+// unsupported says why the CLI cannot honour cfg today, "" when it can: it takes an export, a network policy, a secret, any caps (a zero meaning the CLI's
+// default; one outside its bounds it refuses itself), and on Linux a resolver of the test's own and, with one, a network of its own.
 func unsupported(cfg Config) string {
 	switch {
 	case cfg.Resolver != "" && !steersResolver:
@@ -51,20 +43,14 @@ func unsupported(cfg Config) string {
 	return ""
 }
 
-// policyFile is where, under the session's config directory, the product
-// reads its policy: `$XDG_CONFIG_HOME/workcell/config.toml`.
+// policyFile is where, under the session's config directory, the product reads its policy: `$XDG_CONFIG_HOME/workcell/config.toml`.
 const policyFile = "workcell/config.toml"
 
-// policyTOML is the session policy of SPEC section 5 for cfg: a [network]
-// table whose allow array holds each of cfg.Allow (a bare name is port 443
-// by SNI; `name:port` a forward entry), and, for cfg.Secret, one [[secret]]
-// table binding it to its host and header, with its value in the file source
-// (or the source the entry names, such as a sign-in flow), the guest's
-// placeholder in its variable, and any method, path prefix and repositories.
-// A quote, a backslash or a byte outside printable ASCII would change what
-// the file says, so such an entry is refused. It is written even with no
-// entry, so that nothing under the runner's ~/.config reaches a session.
-// cfg.Deny writes nothing; a name in both lists is a mistake, and refused.
+// policyTOML is the session policy of SPEC section 5 for cfg: a [network] table whose allow array holds each of cfg.Allow (a bare name is port 443 by SNI;
+// `name:port` a forward entry), and, for cfg.Secret, one [[secret]] table binding it to its host and header, with its value in the file source (or the source
+// the entry names, such as a sign-in flow), the guest's placeholder in its variable, and any method, path prefix and repositories. A quote, a backslash or a
+// byte outside printable ASCII would change what the file says, so such an entry is refused. It is written even with no entry, so that nothing under the
+// runner's ~/.config reaches a session. cfg.Deny writes nothing; a name in both lists is a mistake, and refused.
 func policyTOML(cfg Config, source string) ([]byte, error) {
 	for _, name := range cfg.Allow {
 		if slices.Contains(cfg.Deny, name) {
@@ -112,8 +98,7 @@ func array(b []byte, what string, names []string) ([]byte, error) {
 	return append(b, "]\n"...), nil
 }
 
-// quoted appends s to b as a TOML basic string, refusing a byte that would
-// change what the file says.
+// quoted appends s to b as a TOML basic string, refusing a byte that would change what the file says.
 func quoted(b []byte, what, s string) ([]byte, error) {
 	for j := 0; j < len(s); j++ {
 		if c := s[j]; c < ' ' || c > '~' || c == '"' || c == '\\' {
@@ -123,15 +108,13 @@ func quoted(b []byte, what, s string) ([]byte, error) {
 	return append(append(append(b, '"'), s...), '"'), nil
 }
 
-// runArgs is the argv of one `workcell run` for a session with cfg's mode
-// and caps, then the guest's loader shell and the test's arguments.
+// runArgs is the argv of one `workcell run` for a session with cfg's mode and caps, then the guest's loader shell and the test's arguments.
 func runArgs(cfg Config, loader string, args ...string) []string {
 	return runCommand(cfg, append([]string{"/bin/sh", "-c", loader, "sh"}, args...)...)
 }
 
-// runCommand is the argv of one `workcell run` of command in the guest, for
-// a session with cfg's mode and caps: `--mount` for a live export, each
-// non-zero cap as its flag, all before `--`, then the command.
+// runCommand is the argv of one `workcell run` of command in the guest, for a session with cfg's mode and caps: `--mount` for a live export, each non-zero cap
+// as its flag, all before `--`, then the command.
 func runCommand(cfg Config, command ...string) []string {
 	argv := []string{"run"}
 	if cfg.Mount {
@@ -149,9 +132,8 @@ func runCommand(cfg Config, command ...string) []string {
 	return append(append(argv, "--"), command...)
 }
 
-// cpioEntry writes one newc ("070701") cpio entry: a header of the magic and
-// thirteen 8-digit hex fields, the name with its NUL, and the data, each of the
-// last two padded to four bytes. A trailer is the entry named "TRAILER!!!" with no data.
+// cpioEntry writes one newc ("070701") cpio entry: a header of the magic and thirteen 8-digit hex fields, the name with its NUL, and the data, each of the last
+// two padded to four bytes. A trailer is the entry named "TRAILER!!!" with no data.
 func cpioEntry(w io.Writer, name string, mode uint32, data []byte) error {
 	const magic = "070701"
 	ino := uint32(1)
@@ -178,10 +160,9 @@ func pad4(b []byte) []byte {
 	return b
 }
 
-// Channel is where the guest's init dialled the host: AF_VSOCK, the host's CID
-// 2, port 5000. A probe finds the init's connection by that peer and may dial the same port afresh.
+// Channel is where the guest's init dialled the host: AF_VSOCK, the host's CID 2, port 5000. A probe finds the init's connection by that peer and may dial the
+// same port afresh.
 func (*workcell) Channel(context.Context) (Channel, error) { return Channel{Addr: "vsock:2:5000"}, nil }
 
-// Relay is where the guest's init opens one vsock stream per relayed
-// connection (ADR-003): the host's CID 2, port 5001.
+// Relay is where the guest's init opens one vsock stream per relayed connection (ADR-003): the host's CID 2, port 5001.
 func (*workcell) Relay(context.Context) (Channel, error) { return Channel{Addr: "vsock:2:5001"}, nil }

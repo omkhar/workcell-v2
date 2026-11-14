@@ -14,13 +14,10 @@ import (
 	"time"
 )
 
-// naiveHost is the host end of the control sandbox's channel for one run,
-// the deliberately weak counterpart of the product's (SPEC T2, I12): it
-// accepts every connection, reads each frame whole with no cap and no clock,
-// relays Stdout and Stderr raw, prints an Exit's error text as it came, and
-// believes any Exit frame over the command's own status. A decoder that
-// trips over a short payload takes the host down, as a crash would, and the
-// run then reports as a crashed Go process does: exit 2 and "panic:".
+// naiveHost is the host end of the control sandbox's channel for one run, the deliberately weak counterpart of the product's (SPEC T2, I12): it accepts every
+// connection, reads each frame whole with no cap and no clock, relays Stdout and Stderr raw, prints an Exit's error text as it came, and believes any Exit
+// frame over the command's own status. A decoder that trips over a short payload takes the host down, as a crash would, and the run then reports as a crashed
+// Go process does: exit 2 and "panic:".
 type naiveHost struct {
 	stdout, stderr io.Writer
 	cancel         context.CancelFunc // ends the run when the host end dies
@@ -50,9 +47,8 @@ func (h *naiveHost) add(c net.Conn) {
 	h.wg.Go(func() { h.serve(c) })
 }
 
-// stop ends the accept loop, then waits as a naive host does for every
-// connection to close, which the command's death brings; or until ctx ends,
-// when it closes them itself.
+// stop ends the accept loop, then waits as a naive host does for every connection to close, which the command's death brings; or until ctx ends, when it closes
+// them itself.
 func (h *naiveHost) stop(ctx context.Context, ln *net.UnixListener) {
 	ln.SetDeadline(time.Now())
 	done := make(chan struct{})
@@ -70,8 +66,7 @@ func (h *naiveHost) stop(ctx context.Context, ln *net.UnixListener) {
 	ln.SetDeadline(time.Time{})
 }
 
-// serve reads frames until the connection ends: a 6-byte header of version,
-// type and big-endian length, then the payload, however long, however slow.
+// serve reads frames until the connection ends: a 6-byte header of version, type and big-endian length, then the payload, however long, however slow.
 func (h *naiveHost) serve(c net.Conn) {
 	defer c.Close()
 	defer func() {
@@ -107,8 +102,7 @@ func (h *naiveHost) serve(c net.Conn) {
 	}
 }
 
-// exited takes an Exit payload at its word: a tag byte, then one byte of
-// status or signal, or an error text.
+// exited takes an Exit payload at its word: a tag byte, then one byte of status or signal, or an error text.
 func (h *naiveHost) exited(b []byte) {
 	code := 0
 	switch b[0] {
@@ -126,8 +120,7 @@ func (h *naiveHost) exited(b []byte) {
 	h.mu.Unlock()
 }
 
-// couldNotRun says whether the guest claimed, in an Exit frame, that the
-// command could not run; a naive host takes that at its word too.
+// couldNotRun says whether the guest claimed, in an Exit frame, that the command could not run; a naive host takes that at its word too.
 func (h *naiveHost) couldNotRun() bool {
 	h.mu.Lock()
 	defer h.mu.Unlock()

@@ -146,7 +146,7 @@ func runOne(ctx context.Context, fresh func() (sandbox.Sandbox, error), payload,
 		}
 		s := session{sb: sb}
 		sessions = append(sessions, s)
-		cfg := sandbox.Config{Payload: payload, Mount: t.Want.Mount, CPUs: t.Want.CPUs, MemoryMiB: t.Want.MemoryMiB, DiskMiB: t.Want.DiskMiB, Allow: t.Want.Allow, Deny: t.Want.Deny, Resolver: t.Want.Resolver, Isolated: t.Want.Isolated, Roots: roots, Update: update, Command: t.Want.Command}
+		cfg := sandbox.Config{Payload: payload, Mount: t.Want.Mount, CPUs: t.Want.CPUs, MemoryMiB: t.Want.MemoryMiB, DiskMiB: t.Want.DiskMiB, Allow: t.Want.Allow, Deny: t.Want.Deny, Resolver: t.Want.Resolver, Isolated: t.Want.Isolated, Roots: roots, Update: update, Command: t.Want.Command, Head: t.Want.Head}
 		if t.Want.Secret {
 			sec := suite.NewSecret(t.Want)
 			cfg.Secret = &sec
