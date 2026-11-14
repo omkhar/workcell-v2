@@ -6,12 +6,11 @@
 package suite
 
 // The device, mount, handle and fork probes run only in a Linux guest.
-func deviceProbe([]string) Result    { return linuxOnly("device") }
-func mountProbe([]string) Result     { return linuxOnly("mount") }
-func handleProbe([]string) Result    { return linuxOnly("handle") }
-func forkProbe([]string) Result      { return linuxOnly("fork") }
-func emulationProbe([]string) Result { return linuxOnly("emulation") }
-func rebootGuest(string) Result      { return linuxOnly("reboot") }
+func deviceProbe([]string) Result { return linuxOnly("device") }
+func mountProbe([]string) Result  { return linuxOnly("mount") }
+func handleProbe([]string) Result { return linuxOnly("handle") }
+func forkProbe([]string) Result   { return linuxOnly("fork") }
+func rebootGuest(string) Result   { return linuxOnly("reboot") }
 
 func memoryBacked(string) bool { return true }
 

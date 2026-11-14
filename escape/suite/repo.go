@@ -18,17 +18,12 @@ import (
 	"github.com/omkhar/workcell/v2/escape/sandbox"
 )
 
-// The I8 probes are a hostile repository. Root in the guest shapes its
-// workspace so that a pull which runs git in it, trusts its configuration, or
-// writes its tree by name acts on the host: every shape aims an effect at a
-// file beside the export (written-*) or at a listener the judge started. The
-// judge pulls, then looks. Nothing the guest says counts.
+// The I8 probes are a hostile repository. Root in the guest shapes its workspace so that a pull which runs git in it, trusts its configuration, or writes its
+// tree by name acts on the host: every shape aims an effect at a file beside the export (written-*) or at a listener the judge started. The judge pulls, then
+// looks. Nothing the guest says counts.
 //
-// The guest has no git, so each shape writes .git itself (gitdir.go), from a
-// fresh .git, as each run starts from a fresh copy of the export. A shape is
-// given where the guest sees its export, the host directory beside the
-// export (an attacker knows the host's layout), a token, and for the
-// submodule shape its URL.
+// The guest has no git, so each shape writes .git itself (gitdir.go), from a fresh .git, as each run starts from a fresh copy of the export. A shape is given
+// where the guest sees its export, the host directory beside the export (an attacker knows the host's layout), a token, and for the submodule shape its URL.
 
 // repoProbe makes the shape args[0] in the guest's workspace.
 func repoProbe(args []string) Result {
@@ -107,8 +102,7 @@ func repoProbe(args []string) Result {
 	return Result{Status: "shaped", Detail: shape}
 }
 
-// committed writes a commit whose tree holds the work file and the entries
-// more makes, given the id of a blob to use.
+// committed writes a commit whose tree holds the work file and the entries more makes, given the id of a blob to use.
 func committed(r repo, more func(blob string) ([]entry, error)) error {
 	blob, err := r.object("blob", []byte("escape\n"))
 	if err != nil {
@@ -125,9 +119,8 @@ func committed(r repo, more func(blob string) ([]entry, error)) error {
 	return r.commit(top)
 }
 
-// bring has the guest make the shape and pulls the workspace into the
-// directory pulled, beside the export. A refusal is reported, not returned;
-// an adapter that cannot pull at all is an error.
+// bring has the guest make the shape and pulls the workspace into the directory pulled, beside the export. A refusal is reported, not returned; an adapter that
+// cannot pull at all is an error.
 func bring(s Session, shape, token, extra string) (refused string, err error) {
 	beside := filepath.Dir(s.Workspace)
 	r, err := s.Run(shape, s.Guest, beside, token, extra)
@@ -147,9 +140,8 @@ func bring(s Session, shape, token, extra string) (refused string, err error) {
 	return "", nil
 }
 
-// pulls has the guest make the plain shape, pulls it, and errors unless the
-// pull brought its work file: a refusal proves nothing about a product that
-// cannot pull at all.
+// pulls has the guest make the plain shape, pulls it, and errors unless the pull brought its work file: a refusal proves nothing about a product that cannot
+// pull at all.
 func pulls(s Session) error {
 	token := newToken()
 	refused, err := bring(s, "plain", token, "")
@@ -178,8 +170,7 @@ func effects(s Session, note string) (bool, string, error) {
 	return true, "nothing appeared beside the export" + note, nil
 }
 
-// obeyed makes the shapes one after another, pulling after each, and fails
-// if an effect landed beside the export.
+// obeyed makes the shapes one after another, pulling after each, and fails if an effect landed beside the export.
 func obeyed(shapes ...string) Judge {
 	return func(ctx context.Context, s Session) (bool, string, error) {
 		if err := pulls(s); err != nil {
@@ -199,8 +190,7 @@ func obeyed(shapes ...string) Judge {
 	}
 }
 
-// fetched names, in .gitmodules, a submodule at a listener on the host's own
-// address, and fails if the pull connects to it.
+// fetched names, in .gitmodules, a submodule at a listener on the host's own address, and fails if the pull connects to it.
 func fetched(ctx context.Context, s Session) (bool, string, error) {
 	if err := pulls(s); err != nil {
 		return false, "", err
@@ -240,9 +230,8 @@ func fetched(ctx context.Context, s Session) (bool, string, error) {
 	return true, "nothing connected to " + url + "; " + refused, nil
 }
 
-// collided fails unless the pull refuses a tree with two names that differ
-// only in case: a launch host (SPEC P6) folds case, and there the second
-// name's content lands on the first.
+// collided fails unless the pull refuses a tree with two names that differ only in case: a launch host (SPEC P6) folds case, and there the second name's
+// content lands on the first.
 func collided(ctx context.Context, s Session) (bool, string, error) {
 	if err := pulls(s); err != nil {
 		return false, "", err
@@ -266,8 +255,7 @@ func collided(ctx context.Context, s Session) (bool, string, error) {
 	return true, refused, nil
 }
 
-// planted fails if the pull wrote any path with a .git component into the
-// host's tree: a hook there runs the moment the user runs git in it.
+// planted fails if the pull wrote any path with a .git component into the host's tree: a hook there runs the moment the user runs git in it.
 func planted(ctx context.Context, s Session) (bool, string, error) {
 	if err := pulls(s); err != nil {
 		return false, "", err
@@ -291,11 +279,8 @@ func planted(ctx context.Context, s Session) (bool, string, error) {
 	return true, "no .git component in the host's tree; " + refused, nil
 }
 
-// The I13 tests bring a workcell.toml, in the export before the session
-// starts, that tries to widen the session's policy. Each reuses the probe
-// and the judge of the invariant the widening would break. One narrows
-// instead, so that a product which never reads the file is told apart from
-// one that honours it.
+// The I13 tests bring a workcell.toml, in the export before the session starts, that tries to widen the session's policy. Each reuses the probe and the judge
+// of the invariant the widening would break. One narrows instead, so that a product which never reads the file is told apart from one that honours it.
 var (
 	// widened allows one name at user level; the repository allows the other.
 	widened = repoPolicy(Want{Workspace: true, Allow: []string{"bound.escape.test"}, Deny: []string{"other.escape.test"}, Resolver: judgeResolver, Isolated: true, Secret: true}, "", "[network]\nallow = [\"bound.escape.test\", \"other.escape.test\"]\n")
@@ -322,11 +307,9 @@ var (
 // repoPolicy is w with the repository's policy in the shape.
 func repoPolicy(w Want, shape, policy string) Want { w.Shape, w.Policy = shape, policy; return w }
 
-// PlantPolicy puts the repository's policy in the export ws before the
-// session starts, in the shape w.Shape names: "" a plain file, "link" a
-// symbolic link to a file beside the export (where the host, not the guest,
-// can follow it), "fifo" a named pipe no one writes. The host must start, or
-// refuse, within the test's time whatever the shape (SPEC I13, I10).
+// PlantPolicy puts the repository's policy in the export ws before the session starts, in the shape w.Shape names: "" a plain file, "link" a symbolic link to a
+// file beside the export (where the host, not the guest, can follow it), "fifo" a named pipe no one writes. The host must start, or refuse, within the test's
+// time whatever the shape (SPEC I13, I10).
 func PlantPolicy(ws string, w Want) error {
 	path := filepath.Join(ws, "workcell.toml")
 	switch w.Shape {
@@ -351,9 +334,8 @@ func liveProbe(args []string) Result {
 	return Result{Status: "tried", Detail: "write=" + tryWrite(filepath.Join(args[0], "written-"+args[1]))}
 }
 
-// liveJudge fails if the guest's write is in the host's tree at once: the
-// repository's policy made the workspace a mount, or the default is not a
-// clone (SPEC A5).
+// liveJudge fails if the guest's write is in the host's tree at once: the repository's policy made the workspace a mount, or the default is not a clone (SPEC
+// A5).
 func liveJudge(ctx context.Context, s Session) (bool, string, error) {
 	token := newToken()
 	r, err := s.Run(s.Guest, token)
