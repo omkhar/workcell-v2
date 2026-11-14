@@ -1,6 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Omkhar Arasaratnam
 
+// Parked under S4 until the fix unit S-F2 lands. S-F2 moves this file back to
+// escape/suite/lifecycle.go and adds this row to All in escape/suite/tests.go,
+// directly after the row named audit-records-connection:
+//
+//	{ID: "I9", Name: "run-stdout-reader-closed", Probe: chatterProbe, Host: chatterJudge, Want: Want{Head: true}},
+
 package suite
 
 import (

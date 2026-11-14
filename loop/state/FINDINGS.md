@@ -130,3 +130,129 @@ the marker when that image becomes current again; update reinstalls a set-aside 
 `workcell update <agent> --to <version>` restores it (TestFail tail). The row `I12 channel-first-frame-rollback` is back
 in escape/suite/: on a real VM it failed on e3c24e3 (138 passed, 1 failed, before the fix) and passed on ad3fac7 (139
 passed, 0 failed). The honest B9 self-rollback, a fresh layer whose command cannot run, still works (TestFail rows 2, 3).
+
+## S-1002: host-guest channel, guest init, supervisor lifecycle (I7, I10, I12), as built at main 7c4edb7
+
+Trust boundary. Attacker bytes reach the supervisor (the operator's uid; owns the VM, proxy, resolver, broker, audit
+log, data dir, cwd and terminal) at: the one accepted connection on vsock 5000 (wire.ReadFrame, then output(): Stdout
+and Stderr raw to the seat, Ack through DecodeAck, Exit through DecodeExit; on pull Entry, Data and Exit); later
+connects to 5000 and 5002, refused by once (5001 capped at 1024, S-1004); the VMM's stdout and stderr and the vz
+console pipe (tail of 4 KiB, lastLines sanitiser); the VMM's exit (fixed strings); and guest-written workspace.ext4,
+never parsed on the host (reattached by pull: S-1008, S-1003). Host-to-guest bytes (kernel cmdline, Exec JSON with
+placeholders and the session CA, Stdin, Resize, Signal, Pull) are host-built; no attacker byte reaches the cmdline.
+The host relies on the init only for liveness (Exit ends the session), the first-frame heuristic (B9 self-rollback,
+narrowed by S-F1 to a layer installed in this very start), Ack flow control on the input side, and Sync before Exit
+(the guest's own loss). Every enforcement is host-side (A1). Persistent host state a guest frame can change: the
+command's exit code, session_end's exit N and, in the fresh-layer window only, layers/<agent>/{failed,current,previous}
+and updates.log.
+
+Lenses (S9). Parsing and resources: 6-byte header, 64 KiB cap before allocation, 5 s per frame once begun, no resync
+after an error; Exit, Ack and Entry decoders bounded and round-trip; console tail 4 KiB sanitised; one connection on
+5000 and 5002; host memory per guest frame is one payload; 60 s of fuzzing on FuzzReadFrame and guest FuzzDecode (8.1M
+and 5.1M execs), no crasher. Logic and state: output() ends on Exit, a bad Ack or an unknown type; a host-only or pull
+type during a run ends the session with 125; frames after Exit are ignored (row exists); the first-frame heuristic is
+correct in output and inert in client; fail, point and apply marker transitions are consistent (TestFail, TestUpdate);
+pull's manifest, data, end sequence is strict. Concurrency and check-to-use: once closes the listener after the first
+accept, so queued connects are reset (TestOnceTakesOneConnection, channel-connect-storm and -flood); the seat mutex
+covers send against sit; rm's Lstat then RemoveAll never follows a link (TestRemoveSession); stop checks the lock
+before each kill (pid reuse within milliseconds is the only gap, not attacker-reachable). Cryptography and identity:
+none on the channel by design; the first connection on 5000 can only be the init's, since no guest code runs before
+Exec; the CA sent is the public certificate only. Failure modes: every boot, export and channel error tears the VM
+down and exits 125; export failure removes the session dir; no path leaves the VM running; SIGPIPE (C3) is the one
+abrupt exit the code does not handle. Downgrade, rollback, replay: C2 below; frames after Exit ignored; the failed
+marker is skipped by apply until the pin changes; update --to restores from disk. Interaction between surfaces: Exec
+carries placeholders only (I5); apply fetches at session start before boot (B9, synchronous, up to 10 min, a visible
+delay, not an attack); session_end is written after the VM is gone; pull boots an image without the session lock
+(PARKED U-205, user-triggered).
+
+Refuted by the auditor before any candidate was raised: the Ack stall S-1001 handed over (an overlay test shows
+exactly 32 Stdin frames pass and the 33rd blocks the attach reader only; the main select still writes Signal and guest
+output still reaches the seat; an input-side stall that workcell stop or two signals end; not I12); a zero installer
+after a failed startup given r.first (fresh is nil, so nothing changes and no updates.log is written; overlay test);
+forged Exit text (%q quoting leaves no control byte; channel-forged-exit-text); teardown order (defers run LIFO:
+attach listener, terminal, VM kill and tmp dir, session_end, lock; Firecracker dies with the supervisor by Pdeathsig on
+a locked thread, TestFirecracker/supervisor-killed; rm refuses while the flock is held and removes only absolute wc*
+directories); every type assertion, index and decode on guest bytes is bounded and no fail-open error path was found.
+
+Coverage. Read in full: cmd/workcell/{run_vm,session,update,caps,data,layer,cache,cache_vm,policy,relay,pull_vm,log,
+main,explain,bench_vm,backend_linux,backend_darwin,mount_linux,mount_darwin,term_vm,term_linux,term_darwin,run_other}.go;
+cmd/workcell-init/{main,root,exec,pull,net,mount}.go; internal/wire/wire.go; internal/guest/{guest,trust,walk}.go;
+internal/vmm/vmm.go, firecracker/firecracker.go, vz/vz.go, vz/args.go; internal/relay/relay.go;
+internal/fileserve/serve_linux.go; internal/audit/audit.go; internal/workspace/workspace.go; internal/proxy/proxy.go
+(ported; the lifecycle API boot() uses only, nothing found there); escape/suite/{channel,channel_linux,channel_other,
+rollback,tests,suite,helpers,files,floods,floods_linux,relay,layer}.go; escape/sandbox/{sandbox,workcell,workcell_vm,
+workcell_linux,control_linux,control_channel_linux}.go; escape/cmd/escape/main.go; the tests wire_test, guest_test,
+run_vm_test, session_test, update_test, root_test, firecracker_test, run_test, init_test and testdata/guest;
+docs/threat-model.md, ADR-001, 003, 004, 005; escape/enforced.txt. Skimmed: internal/vmm/vz/vz_test.go,
+firecracker/mount_test.go, internal/fileserve/codec.go constants, escape/suite/audit.go. Not opened: _legacy/,
+internal/proxy/{terminate,allowlist,signin}.go, internal/secret, internal/resolver, internal/rootfs, cmd/workcell/pull.go,
+the suite files of other surfaces, cmd/mkimage, cmd/bump. No file of this surface is ported from v1, so nothing falls
+under S14. No model declined.
+
+Evidence gaps, not findings (for S-1013, or a redteam unit if test lines are freed): I7's rm clause has no escape row
+(the adapter's Stop removes sessions itself; PARKED U-205), and stopSession has no test of any kind, so workcell stop
+on a running session is unproven end to end. Smallest rows: stop = run a sleeping command, workcell stop <id>, assert
+exit 143 within 10 s and no VMM process or temp dir left; rm = then workcell rm <id>, assert the session dir and the
+recorded temp dirs are gone. The vz guest-initiated reset path (C5) is untested on the Mac.
+
+### S-1002 candidates
+
+C2. ID I12 with the B9/B10 downgrade lens; the residual of C1 after S-F1. Attacker: a malicious repository (a hook that
+runs as the agent starts) acting as guest root; hostile model output cannot, since its bytes follow the agent's own.
+Where: cmd/workcell/run_vm.go run and output (first), cmd/workcell/update.go fail and apply (fresh). Input: the first
+workcell run <agent> after the daily check kept a manifest with a new pin, so apply installs the layer in this very
+start; before any guest byte, the hook duplicates PID 1's vsock connection and writes one Exit frame of kind 2.
+Effect: the session ends 126, failed names the new image, current goes back to previous, one updates.log line; later
+sessions run version N-1 until the pin changes or the user runs update; the image stays on disk. Evidence: TestFail
+row 2 (cmd/workcell/update_test.go) is the exact fresh-window effect, row 1 shows an earlier-start layer unchanged,
+the tail shows update --to restoring from disk; go test ./cmd/workcell -run TestFail passes. Outcome: CONFIRMED, low,
+by the verifier: the effect is what SPEC B9 orders (the client rolls back by itself when the new version fails to
+run), the init sends nothing after a successful start so an Exit{Err} first frame is the only could-not-run signal B9
+has, the host moves between two manifest-verified versions (I14 holds), nothing is deleted, the line is recorded, and
+the S-F1 unit text accepts the fresh-start window by name. The attacker-uncontrolled precondition is that the session
+is the one that installed the layer. No invariant break remains to fix; listed under S7. If the maintainer wants it
+narrower: act on an Exit of kind 2 only within a short bound of the Exec frame, or drop B9's self-rollback for update
+--rollback (less code). Not S14.
+
+C3. ID I9 (the session's end is a lifecycle event the host must record) and I7 (the session's temp directory stays
+until workcell rm). Attacker: guest root or hostile model output choose the moment; the trigger is the operator's
+own stdout reader closing early, which no section-2 attacker can cause, so R2 is met only thinly. Where:
+cmd/workcell/run_vm.go client (os.Stdout.Write of guest Stdout frames in the supervisor process); session() ignores
+SIGHUP only, and nothing handles SIGPIPE. Input: workcell run -- <cmd> | head -1, then the command writes another
+line. Effect: the supervisor dies of SIGPIPE, so its deferred cleanup never runs: no session_end record, the temp
+directory (attach socket, VMM config, vsock) stays until rm, and with a tty on stdin the terminal stays raw; the VMM
+still dies through the parent-death signal, and every record written so far is sealed. Reproducing test: escape row
+I9 run-stdout-reader-closed (escape/_pending/S-F2/lifecycle.go; the plumbing Config.Head, headPipe and Want.Head in
+escape/sandbox/ and escape/suite/suite.go stays live). T2: fails on control (the run ended with exit 141 and added 1
+record; the command itself ended with exit 0). On a real VM, hosted gate on commit 6932a4f of PR #187: 139 passed, 1
+failed, the row's detail says the run ended with exit -1 (death by signal, no "workcell: detached" line) and added 1
+record, session_start only. A host-only mimic of client() piped into head -1 exits 141 and its deferred line never
+prints. Outcome: CONFIRMED, low, by the verifier from that log: the judge measures exactly the exit code and the record
+count, so the log shows the effect and not a look-alike; I7 is not broken, since rm is designed for a killed supervisor
+and removes the directory; I9's end record is genuinely missing, through operator action, so it is hardening under S6
+and a robustness defect that reaches users, not an invariant break by an in-scope attacker. Fix unit: S-F2, below
+S-1002 in PLAN.md (ignore SIGPIPE in session() and treat EPIPE from the terminal in client() as a detach). Variants the
+redteam could not express: the tty case (needs a pty in the adapter); the stderr path, 2>&1 | head, the same death via
+os.Stderr.Write and via the detached line itself; workcell attach with a closed stdout (the attach process dies, the
+session is unaffected); after the fix a detached run should still take workcell attach and return the command's exit
+code. Not S14: no file of the candidate is ported.
+
+C4. ID none (surface row 3, Stdout and Stderr frames to the user's terminal, which no invariant names). Attacker:
+hostile model output, or guest root. Where: cmd/workcell/run_vm.go client (raw bytes to the terminal; the terminal's
+answers go back to the guest as Stdin). Input: terminal query sequences in Stdout, such as an OSC 52 clipboard read or
+a device-attributes or cursor-position query. Effect: on terminals that allow it, the operator's clipboard, and always
+the terminal's identity, reach the guest; the screen can be rewritten to hide what ran. Inherent to a PTY, as for any
+container run with a terminal; SPEC section 2 does not name it in or out of scope. Outcome: low, no test (R2: no
+invariant), listed under S7 and parked; a line in docs/threat-model.md's out-of-scope list would make the claim
+explicit (S-1018 may add it). Not S14.
+
+C5. ID I12 hang, I10; macOS only, shared with S-1003. Attacker: guest root. Where: internal/vmm/vz/vz.go listener
+(closed after once) and Wait; cmd/workcell/run_vm.go output (ReadFrame waits without limit for a frame to begin).
+Input: guest root runs reboot -f while the session runs. Effect, reasoned only: on vz a restart boots the kernel again
+(vz_test keeps restart_stops_vm=false), the new init cannot connect to 5000, halts and reboots, a boot loop at the vCPU
+cap; if the framework does not deliver EOF on the old connection the supervisor never ends the session by itself, and
+the user ends it with two signals or workcell stop. On Firecracker reboot=k ends the VMM and the connection gets EOF
+(TestInit/disconnect). Outcome: UNVERIFIED, needs a Mac: no hosted runner has a hypervisor for vz, so no test can run
+here; severity low if real (a command that never exits, which the user already can end). Handed to S-1003 (device
+model, both backends) and to the Mac triage of S-1016; the check is one guest reboot -f under vz with the channel open,
+and the fix if needed is that vz's Start goroutine closes the accepted connections on a state change. Not S14.
