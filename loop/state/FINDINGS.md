@@ -236,6 +236,14 @@ redteam could not express: the tty case (needs a pty in the adapter); the stderr
 os.Stderr.Write and via the detached line itself; workcell attach with a closed stdout (the attach process dies, the
 session is unaffected); after the fix a detached run should still take workcell attach and return the command's exit
 code. Not S14: no file of the candidate is ported.
+C3 FIXED by S-F2, commit 81dc8c8 (PR #188). client() now ignores SIGPIPE, so a terminal write whose reader has gone
+returns EPIPE and takes the detach path that already existed (restore the tty, print "workcell: detached", return 0); the
+seat drops the frames, the command runs on, and the supervisor's deferred session_end record and temp-directory cleanup
+run as before. One place covers both the supervisor and `workcell attach | head -1`. The row `I9 run-stdout-reader-closed`
+is back in escape/suite/lifecycle.go: on a real VM it failed on 7e92b29 (139 passed, 1 failed, exit -1, 1 record, before
+the fix) and passed on 81dc8c8 (140 passed, 0 failed, exit 0 and 2 records). Regression test TestClientEndsAsADetach in
+cmd/workcell/run_vm_test.go dies of SIGPIPE without the one line and passes with it. Product 14999 of 15000 (tail.Write
+bound folded to pay); the stderr, tty and stdin-raw variants stay unexpressed, as the C3 entry says.
 
 C4. ID none (surface row 3, Stdout and Stderr frames to the user's terminal, which no invariant names). Attacker:
 hostile model output, or guest root. Where: cmd/workcell/run_vm.go client (raw bytes to the terminal; the terminal's
