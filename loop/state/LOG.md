@@ -1185,3 +1185,4 @@ Next: S-1006 to S-1012 (audit, fable, deps S-1001) and S-1014a (mech, haiku, dep
 PR #204 (branch claude/S-1006-20261114T191124Z, head 499fbe9) had been open 243 minutes with no push beyond its claim; its checks guard, gate-arm64, gate-macos, gate and merge all ended green more than 238 minutes earlier and the title never lost its try: prefix, so this run closed it. Nothing from that branch was read or kept.
 tries stays 0: S-1006 has no earlier result line, so the run most likely died of a usage limit after the claim went green, not of the unit.
 Next: S-1006 (audit, fable, env:kvm, deps S-1001 [x]) is still the first takeable unit for the cloud, with S-1007 to S-1012 and S-1014a behind it; an audit unit runs long, so the run that takes it should push at least every two hours as section 2 says, and commit each FINDINGS.md candidate as it is verified so that a dying run leaves something behind.
+## 2026-11-14T23:22Z S-1006 START mode=cloud
