@@ -13,6 +13,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"unicode"
 
 	"github.com/omkhar/workcell/v2/internal/policy"
 	"github.com/omkhar/workcell/v2/internal/provider"
@@ -148,10 +149,9 @@ func bindings(p policy.Policy, allow *proxy.Allowlist, file string) ([]binding, 
 	return out, nil
 }
 
-// allowlist turns the policy's allow entries into the proxy's allowlist, nil for none. A bare
-// name is port 443 by SNI; "name:port" forwards that one port to the name. The proxy's parser
-// judges the entries as each joins (A3), so one it refuses is reported with its line (or as
-// --allow, for an entry of that flag), a port two names claim with the line of the second.
+// allowlist turns the policy's allow entries into the proxy's allowlist, nil for none. A bare name
+// is port 443 by SNI; "name:port" forwards that port. The proxy's parser judges the entries as each
+// joins (A3): one it refuses is reported with its line (or as --allow), a claimed port with the second's.
 func allowlist(p policy.Policy, file string) (*proxy.Allowlist, error) {
 	if len(p.Allow) == 0 {
 		return nil, nil
@@ -162,7 +162,7 @@ func allowlist(p policy.Policy, file string) (*proxy.Allowlist, error) {
 		if e.Line > 0 {
 			at = fmt.Sprintf("%s:%d", file, e.Line)
 		}
-		if e.Text == "" || strings.ContainsAny(e.Text, " \t#") {
+		if e.Text == "" || strings.ContainsFunc(e.Text, unicode.IsSpace) || strings.Contains(e.Text, "#") {
 			return nil, fmt.Errorf("%s has an invalid endpoint: %q (want a host name, or host:port)", at, e.Text)
 		}
 		text := e.Text
