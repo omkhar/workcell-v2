@@ -1944,6 +1944,23 @@ is locked and cmd/bump has no product room, so S-F19 proposes nothing and S-1018
 this repository's go.mod; the product-side half is in the ported literal, also in v1 main: egressproxy/terminate.go (the
 http.Server literal). Not someone else's undisclosed weakness: the advisories are published and fixed upstream.
 
+C27 FIXED by S-F19, commit f54bf9e (PR #222). go.mod line 3 says `go 1.27.4`, with no toolchain directive and go.sum unchanged, so
+every workflow's setup-go (go-version-file) built that commit with go1.27.4: the hosted gate, gate-arm64 and gate-macos logs each
+print `go version go1.27.4` for their platform, and the gate took 263 s on linux/amd64 with the VM suite. Product side:
+DisableGeneralOptionsHandler: true in serveTerminated's http.Server literal (internal/proxy/terminate.go, ported, header kept), paid
+by folding the Rewrite closure's two Host assignments to one line, net 0 (product 15000 of 15000); OPTIONS * now runs the handler's
+judge like every other request: with a foreign Host it is answered 421 with a host_mismatch deny record, under a rule bound to
+POST /v1/ it is answered 403 with binding_mismatch, and with the SNI host and an admitted placeholder it reaches the bound upstream
+over the verified chain, where the parent answered 200 before the judge with no record (builder and reviewer each drove the real
+listener). Test: TestC27 in internal/proxy/terminate_test.go, re-created from this record in 13 lines, fails on the parent
+(go1.27.0: a 405 then a 200 for the pipelined GET, i/o timeout) and passes 20 of 20 under -race on the fix; paid by five plain folds
+in the same file (callCount, the rules literal, a blank line, two map literals), test 27497 of 27500. The reviewer accepted the
+test under S4 and T6 and noted (R3) that it asserts net/http behaviour, so what it guards is a future move of the go directive.
+The toolchain still has no updater (W12): dependabot.yml is locked and cmd/bump has no toolchain source type, so nothing was
+proposed and S-1018 reports the gap. The macOS job of the first push failed on TestRelayDropsAnIncompleteHeader, a measurement
+gap in that test (its start time was taken after the relay's accept, which sets the deadline), fixed in the same pull request by
+taking the start before the dial. Also in v1 main: egressproxy/terminate.go (the http.Server literal).
+
 Handoffs: S-1013 takes the A6 client gap through C19 (guest-written root.ext4, vmlinux or firecracker in the data directory)
 with S-F12 and C26, and PARKED lines 87 and 88; S-1016 takes govulncheck with GOOS=darwin over vz, go-infinity-channel and x/mod
 on the Mac; S-1018 takes the residual lines for the unverified guest image on the client, the dry-run attestations, the godebug

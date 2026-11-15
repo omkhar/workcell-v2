@@ -54,11 +54,7 @@ func (b *fakeBroker) Issue(string, string, []byte, []byte) error              { 
 func (b *fakeBroker) Refresh(context.Context, string, string) ([]byte, error) { return nil, b.err }
 func (b *fakeBroker) Tokens(string, string) ([]byte, []byte)                  { return nil, nil }
 
-func (b *fakeBroker) callCount() int {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	return len(b.calls)
-}
+func (b *fakeBroker) callCount() int { b.mu.Lock(); defer b.mu.Unlock(); return len(b.calls) }
 
 // terminateFixture runs an upstream that echoes the x-api-key and Authorization it received and a proxy that terminates example.com, with a rule for each of
 // those headers, a.example.com, with none, n.example.com, with an x-api-key rule narrowed to POST under /v1/, and r.example.com, with an Authorization rule
@@ -78,10 +74,8 @@ func terminateFixture(t *testing.T, broker Broker) (proxyAddr string, ca *Sessio
 	ca = must(NewSessionCA([]string{"example.com", "a.example.com", "n.example.com", "r.example.com"}, time.Now().Add(time.Hour)))
 	// Mixed-case header names: the broker must still get the lowercase form its grants use (TestTerminateSwapsOnlyExactPlaceholder checks the call).
 	must(0, p.Terminate(ca, broker, []TerminateRule{
-		{Host: "example.com", Header: "X-Api-Key", Placeholder: testPlaceholder},
-		{Host: "example.com", Header: "Authorization", Placeholder: testAuthPlaceholder},
-		{Host: "n.example.com", Header: "X-Api-Key", Placeholder: testPlaceholder, Method: "POST", Path: "/v1/"},
-		{Host: "r.example.com", Header: "Authorization", Placeholder: testAuthPlaceholder, Repos: []string{"octo/allowed"}},
+		{Host: "example.com", Header: "X-Api-Key", Placeholder: testPlaceholder}, {Host: "example.com", Header: "Authorization", Placeholder: testAuthPlaceholder},
+		{Host: "n.example.com", Header: "X-Api-Key", Placeholder: testPlaceholder, Method: "POST", Path: "/v1/"}, {Host: "r.example.com", Header: "Authorization", Placeholder: testAuthPlaceholder, Repos: []string{"octo/allowed"}},
 	}))
 	return listen(t, p, 443), ca, p, buf
 }
@@ -159,7 +153,6 @@ func TestTerminateSwapsOnlyExactPlaceholder(t *testing.T) {
 	if d, want := denies(t, p, log), (denyLine{Host: "example.com", Port: 443, Reason: "host_mismatch", Count: 2, Seq: 2}); len(d) != 2 || d[1] != want {
 		t.Errorf("deny lines = %+v, want 2 ending in %+v", d, want)
 	}
-
 	// Every allowed name is terminated, with or without a rule: the client sees a session leaf for a.example.com too.
 	if code, body := get(t, c, "https://a.example.com/", "user-key"); code != http.StatusOK || body != "a.example.com user-key" {
 		t.Errorf("GET to the host without a rule = (%d, %q), want it served through the session leaf", code, body)
@@ -283,6 +276,20 @@ func TestTerminateOffersHTTP11Only(t *testing.T) {
 	}
 }
 
+// A request pipelined behind a refused CONNECT is never served: the 405 closes the connection (I12; go1.27.0 kept it open and served the GET).
+func TestC27(t *testing.T) {
+	t.Parallel()
+	addr, ca, _, _ := terminateFixture(t, &fakeBroker{value: "real-secret"})
+	c := must(tls.Dial("tcp", addr, &tls.Config{ServerName: "example.com", RootCAs: caPool(t, ca)}))
+	defer c.Close()
+	must(0, c.SetDeadline(time.Now().Add(3*time.Second)))
+	must(c.Write([]byte("CONNECT example.com:443 HTTP/1.1\r\nHost: example.com\r\n\r\nGET /v1 HTTP/1.1\r\nHost: example.com\r\n\r\n")))
+	got, err := io.ReadAll(c)
+	if n := strings.Count(string(got), "HTTP/1.1 "); n != 1 || err != nil || !strings.HasPrefix(string(got), "HTTP/1.1 405 ") {
+		t.Fatalf("after a refused CONNECT got %d responses, read error %v, want one 405 and then the connection closed:\n%s", n, err, got)
+	}
+}
+
 func TestSessionCANameConstraints(t *testing.T) {
 	t.Parallel()
 	ca := must(NewSessionCA([]string{"api.example.com"}, time.Now().Add(time.Hour)))
@@ -332,10 +339,7 @@ func TestSessionCANameConstraints(t *testing.T) {
 
 func TestNewSessionCARefusesBadInput(t *testing.T) {
 	t.Parallel()
-	for name, notAfter := range map[string]time.Time{
-		"past":       time.Now().Add(-time.Minute),
-		"over a day": time.Now().Add(MaxCALifetime + time.Minute),
-	} {
+	for name, notAfter := range map[string]time.Time{"past": time.Now().Add(-time.Minute), "over a day": time.Now().Add(MaxCALifetime + time.Minute)} {
 		if _, err := NewSessionCA([]string{"example.com"}, notAfter); err == nil {
 			t.Errorf("%s: NewSessionCA succeeded, want refusal", name)
 		}
@@ -484,10 +488,8 @@ func TestTerminateRefusesBadRules(t *testing.T) {
 	p, _, _ := testProxy(t, "example.com:443 db.example.com:5432", nil, "")
 	rule := TerminateRule{Host: "example.com", Header: "x-api-key", Placeholder: testPlaceholder}
 	for name, rules := range map[string][]TerminateRule{
-		"off allowlist":  {{Host: "other.example.com", Header: "x-api-key", Placeholder: testPlaceholder}},
-		"plain port":     {{Host: "db.example.com", Header: "x-api-key", Placeholder: testPlaceholder}},
-		"duplicate":      {rule, rule},
-		"duplicate case": {rule, {Host: "example.com", Header: "X-API-KEY", Placeholder: testAuthPlaceholder}},
+		"off allowlist": {{Host: "other.example.com", Header: "x-api-key", Placeholder: testPlaceholder}}, "plain port": {{Host: "db.example.com", Header: "x-api-key", Placeholder: testPlaceholder}},
+		"duplicate": {rule, rule}, "duplicate case": {rule, {Host: "example.com", Header: "X-API-KEY", Placeholder: testAuthPlaceholder}},
 	} {
 		if err := p.Terminate(nil, nil, rules); err == nil {
 			t.Errorf("%s: Terminate succeeded, want refusal", name)

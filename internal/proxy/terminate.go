@@ -386,15 +386,15 @@ func (p *Proxy) serveTerminated(client net.Conn, host string, replay []byte) {
 		ModifyResponse: p.tokenResponse,
 		Rewrite: func(r *httputil.ProxyRequest) {
 			r.Out.URL.Scheme = "https"
-			r.Out.URL.Host = host
-			r.Out.Host = host
+			r.Out.URL.Host, r.Out.Host = host, host
 		},
 	}
 	// ponytail: no idle timeout, like splice; a peer that never closes holds the conn.
 	srv := &http.Server{
-		ReadHeaderTimeout: peekTimeout,
-		MaxHeaderBytes:    64 << 10, // a client needs a few KiB; this bounds what a held slot pins (I10, C11)
-		ErrorLog:          discardLog,
+		ReadHeaderTimeout:            peekTimeout,
+		MaxHeaderBytes:               64 << 10, // a client needs a few KiB; this bounds what a held slot pins (I10, C11)
+		ErrorLog:                     discardLog,
+		DisableGeneralOptionsHandler: true, // OPTIONS * then meets the handler's judge like every other request (C27)
 		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// TRACE echoes request headers and CONNECT tunnels past the rewrite, so neither may carry a swapped key.
 			if r.Method == http.MethodTrace || r.Method == http.MethodConnect {
