@@ -1717,6 +1717,17 @@ key-holder-signed manifest cannot re-create the marker; the "previous" marker on
 marker naming a symlink to a host file passes a Base check (an Lstat regular-file check would close it, the redteam's variant (b)).
 Not ported.
 
+C26 FIXED by S-F18, commit 00c549e (PR #220). findLayers in cmd/workcell/layer.go refuses a marker whose text is not its own
+filepath.Base, on the same line as the missing-image check, with "the <agent> layer <marker> is not a bare name; run workcell update
+<agent>", so input (b) exits 125 before any boot (the real binary under strace made no execve beyond itself); the rollback path
+writes the previous marker into current, which the same reader then judges. channel.Verify in internal/channel/channel.go refuses
+with errPin a pin whose Version holds "/" or "\", over Pins and Previous alike, so input (a) is refused at the manifest and never
+reaches fetch or point; errPin now says "a bare version" too. Net +1 product line (the strings import; product 15000 of 15000),
+test 27495 of 27500. Test: the two C26 rows of TestFindLayers in cmd/workcell/layer_test.go (markers ../../outside.ext4 and
+sub/x.ext4 with their targets present) and the two C26 rows of TestVerify in internal/channel/channel_test.go (Version ../evil in
+Pins, ..\evil in Previous); all four fail on a74e3d3 and pass on 00c549e. Variant (b), a marker naming a symlink, and the
+markers ".", ".." and "/" that resolve to a directory, are parked (no I1 reach, same C19-only attacker).
+
 Handoffs: S-1013 takes the chain of C26 with C19 and C21 (a relative data home or a cwd above the data directory, through which
 the guest writes the marker), the half-written .download-* residue with C24's volume fill, and the two-verbs-at-once race on the
 layer directory; S-1012 takes the bump.class author question and the B6 row bounds (PARKED lines 22, 39, 40); S-1018 the residual

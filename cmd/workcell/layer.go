@@ -14,7 +14,7 @@ import (
 )
 
 // findLayers is the current layer of every provider that has one under dir, in provider order: the image that layers/<agent>/current names (update). A provider
-// with no marker has no layer, and a session boots as it did without one. A marker naming an image that is not there is a refusal, before anything boots.
+// with no marker has no layer, and a session boots as it did without one. A marker that is not a bare name, or names an image that is not there, is a refusal before anything boots.
 func findLayers(dir string) ([]vmm.Layer, error) {
 	all, err := provider.All()
 	if err != nil {
@@ -28,8 +28,8 @@ func findLayers(dir string) ([]vmm.Layer, error) {
 			continue
 		}
 		image := filepath.Join(sub, name)
-		if _, err := os.Stat(image); err != nil {
-			return nil, fmt.Errorf("the %s layer %s is missing; run workcell update %s", p.Name, name, p.Name)
+		if _, err := os.Stat(image); err != nil || name != filepath.Base(name) {
+			return nil, fmt.Errorf("the %s layer %s is %s; run workcell update %s", p.Name, name, map[bool]string{true: "not a bare name", false: "missing"}[name != filepath.Base(name)], p.Name)
 		}
 		ls = append(ls, vmm.Layer{Name: p.Name, Image: image})
 	}

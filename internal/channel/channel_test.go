@@ -101,20 +101,18 @@ func TestVerify(t *testing.T) {
 		{"negative serial", mut(func(m *Manifest) { m.Serial = -1 }), keys, now, 0, errRollback, ""},
 		{"oversized", append(sign(good, s1), bytes.Repeat([]byte(" "), MaxBytes)...), keys, now, 0, errFormat, ""},
 		{"other payloadType", edit(func(e *envelope) { e.PayloadType = PayloadType + ";v=2" }), keys, now, 0, errFormat, ""},
-		{"unknown envelope field", bytes.Replace(sign(good, s1), []byte(`{"payloadType"`), []byte(`{"x":1,"payloadType"`), 1),
-			keys, now, 0, errFormat, ""},
+		{"unknown envelope field", bytes.Replace(sign(good, s1), []byte(`{"payloadType"`), []byte(`{"x":1,"payloadType"`), 1), keys, now, 0, errFormat, ""},
 		{"unknown payload field ignored", extra, keys, now, 0, nil, "1.2.4"},
 		{"trailing bytes", append(sign(good, s1), '{'), keys, now, 0, errFormat, ""},
 		{"short digest", mut(setPin(func(p *Pin) { p.SHA256 = p.SHA256[:63] })), keys, now, 0, errPin, ""},
 		{"uppercase digest", mut(setPin(func(p *Pin) { p.SHA256 = "A" + p.SHA256[1:] })), keys, now, 0, errPin, ""},
 		{"http url", mut(setPin(func(p *Pin) { p.URL = "http://" + p.URL[8:] })), keys, now, 0, errPin, ""},
-		{"short digest in previous", mut(func(m *Manifest) {
-			m.Previous["provider1"]["arm64"] = Pin{Version: "1.2.3", URL: "https://example.com/x", SHA256: "abc"}
-		}), keys, now, 0, errPin, ""},
+		{"short digest in previous", mut(func(m *Manifest) { m.Previous["provider1"]["arm64"] = Pin{"1.2.3", "https://example.com/x", "abc", 0} }), keys, now, 0, errPin, ""},
 		{"short digest in withdrawn", mut(func(m *Manifest) { m.Withdrawn = []string{"abc"} }), keys, now, 0, errPin, ""},
+		{"C26: slash in version", mut(setPin(func(p *Pin) { p.Version = "../evil" })), keys, now, 0, errPin, ""},
+		{"C26: backslash in previous version", mut(func(m *Manifest) { m.Previous["provider1"]["arm64"] = Pin{`..\evil`, "https://x.io/x", sum("x"), 0} }), keys, now, 0, errPin, ""},
 		{"two signatures, only the second key trusted", sign(good, s1, s2), []Key{k2}, now, 0, nil, "1.2.4"},
-		{"installed withdrawn, previous selected", mut(func(m *Manifest) { m.Withdrawn = []string{installed.SHA256} }),
-			keys, now, 0, nil, "1.2.3"},
+		{"installed withdrawn, previous selected", mut(func(m *Manifest) { m.Withdrawn = []string{installed.SHA256} }), keys, now, 0, nil, "1.2.3"},
 		{"no current pin, previous selected", mut(func(m *Manifest) { delete(m.Pins, "provider0") }), keys, now, 0, nil, "1.2.3"},
 		{"both withdrawn, nothing selected", mut(func(m *Manifest) {
 			m.Withdrawn = []string{installed.SHA256, good.Previous["provider0"]["amd64"].SHA256}

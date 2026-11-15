@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"io"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/omkhar/workcell/v2/internal/pins"
@@ -31,7 +32,7 @@ var (
 	errFormat, errSignature = errors.New("malformed channel manifest"), errors.New("no valid signature by a trusted key")
 	errRollback, errFuture  = errors.New("serial lower than the last one seen"), errors.New("serial more than a day ahead")
 	errLifetime, errExpired = errors.New("expiry beyond serial plus 14 days"), errors.New("manifest expired")
-	errPin                  = errors.New("pin without a 64-hex sha256 or an https url")
+	errPin                  = errors.New("pin without a 64-hex sha256, an https url and a bare version")
 )
 
 // Key is one entry of the client's key table; two overlap during rotation.
@@ -138,7 +139,7 @@ func Verify(raw []byte, keys []Key, now time.Time, lastSerial int64) (*Manifest,
 	for _, set := range []map[string]map[string]Pin{m.Pins, m.Previous} {
 		for _, arches := range set {
 			for _, p := range arches {
-				if !pins.IsSHA256(p.SHA256) || pins.HTTPSURL(p.URL) != nil {
+				if !pins.IsSHA256(p.SHA256) || pins.HTTPSURL(p.URL) != nil || strings.ContainsAny(p.Version, `/\`) {
 					return nil, errPin
 				}
 			}
