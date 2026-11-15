@@ -432,14 +432,14 @@ func (p *Proxy) serveTerminated(client net.Conn, host string, replay []byte) {
 			}
 			// At a token endpoint the body is read whole, its refresh placeholder swapped, and the answer rewritten (signin.go).
 			if rule, ok := p.tokenEndpoint(host, r.URL); ok {
-				body, reason := p.tokenRequest(r, rule)
+				body, refresh, reason := p.tokenRequest(r, rule)
+				defer func() { clear(body); clear(refresh) }() // the one copy the request carries, once it has gone
 				if reason != "" {
 					p.Deny(host, tlsPort, reason)
 					http.Error(w, "request to the token endpoint refused: "+reason, http.StatusBadGateway)
 					return
 				}
-				defer clear(body) // the one copy the request carries, once it has gone
-				r = r.WithContext(context.WithValue(r.Context(), tokenKey{}, rule))
+				r = r.WithContext(context.WithValue(r.Context(), tokenKey{}, tokenCtx{rule, refresh}))
 			}
 			if carriesPlaceholder(r) {
 				p.Deny(host, tlsPort, "placeholder_unswapped")

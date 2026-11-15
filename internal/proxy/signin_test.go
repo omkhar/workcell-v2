@@ -166,7 +166,7 @@ func TestLearn(t *testing.T) {
 		broker := &tokenBroker{refresh: []byte("sk-ref-0")}
 		p := &Proxy{broker: broker}
 		rule := TerminateRule{Host: "api.example.com", Header: "authorization", Placeholder: testPlaceholder, SignIn: &SignIn{Host: "login.example.com", Path: tokenEndpointPath, Refresh: testRefreshPlaceholder}}
-		got, err := p.learn(rule, tc.status, []byte(tc.body))
+		got, err := p.learn(rule, nil, tc.status, []byte(tc.body))
 		if (err == nil) != (tc.want != "") || string(got) != tc.want {
 			t.Errorf("%s: learn = %q, %v; want %q", tc.name, got, err, tc.want)
 		}

@@ -4,7 +4,7 @@
 // Finding C15 of S-1007 (I5, medium). learn in internal/proxy/signin.go hides only the tokens the broker holds when the answer arrives, plus the ones the
 // answer itself issues. Two refresh requests sent at once both carry the one real refresh token R1 to the endpoint; the provider rotates on the first and
 // answers the second, now stale, 400 with the presented token echoed. By then the broker holds (A2, R2), so R1, real a moment before, reaches the guest
-// verbatim. That the provider echoes is a precondition the attacker does not control. The fix unit (S-F9) moves this file to internal/proxy/c15_test.go.
+// verbatim. That the provider echoes is a precondition the attacker does not control. This file lives here as finding C15's regression test (S4).
 package proxy
 
 import (
