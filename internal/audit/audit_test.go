@@ -88,7 +88,7 @@ func TestVerifyFindsEveryOfflineEdit(t *testing.T) {
 			if err := os.WriteFile(path, tc.edit(b), 0o600); err != nil {
 				t.Fatal(err)
 			}
-			if err := Verify(dir, key.Public().(ed25519.PublicKey)); (err == nil) != tc.ok {
+			if _, err := Verify(dir, key.Public().(ed25519.PublicKey)); (err == nil) != tc.ok {
 				t.Errorf("Verify = %v, want ok=%v", err, tc.ok)
 			}
 		})
@@ -118,7 +118,7 @@ func TestVerifyFindsAChangedSealOrKey(t *testing.T) {
 			if pub == nil {
 				pub = key.Public().(ed25519.PublicKey)
 			}
-			if err := Verify(dir, pub); err == nil {
+			if _, err := Verify(dir, pub); err == nil {
 				t.Error("Verify accepted it")
 			}
 		})
@@ -146,7 +146,7 @@ func TestRecordsAreBoundedAndEscaped(t *testing.T) {
 			if len(lines) != 1 || !ok || len(r.Host) > maxField+3 || r.Event != Connect {
 				t.Errorf("log %q: want one record with a bounded host", b)
 			}
-			if err := Verify(dir, key.Public().(ed25519.PublicKey)); err != nil {
+			if _, err := Verify(dir, key.Public().(ed25519.PublicKey)); err != nil {
 				t.Error(err)
 			}
 		})
@@ -178,7 +178,7 @@ func TestVolumeIsBounded(t *testing.T) {
 	if n := strings.Count(string(b), LogFull); n != 1 || len(b) > 1000 {
 		t.Errorf("log of %d bytes holds %d full markers, want one within the hard limit", len(b), n)
 	}
-	if err := Verify(dir, key.Public().(ed25519.PublicKey)); err != nil {
+	if _, err := Verify(dir, key.Public().(ed25519.PublicKey)); err != nil {
 		t.Error(err)
 	}
 }
@@ -204,7 +204,7 @@ func TestLifecycleRecordsIgnoreTheLimit(t *testing.T) {
 			if !strings.Contains(string(b), `"event":"`+event+`"`) {
 				t.Errorf("no %s line in the log", event)
 			}
-			if err := Verify(dir, key.Public().(ed25519.PublicKey)); err != nil {
+			if _, err := Verify(dir, key.Public().(ed25519.PublicKey)); err != nil {
 				t.Error(err)
 			}
 		})

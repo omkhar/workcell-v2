@@ -13,7 +13,6 @@ package audit
 import (
 	"crypto/ed25519"
 	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -71,6 +70,7 @@ type Log struct {
 	mu         sync.Mutex
 	log, seal  *os.File
 	key        ed25519.PrivateKey
+	id         string // the session: the seal signs it, so another session's record cannot pass as this one
 	now        func() time.Time
 	head       [sha256.Size]byte
 	size       int64
@@ -90,7 +90,7 @@ func Create(dir string, key ed25519.PrivateKey, now func() time.Time) (*Log, err
 		log.Close()
 		return nil, err
 	}
-	l := &Log{log: log, seal: seal, key: key, now: now, soft: SoftLimit, hard: HardLimit}
+	l := &Log{log: log, seal: seal, key: key, id: filepath.Base(dir), now: now, soft: SoftLimit, hard: HardLimit}
 	if err := l.sign(); err != nil {
 		l.Close()
 		return nil, err
@@ -159,10 +159,10 @@ func (l *Log) write(line []byte, durable bool) error {
 	return nil
 }
 
-// sign writes the seal: the head of the chain, signed. It has one length whatever the count of
-// lines, so each seal replaces the last in place.
+// sign writes the seal: the head of the chain, signed with the session id. It has one length
+// whatever the count of lines, so each seal replaces the last in place.
 func (l *Log) sign() error {
-	text := fmt.Sprintf("%x %x\n", l.head, ed25519.Sign(l.key, sealed(l.head)))
+	text := fmt.Sprintf("%x %x\n", l.head, ed25519.Sign(l.key, sealed(l.id, l.head)))
 	_, err := l.seal.WriteAt([]byte(text), 0)
 	return err
 }
@@ -188,54 +188,50 @@ func next(head [sha256.Size]byte, line []byte) [sha256.Size]byte {
 	return [sha256.Size]byte(h.Sum(nil))
 }
 
-func sealed(head [sha256.Size]byte) []byte {
-	return append([]byte("workcell-audit-seal-v2"), head[:]...)
+func sealed(id string, head [sha256.Size]byte) []byte {
+	return append([]byte("workcell-audit-seal-v2 "+id+" "), head[:]...)
 }
 
 func clip(s string) string { return s[:min(len(s), maxField)] }
 
-// Verify reads the log in dir and says whether it is exactly what the log that holds key wrote:
-// every line a record, and their chain the one the seal signs. The error says only
-// that it is not, and where a line is no record. pub is the public half of the key.
-func Verify(dir string, pub ed25519.PublicKey) error {
+// Verify reads the log in dir and says whether it is exactly what the log that holds key wrote for
+// the session dir names: every line a record, their chain the one the seal signs under that id. The
+// error says only that it is not, and where a line is no record; last is the last record it read.
+func Verify(dir string, pub ed25519.PublicKey) (last Record, err error) {
 	f, err := os.Open(filepath.Join(dir, LogName))
 	if err != nil {
-		return err
+		return last, err
 	}
 	defer f.Close()
 	var n uint64
+	var ok bool
 	var head [sha256.Size]byte
 	if err := eachLine(f, func(line []byte) error {
 		n++
-		if _, ok := ParseLine(string(line)); !ok {
+		if last, ok = ParseLine(string(line)); !ok {
 			return fmt.Errorf("audit: line %d is not a record", n)
 		}
 		head = next(head, line)
 		return nil
 	}); err != nil {
-		return err
+		return last, err
 	}
 	text, err := os.ReadFile(filepath.Join(dir, SealName))
 	if err != nil {
-		return err
+		return last, err
 	}
-	var headHex, sigHex string
-	if _, err := fmt.Sscanf(string(text), "%s %s", &headHex, &sigHex); err != nil {
-		return errors.New("audit: the seal is unreadable")
-	}
-	h, herr := hex.DecodeString(headHex)
-	sig, serr := hex.DecodeString(sigHex)
-	if herr != nil || serr != nil || len(h) != sha256.Size {
-		return errors.New("audit: the seal is unreadable")
+	var h, sig []byte
+	if _, err := fmt.Sscanf(string(text), "%x %x", &h, &sig); err != nil || len(h) != sha256.Size {
+		return last, errors.New("audit: the seal is unreadable")
 	}
 	want := [sha256.Size]byte(h)
-	if len(pub) != ed25519.PublicKeySize || !ed25519.Verify(pub, sealed(want), sig) {
-		return errors.New("audit: the seal is not signed with this host's key")
+	if len(pub) != ed25519.PublicKeySize || !ed25519.Verify(pub, sealed(filepath.Base(dir), want), sig) {
+		return last, errors.New("audit: the seal is not signed with this host's key for this session")
 	}
 	if want != head {
-		return fmt.Errorf("audit: the log's %d records do not match the signed seal: it was changed", n)
+		return last, fmt.Errorf("audit: the log's %d records do not match the signed seal: it was changed", n)
 	}
-	return nil
+	return last, nil
 }
 
 // ParseLine is the strict reader of one line (no newline): one Record and nothing after it.
