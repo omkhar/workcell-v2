@@ -33,15 +33,13 @@ type lookup struct {
 
 // The spec a judge hands the probe for one question: "type:name", where type is A, AAAA, TXT, PTR or ANY, "+edns" after it adds an OPT record, and TOKEN in the
 // name stands for the run's token.
-const (
-	fast        = 2 * time.Second             // a refusal or an answer must come within this
-	lookupWait  = fast + 500*time.Millisecond // the probe's deadline, past fast so that slow is told from silent
-	garbageWait = 500 * time.Millisecond      // how long a hostile datagram is given to get an answer
-	burstSize   = 200
-	resolvConf  = "resolv.conf" // the target that means the guest's own configured resolver
-	allowedName = "allowed.escape.test."
-	deniedName  = "denied.escape.test."
-)
+const fast = 2 * time.Second                   // a refusal or an answer must come within this
+const lookupWait = fast + 500*time.Millisecond // the probe's deadline, past fast so that slow is told from silent
+const garbageWait = 500 * time.Millisecond     // how long a hostile datagram is given to get an answer
+const burstSize = 200
+const resolvConf = "resolv.conf" // the target that means the guest's own configured resolver
+const allowedName = "allowed.escape.test."
+const deniedName = "denied.escape.test."
 
 // The lookups the rows ask. The allowed name must resolve however it is spelled; every other name, every other type for it, and the allowed name under a policy
 // that allows nothing must be refused. The allowed row asks one denied name too: a resolver that answers everything, the control sandbox's, is then no pass

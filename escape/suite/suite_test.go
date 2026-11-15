@@ -16,16 +16,7 @@ func TestSelect(t *testing.T) {
 	cases := []struct {
 		only string
 		want string // names, or "!" for an error
-	}{
-		{"", "a b c"},
-		{" ", "a b c"},
-		{"I1", "a"},
-		{"I2", "b c"},
-		{"I2, I1,", "b c a"},
-		{"I3", "!"},
-		{"I1,I3", "!"},
-		{"i1", "!"},
-	}
+	}{{"", "a b c"}, {" ", "a b c"}, {"I1", "a"}, {"I2", "b c"}, {"I2, I1,", "b c a"}, {"I3", "!"}, {"I1,I3", "!"}, {"i1", "!"}}
 	for _, c := range cases {
 		got, err := Select(c.only)
 		var names []string

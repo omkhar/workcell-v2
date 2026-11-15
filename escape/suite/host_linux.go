@@ -36,14 +36,10 @@ func hostProcs() (int64, error) {
 }
 
 // hostMemAvailable is the host's MemAvailable, in bytes.
-func hostMemAvailable() (int64, error) {
-	return procField("/proc/meminfo", "MemAvailable:", 1024)
-}
+func hostMemAvailable() (int64, error) { return procField("/proc/meminfo", "MemAvailable:", 1024) }
 
 // hostFiles is the host's count of open file handles (fs.file-nr).
-func hostFiles() (int64, error) {
-	return procField("/proc/sys/fs/file-nr", "", 1)
-}
+func hostFiles() (int64, error) { return procField("/proc/sys/fs/file-nr", "", 1) }
 
 // hostBusy is the host's CPU time spent on anything but idle and iowait, in clock ticks, summed over every CPU.
 func hostBusy() (int64, error) {

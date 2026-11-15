@@ -25,12 +25,10 @@ import (
 )
 
 // Outcomes of one test.
-const (
-	Pass           = "pass"
-	Fail           = "fail"
-	NotImplemented = "not-implemented"
-	Error          = "error"
-)
+const Pass = "pass"
+const Fail = "fail"
+const NotImplemented = "not-implemented"
+const Error = "error"
 
 // perTest bounds one test, sandbox start to stop (SPEC: under 20 seconds), unless the test states its own Bound.
 const perTest = 20 * time.Second

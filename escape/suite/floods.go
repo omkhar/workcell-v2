@@ -104,13 +104,11 @@ func loadJudge(read func() (int64, error), gained bool, bound, unit int64, what 
 
 // The I10 judges on one figure each: the probe asks for about twice the cap, and the host may lose no more than the cap and its slack, or gain no more than the
 // slack. The log judge holds the host's disk to one session's log.
-var (
-	forkJudge   = loadJudge(hostProcs, true, forkSlack, 1, "gained %d processes while the guest forked", "parent", strconv.Itoa(forkCount))
-	memoryJudge = loadJudge(hostMemAvailable, false, int64(capped.MemoryMiB+memorySlack)<<20, 1<<20, fmt.Sprintf("lost %%d MiB of available memory while the guest, capped at %d MiB, touched %d MiB", capped.MemoryMiB, memoryTouch), "parent", strconv.Itoa(memoryTouch))
-	diskJudge   = loadJudge(hostDiskFree, false, int64(capped.DiskMiB+diskSlack)<<20, 1<<20, fmt.Sprintf("lost %%d MiB of free disk while the guest, capped at %d MiB, wrote %d MiB", capped.DiskMiB, diskWrite), strconv.Itoa(diskWrite))
-	fileJudge   = loadJudge(hostFiles, true, fileSlack, 1, fmt.Sprintf("gained %%d open file handles while the guest opened %d", fileCount), strconv.Itoa(fileCount))
-	logJudge    = loadJudge(hostDiskFree, false, logCap+diskSlack<<20, 1<<20, fmt.Sprintf("lost %%d MiB of free disk while the guest streamed %d MiB of output, log cap %d MiB", logWrite>>20, logCap>>20), strconv.Itoa(logWrite))
-)
+var forkJudge = loadJudge(hostProcs, true, forkSlack, 1, "gained %d processes while the guest forked", "parent", strconv.Itoa(forkCount))
+var memoryJudge = loadJudge(hostMemAvailable, false, int64(capped.MemoryMiB+memorySlack)<<20, 1<<20, fmt.Sprintf("lost %%d MiB of available memory while the guest, capped at %d MiB, touched %d MiB", capped.MemoryMiB, memoryTouch), "parent", strconv.Itoa(memoryTouch))
+var diskJudge = loadJudge(hostDiskFree, false, int64(capped.DiskMiB+diskSlack)<<20, 1<<20, fmt.Sprintf("lost %%d MiB of free disk while the guest, capped at %d MiB, wrote %d MiB", capped.DiskMiB, diskWrite), strconv.Itoa(diskWrite))
+var fileJudge = loadJudge(hostFiles, true, fileSlack, 1, fmt.Sprintf("gained %%d open file handles while the guest opened %d", fileCount), strconv.Itoa(fileCount))
+var logJudge = loadJudge(hostDiskFree, false, logCap+diskSlack<<20, 1<<20, fmt.Sprintf("lost %%d MiB of free disk while the guest streamed %d MiB of output, log cap %d MiB", logWrite>>20, logCap>>20), strconv.Itoa(logWrite))
 
 // mountDiskJudge is diskJudge for a live export: the probe writes twice the cap under the export and grows a file there far past it without writing; neither
 // the host's free disk nor a file in the export may pass the cap and its slack. A run that did not end in the probe's own "tried" report is never a pass.

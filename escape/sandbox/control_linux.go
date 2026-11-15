@@ -89,16 +89,14 @@ func (c *control) Start(_ context.Context, cfg Config) (string, error) {
 		return "", fmt.Errorf("control: write resolv.conf: %w", err)
 	}
 	if sec := cfg.Secret; sec != nil && sec.Value != "" {
-		// The naive way: the real value in the environment and in a dotenv file in the workspace.
-		c.env = append(c.env, sec.Env+"="+sec.Value)
+		c.env = append(c.env, sec.Env+"="+sec.Value) // The naive way: the real value in the environment and in a dotenv file in the workspace.
 		if cfg.Workspace != "" {
 			if err := os.WriteFile(filepath.Join(cfg.Workspace, ".env"), []byte(sec.Env+"="+sec.Value+"\n"), 0o600); err != nil {
 				return "", fmt.Errorf("control: stage secret: %w", err)
 			}
 		}
 	}
-	// The host's root is the guest's: the export is where it lies, live, in either mode.
-	return cfg.Workspace, c.record("start")
+	return cfg.Workspace, c.record("start") // The host's root is the guest's: the export is where it lies, live, in either mode.
 }
 
 // record appends one lifecycle record to the session's log, a plain file the guest can reach.
@@ -116,8 +114,7 @@ func (c *control) Exec(ctx context.Context, args ...string) (Output, error) {
 	if c.update != nil { // a naive daily check: every start, from whatever the channel says
 		c.Update(ctx, *c.update)
 	}
-	// The guest end of the channel: one connection the command inherits as descriptor 3.
-	guest, err := net.Dial("unix", c.ln.Addr().String())
+	guest, err := net.Dial("unix", c.ln.Addr().String()) // the guest end of the channel: one connection the command inherits as descriptor 3
 	if err != nil {
 		return Output{}, fmt.Errorf("control: dial the channel: %w", err)
 	}
@@ -139,9 +136,7 @@ func (c *control) Exec(ctx context.Context, args ...string) (Output, error) {
 	cmd.Dir = "/"
 	cmd.Env = c.env
 	cmd.ExtraFiles = []*os.File{end}
-	attr := &syscall.SysProcAttr{
-		Cloneflags: syscall.CLONE_NEWNS | syscall.CLONE_NEWPID | syscall.CLONE_NEWUTS | syscall.CLONE_NEWIPC,
-	}
+	attr := &syscall.SysProcAttr{Cloneflags: syscall.CLONE_NEWNS | syscall.CLONE_NEWPID | syscall.CLONE_NEWUTS | syscall.CLONE_NEWIPC}
 	if uid := os.Getuid(); uid != 0 {
 		attr.Cloneflags |= syscall.CLONE_NEWUSER
 		attr.UidMappings = []syscall.SysProcIDMap{{ContainerID: 0, HostID: uid, Size: 1}}

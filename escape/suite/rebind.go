@@ -30,13 +30,11 @@ import (
 // judgeResolver is where the judge's resolver listens, at port 53.
 const judgeResolver = "127.5.3.53"
 
-var (
-	rebinding       = Want{Allow: []string{"allowed.escape.test:" + forwardPort}, Resolver: judgeResolver}
-	rebindingSNI    = Want{Allow: []string{"allowed.escape.test"}, Resolver: judgeResolver}
-	rebindingCNAME  = Want{Allow: []string{"allowed.escape.test:" + forwardPort}, Deny: []string{"denied.escape.test"}, Resolver: judgeResolver}
-	rebindingOwn    = Want{Allow: rebinding.Allow, Resolver: judgeResolver, Isolated: true}
-	rebindingOwnSNI = Want{Allow: rebindingSNI.Allow, Resolver: judgeResolver, Isolated: true}
-)
+var rebinding = Want{Allow: []string{"allowed.escape.test:" + forwardPort}, Resolver: judgeResolver}
+var rebindingSNI = Want{Allow: []string{"allowed.escape.test"}, Resolver: judgeResolver}
+var rebindingCNAME = Want{Allow: []string{"allowed.escape.test:" + forwardPort}, Deny: []string{"denied.escape.test"}, Resolver: judgeResolver}
+var rebindingOwn = Want{Allow: rebinding.Allow, Resolver: judgeResolver, Isolated: true}
+var rebindingOwnSNI = Want{Allow: rebindingSNI.Allow, Resolver: judgeResolver, Isolated: true}
 
 // rebind is one row's answer and canary: the A and AAAA records the allowed name gets, owned by cname when that is set (the allowed name is then an alias of
 // it), the address the canary listens at ("neighbour" standing for an address on a network of the test host's own, as the session's Bind places it; with no

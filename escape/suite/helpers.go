@@ -43,15 +43,13 @@ func privileged(network, addr, payload string) (net.Listener, net.PacketConn, er
 	return sandbox.RootBind(network, addr, payload, 0)
 }
 
-const (
-	holdFor     = 5 * time.Second         // how long the guest holds its connection open, for the kill to land
-	attemptWait = 1500 * time.Millisecond // what one attempt after the hold may take
-	bootWait    = 8 * time.Second         // how long the guest has to boot and hold a connection
-	deathWait   = 2 * time.Second         // how long SIGKILL has to take effect
-	wakeWait    = 6 * time.Second         // how long the session has to go away after the death, the run included
-	closeWithin = 2 * time.Second         // how soon after the death the held connection must close
-	settle      = 300 * time.Millisecond  // a moment for a late request to show at a canary
-)
+const holdFor = 5 * time.Second             // how long the guest holds its connection open, for the kill to land
+const attemptWait = 1500 * time.Millisecond // what one attempt after the hold may take
+const bootWait = 8 * time.Second            // how long the guest has to boot and hold a connection
+const deathWait = 2 * time.Second           // how long SIGKILL has to take effect
+const wakeWait = 6 * time.Second            // how long the session has to go away after the death, the run included
+const closeWithin = 2 * time.Second         // how soon after the death the held connection must close
+const settle = 300 * time.Millisecond       // a moment for a late request to show at a canary
 
 // holdProbe is the guest of the I11 rows. It asks its resolver for the allowed name, fetches https://<allowed>/reach, once more after a pause when that
 // fails, holds a second connection open on /stream until the far end closes it or holdFor passes, and then, as a program does after losing a connection,
@@ -179,8 +177,7 @@ func (st *stream) serve(w http.ResponseWriter, r *http.Request) {
 // and, if the guest could still speak, its resolver answered no name. A guest that held no connection before the kill is an error, not a pass.
 func helperKilled(name string, atStart bool) Judge {
 	return func(ctx context.Context, s Session) (bool, string, error) {
-		// The canaries and the judge's resolver, where the product reaches the test host; the resolver answers both names with the address the canaries
-		// listen at.
+		// The canaries and the judge's resolver, where the product reaches the test host; the resolver answers both names with the address the canaries listen at.
 		var st stream
 		allowed, denied := &canary{name: s.Allow[0], respond: st.serve}, &canary{name: s.Deny[0]}
 		ns, stop, err := serveTwo(ctx, s, nil, allowed, denied)

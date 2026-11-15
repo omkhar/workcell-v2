@@ -59,21 +59,17 @@ func NewSecret(w Want) sandbox.Secret {
 	return sec
 }
 
-const (
-	boundHeader  = "x-api-key"
-	narrowMethod = "POST"
-	narrowPath   = "/v1/"
-)
+const boundHeader = "x-api-key"
+const narrowMethod = "POST"
+const narrowPath = "/v1/"
 
 // withSecret is the sandbox the I5 tests want: a workspace, two allowed names, bare, a secret bound to the first, the judge as the host's resolver and the host
 // side in a network of its own, where the judge holds the one address both names resolve to and serves a canary for each at port 443 (twoNames). The guest's
 // view of the names is given to each probe as a literal address beside the name. narrowed binds the secret to one method and path as well; scoped, as a git
 // token, to one repository.
-var (
-	withSecret = Want{Workspace: true, Allow: []string{"bound.escape.test", "other.escape.test"}, Resolver: judgeResolver, Isolated: true, Secret: true}
-	narrowed   = Want{Workspace: true, Allow: withSecret.Allow, Resolver: judgeResolver, Isolated: true, Secret: true, Narrow: true}
-	scoped     = Want{Workspace: true, Allow: withSecret.Allow, Resolver: judgeResolver, Isolated: true, Secret: true, Repos: []string{"octo/allowed"}}
-)
+var withSecret = Want{Workspace: true, Allow: []string{"bound.escape.test", "other.escape.test"}, Resolver: judgeResolver, Isolated: true, Secret: true}
+var narrowed = Want{Workspace: true, Allow: withSecret.Allow, Resolver: judgeResolver, Isolated: true, Secret: true, Narrow: true}
+var scoped = Want{Workspace: true, Allow: withSecret.Allow, Resolver: judgeResolver, Isolated: true, Secret: true, Repos: []string{"octo/allowed"}}
 
 // findSecrets returns every secret-shaped value in b, in order, once each.
 func findSecrets(b []byte) []string {
@@ -94,10 +90,8 @@ func findSecrets(b []byte) []string {
 	}
 }
 
-func isHex(b []byte) bool { return all(b, isHexByte) }
-func isHexByte(c byte) bool {
-	return c >= '0' && c <= '9' || c >= 'a' && c <= 'f'
-}
+func isHex(b []byte) bool   { return all(b, isHexByte) }
+func isHexByte(c byte) bool { return c >= '0' && c <= '9' || c >= 'a' && c <= 'f' }
 
 // scan is one run of the probe: what it found, and how far it got.
 type scan struct {

@@ -86,11 +86,7 @@ func guest(run func(args ...string) Result) Session {
 	exec := func(_ context.Context, args ...string) (sandbox.Output, error) {
 		return sandbox.Output{Stdout: Format(run(args...))}, nil
 	}
-	return Session{
-		Run:     func(args ...string) (Result, error) { return run(args...), nil },
-		Exec:    exec,
-		Observe: relayAt{},
-	}
+	return Session{Run: func(args ...string) (Result, error) { return run(args...), nil }, Exec: exec, Observe: relayAt{}}
 }
 
 // deliver is a guest that really connects to args[0] and sends args[1].
@@ -137,8 +133,7 @@ func TestRelayJudges(t *testing.T) {
 	say := func(status string) func(...string) Result {
 		return func(...string) Result { return Result{Status: status, Detail: "x"} }
 	}
-	// relayCanary: only the canary's catch fails it.
-	canary := relayCanary("tcp4", "127.0.0.1:0", "tcp", "version-2")
+	canary := relayCanary("tcp4", "127.0.0.1:0", "tcp", "version-2") // only the canary's catch fails it
 	if pass, detail, err := canary(ctx, guest(say("closed"))); err != nil || !pass {
 		t.Errorf("relayCanary with nothing arriving = %v, %q, %v; want pass", pass, detail, err)
 	}
@@ -152,8 +147,7 @@ func TestRelayJudges(t *testing.T) {
 			t.Errorf("relayHeld with the guest saying %s = %v, %q, %v; want %v", status, pass, detail, err, want)
 		}
 	}
-	// A crashed host end fails whatever the guest says; a run that did not complete is an error.
-	crashed := guest(say("closed"))
+	crashed := guest(say("closed")) // a crashed host end fails whatever the guest says; a run that did not complete is an error
 	crashed.Exec = func(context.Context, ...string) (sandbox.Output, error) {
 		return sandbox.Output{Exit: 2, Stderr: []byte("panic: runtime error\n")}, nil
 	}

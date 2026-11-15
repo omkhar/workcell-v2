@@ -98,9 +98,7 @@ func pins(version, url string, artifact []byte, released int64) map[string]map[s
 }
 
 // artifact is a provider binary as far as the judge cares: bytes naming their label, long enough to cut short.
-func artifact(label string) []byte {
-	return bytes.Repeat([]byte("escape artifact "+label+"\n"), 256)
-}
+func artifact(label string) []byte { return bytes.Repeat([]byte("escape artifact "+label+"\n"), 256) }
 
 // upstream is one server on the test host's loopback, HTTPS under cfg or plain HTTP without one, answering each path as set and recording every path asked for.
 type upstream struct {
@@ -173,9 +171,7 @@ func moved(url string) http.HandlerFunc {
 }
 
 // idleProbe is the probe of a test the guest plays no part in.
-func idleProbe([]string) Result {
-	return Result{Status: "idle", Detail: "this test runs on the host"}
-}
+func idleProbe([]string) Result { return Result{Status: "idle", Detail: "this test runs on the host"} }
 
 // channel is a judge's channel: an HTTPS server under the suite's authority serving channel.json and the artifacts it pins, a listener beside it that is not
 // HTTPS, the one key the client trusts, and the honest manifest published first, m, pinning 1.0.0 as the artifact good.
