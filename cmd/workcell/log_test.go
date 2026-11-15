@@ -84,15 +84,7 @@ func TestDenyReader(t *testing.T) {
 // names the host and the remedy.
 func TestAcceptBlockedNpmInstallNamesTheHostToAllow(t *testing.T) {
 	dir := t.TempDir()
-	key, err := audit.LoadKey(dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	record, err := audit.Create(dir, key, time.Now)
-	if err != nil {
-		t.Fatal(err)
-	}
-	p := proxy.New(nil, record)
+	p := proxy.New(nil, must(audit.Create(dir, must(audit.LoadKey(dir)), time.Now)))
 	dns := resolver.New(nil, func(name string) { p.Deny(name, dnsPort, "name_not_allowed") })
 	q := append([]byte{0x42, 0x42, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0}, "\x08registry\x05npmjs\x03org\x00\x00\x01\x00\x01"...)
 	if a := dns.Answer(q); len(a) < 4 || a[3]&0x0F != 5 {
