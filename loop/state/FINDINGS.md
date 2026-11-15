@@ -1404,3 +1404,154 @@ endpoint, so there is no second path; a plain name, name:port and a trailing-dot
 Handoffs: S-1013 takes the chain of C21 with C19 (a relative data home and S-F12's cwd check) and the relative TMPDIR observation;
 S-1010 the audit log's canonical-host recording that C22 relied on; S-1016 nothing. The allowlist() re-parse and the `source` key a
 repository row must carry are less-code and developer-experience notes for the fix units in cmd/workcell.
+
+## S-1010: audit log, seal, key storage, `verify` (I9), as built at main eef4b5c
+
+Trust boundary. Row 23 (log volume) and row 25 (audit.log, audit.seal, audit.key on disk), with row 9's I9 share. Attacker bytes
+that reach a record: the raw SNI of a refused 443 connection (internal/proxy/proxy.go route returns it unchanged; crypto/tls refuses
+only a trailing dot), the name of a refused DNS query (internal/resolver/resolver.go: lower-case [a-z0-9.-] or ""), the relay
+header's port (uint16, 0 admitted), the command's exit status (one byte), and the rate and timing of every attempt. Everything else
+in a record is a constant, a config string, or the allowlist's canonical host (an allowed line carries the sni or forward map's
+key, never the SNI as sent, which answers S-1009's handoff). Entry: audit.Log.append (internal/audit/audit.go) clips the host to 253
+bytes and json.Marshals; Verify and ParseLine, and cmd/workcell/log.go feed, read the host-written file; denyMessage and
+ocsf.go ocsfLine pass the one free-form field through SafeHost. Authority: the supervisor, as the operator's uid, owns
+sessions/<id>/audit.log and audit.seal and signs with <data>/audit.key; log and verify read as the same uid. Every writer (proxy
+Deny, the resolver callback, relay deny, broker record, supervisor lifecycle) goes through one *audit.Log under one mutex. Lenses
+worked in order: parsing and resources, logic and state, concurrency and check-to-use, cryptography and identity, failure modes,
+downgrade and replay, interaction with other surfaces.
+
+Leads refuted or bounded, with evidence (overlay tests from the scratchpad against the real internal/audit, internal/proxy and
+cmd/workcell packages, and the real binary's log, log --format ocsf, log -f and verify over generated sessions; nothing in the
+tree changed; every target a file or process of this session; no VM needed, env:any):
+- PARKED line 34 (seal rewritten per append): 300 Verify runs against a live writer gave 272 intact and 28 "it was changed", never
+  a false intact; a log one line ahead of its seal (a crash between write and sign) gives the same "changed" wording, misleading but
+  fail-closed. The rollback consequence of the in-place seal is C25's untested variant.
+- PARKED line 35 (seal not bound to the session id): confirmed, C25.
+- PARKED line 36 (verify mints a key): with audit.key removed, verify wrote a new 64-byte 0600 key and then printed "the seal is not
+  signed with this host's key", exit 1; fail closed, the side effect is what the next run would do anyway. R3.
+- PARKED line 37 (redteam ideas): a whole-file swap verifies (C25); a seal edited alone is "unreadable" or "not signed" (torn, empty,
+  one byte changed); no site copies guest stdout or stderr into audit.log; no record site carries a value or placeholder (Record has
+  no field for one; broker.record passes host, header, name, result); a killed supervisor's log verifies intact (C25, completeness);
+  log --format ocsf gave 9 valid JSON lines for 9 records with hostnames sanitised; a policy name cannot carry control bytes (dnsName
+  refuses them, the resolver maps them to "").
+- PARKED line 41 (makeKey's O_EXCL create then write): an empty audit.key, and one with a trailing newline, fail every use with
+  "does not hold a key" until deleted; fail closed, developer experience only. R3.
+- FINDINGS line 92 (T5): ParseLine is fuzzed inside FuzzEachLine; feed, denyMessage and ocsfLine consume only records ParseLine
+  accepted and pass the one free-form guest field through SafeHost's anchored regexp; the guest's own bytes are parsed by crypto/tls
+  (FuzzPeekSNI) and the resolver (FuzzAnswer) before any writer. No fuzz target added (R5); no defect found.
+- FINDINGS line 95 (Note not fsynced): Note's write(2) completes before Note returns, so a process death loses nothing; only a host
+  power loss loses the unsynced tail, after which verify says "cut inside a record" or "changed" (closed). The splice path dials the
+  upstream before its Allowed line (proxy.go handle) while the terminated path records before the dial; with C23's fix the record
+  should precede the dial on both.
+- FINDINGS lines 454, 582 and 743 (the SoftLimit fill as the one suppression path, 57,000 refusal records per second): C23 and C24.
+- Guest-chosen bytes: ESC, OSC and CSI sequences, a C1 CSI as UTF-8, an embedded newline followed by a forged session_end object, a
+  quote-and-comma injection, U+202E and U+2028, 300 bytes of 0xFF, 200 'e-acute' (clipped mid-rune) and NUL each gave one parsing
+  line and one record, zero bytes below 0x20 in the file, verify intact, and (invalid) in both log and --format ocsf with no control
+  or C1 byte in either output. Secret-use records and deny messages carry no credential bytes or placeholder mappings.
+- Seal and key: the seal is bound to the host key (another host's key, a short key, a torn or empty seal all fail) and to the record
+  sequence through the chain, not to the session id or to completeness (C25); a missing or regenerated key fails closed. Verify on a
+  running session gives false negatives only; on a crashed session or with a lagging seal it says "changed", "cut inside a record" or
+  "unreadable", never a false intact, except that a cleanly cut log is intact (C24, C25).
+- Concurrency: writers share one mutex, so no record is lost or reordered without a returned error; a late Deny during teardown lands
+  after session_end or gets ErrClosed; a SIGKILL mid-append cannot split a write(2).
+- After the SoftLimit fill: connection records stop on every path (splice, terminated, DNS refusal, relay port refusal), secret-use
+  records continue until HardLimit and then the broker withholds values (fail closed), lifecycle records always continue, and the
+  fill itself is one durable log_full marker that verify accepts and log prints (C23).
+
+Observations (R3, not candidates): verify's wording blames an edit for a crash between write and sign; under eight concurrent
+writers 7% of records carry a time earlier than their predecessor (the clock is read before the lock; verify ignores order); the raw
+file keeps U+009B and U+202E unescaped, which JSON allows, so only cat audit.log on an xterm would obey them; relay.Decode admits
+port 0, giving a record with no port and the remedy host:0; the Sscanf seal reader ignores bytes after its two tokens; attach, pull
+and diff boots leave no record (pull's nil log, U-600); an empty or newline-terminated audit.key bricks every use until deleted;
+log reads the whole file with io.ReadAll and feed has no pending-line cap, host-written only. The escape suite has no row that
+floods audit.log (log-flood measures the output relay), so C23 is unproven on a real VM and its Go test is the evidence (env:any).
+
+Coverage. Examined in full: internal/audit/audit.go, key.go, lines.go (ported), audit_test.go; cmd/workcell/log.go, ocsf.go,
+verify_test.go, log_test.go, run_vm.go, session.go, relay.go, main.go; internal/proxy/proxy.go (ported); internal/resolver/
+resolver.go; internal/secret/broker.go (ported); escape/suite/audit.go; SPEC sections 2, 3, 6, 8 and 11 to 13; FINDINGS.md and
+PARKED.md whole; the I9 block of docs/threat-model.md and the docs grep for audit, verify and seal; go1.27 crypto/tls SNI parsing.
+In part: internal/proxy/terminate.go (every Deny site, serveTerminated, the transport's DialContext), signin.go (140 to 200),
+allowlist.go (30 to 90), proxy_test.go fixtures; escape/suite/tests.go I9 rows; escape/sandbox/workcell_vm.go (430 to 525 and 695
+to 706) and control_linux.go (95 to 256); escape/suite/floods.go logJudge; internal/guest/guest.go and internal/relay/relay.go by
+grep. Not opened: internal/secret/source.go, cmd/workcell pull, update, policy and explain, the init, the VMM backends, the rest of
+terminate.go and signin.go. Tools: go test only; the long fuzz run is S-1014's. Ported files opened: internal/audit/lines.go
+(nothing found), internal/secret/broker.go (nothing found), internal/proxy/proxy.go (C23 and C24 live in its Deny and handle, so
+they carry also in v1 main). Nothing concerns someone else's project: no NEEDS-YOU. No model declined and no safeguard re-ran a
+request; one tool permission was denied to the redteam (fetching a third-party checker), which wrote a stdlib one instead.
+
+### S-1010 candidates
+
+C23. ID I9 (every connection attempt is recorded on the host; the guest cannot suppress a record), against I10 (log volume).
+Attacker: guest root, no precondition; hostile model output does it in a few lines. Where: internal/audit/audit.go SoftLimit (8 MiB)
+and append, which after one log_full marker returns ErrFull for every later Note; internal/proxy/proxy.go Deny discards the
+recorder's error (`_ = p.rec.Note(...)`) and handle splices or serves the connection whatever the Allowed Note or Deny returned.
+Input: the guest fills the log to SoftLimit. One kept-alive terminated connection pipelining `GET / HTTP/1.1` requests with a foreign
+Host writes one 121-byte host_mismatch record per request with no upstream dial: 69,391 records fill 8 MiB, the writer alone takes
+1.6 s and S-1005 measured 57,000 such requests per second through the proxy, so about 2 s end to end; every refusal and every
+allowed connection pays into the same budget (DNS refusals alone take about 4.5 minutes, S-1006). Effect: from then on every
+connection attempt on every path, allowed or refused, gets ErrFull, Deny drops it, and the connection is served: a forward-port guest
+connection is spliced and the upstream reads the guest's bytes; a 443 connection completes the handshake with the session leaf and
+is served, secrets injected. The file holds exactly one log_full marker, verify says intact, log prints "log full, later connections
+were not recorded". Secret-use records continue to HardLimit, then the broker withholds values; session_end is always written. Lost:
+which allowed hosts the guest reached and which refused names it tried for the rest of the session. audit.go documents SoftLimit as
+the point where connection records stop (I10) and three earlier audits treated it as design, but no file in docs/adr/accepted/
+adopts it and I9's letter is broken. Reproducing test: escape/_pending/S-F16/unrecorded_test.go TestUnrecordedConnectionIsNotServed
+(redteam; package proxy, run by overlay; a two-row table of recorders returning audit.ErrFull and a plain write error, set on
+p.rec of the testProxy fixture for an allowed forward port; asserts the guest's read is io.EOF and the upstream was dialled 0 times):
+on eef4b5c it fails with `recorder failing with "audit: the log is full": the guest read read tcp ...: i/o timeout and the upstream
+was dialled 1 times; want EOF and no dial`; the redteam showed it passes under a scratch fix (handle takes the Allowed Note before
+connect and returns when it errs) with internal/proxy green under -race. Outcome: CONFIRMED, high, by the verifier, who ran the
+test on 5be6450 (the same failure), checked with TestVolumeIsBounded that a real *audit.Log returns ErrFull from every Note after
+SoftLimit so the stub recorder is a faithful stand-in and no extra power, and judged it high and not critical because only
+policy-allowed destinations are served unrecorded (I2 and I5 hold). Fix unit: S-F16, below S-1010 in PLAN.md. For S-F16 to carry:
+the smallest fix is the I11 shape, fail closed when the record cannot be taken: Deny returns Note's error (net 0 lines) and the
+two Allowed sites in handle close the connection on a non-nil result (about 4 lines), paid by folding Note and Record in audit.go
+into one-liners with the nil check moved into append; the terminated path (Deny then serveTerminated), the relay's and the
+resolver's Deny callers need the same rule, and the record should precede the dial on both paths; a legitimate session needs about
+76,000 connections to reach the limit, so a flooding guest loses its network instead of its trail. also in v1 main:
+egressproxy/proxy.go (Deny's discarded error).
+
+C24. ID I9. Attacker: guest root, with a precondition it does not control: a write error on the data directory's volume (ENOSPC
+when the volume's free space is below --disk plus the log's headroom, which the guest consumes through its own export by design;
+EIO; a quota). doctor warns under 4 GiB; run does not refuse. Where: internal/audit/audit.go append, where one failed write sets
+failed for the rest of the session and the marker cannot be written either; proxy.go Deny (discarded); cmd/workcell/run_vm.go
+session, `_ = log.Record(session_end)` with no stderr line; cmd/workcell/log.go verify has no completeness check. Effect: every
+later record fails, session_end included, no marker, nothing printed, connections continue (C23's path), and verify prints intact
+because the file ends at a line boundary; unlike C23 the suppression is invisible. Evidence: the auditor's overlay with a read-only
+descriptor under the log for one write: every Note and Record after it, session_end included, returned "audit log failed; no
+further records", the file held 2 lines and no marker, Verify nil; the real binary's verify on a session whose last record is a
+secret use printed intact, exit 0. Reproducing test: the second row of S-F16's table (a recorder returning a plain write error),
+which the verifier judged the same defect through the same two lines (Deny discards, handle serves), so it stands as a row of S-F16
+and not as its own finding. Outcome: CONFIRMED, medium, by the verifier, as part of S-F16. For S-F16 to carry: C23's fail-closed
+change covers the connections; print session_end's Record error on stderr in session() (2 lines) so that the operator can tell
+records stopped from the log alone. also in v1 main: egressproxy/proxy.go.
+
+C25. ID I9's last clause (`workcell verify` detects any offline edit) and lifecycle completeness. Attacker: none in section 2
+directly; an offline editor of the session directory, or a rollback or copy of the host's own files, the same power the suite's own
+I9 offline rows use (offlineJudge writes the record on the host), so a valid I9 finding and not R3 material; the guest reaches the
+data directory only through C19 (S-F12), where it also holds the key and no seal scheme helps. Where: internal/audit/audit.go sign
+overwrites the seal in place, so every earlier (log, seal) pair stays valid; sealed signs "workcell-audit-seal-v2" and the chain
+head, never the session id; Verify checks neither identity nor completeness; cmd/workcell/log.go verify. Input: (a) copy session A's
+audit.log and audit.seal over session B's, or rename A's directory to B's id; (b) restore a (log, seal) pair snapshotted
+mid-session; (c) a session ended by SIGKILL or by C24; (d) every session's initial seal is byte-identical, so an empty log with any
+session's initial seal verifies. Effect: verify B prints intact for A's record under B's id; a log missing its secret uses,
+refusals and session_end prints intact; verify never says incomplete; "intact" means "what this host wrote at some moment", not
+"this session's" or "complete". Reproducing test (in this record only, for the budget: the test budget held 29 lines after the
+redteam's deletions and S-F16's test took them, so the fix unit's redteam re-creates it): package main in cmd/workcell,
+TestVerifyBindsTheRecordToItsSession, 22 lines: auditSession(t) to make the session testID, os.Rename of its directory to a
+sibling id (testID with its last character replaced by 'e'), then verify([]string{that id}, io.Discard, io.Discard) must not return
+0. On eef4b5c it fails with `verify exit 0, want 1: another session's record passed under this id`; the redteam showed it passes
+under a scratch fix (sealed signs the prefix, filepath.Base(dir) and the head, and Verify checks the same) with TestVerify still
+green. Outcome: CONFIRMED, low, by the verifier, who ran the test on 5be6450 (the same failure), traced the cause to sealed and
+Verify, and noted that only the cross-session swap is tested: the rollback variant is inherent to the in-place seal and untested,
+while log-only truncation is already caught (verify_test.go "truncated at a record"). Fix unit: S-F17, below S-1010 in PLAN.md.
+For S-F17 to carry: bind the seal to the session by signing filepath.Base(dir), which Create and Verify both have (net 0 lines);
+have verify refuse a session that is not running whose last record is not session_end (Verify returns the last record it parsed,
+verify checks running(dir) and prints "incomplete: the session's end was not recorded", about 4 lines), keeping the check out of
+audit.Verify so a running session still verifies; the suite removes sessions/ after every row, so crashed sessions of I11 rows do
+not collide; the test can be the rewrite of TestVerifyRefusesAnotherHostsKey into two arms. Not ported.
+
+Handoffs: S-1013 takes the chain of C23 with S-1005's pipelined host_mismatch rate and with the EMFILE-starves-audit-log line, and
+the C24 with C19 chain (a guest that fills the host volume through its export); S-1016 nothing; S-1018 the residual that attach,
+pull and diff boots leave no record and that the in-place seal cannot name a rollback. The out-of-order times, port 0 and the
+seal reader's trailing bytes are less-code notes for the fix units in internal/audit and cmd/workcell.

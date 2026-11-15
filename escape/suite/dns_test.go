@@ -55,8 +55,8 @@ func TestParseDNSQuery(t *testing.T) {
 			t.Errorf("%s: parseDNSQuery = %+v, %v; want %+v, %v", c.name, got, ok, c.want, c.ok)
 		}
 	}
-	if f := dnsFrame(good); len(f) != len(good)+2 || f[0] != 0 || int(f[1]) != len(good) || !bytes.Equal(f[2:], good) {
-		t.Errorf("dnsFrame = % x", f[:4])
+	if f := framed(good); len(f) != len(good)+2 || f[0] != 0 || int(f[1]) != len(good) || !bytes.Equal(f[2:], good) {
+		t.Errorf("framed = % x", f[:4])
 	}
 }
 
