@@ -1233,3 +1233,5 @@ checkPath, fold and manifest.add is still absent and belongs to the first fix un
 real-VM rows the auditor designed for C17 and C18 (mount-disk-append-flood through a stolen 5002 socket, mount-entry-flood with ln -s
 and mkdir judged by host free blocks and inodes) are the first rows that would exercise fileserve's protocol tables from a real guest;
 they are parked for the fix units or the maintainer, since each needs a control-adapter twin for T2.
+
+Delivery: the unit is blocked by the SPEC section 7 test budget (BLOCKED.md); the four pending tests are on the claim branch named there until the maintainer makes room.
