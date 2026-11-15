@@ -5,6 +5,7 @@ package main
 
 import (
 	"bytes"
+	"cmp"
 	"crypto/ed25519"
 	"errors"
 	"flag"
@@ -166,8 +167,8 @@ func denyMessage(d audit.Record, cfg string) string {
 }
 
 // verify is `workcell verify [id]`: it says whether the session's audit.log is exactly what this
-// host wrote (I9), by the seal that only this host's key signs. The session is as for log, and may
-// be running.
+// host wrote for this session (I9), by the seal that only this host's key signs, and that it ended
+// unless it is still running. The session is as for log.
 func verify(args []string, stdout, stderr io.Writer) int {
 	if len(args) > 1 || (len(args) == 1 && strings.HasPrefix(args[0], "-")) {
 		fmt.Fprintln(stderr, "usage: workcell verify [id]")
@@ -183,11 +184,15 @@ func verify(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 	data, err := dataDir()
+	var last audit.Record
 	if err == nil {
 		var key ed25519.PrivateKey
 		if key, err = audit.LoadKey(data); err == nil {
-			err = audit.Verify(dir, key.Public().(ed25519.PublicKey))
+			last, err = audit.Verify(dir, key.Public().(ed25519.PublicKey))
 		}
+	}
+	if up, upErr := running(dir); err == nil && last.Event != audit.SessionEnd && !up {
+		err = cmp.Or(upErr, errors.New("incomplete: the session's end was not recorded"))
 	}
 	if err != nil {
 		fmt.Fprintln(stderr, "workcell verify:", err)

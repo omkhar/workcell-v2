@@ -1572,6 +1572,15 @@ verify checks running(dir) and prints "incomplete: the session's end was not rec
 audit.Verify so a running session still verifies; the suite removes sessions/ after every row, so crashed sessions of I11 rows do
 not collide; the test can be the rewrite of TestVerifyRefusesAnotherHostsKey into two arms. Not ported.
 
+C25 FIXED by S-F17, commit 7a468eb (PR #218). sealed in internal/audit/audit.go signs "workcell-audit-seal-v2", the session id
+(filepath.Base(dir), kept on the Log) and the head, and Verify checks the seal under dir's id, so A's two files copied over B's, or
+A's directory renamed to B's id, fail with "the seal is not signed with this host's key for this session" (inputs (a) and (d)).
+Verify returns the last record it read, and verify in cmd/workcell/log.go refuses a session that is not running (running(dir))
+whose last record is not session_end with "incomplete: the session's end was not recorded", so a session cut by SIGKILL or C24
+(input (c)) no longer prints intact, while a running one still verifies. Paid for by folding the seal reader to one Sscanf of
+"%x %x" (the same seals pass and fail). The rollback variant (b) stays S-1018's residual. Test: TestVerifyRefusesAnotherHostOrSession
+and TestVerify's "cut before session_end, not running" arm in cmd/workcell/verify_test.go.
+
 Handoffs: S-1013 takes the chain of C23 with S-1005's pipelined host_mismatch rate and with the EMFILE-starves-audit-log line, and
 the C24 with C19 chain (a guest that fills the host volume through its export); S-1016 nothing; S-1018 the residual that attach,
 pull and diff boots leave no record and that the in-place seal cannot name a rollback. The out-of-order times, port 0 and the
