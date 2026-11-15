@@ -88,7 +88,7 @@ type Recorder interface{ Note(audit.Record) error }
 
 // New returns a proxy for allow that records every attempt it decides to rec.
 func New(allow *Allowlist, rec Recorder) *Proxy {
-	p := &Proxy{
+	return &Proxy{
 		allow: allow,
 		lookup: func(ctx context.Context, host string) ([]netip.Addr, error) {
 			return net.DefaultResolver.LookupNetIP(ctx, "ip", host)
@@ -107,7 +107,6 @@ func New(allow *Allowlist, rec Recorder) *Proxy {
 		slots: make(chan struct{}, maxConns),
 		rec:   rec,
 	}
-	return p
 }
 
 // Serve handles connections from ln, which receives traffic for port, until
@@ -141,8 +140,13 @@ func (p *Proxy) handle(client net.Conn, port uint16) {
 		p.Deny(host, port, reason)
 		return
 	}
+	if p.Deny(host, port, audit.Allowed) != nil { // no record, no connection (I9): nothing is dialled, and the guest reads EOF
+		closeWrite(client) // FIN first, then what the guest sent is read until it closes, so that no unread byte turns the close into a reset
+		_ = client.SetReadDeadline(time.Now().Add(peekTimeout))
+		_, _ = io.Copy(io.Discard, client)
+		return
+	}
 	if _, ok := p.terminate[host]; ok && port == tlsPort {
-		p.Deny(host, port, audit.Allowed)
 		p.serveTerminated(client, host, replay)
 		return
 	}
@@ -152,7 +156,6 @@ func (p *Proxy) handle(client net.Conn, port uint16) {
 		return
 	}
 	defer upstream.Close()
-	p.Deny(host, port, audit.Allowed)
 	if _, err := upstream.Write(replay); err != nil {
 		return
 	}
@@ -259,11 +262,7 @@ func splice(client, upstream net.Conn) {
 	var wg sync.WaitGroup
 	pipe := func(dst, src net.Conn) {
 		_, _ = io.Copy(dst, src)
-		if cw, ok := dst.(interface{ CloseWrite() error }); ok {
-			_ = cw.CloseWrite()
-		} else {
-			_ = dst.Close()
-		}
+		closeWrite(dst)
 	}
 	// ponytail: no idle timeout; a peer that never closes holds its goroutines.
 	wg.Go(func() { pipe(upstream, client) })
@@ -271,8 +270,17 @@ func splice(client, upstream net.Conn) {
 	wg.Wait()
 }
 
-// Deny records one connection attempt, admitted or refused, the proxy's own or one from outside
-// it (the resolver's, the relay's), through the same writer, so that the log keeps one order.
-func (p *Proxy) Deny(host string, port uint16, reason string) {
-	_ = p.rec.Note(audit.Record{Event: audit.Connect, Host: host, Port: port, Result: reason})
+// closeWrite tells the peer of c that nothing more comes: c's own half-close where it has one, else a close.
+func closeWrite(c net.Conn) {
+	if cw, ok := c.(interface{ CloseWrite() error }); ok {
+		_ = cw.CloseWrite()
+	} else {
+		_ = c.Close()
+	}
+}
+
+// Deny records one connection attempt, admitted or refused, the proxy's own or one from outside it (the resolver's,
+// the relay's), through the same writer, so that the log keeps one order. An admitting caller acts only on nil (I9).
+func (p *Proxy) Deny(host string, port uint16, reason string) error {
+	return p.rec.Note(audit.Record{Event: audit.Connect, Host: host, Port: port, Result: reason})
 }

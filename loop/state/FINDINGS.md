@@ -1526,6 +1526,27 @@ and not as its own finding. Outcome: CONFIRMED, medium, by the verifier, as part
 change covers the connections; print session_end's Record error on stderr in session() (2 lines) so that the operator can tell
 records stopped from the log alone. also in v1 main: egressproxy/proxy.go.
 
+C23 FIXED by S-F16, commit 34882ee (PR #217). Deny in internal/proxy/proxy.go returns the recorder's error, and handle takes the one
+Allowed record before the terminate check and before connect, so the record precedes the dial on the forward path and precedes
+serveTerminated on the 443 path; when the record cannot be taken, handle half-closes the guest connection, drains what the guest
+sent until it closes or peekTimeout, and returns, so the guest reads EOF (not a reset) and nothing is dialled. A connect refusal after
+an Allowed record is still recorded as a refusal. The refusing callers (route and connect refusals in handle, terminate.go's dial
+callback and handler refusals, signin.go, the relay's port_not_allowed and the resolver's name_not_allowed through one closure in
+cmd/workcell/run_vm.go boot) drop the error explicitly, since each already refuses or closes whatever the record did. Paid by folding
+Note and Record in internal/audit/audit.go into one-liners with the nil check first in append, clip into one line, and New's literal
+into a return: product 14998 of 15000. The pending test became internal/proxy/unrecorded_test.go TestUnrecordedConnectionIsNotServed,
+grown from two rows to four (ErrFull and a write error, each on forward port 5432 and terminated 443; a TLS client dials the listener
+and wants the handshake error to be exactly io.EOF and zero upstream dials; the dial count is read under the fixture's lock): it fails
+on ce9ae18 (5432 rows: the upstream is dialled; 443 rows: the handshake completes, served) and passes on 34882ee 300 of 300 under
+-race, with internal/proxy, internal/audit and cmd/workcell green. The reviewer re-ran it on a worktree of main (all four rows fail)
+and on HEAD (50 of 50 pass), traced every Deny caller, and found the broker's secret record (acts only on nil) unchanged. A nil
+*audit.Log as Recorder now refuses every connection; bench_vm.go and pull_vm.go pass one only with a nil allowlist, so no listener.
+Ported: proxy.go carries the fix; also in v1 main: egressproxy/proxy.go.
+
+C24 FIXED by S-F16, commit 34882ee (PR #217), as the second and fourth rows of the same test (a recorder returning a plain write
+error): the fail-closed change above covers the connections, and session() in cmd/workcell/run_vm.go prints session_end's Record
+error on stderr with the workcell: prefix, so the operator can tell that records stopped. also in v1 main: egressproxy/proxy.go.
+
 C25. ID I9's last clause (`workcell verify` detects any offline edit) and lifecycle completeness. Attacker: none in section 2
 directly; an offline editor of the session directory, or a rollback or copy of the host's own files, the same power the suite's own
 I9 offline rows use (offlineJudge writes the record on the host), so a valid I9 finding and not R3 material; the guest reaches the

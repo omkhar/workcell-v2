@@ -99,23 +99,16 @@ func Create(dir string, key ed25519.PrivateKey, now func() time.Time) (*Log, err
 }
 
 // Note appends r without waiting for the disk, and stops at SoftLimit with one log_full record.
-func (l *Log) Note(r Record) error {
-	if l == nil {
-		return ErrClosed
-	}
-	return l.append(r, false)
-}
+func (l *Log) Note(r Record) error { return l.append(r, false) }
 
 // Record appends r and returns once it is on the disk, or says why not. A caller that must not act
 // without a record, such as the broker releasing a secret, acts only on a nil result.
-func (l *Log) Record(r Record) error {
+func (l *Log) Record(r Record) error { return l.append(r, true) }
+
+func (l *Log) append(r Record, durable bool) error {
 	if l == nil {
 		return ErrClosed
 	}
-	return l.append(r, true)
-}
-
-func (l *Log) append(r Record, durable bool) error {
 	r.Time = l.now().UTC().Format(time.RFC3339Nano)
 	for _, f := range []*string{&r.Event, &r.Host, &r.Name, &r.Header, &r.Result} {
 		*f = clip(*f)
@@ -199,12 +192,7 @@ func sealed(head [sha256.Size]byte) []byte {
 	return append([]byte("workcell-audit-seal-v2"), head[:]...)
 }
 
-func clip(s string) string {
-	if len(s) > maxField {
-		return s[:maxField]
-	}
-	return s
-}
+func clip(s string) string { return s[:min(len(s), maxField)] }
 
 // Verify reads the log in dir and says whether it is exactly what the log that holds key wrote:
 // every line a record, and their chain the one the seal signs. The error says only

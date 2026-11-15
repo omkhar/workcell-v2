@@ -109,7 +109,9 @@ func session(argv []string, caps limits, mount bool, a artifacts, allow *proxy.A
 		if r.err != nil && r.code == 0 {
 			end = "failed"
 		}
-		_ = log.Record(audit.Record{Event: audit.SessionEnd, Result: end})
+		if err := log.Record(audit.Record{Event: audit.SessionEnd, Result: end}); err != nil {
+			fmt.Fprintln(os.Stderr, "workcell: "+err.Error())
+		}
 		log.Close()
 	}()
 	image, live := "", ""
@@ -328,7 +330,8 @@ func boot(a artifacts, caps limits, sigs <-chan os.Signal, session string, log *
 			go func() { _ = p.Serve(l, port) }()
 		}
 	}
-	go serveRelay(streams, listeners, resolver.New(names, func(name string) { p.Deny(name, dnsPort, "name_not_allowed") }), p.Deny, headerWait)
+	deny := func(host string, port uint16, reason string) { _ = p.Deny(host, port, reason) } // a refusal of the relay's or the resolver's is closed either way
+	go serveRelay(streams, listeners, resolver.New(names, func(name string) { deny(name, dnsPort, "name_not_allowed") }), deny, headerWait)
 	if mount != "" {
 		files, err := m.Listen(fileserve.Port)
 		if err == nil {
