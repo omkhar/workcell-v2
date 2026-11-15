@@ -87,28 +87,30 @@ func fold(escaped string) string {
 }
 
 // tokenRequest reads the body of a request to rule's token endpoint and swaps the refresh placeholder in its refresh_token field for the refresh token the
-// broker releases. It returns the body the request now carries, for the caller to wipe once it has gone, and a reason to refuse the request: a body over the
-// bound, a broker that withholds the token, or a placeholder the body still carries anywhere else (I5). Accept-Encoding is dropped so that the answer comes
-// back plain, or gzipped by a server that insists, which tokenResponse undoes.
-func (p *Proxy) tokenRequest(r *http.Request, rule TerminateRule) ([]byte, string) {
+// broker releases. It returns the body the request now carries and a copy of that refresh token, both for the caller to wipe once the request has gone, and
+// a reason to refuse the request: a body over the bound, a broker that withholds the token, or a placeholder the body still carries anywhere else (I5).
+// Accept-Encoding is dropped so that the answer comes back plain, or gzipped by a server that insists, which tokenResponse undoes.
+func (p *Proxy) tokenRequest(r *http.Request, rule TerminateRule) (body, refresh []byte, reason string) {
 	body, err := io.ReadAll(io.LimitReader(r.Body, maxTokenBody+1))
 	if err != nil || len(body) > maxTokenBody {
-		return nil, "body_too_large"
+		return nil, nil, "body_too_large"
 	}
 	mediaType, _, _ := mime.ParseMediaType(r.Header.Get("Content-Type"))
 	body, err = swapRefresh(mediaType, body, rule.SignIn.Refresh, func() ([]byte, error) {
-		return p.broker.Refresh(r.Context(), rule.Host, rule.Header)
+		value, err := p.broker.Refresh(r.Context(), rule.Host, rule.Header)
+		refresh = bytes.Clone(value) // for learn: the endpoint may echo it once another request has rotated it away from the broker
+		return value, err
 	})
 	if err != nil {
-		return nil, "broker_denied"
+		return nil, nil, "broker_denied"
 	}
 	if placeholderAnywhere.Match(bytes.ToLower(body)) {
-		return nil, "placeholder_unswapped"
+		return nil, refresh, "placeholder_unswapped"
 	}
 	r.Body = io.NopCloser(bytes.NewReader(body))
 	r.ContentLength = int64(len(body))
 	r.Header.Del("Accept-Encoding")
-	return body, ""
+	return body, refresh, ""
 }
 
 // swapRefresh swaps the refresh placeholder in the body of a request to the token endpoint for the refresh token that real releases: the value of the
@@ -146,24 +148,31 @@ func swapRefresh(mediaType string, body []byte, placeholder string, real func() 
 	return body, nil
 }
 
-// tokenKey marks, in a request's context, the rule whose token endpoint it goes to, for tokenResponse.
+// tokenKey marks, in a request's context, a tokenCtx for tokenResponse.
 type tokenKey struct{}
+
+// tokenCtx is the rule whose token endpoint a request goes to and the real refresh token tokenRequest put in its body, hidden in the answer even once another
+// request has rotated it, when the broker no longer holds it (I5).
+type tokenCtx struct {
+	rule    TerminateRule
+	refresh []byte
+}
 
 // tokenResponse rewrites the answer of a token endpoint before the guest reads a byte of it. The whole body is read, gunzipped when the server insisted on
 // gzip, and on a 2xx JSON object the access_token and refresh_token strings go to the broker, which holds them from then on. Then every real token the broker
 // holds for the row, old and new, is hidden behind its placeholder. An answer that cannot be read whole, decoded or recorded is refused: the guest gets a 502
 // and none of its bytes.
 func (p *Proxy) tokenResponse(resp *http.Response) error {
-	rule, ok := resp.Request.Context().Value(tokenKey{}).(TerminateRule)
+	tok, ok := resp.Request.Context().Value(tokenKey{}).(tokenCtx)
 	if !ok {
 		return nil
 	}
 	body, err := readToken(resp)
 	if err == nil {
-		body, err = p.learn(rule, resp.StatusCode, body)
+		body, err = p.learn(tok.rule, tok.refresh, resp.StatusCode, body)
 	}
 	if err != nil {
-		p.Deny(rule.SignIn.Host, tlsPort, "token_answer_refused")
+		p.Deny(tok.rule.SignIn.Host, tlsPort, "token_answer_refused")
 		return err
 	}
 	resp.Body = io.NopCloser(bytes.NewReader(body))
@@ -196,11 +205,12 @@ func readToken(resp *http.Response) ([]byte, error) {
 	return body, err
 }
 
-// learn hands the tokens a 2xx JSON object issues to the broker and returns body with every real token the broker holds for the row, old and new, hidden
-// behind its placeholder. A 2xx that is not a JSON object (RFC 6749 section 5.1) is refused: read leniently, past a BOM or trailing comma, it could leak (I5).
-func (p *Proxy) learn(rule TerminateRule, status int, body []byte) ([]byte, error) {
+// learn hands the tokens a 2xx JSON object issues to the broker and returns body with every real token the broker holds for the row, old and new, and the
+// refresh token the request carried, hidden behind its placeholder. A 2xx that is not a JSON object (RFC 6749 section 5.1) is refused: read leniently, past a
+// BOM or trailing comma, it could leak (I5).
+func (p *Proxy) learn(rule TerminateRule, carried []byte, status int, body []byte) ([]byte, error) {
 	access, refresh := p.broker.Tokens(rule.Host, rule.Header)
-	swaps := []swap{{access, rule.Placeholder}, {refresh, rule.SignIn.Refresh}}
+	swaps := []swap{{access, rule.Placeholder}, {refresh, rule.SignIn.Refresh}, {carried, rule.SignIn.Refresh}}
 	defer func() {
 		for _, s := range swaps {
 			clear(s.real)

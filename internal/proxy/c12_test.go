@@ -25,7 +25,7 @@ func TestLearnHidesTheEncodedSpelling(t *testing.T) {
 	p := &Proxy{broker: &tokenBroker{refresh: []byte(real)}}
 	rule := TerminateRule{Host: "api.example.com", Header: "authorization", Placeholder: testPlaceholder, SignIn: &SignIn{Host: "login.example.com", Path: tokenEndpointPath, Refresh: testRefreshPlaceholder}}
 	for _, body := range []string{"error=invalid_grant&refresh_token=" + url.QueryEscape(real), `{"error":"invalid_grant","error_description":"bad refresh_token=` + url.QueryEscape(real) + `"}`, "bad body: " + wire} {
-		got, err := p.learn(rule, 400, []byte(body))
+		got, err := p.learn(rule, nil, 400, []byte(body))
 		if decoded, _ := url.QueryUnescape(string(got)); err != nil || strings.Contains(decoded, real) || strings.Contains(string(got), esc[1:len(esc)-1]) {
 			t.Errorf("learn(%q) = %q, %v; decodes to the real refresh token", body, got, err)
 		}
