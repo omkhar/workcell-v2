@@ -1,6 +1,6 @@
 module github.com/omkhar/workcell/v2
 
-go 1.27.0
+go 1.27.4
 
 require (
 	github.com/Code-Hex/vz/v3 v3.8.0
