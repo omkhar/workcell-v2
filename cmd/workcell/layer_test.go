@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/omkhar/workcell/v2/internal/vmm"
@@ -43,6 +44,8 @@ func TestFindLayers(t *testing.T) {
 		{"no marker", "", "", nil, ""},
 		{"a layer", "9.9.9-0123456789abcdef.ext4\n", "9.9.9-0123456789abcdef.ext4", []vmm.Layer{{Name: "claude", Image: "layers/claude/9.9.9-0123456789abcdef.ext4"}}, ""},
 		{"a marker naming no image", "9.9.9-0123456789abcdef.ext4\n", "", nil, "the claude layer 9.9.9-0123456789abcdef.ext4 is missing; run workcell update claude"},
+		{"C26: a marker that is not a bare name, above the layer", "../../outside.ext4", "../../outside.ext4", nil, "../../outside.ext4"},
+		{"C26: a marker that is not a bare name, below the layer", "sub/x.ext4", "sub/x.ext4", nil, "sub/x.ext4"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -50,15 +53,12 @@ func TestFindLayers(t *testing.T) {
 			sub := filepath.Join(dir, "layers", "claude")
 			os.MkdirAll(sub, 0o700)
 			for _, f := range []struct{ name, body string }{{"current", tc.marker}, {tc.image, "ext4"}} {
-				if f.name != "" && f.body != "" {
-					os.WriteFile(filepath.Join(sub, f.name), []byte(f.body), 0o600)
+				if p := filepath.Join(sub, f.name); f.name != "" && f.body != "" && os.MkdirAll(filepath.Dir(p), 0o700) == nil {
+					os.WriteFile(p, []byte(f.body), 0o600)
 				}
 			}
-			for i := range tc.want {
-				tc.want[i].Image = filepath.Join(dir, tc.want[i].Image)
-			}
-			got, err := findLayers(dir)
-			if (err == nil) != (tc.err == "") || err != nil && err.Error() != tc.err || !slices.Equal(got, tc.want) {
+			got, err := findLayers(dir) // a C26 row's err is its marker, which the refusal must name; the others are exact
+			if (err == nil) != (tc.err == "") || err != nil && err.Error() != tc.err && !(tc.err == tc.marker && strings.Contains(err.Error(), tc.err)) || !slices.EqualFunc(got, tc.want, func(a, b vmm.Layer) bool { return a.Name == b.Name && a.Image == filepath.Join(dir, b.Image) }) {
 				t.Errorf("findLayers = %v, %v; want %v, %q", got, err, tc.want, tc.err)
 			}
 		})
