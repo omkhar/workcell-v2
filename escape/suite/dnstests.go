@@ -59,7 +59,7 @@ func dnsStream(args []string, withTLS bool) Result {
 	}
 	defer c.Close()
 	c.SetDeadline(time.Now().Add(3 * time.Second))
-	if _, err := c.Write(dnsFrame(dnsQuery(dnsQuestion{Name: dnsName(args[1]), Type: dnsTypeA}))); err != nil {
+	if _, err := c.Write(framed(dnsQuery(dnsQuestion{Name: dnsName(args[1]), Type: dnsTypeA}))); err != nil {
 		return Result{Status: "connected-write-failed", Detail: err.Error()}
 	}
 	return Result{Status: "connected", Detail: "sent a query for " + dnsName(args[1]) + " to " + args[0]}
