@@ -266,9 +266,9 @@ func TestRelayDropsAnIncompleteHeader(t *testing.T) {
 	ln := newAdapters([]uint16{0})[0]
 	go serveRelay(ln, newAdapters(nil), resolver.New(nil, nil), nopDeny, 100*time.Millisecond)
 	defer ln.Close()
+	start := time.Now()
 	guest := dial(t, ln)
 	defer guest.Close()
-	start := time.Now()
 	if _, err := guest.Write(header(1, 6, "203.0.113.5:8443")[:10]); err != nil {
 		t.Fatal(err)
 	}
