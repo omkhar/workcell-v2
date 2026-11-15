@@ -1585,3 +1585,140 @@ Handoffs: S-1013 takes the chain of C23 with S-1005's pipelined host_mismatch ra
 the C24 with C19 chain (a guest that fills the host volume through its export); S-1016 nothing; S-1018 the residual that attach,
 pull and diff boots leave no record and that the in-place seal cannot name a rollback. The out-of-order times, port 0 and the
 seal reader's trailing bytes are less-code notes for the fix units in internal/audit and cmd/workcell.
+
+## S-1011: pins, selector, verification, bump tool, channel manifest, update client (I14, section 10), as built at main a74e3d3
+
+Trust boundary. Rows 2, 27 to 30 and 32 to 35 of the S-1001 map. Attacker bytes enter at: (N) channel.json and artifact bodies,
+only through TLS to the pinned host or the user's own [update] ca, so N holds availability alone, since no byte is used without the
+manifest's signature or the pin's digest; (hostile upstream) npm packuments, GitHub release listings, vendor manifests, OCI tags
+and manifests, Sigstore bundles, npm attestations and OSV answers into cmd/bump on the runner, dry-run only until H-905; (hostile
+PR content) pulls, files and check-runs JSON into bump.merge; (G) one Exit frame driving installer.fail, gated by fresh since S-F1;
+(R) the repo-local workcell.toml, whose [update] table ReadRepo refuses, and cwd, which is C19's route (S-F12 pending). Fields the
+channel key holder K signs (Pin.Version, Released, pin names) and the operator's [update] table are out of scope except where they
+mix with attacker bytes. Authority: update and the start-up goroutine run as the operator and write layers/<agent>/{*.ext4, current,
+previous, failed}, channel.{serial,day,next} and updates.log; findLayers turns the current marker into a read-only block device the
+next guest gets. Lenses worked in order: parsing and resources, logic and state, concurrency and check-to-use, cryptography and
+identity, failure modes, downgrade and replay, interaction with other surfaces.
+
+Leads refuted or bounded, with evidence (go test of the eleven surface packages, -race over the update tests, 20 s local runs of
+FuzzVerify, FuzzTarMember, FuzzProvenance, FuzzParse, FuzzAnswer and FuzzLayer with no crasher, and a loopback TLS channel harness
+in the scratchpad driving the real `workcell update` and `workcell run` with XDG_CONFIG_HOME and XDG_DATA_HOME in the scratchpad,
+every request to 127.0.0.1; `bump` built but not run, since its only non-test mode reads live upstreams (S12, T8); nothing in the
+tree changed; env:any):
+- PARKED line 10 (Rekor v2, intoto 0.0.2, FuzzParse's oracle): a v2 entry has no inclusionPromise, so verifyEntry refuses it, plan
+  says verify-failed, Run opens the B5 issue and pins nothing: fail closed, refuted as a weakness. For P7 only: when a provider moves
+  its .sigstore assets to Rekor v2, its bumps stop until a v2 path exists. The oracle note stays R3.
+- PARKED line 22 (budget regex, a checks:write app, recorded responses): the regex ruling is the maintainer's; a check run posted by
+  another app needs installation rights, out of scope. Observation.
+- PARKED line 23 (B14 gives no issues:write): observation, with one ordering fact for H-905: bump.Run opens the B5 issues before the
+  merge loop and before propose, and any issue-API failure stops the run, so under a token without issues:write one upstream whose
+  release fails verification stops every merge and proposal of that run until the maintainer acts. P7 availability, not an
+  invariant; dry-run only today; reasoned from code.
+- PARKED lines 39 and 40 (B6 rows bound 15 min, pinSmoke's Hosts[0] assumption, the fake API speaks Anthropic alone, --version
+  unverified for codex and copilot): escape rows and workflow strength, S-1012's and the report's; observations.
+- PARKED line 42 (fast-lane lag understated, red nightly before cutover, versions-list fallback gone): advisory.go matches only
+  closed SEMVER and ECOSYSTEM ranges (the safe direction) and verify.go refuses integratedTime <= 0; the reporting notes are B12,
+  observation.
+- PARKED line 44 (redteam ideas without a row), each tried: cooloff "0s" adds nothing and a negative value is refused by updateTable
+  (TestParseErrors), and the project's cool-off is applied by bump before pinning while Released is bump's selection time, so the
+  client cannot shorten it (B10): refuted; a pin released under 48 h ago can only come from K. channel = "hold" made zero requests
+  (the harness counted 17 before and after a run; no channel.day written): refuted. channel.json at 65536 bytes verified and
+  installed, at 65537 refused "over the size cap" with the serial untouched: refuted. A 3xx on channel.json: manifest sets
+  ErrUseLastResponse (TestChannel "channel.json redirected"): refuted. A refused manifest (two days ahead) left the serial at the last
+  verified value, a lower but above-floor serial then installed and one below the floor was refused: refuted, the floor is right.
+  --to a previous version installed from disk with no fetch; --to a withdrawn one printed "is in neither pins nor previous":
+  refuted. A manifest pinning only the other arch falls back to previous (TestUpdate "no artifact for this arch"), K-signed:
+  refuted. [update] in a repo-local workcell.toml: ReadRepo refuses (policy_test errUpdate): refuted. channel = "http://":
+  updateTable refuses: refuted. A tar with ../ or symlink members: memberPath refuses "..", a symlink is a guest-side node never
+  followed on the host (FuzzLayer, TestUnpack): refuted. A key past NotAfter, and two signatures with only the second trusted:
+  channel_test rows: refuted.
+- FINDINGS line 89 (Pin.Version unconstrained): C26, the marker side of it is the half that outlives S-F12.
+- FINDINGS line 92 (T5 for internal/pins/sources.go): BearerParams is strings.Cut over upstream bytes, no guest bytes and no panic
+  possible; the vendor "latest" line goes through ParseVersion. No fuzz target requested (R5); no defect.
+- C1 and S-F1: what remains is the honest B9 self-rollback of a layer applied in this very start when the guest's first frame is an
+  Exit with Err; the precondition (a fresh layer this start) is not the attacker's, previous was installed under a valid manifest, and
+  `update <agent>` restores it. Residual by design, no candidate.
+- Parsing and resources: the envelope is strict and the payload lenient, duplicate keys last-wins under the signature, int64 forms
+  refused by encoding/json, the 64 KiB cap consistent between Fetch and Verify (observed at the edge), artifacts 512 MiB on disk and
+  1 GiB of tar in memory (upstream-chosen, digest-pinned), the ext4 writer bounded by ErrTooLarge, memberPath and split refuse
+  traversal, NUL and names over 255; no in-scope attacker reaches the tar or ext4 parsers with bytes of its choice.
+- Logic and state: the serial is written only after a verified manifest and only by verify; expiry is re-checked at apply; the
+  failed, current and previous transitions traced for install, --to, --rollback, fail and apply (TestUpdate, TestFail, TestChannel
+  and the probes above); choose applies the user's cooloff on top of Released and --to bypasses it by design.
+- Concurrency and check-to-use: the daily goroutine is never awaited (a 1 B/s channel.json left a session start at 0.046 s);
+  markers are tmp-plus-rename; images are renamed complete before any marker names them; the unlink of a replaced image leaves a
+  running VMM's descriptor intact; two operator verbs at once can cross (A installs while B rolls back and removes A's image), the
+  operator's own race; -race clean.
+- Cryptography and identity: DSSE PAE as the spec; key id the SHA-256 of the raw key; ed25519.Verify behind the 32-byte check;
+  sigstore binds leaf, signature and hash through the SET's canonical JSON; identity compared byte for byte with the version
+  restricted by versionRE; the chain verified at integrated time against the embedded root, a stale root fails closed.
+- Failure modes: no error path installs, names a half-written image or advances the serial; a failed newInstaller yields a zero
+  installer whose fail is gated by fresh; bump never turns a verify failure into a skip (verify-failed token, an issue, -newest
+  exits 1).
+- Downgrade, rollback and replay: the replay window is 14 days plus 24 h skew per data directory, by design (B7); --rollback reads
+  no manifest and may go to a withdrawn on-disk image, and the next apply re-applies the pin (observed): B10 semantics.
+- Interaction: HTTP(S)_PROXY is honoured by DefaultTransport for update and bump only (the operator's environment); a relative
+  [update] ca resolves against cwd (works from the directory holding ca.pem, refused elsewhere) and yields nothing against I14
+  because the signature still holds; the data directory under cwd is C19 (S-F12).
+
+Observations (R3, not candidates): apply blocks a session start for the whole artifact download, bounded by channelBound (17 s for
+17 bytes at 1 B/s); apply writes one "refused" record and one stderr line per start for every provider with a row the manifest does
+not pin; a killed download leaves layers/<agent>/.download-* for ever, since point globs *.ext4 only; bump.class identifies a bump
+pull request by branch prefix, base and same-repo non-fork alone, never by author, so a same-repo pusher on bump/<class>-* with
+rows only is merged by the tool when green (push access is out of scope; forks are refused, tested); more than 1000 open pull
+requests or 100 check runs on a head make the tool wait or stop (availability); before H-905 channel.Keys is empty, so a default
+configuration installs from the compiled row with no manifest, as section 10 intends, and `hold` installs from the row too
+(docs/providers.md says so; ADR-004 is a proposal).
+
+Coverage. Examined in full: cmd/workcell/update.go, layer.go, data.go, policy.go, run_vm.go, main.go; internal/policy/policy.go
+30 to 290 (Policy, Update, Read, ReadRepo, Narrow, Parse, updateTable); internal/channel/channel.go; internal/artifact/verify.go;
+internal/sigstore/verify.go and root.go; internal/pins/pins.go and sources.go; pins/pins.go and the four rows; internal/bump/bump.go
+and github.go; cmd/bump/main.go; internal/advisory/advisory.go; internal/rootfs/layer.go, tree.go, ext4file.go, ext4.go;
+internal/version/version.go; internal/provider/provider.go and the four TOMLs; bump.yml and nightly.yml as callers; docs/policy.md,
+docs/providers.md, docs/adr/004-channel.md (a proposal, nothing in it counted); the tests of every package above and
+escape/suite/update.go, update_test.go, channel.go, channel_linux.go, channel_test.go, layer.go, rollback.go and
+escape/sandbox/control_channel_linux.go; FINDINGS S-1001 and the C19 record, the handoffs naming S-1011 or S-1013; PARKED lines 10,
+22, 23, 39, 40, 42 and 44. In part: internal/policy/policy_test.go ([update] rows), policy.go 1 to 29 and 290 to 658 (the lexer,
+S-1009's), internal/audit/key.go LoadKey, escape/suite/tests.go update, layer and rollback rows, escape/sandbox/sandbox.go
+signatures, internal/rootfs/oci_test.go. Not opened: internal/sigstore/trusted-root.json (TestPublicRoot proves it parses),
+internal/pins/testdata, internal/rootfs/build.go and oci.go (S-1012), escape/sandbox/workcell*.go, cmd/workcell/pull*.go and
+internal/workspace (S-1008), _legacy/. Ported files: none on this surface carries `// Ported from v1`, so nothing carries also in
+v1 main and nothing is private; nothing concerns someone else's project: no NEEDS-YOU. No model declined and no safeguard re-ran a
+request.
+
+### S-1011 candidates
+
+C26. ID I1 and I7 through the layer marker, with I14 hardening on the manifest side. Attacker: guest root, only through C19's
+precondition (the operator's cwd or pull destination lies above the data directory, so pull writes layers/<agent>/current back,
+which checkPath admits as content) until S-F12 lands; afterwards only the channel key holder K, out of scope, so hardening. Where:
+cmd/workcell/layer.go findLayers joins the marker's text to the layer directory with only an os.Stat and no bare-name check;
+cmd/workcell/update.go builds the image name from pin.Version and point compares Base of images with the raw marker; internal/
+channel/channel.go checks a pin's sha256 and url but not its version. Input: (a) a signed manifest whose pin has
+"version":"../evil"; (b) layers/claude/current holding ../../../../../../../../../../etc/hostname, then `workcell run claude`.
+Effect: (a) the image lands at <data>/layers/evil-<sha>.ext4, outside layers/claude, current and previous hold "../evil-<sha>.ext4",
+and point never removes it (observed with the real binary against the loopback channel); (b) findLayers accepts the path and the
+session boots with the host file as the claude layer's drive: run_vm.go passes it into vmm.Config.Layers, the Firecracker backend
+makes it a read-only drive, and the init treats a failed ext4 mount as non-fatal, so guest root reads /dev/vdX, any user-readable
+host file of 512 bytes or more (Firecracker exposes whole sectors). Reproducing test (in this record only, for the budget: the test
+budget stands at 27497 of 27498 and the file is 27 lines, so the fix unit's redteam re-creates it): package main in cmd/workcell,
+TestC26LayerMarkerIsABareName (I1, I7, I14): dir := t.TempDir(); sub := filepath.Join(dir, "layers", "claude"); for each m in
+{"../../outside.ext4", "sub/x.ext4"}: os.MkdirAll(filepath.Join(sub, "sub"), 0o700), os.WriteFile(filepath.Join(sub, m), nil,
+0o600) and writeMarker(sub, "current", m) must succeed (the target exists, so only the name decides), then findLayers(dir) must
+return an error. On d953790 it fails with `marker "../../outside.ext4": findLayers accepted [{claude <dir>/outside.ext4}]; want a
+refusal` and the same for sub/x.ext4; the redteam showed it passes under a scratch fix (the extra condition
+`|| name != filepath.Base(name)` on findLayers' refusal) with cmd/workcell green. Outcome: CONFIRMED, low, by the verifier, who ran
+the test on d953790 (the same failure), traced the marker to the drive list and the init's non-fatal mount, noted that the test's
+power (writing current) is the operator's and that the only in-scope writer is the guest through C19, under which it can already
+replace the layer image itself, so medium would re-report C19's precondition; not intended behaviour, since the marker is
+documented as naming an image, but no independent break. Fix unit: S-F18, below S-1011 in PLAN.md. For S-F18 to carry: refuse
+in findLayers a marker that is not its own filepath.Base (one edited line, net 0 product lines; product stands at 14999 of 15000)
+and, if a line can be folded, refuse a pin whose Version holds "/" or "\\" beside channel.Verify's sha256 and url checks, so a
+key-holder-signed manifest cannot re-create the marker; the "previous" marker on the rollback path is read the same way, and a
+marker naming a symlink to a host file passes a Base check (an Lstat regular-file check would close it, the redteam's variant (b)).
+Not ported.
+
+Handoffs: S-1013 takes the chain of C26 with C19 and C21 (a relative data home or a cwd above the data directory, through which
+the guest writes the marker), the half-written .download-* residue with C24's volume fill, and the two-verbs-at-once race on the
+layer directory; S-1012 takes the bump.class author question and the B6 row bounds (PARKED lines 22, 39, 40); S-1018 the residual
+that before H-905 channel.Keys is empty and `hold` installs from the compiled row, and that --rollback can reach a withdrawn
+on-disk image; H-905 the issues:write ordering fact of bump.Run.
