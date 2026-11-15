@@ -1572,8 +1572,7 @@ verify checks running(dir) and prints "incomplete: the session's end was not rec
 audit.Verify so a running session still verifies; the suite removes sessions/ after every row, so crashed sessions of I11 rows do
 not collide; the test can be the rewrite of TestVerifyRefusesAnotherHostsKey into two arms. Not ported.
 
-C25 FIXED by S-F17, the commit `S-F17: bind the seal to its session and refuse an unended session` on its branch (its hash goes
-here at merge, as for C21 to C24). sealed in internal/audit/audit.go signs "workcell-audit-seal-v2", the session id
+C25 FIXED by S-F17, commit 7a468eb (PR #218). sealed in internal/audit/audit.go signs "workcell-audit-seal-v2", the session id
 (filepath.Base(dir), kept on the Log) and the head, and Verify checks the seal under dir's id, so A's two files copied over B's, or
 A's directory renamed to B's id, fail with "the seal is not signed with this host's key for this session" (inputs (a) and (d)).
 Verify returns the last record it read, and verify in cmd/workcell/log.go refuses a session that is not running (running(dir))
