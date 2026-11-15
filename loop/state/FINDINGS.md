@@ -973,6 +973,16 @@ sanction the leak; the sequential echo is covered by TestSignInFlow's bad-grant 
 medium fits S6 as C12's precedent, not low (a break is shown) and not high (the provider's rotation, echo and grace window are
 needed). Fix unit: S-F9, below S-1007 in PLAN.md. signin.go is not ported, so no `also in v1 main` line.
 
+C15 FIXED by S-F9, commit ba8a401 (PR #209). tokenRequest in internal/proxy/signin.go clones the refresh token the broker released
+for swapRefresh before swapRefresh wipes its copy, and returns it beside the body; serveTerminated in internal/proxy/terminate.go puts
+a tokenCtx (the rule and that clone) under tokenKey in place of the bare rule, and its deferred clear, registered before the refusal
+check, wipes the clone on every path; tokenResponse hands the clone to learn, which seeds its swaps with it as a third spelling of the
+refresh placeholder, so the token the request itself carried is hidden in text, url-escaped and JSON-escaped, even once another request
+has rotated it out of the broker, and the existing deferred clear wipes it. Product 14994 of 15000, +10 (gofmt lays the struct out on
+four lines). Regression test: internal/proxy/c15_test.go TestConcurrentRefreshHidesTheReplacedToken, moved whole from
+escape/_pending/S-F9/ by the redteam, failed on the parent 5 of 5 and under -race, passes on ba8a401; the reviewer re-ran it on a
+worktree of main (3 of 3 fail) and on the branch (3 of 3 pass) and found nothing. escape/_pending/ is gone.
+
 C16. ID I10 (host CPU, processes and file descriptors), map row 24, the no-row surface the S-1005 handoff named. Attacker: guest root.
 Where: internal/secret/broker.go release (one Resolve per granted lookup) and internal/secret/source.go run (one child process with three
 pipes per cmd:, secret-service: or keychain: use, 2 min timeout). Input: 300 requests carrying the placeholder in the bound header
