@@ -1733,3 +1733,220 @@ the guest writes the marker), the half-written .download-* residue with C24's vo
 layer directory; S-1012 takes the bump.class author question and the B6 row bounds (PARKED lines 22, 39, 40); S-1018 the residual
 that before H-905 channel.Keys is empty and `hold` installs from the compiled row, and that --rollback can reach a withdrawn
 on-disk image; H-905 the issues:write ordering fact of bump.Run.
+
+## S-1012: workflows, release, signing, image build and dependencies as a supply chain (section 9), as built at main 9ea0dcc
+
+Trust boundary. Rows 31, 34, 36, 37 and 38 of the S-1001 map. Attacker bytes enter in four places. (1) The hosted runner RUN (a lent
+machine, passwordless sudo, a contents: read token, no secret): ci.yml runs the pull request head's own loop/gate.sh under
+pull_request_target, so a pull request author's free-path code, tests, escape/ and spikes/ run there; the only authors are
+collaborators, because pull_request_creation_policy is collaborators_only (loop/settings.sh:39, "does not expire"; REFERENCE.md:784)
+and the Actions policy (loop/github-actions-policy.json) lets only pull_request_target and schedule start a workflow, always from
+main. S-1001's observation that this rests on the six-month interaction limit is corrected: the interaction limit covers issues and
+comments; pull request creation is the non-expiring setting. Both are repository settings outside the tree, verified by
+`settings.sh check` at each checkpoint and by nothing in the repository. (2) Network bytes into the runner: mkimage pulls Debian
+from mirror.gcr.io by digest (internal/rootfs/oci.go), the escape adapter and spikes/install fetch Firecracker and a kernel by pinned
+URL and SHA-256 (escape/sandbox/workcell_linux.go:25, spikes/install/install_test.go:33), bump -newest and -dry-run read upstream
+listings, OSV and the GitHub API, and setup-go, cosign-installer and attest-build-provenance fetch their tools; all over TLS, so N
+holds availability only, and a hostile upstream is an allowlisted provider's own service, out of scope, whose bytes bump parses only
+after B5 verification (S-1011). (3) The maintainer's signature chain: guard.yml runs main's loop/guard.sh over the pull request's
+objects with gpg against .github/maintainer.asc, whose issuer-fingerprint subpacket decodes to the 40 hex digits in maintainer.fpr
+(key created 2023-01-16, expires 2028-01-15). (4) The user's machine: scripts/install.sh (curl over TLS from the release URL,
+SHA256SUMS from the same origin, sha256sum -c, --version, then mv), and at run time cmd/workcell/data.go, which stats vmlinux,
+initrd.cpio, root.ext4 and firecracker in the data directory with no digest or signature check. Authority: gate runs pull request
+code as the runner user with sudo; merge holds contents: write and pull-requests: write and runs no pull request code; release.yml's
+sign holds id-token: write and attestations: write and publish holds contents: write (W11); nightly's issue job holds issues: write
+and checks nothing out; bump.yml reads only. Every build and release runs on exactly go1.27.0: go.mod says `go 1.27.0`, all nine
+setup-go uses take go-version-file: go.mod, and GOTOOLCHAIN=auto never upgrades a satisfied requirement. Lenses worked in order:
+parsing and resources, logic and state, concurrency and check-to-use, cryptography and identity, failure modes, downgrade and
+replay, interaction with other surfaces.
+
+Leads refuted or bounded, with evidence (reads of every file named under coverage; `go mod verify` clean, `go list -m all`,
+`go mod tidy -diff`, `go mod graph`; loop/guard.sh run locally on two refs; zizmor and actionlint run twice; govulncheck on the
+hosted gate-arm64 job of the claim through a spike test, since this session's network policy refuses vuln.go.dev; the workflows
+were not executed, no GitHub API call was made, and the full gate was not run here because it fetches Firecracker and a kernel
+from hosts this session may not reach; nothing in the tree changed; env:any):
+- PARKED line 22 (budget regex, a checks:write App): a check run from another App needs installation rights, out of scope;
+  release.yml filters on app 15368 and settings.sh:108 detects a foreign check suite. Bounded, observation.
+- PARKED line 39 (B6 rows bound at 15 min against the gate's 900 s): a bump pull request with a slow 100 MB download fails the
+  gate by time while nightly's upstream job has 45 min; availability for P7, an observation for H-905.
+- PARKED line 40 (the fake API speaks Anthropic alone): B11 strength; codex and copilot are smoked by --version plus the probe's
+  own call. Observation.
+- S-1011's bump.class question (a bump pull request identified by branch prefix, base and same-repo non-fork, never author):
+  dry-run only until H-905; a same-repo pusher has push access, out of scope; the App is the intended pusher; main's ruleset still
+  demands the three checks. Bounded.
+- PARKED lines 87 and 88 (S-F18 notes on findLayers markers): cmd/workcell, not this surface; they stay with S-1013.
+- Parsing and resources: oci.go caps the manifest at 64 KiB and hashes it against the requested digest before JSON, re-checks every
+  descriptor digest, bounds blobs by declared size under 512 MiB with the stream hashed and counted, 128 layers, 2 GiB raw across
+  layers, 400 MiB of image (build.go limitWriter); the Bearer realm must be https and the token goes only to URLs built on the
+  registry base, dropped on a cross-host redirect (TestPullRefusals, TestPullTokenStaysWithRegistry, TestApplyLayerBomb,
+  FuzzLayer); layer.go refuses absolute names, "..", names over 4096, components over 255 or with NUL, unknown tar types, and
+  hard links to anything but an existing non-directory; ext4.go is deterministic (TestDeterministic) with every overflow closed
+  by errNoFit or ErrTooLarge, over the host's own bounded tree. gate.sh's flat unrolls go.mod blocks and refuses replace, exclude
+  and ignore (a replace smuggled into a require block is refused by Go itself, so nothing builds); hidden refuses underscore
+  directories, nested go.mod or go.work, vendor/, odd bytes and leading dashes; nightly's fuzz matrix takes Fuzz names through a
+  strict sed and package paths from go list, both through env, so nothing is injected into go test -fuzz; fuzz-minutes.txt is
+  digits only, at most 240. install.sh greps a fixed asset name, checks one SHA256SUMS line, runs under set -eu and removes tmp
+  and new on EXIT; spikes/install proves the wrong-checksum, missing-sums and broken-asset refusals against a loopback server.
+- Logic and state: the required checks are gate, gate-macos and guard (github-main.json), strict up to date, squash only, no bypass
+  actors; merge runs only for claude/* heads from the same repository by the owner, re-reads the title each attempt and pins sha
+  (ci.yml:100-124), and a `try:` title never merges; no required job has an `if` (W3). release.yml's verify accepts a commit only
+  with completed, successful gate and gate-macos check runs from app 15368, and a squash commit with none only when a pull request
+  whose merge_commit_sha is this commit has a head whose tree equals HEAD's tree and that head is green (lines 32-41), which the
+  strict up-to-date rule makes sound; a page over 100 check runs fails closed (W7). guard.sh: free-only changes pass on any
+  shape; a locked change must be one commit whose only parent is the live tip, signed by the pinned key with `Locked-paths:
+  reviewed` as the signed message's last line, at most 2 h old and at most 10 min ahead; run here, `loop/guard.sh 9ea0dcc
+  48adeba` printed GUARD PASS and the reverse printed GUARD FAIL (not built on the current tip). The crafted-commit experiment
+  (locked edit, symlink, case twin, docs/codex.md, dot component, two commits, a ticked human gate, a RESUME heading) was refused
+  by this session's permission system, so those refusals are reasoned from lib.sh:117-165 and :255-273 only. bump -newest
+  rewrites only guest rows, only when newest is eligible and not in dry run, and exits 1 on verify-failed (B5); nightly's fresh
+  step turns a missed P7 into an output and keeps the step's exit (B12).
+- Concurrency and check-to-use: gate.sh reads the tree (sections 1 and 2) before anything from it runs and runs the VM suite before
+  the unit tests; zizmor's five concurrency-limits findings are W4 by design while the loop runs; a push after a merge run started
+  fails the merge call on sha and the ruleset re-judges the head; the two-hour signature window is REFERENCE.md:809's known
+  residual, whose attacker is the App or the loop, out of scope; pull_request_target edited re-runs on the same head, and results
+  are per commit; nightly's GATE_BASE: HEAD after the in-tree pin rewrite lets changedPin see the rewritten row through the embed.
+- Cryptography and identity: the maintainer key is EdDSA, VALIDSIG is matched against the pinned fingerprint on one line
+  (lib.sh:287-296), an expired key fails closed, the signed time comes from the hashed subpacket, and the parent rule stops a
+  replayed signed commit. Release: keyless cosign over SHA256SUMS with the identity release.yml@<ref> and the GitHub OIDC issuer,
+  verified in publish under the same identity, one attestation with the checksums as subjects (W10); SHA256SUMS covers workcell-*
+  and guest-*. Dry runs sign as refs/heads/main, which the documented tag identity (install.sh:11-13) rejects. mkimage: Debian's
+  registry publishes no signature, so the digest pin is the identity (B5 "wherever one exists"). Modules: go.sum covers every
+  module in the build graph, GOSUMDB sum.golang.org, GOPROXY proxy.golang.org; actions are pinned by SHA with version comments
+  (SHA-to-tag not confirmed offline); runner labels are version labels (ubuntu-24.04, macos-15, ubuntu-24.04-arm), the float
+  ci.yml:15-16 admits.
+- Failure modes: every run step is bash -e with pipefail; verify's green() turns a gh api failure into not green and exit 1; ci's
+  KVM step exits 1 with an infrastructure annotation and GATE_REQUIRE_VM=1 makes a missing hypervisor a failure in the Linux
+  gate (gate.sh:166), so the VM suite is never silently skipped; guard.sh dies with exit 4 on every error and treats only grep 1
+  and cmp 1 as "no"; budget fails on an unmeasurable number; mkimage removes a half-written output; install.sh installs nothing
+  on any failure. No fail-open path found. By design: nightly's fresh step lets a missed P7 exit 0 (B12).
+- Downgrade, rollback and replay: the toolchain pin never moves (C27); pins never move backwards (S-1011); the enforced lists
+  ratchet from origin/main (gate.sh:50-61); nobody can create, move or delete a tag until H-905 (github-tags-all.json), and
+  `gh release create --verify-tag` plus the release-exists error keep a re-run closed; install.sh's default tag v2.0.0 is
+  hand-bumped (observation).
+- Interaction: nightly's B6 smoke runs upstream's newest provider binary in a real VM on the runner with Isolated: true and
+  judgeResolver, so the binary reaches only the loopback canary (T8, S12); the runner's sudo uses (unshare -n, nsenter, a /32 on lo,
+  losetup, a private mount namespace for resolv.conf, setpriv to drop back) are local to the runner. The A6 promise (one signed
+  prebuilt guest image pulled by digest) has no client half: data.go:62-78 only stats the four files, `workcell update` installs
+  provider layers only, and the release ships guest-*.img and raw workcell-init-* while the client loads root.ext4, initrd.cpio,
+  vmlinux and firecracker that no product code fetches (README:51-53 says so); the only in-scope writer of the data directory is
+  the guest under C19 (S-F12 pending), already recorded by S-1008, so observation and handoff, not a candidate.
+
+Tool passes (S10). zizmor 1.32.0 (--persona=pedantic --no-online-audits, and again under the auditor persona): 21 findings, 2
+ignored, 0 medium or high: five concurrency-limits (bump, ci, guard, nightly, release) are W4 by design while the loop runs,
+refuted; three undocumented-permissions (bump.yml:22, release.yml:23 and :80) and eleven anonymous-definition (job names) are
+style, R3; the two ignored dangerous-triggers (ci.yml, guard.yml) rest on .github/zizmor.yml's rationale, which holds:
+definitions load from main, guard runs no pull request code, ci's token reads a public repository and only collaborators open
+pull requests. No candidate. actionlint v1.7.12: 0 errors in 5 files (its shellcheck and pyflakes integrations were off, neither
+installed here). No candidate. govulncheck v1.9.0 on the hosted gate-arm64 job of commit 48adeba (go1.27.0 linux/arm64, live
+database; the spike test spikes/govulncheck ran it with -v and was deleted before delivery): "Your code is affected by 11
+vulnerabilities from the Go standard library", plus 2 package-level and 2 module-level ones not called, every one found in
+go1.27 and fixed in go1.27.2, go1.27.3 or go1.27.4. Triage: GO-2026-6859 (net/http server crash, MaxBytesReader header race,
+fixed 1.27.4; trace #10 is proxy.Proxy.serveTerminated calling http.Server.Serve) reachable by G, and GO-2026-6809 (crypto/x509,
+fixed 1.27.3; trace #1 is sigstore.chain calling x509.Certificate.Verify, and the proxy's upstream transport verifies the same
+way) reachable by N: both C27. GO-2026-6617, 6612, 6611 and 6603 (HTTP/2 server) not reachable: the terminated server offers
+http/1.1 alone by ALPN and no cleartext HTTP/2, and the transport has h2 off. GO-2026-6613 (server desync after a 2xx CONNECT)
+not reachable: CONNECT is refused (terminate.go:400). GO-2026-6605 (client desync after a CONNECT rejection) not reachable: the
+product transport uses no proxy, and HTTPS_PROXY on DefaultClient is the operator's. GO-2026-6610 (h2 transport) only through
+DefaultClient to pinned or operator-configured hosts, a desync with that same host, low at most. GO-2026-6608 (textproto memory
+limit) bounded: the server bounds header bytes at the connection reader (MaxHeaderBytes 64 KiB), the client side reads an
+allowed upstream's answer, and the single trace is the suite's canary client. GO-2026-6607 (ECH outer extension references) not
+reachable: no ECH keys are configured, so the inner hello is never decrypted, and no transport sets an ECH config list.
+GO-2026-6609 (Range), 6604 (os.Root on Windows), 6600 and 6599 (html/template) are not called. Coverage gap: the pass ran on
+linux only; the darwin binary links vz, go-infinity-channel and x/mod, which were not scanned. shellcheck: not installed, not run.
+`go mod tidy -diff` reports github.com/ebitengine/purego v0.11.2 as an unused direct requirement; `go mod graph` shows x/crypto
+only through vz's go.mod, not linked.
+
+Observations (R3, not candidates): gate.sh:77 lets a free go.mod carry godebug and toolchain directives, and godebug can relax
+TLS and x509 defaults for every binary (tlsrsakex, x509sha1, tls10server) while toolchain can pick any toolchain; the only writer
+is the loop, out of scope, and a proposal could narrow the regex to module, go, require, retract and tool. The S-1001
+interaction-limit observation is corrected above; settings.sh check is the only detector, and REFERENCE.md:822 records that the
+Actions policy could only be read, not tried. OPTIONS * on a terminated connection is answered by net/http's own handler before
+the product's judge, whatever the toolchain (C27's product-side half; harmless alone, nothing goes upstream). W6 drift: the
+Firecracker v1.17.0 and kernel pins are written twice (escape/sandbox/workcell_linux.go:26 and spikes/install/install_test.go:33-37).
+`gh attestation verify --repo` without a ref accepts the daily dry-run builds, which are public workflow artifacts for a day; the
+cosign line with the tag identity does not; pin --source-ref in the documentation at H-905. dependabot.yml's docker entry covers
+no Dockerfile, and W12 names Dependabot for the base image while the base image is cmd/bump's OCI row: wording for the
+maintainer. purego is an unused direct dependency, one of 15 under the budget. The pinned maintainer key expires 2028-01-15, after
+which guard fails closed on every locked change until a new key lands. install.sh: curl -L follows a redirect to any scheme (no
+--proto =https --proto-redir =https), and release.yml does not codesign the darwin binary with the virtualization entitlement
+(escape/sandbox/workcell_darwin.go does it for the suite), so `workcell doctor` on a Mac would refuse the released binary: P6,
+for H-905.
+
+Coverage. Examined in full: .github/workflows/ci.yml, guard.yml, release.yml, nightly.yml, bump.yml; .github/dependabot.yml,
+zizmor.yml, maintainer.asc, maintainer.fpr; loop/gate.sh, guard.sh, lib.sh, settings.sh, free-paths.txt,
+github-actions-policy.json, github-main.json, github-tags-all.json; scripts/install.sh; spikes/install/install_test.go;
+cmd/mkimage/main.go; internal/rootfs/oci.go, build.go, layer.go, ext4.go, tree.go, ext4file.go; internal/artifact/verify.go;
+internal/version/version.go; pins/pins.go and the four rows; internal/pins/pins.go and sources.go; internal/bump/bump.go;
+cmd/bump/main.go; escape/cmd/escape/main.go; escape/sandbox/workcell.go, workcell_vm.go, workcell_linux.go; escape/suite/smoke.go;
+cmd/workcell/data.go; go.mod, go.sum; docs/threat-model.md, CONTRIBUTING.md, README.md to line 70; SPEC sections 2, 3, 4, 6, 7, 9,
+10, 11, 13; FINDINGS S-1001 and S-1011; PARKED in full; REFERENCE.md section 9; the three tool outputs. In part:
+internal/proxy/terminate.go (the server literal, transport and CONNECT refusal), loop/PROMPT.md, loop/adopt.sh and land.sh (the
+signing lines), escape/suite/tests.go (row registration), escape/sandbox/workcell_darwin.go (codesign lines), and the go1.27.0
+GOROOT's net/http server.go, request.go, textproto reader.go, crypto/tls handshake_server.go and ech.go. Not opened: the
+*_test.go of rootfs and mkimage beyond their function names, internal/sigstore, internal/channel, cmd/workcell/update.go beyond
+its client lines, loop/checkpoint.sh, preflight.sh, baseline-ci.sh, setup-*.sh, loop/test/, _legacy/. Not run: the workflows,
+the full gate here, any GitHub API call, the crafted-commit guard experiment and the gpg verification of recent locked commits
+(both refused by this session's permission system). Ported files: none on this surface; C27's reachable path passes through
+internal/proxy/terminate.go, which is ported, so its record carries also in v1 main. Nothing concerns an undisclosed weakness in
+someone else's project: the Go advisories are published and fixed upstream. No NEEDS-YOU. No model declined and no safeguard
+re-ran a request; two tool permissions were refused to the auditor (a crafted-commit experiment in a scratch clone and gpg
+verification), reasoned from the scripts instead, no request rephrased.
+
+### S-1012 candidates
+
+C27. ID W12 (the toolchain has no updater), with B2 and B4 (trusted class, security fast lane); invariants claimed I12 by G on the
+terminated-HTTP path and I5 and I6 by N on upstream certificate verification. Attacker: guest root on a terminated connection;
+a network attacker answering an allowed name's TLS. Where: go.mod line 3, `go 1.27.0`, from which every setup-go in the five
+workflows takes its version (go-version-file), so every gate run, nightly, dry run and, after H-905, every release binary is built
+with go1.27.0; nothing moves the directive: .github/dependabot.yml's gomod entry updates require lines (and sits at
+open-pull-requests-limit 0 until cutover), cmd/bump's source types are NPM, GitHubReleases, VendorManifest and OCI
+(internal/pins/sources.go:42), and gate.sh:77 even admits a toolchain directive. Reach: internal/proxy/terminate.go's http.Server
+literal (serveTerminated calls http.Server.Serve, trace #10 of GO-2026-6859) and its upstream transport, and
+internal/sigstore/verify.go's chain (x509.Certificate.Verify, trace #1 of GO-2026-6809). Input: (a) over a terminated connection
+`OPTIONS * HTTP/1.1` with a 64 KiB body, which net/http's own globalOptionsHandler wraps in MaxBytesReader, the function
+GO-2026-6859 names; (b) N answering an allowed name with a chain through an intermediate that go1.27.3's crypto/x509 distrusts.
+Effect claimed: (a) the supervisor dies or hangs on guest bytes; (b) the real secret to a wrong party; structurally, eleven
+standard-library advisories against go1.27.0, fixed in go1.27.2 to go1.27.4, ship in every build. Evidence: govulncheck v1.9.0 on
+the hosted gate-arm64 job of 48adeba (above). The redteam tried (a) for real on terminateFixture: the go1.27.0 to go1.27.4 diff
+of net/http/server.go shows GO-2026-6859 is response.requestTooLarge setting a header from whatever goroutine reads a
+MaxBytesReader, and the only MaxBytesReader on the terminated path, the OPTIONS * handler, reads on the serving goroutine, while
+terminate.go never wraps r.Body: `OPTIONS *` with a 64 KiB body, with Expect: 100-continue, with a half-closed body and with a
+pipelined second request, twenty repetitions each with and without -race, got 200 and a fresh connection was served, identically
+on both toolchains. Reproducing test delivered (in this record only, for the budget: 27495 of 27500 and the file is 31 lines):
+package proxy, TestC27 (I12 in the comment): addr, ca, _, _ := terminateFixture(t, &fakeBroker{value: "real-secret"}); a
+tls.Dial to addr with ServerName example.com and RootCAs caPool(t, ca), a 3 s deadline, one Write of
+"CONNECT example.com:443 HTTP/1.1\r\nHost: example.com\r\n\r\nGET /v1 HTTP/1.1\r\nHost: example.com\r\n\r\n", then
+got, err := io.ReadAll(c); it fails unless strings.Count(string(got), "HTTP/1.1 ") == 1, err == nil and got starts with
+"HTTP/1.1 405 ". On go1.27.0 (the tree's toolchain) it fails with "after a refused CONNECT got 2 responses, read error i/o
+timeout, want one 405 and then the connection closed" and the 405 is followed by a 200 (the pipelined GET served on the same
+connection); under GOTOOLCHAIN=go1.27.4 it passes (the 405 carries Connection: close and the server closes), 5 of 5 under -race;
+the orchestrator and the verifier reproduced both results. Outcome: DOWNGRADED to low by the verifier. The test demonstrates a
+toolchain fingerprint, not a break: go1.27.4's change is "don't reuse a connection after a CONNECT, even if we reject it"
+(hardening), while GO-2026-6613 itself needs a 2xx to CONNECT and terminate.go always writes 405, so the pipelined GET is parsed
+as an ordinary request and passes the whole handler (sameHost, admits, broker, carriesPlaceholder); nothing in SPEC forbids
+keep-alive after a 405. Of the eleven advisories none is reachable by G or N on this tree: 6859 needs an application
+MaxBytesReader on another goroutine; 6613 a 2xx CONNECT; 6605 a client that sends CONNECT (ReverseProxy never does); 6617, 6612,
+6611 and 6603 an HTTP/2 server, while serveTerminated offers http/1.1 alone; 6610 an HTTP/2 transport, while p.transport sets
+TLSClientConfig and DialContext without ForceAttemptHTTP2; 6607 runs only after HPKE decryption with server ECH keys, none
+configured, and peekSNI aborts any ECH hello first; 6608's accounting slip is bounded by MaxHeaderBytes plus 4096 per request and
+maxConns. GO-2026-6809 would let N pass the upstream check only with the private key of one of the eight distrusted
+intermediates and a host root store that still chains them, a precondition N does not control (S6 ceiling medium), and no
+reproducing test can exist without those keys, so under S4 it is undemonstrated. The structural half stands: a build tool pinned
+at the .0 patch with no updater is a W12 and B2 gap, hardening with no demonstrated break, low. Fix unit: S-F19, below S-1012 in
+PLAN.md. For S-F19 to carry: go.mod line 3 `go 1.27.4` (a free path, one line, no proposal; every workflow follows, go.sum
+unchanged; the redteam's and verifier's runs show go1.27.4 downloads from proxy.golang.org under GOTOOLCHAIN=auto), under B4's
+fast lane since published advisories affect the pinned version; re-create TestC27 from this record in internal/proxy after
+folding its 31 lines (the verifier notes it asserts standard-library behaviour, T5, so the reviewer may park it; S4 says the
+test stays); and, if a product line can be folded, DisableGeneralOptionsHandler: true in terminate.go's http.Server literal, so
+OPTIONS * meets the product's judge like every other request (the redteam saw it answered 200 before the judge, with no host
+check and no deny line; harmless alone, nothing goes upstream). The updater for the go directive is the maintainer's: dependabot.yml
+is locked and cmd/bump has no product room, so S-F19 proposes nothing and S-1018 reports the gap. Ported: the toolchain pin is
+this repository's go.mod; the product-side half is in the ported literal, also in v1 main: egressproxy/terminate.go (the
+http.Server literal). Not someone else's undisclosed weakness: the advisories are published and fixed upstream.
+
+Handoffs: S-1013 takes the A6 client gap through C19 (guest-written root.ext4, vmlinux or firecracker in the data directory)
+with S-F12 and C26, and PARKED lines 87 and 88; S-1016 takes govulncheck with GOOS=darwin over vz, go-infinity-channel and x/mod
+on the Mac; S-1018 takes the residual lines for the unverified guest image on the client, the dry-run attestations, the godebug
+and toolchain directives a free go.mod may carry, the key expiry, the install.sh notes, the toolchain updater gap and the
+corrected pull-request-creation statement; H-905 takes the released artifact set against what the client loads, darwin
+codesigning, --source-ref in the verification docs, and the B6 bound against the gate budget.
