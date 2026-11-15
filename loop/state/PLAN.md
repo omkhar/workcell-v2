@@ -415,7 +415,7 @@ and the fix unit moves it into place (S4).
       accept: as S-1002
 - [ ] R-4 | flow:mech | model:opus | env:any | deps:S-1013 | tries:0 | Retro: the orchestrator does it itself, and R-1's line is the text
       accept: the log entry gives the count of `PARKED.md` lines read, names each line deleted or turned into a unit, and gives each scheduled workflow with the date and conclusion of its newest run; gate green
-- [ ] S-1014a | flow:mech | model:haiku | env:any | deps:S-1001,W-802b | tries:0 | Ask for the long fuzz run: set `escape/fuzz-minutes.txt` to `240`
+- [x] S-1014a | flow:mech | model:haiku | env:any | deps:S-1001,W-802b | tries:0 | Ask for the long fuzz run: set `escape/fuzz-minutes.txt` to `240`
       accept: the file on `main` holds `240`
 - [ ] S-1014 | flow:audit | model:fable | env:any | deps:S-1014a | tries:0 | wait:nightly.yml | Collect the long fuzz run, then set `escape/fuzz-minutes.txt` back to `10`. The crashers are the candidates, so no auditor is needed
       accept: every target ran for four hours; each crasher is minimised and confirmed or refuted under S4
