@@ -997,3 +997,104 @@ docs/security-review.md (S7) and for S-1013's chains. If hardening is wanted aft
 session and hold the value in the broker under mu, zeroed at Close, as the sign-in tokens already are, about 10 lines in broker.go and
 one sentence in docs/policy.md; lowering the window would throttle legitimate use at 5 requests a second.
 also in v1 main: credbroker/cli.go (source.go) and credbroker/server.go (broker.go)
+
+## S-1008: workspace export in both modes, and the return path (I1, I8), as built at main 2b03762
+
+Trust boundary. Row 5 (pull, diff): guest root owns every Entry, Data and Exit frame on vsock 5000 of the pull VM, which boots the
+session's guest-written workspace.ext4 with no network and default caps; they enter at cmd/workcell/pull_vm.go pulled.frame, then
+manifest (guest.DecodeEntry, manifest.add, checkPath and fold in pull.go), then put and sameBytes, then end. Authority: the CLI as the
+operator's uid holding dest open O_DIRECTORY: it unlinks non-directories and empty directories, makes directories 0755, symlinks with
+any target and files 0644 or 0755 holding the guest's bytes, each path resolved with openat2 RESOLVE_BENEATH|RESOLVE_NO_SYMLINKS
+(pull_linux.go) or O_NOFOLLOW_ANY (pull_darwin.go); it prints guest strings quoted on stderr (shown) and as diff lines on stdout. The
+whole manifest is judged before the first byte is written. Row 15 (mount mode): guest root owns every FUSE request frame on the first
+vsock 5002 connection, including raw frames written on a duplicate of the init's socket (pidfd_getfd, as stealChannel does; ADR-005
+names this attacker); they enter at internal/fileserve/serve_linux.go Serve, codec.go parse and checkName, ops_linux.go op.
+Authority: the supervisor as the operator's uid holding the export fd and one fd per directory node; *at syscalls with O_NOFOLLOW;
+creates, unlinks, renames, truncates and chmods (0777-masked) inside the export; grow() charges file-size growth against --disk.
+Row 16 (clone export): the malicious repository shapes the operator's cwd tree, read by internal/workspace/workspace.go Export (fd
+walk, Fstatat NOFOLLOW, Readlinkat, hard links by dev and ino), internal/rootfs tree.go and ext4.go, and ext4file.go openSource
+(O_NOFOLLOW|O_NONBLOCK with a dev, ino, size and regular re-check), which writes sessions/<id>/workspace.ext4 0600 in the data
+directory. Row 19: git metadata returns only through row 5; checkPath refuses a .git component in any ASCII case; guest.Walk skips
+.git on both sides; the host runs no git. Row 21: --disk is the image's free room (clone) or the grow() cap (mount). The host relies
+on the guest for nothing (A1); entry order only decides success. Lenses worked in order: parsing and resources, logic and state,
+concurrency and check-to-use, cryptography and identity, failure modes, downgrade and replay, interaction with other surfaces.
+
+Leads refuted or bounded, with evidence (overlay tests from the scratchpad against the real packages, nothing in the tree changed;
+every target a file or process of this session, one 64 KiB tmpfs mounted and unmounted inside it for an ENOSPC probe; nothing here
+needed a VM):
+- Parsing and resources, pull: guest.DecodeEntry bounds every index (len >= 12, n in 1..MaxPath, len >= 14+n, len == 14+n+t,
+  t <= MaxPath, Exec 0 or 1, Size >= 0, kind-specific zeros); manifest.add bounds entries (1M), name bytes (64 MiB) and file bytes
+  (at most the image's apparent size, judged as e.Size > limit-bytes so no sum wraps) and refuses case-fold collisions (fold's orbit
+  equals EqualFold's, the k and Kelvin row); checkPath refuses empty, over 4096, NUL, non-UTF-8, absolute, and empty, dot, dotdot
+  and .git components; the worst-case host memory for a hostile manifest is about 280 MiB, bounded by constants; a 64 KiB Data frame
+  is the unit of host memory per frame. checkPath, fold and add were read for panics and none was found: the T5 fuzz target that
+  S-1001 asked for is still absent, a test-line item for a fix unit, not a defect. The pull's limit is the image's apparent size,
+  the operator's --disk plus the repository, so a pull writes at most the operator's own cap.
+- Parsing and resources, mount: parse checks every length before every index, walked case by case against the fuse.h 7.37 sizes
+  (init >= 16, getattr 16, setattr 88, open, opendir, access and interrupt 8, read and write 40 with Size equal to the payload,
+  release and flush 24, fsync 16, forget 8, batch_forget 8+16n exactly, statfs, readlink and destroy 0, names NUL-terminated and
+  exactly counted); READ allocates min(size, 61440) per request with 16 in flight; readdir one 8 KiB buffer; node table 128K
+  (ENOMEM) and descriptors 4096 (ENFILE); a SETXATTR larger than the init's 64 KiB buffer is ended by the guest kernel with E2BIG
+  and never reaches the host. Export: names from Readdirnames hold no slash or NUL and rootfs split refuses over 255; Readlinkat's
+  4097-byte buffer feeds validate's 4095 cap; a file over 32 GiB, more than 8M inodes, more than 65000 links to one inode all
+  fail closed with ErrTooLarge, and depth overflows nothing (Go stacks grow).
+- Logic and state, pull: the whole manifest is judged before the first write, so a refused entry writes nothing; Data bytes are
+  consumed exactly Size per file in write and compare, so the stream stays aligned; end refuses leftover or extra Data and any
+  Exit but the zero one; a corrupt or unmountable image yields an empty tree and the pull removes nothing. put keeps an existing
+  directory for a directory entry, unlinks any other kind (a FIFO, device, socket or symlink in dest is replaced, never opened),
+  refuses a non-empty directory (ENOTEMPTY) and creates with O_EXCL. Symlink targets are written as given and never followed by the
+  product: the next Export Readlinkats them, openat2 RESOLVE_NO_SYMLINKS and O_NOFOLLOW_ANY refuse any path through them (TestWrite
+  row "nothing is written through the symlink without its entry", row pull-through-symlink), fileserve opens O_NOFOLLOW and
+  policy.ReadRepo O_NOFOLLOW (S-1009). Row 19: .git is refused in any ASCII case on the way back and skipped by Walk on both sides,
+  so the guest's commits never return and the user's .git is never touched; .gitattributes, .gitmodules and hooks directories are
+  written as data that nothing on the host obeys (pull-obeys-git-config, pull-fetches-submodule). Modes: pull writes 0644 and 0755
+  only; fileserve masks to 0777 (no setuid) and MKDIR likewise; Export keeps 07777 bits in an image where everyone is root already.
+  --mount comes from parseRun alone and run ignores [workspace] mode in both policies (row repo-policy-mounts-workspace);
+  mount_darwin refuses the flag. FUSE state: EIO before INIT and after DESTROY, EPROTO for major != 7, minor negotiated down with
+  fixed 7.37 layouts. PARKED line 17 and 18 ideas judged: raw names dotdot, a/b, NUL and 256 bytes are EINVAL before any syscall
+  (adversarial rows 1-8, 67); OPEN on a symlink is ELOOP and on a FIFO, socket or device EPERM before the open (rows 9, 20, 21);
+  RENAME to a nodeid the kernel never issued is ENOENT; FALLOCATE, LINK, MKNOD and every other opcode are ENOSYS with no syscall, so
+  growth via fallocate KEEP_SIZE and a hard link inside the export are impossible for the guest; a rename from the guest's tmpfs into
+  the export is EXDEV at the guest VFS, so mv copies and the copy is charged.
+- Concurrency and check-to-use: pull has no in-scope concurrent actor (the VM only serves the pull; a concurrent --mount guest in the
+  same directory, also the operator's, can only rename within the export and plant symlinks, which O_EXCL, EEXIST and
+  RESOLVE_NO_SYMLINKS refuse). fileserve: life is held for reading by every descriptor-using request and for writing by FORGET,
+  RELEASE, RENAME and Close, so no request uses a closed or reused descriptor and RENAME sees no half-moved node; at() re-checks
+  every (parent fd, name, ino, dev) link of a directory chain, so a directory the host moved or replaced is ESTALE or ENOENT (rows
+  14, 23); directory syscalls use the node's own fd and file opens use O_NOFOLLOW plus a post-open S_IFREG check (row 15: a file
+  swapped for a symlink is ELOOP); the guest's own RENAME is serialised by life.Lock and cannot leave the export, so only the
+  out-of-scope host user could win a race; the directory-to-symlink swap raced against LOOKUP then OPEN ends in ESTALE or ELOOP;
+  concurrent grow() charges over-count, never under; a worker blocked in send times out at 5 s and ends Serve; FORGET waits for
+  in-flight readers. go test -race ./internal/fileserve green. Export: openSource re-checks dev, ino, size and regular, so a swapped
+  file, symlink or FIFO between walk and copy fails closed (TestSourceChecks); only a host-side actor could race it.
+- Cryptography and identity: none on this surface by design; the first 5002 connection is the init's because no guest code runs
+  before setup's dial; the host never parses the guest-written ext4 (map row 18).
+- Failure modes: no fail-open found. Every pull error exits 1 or 2 after a refusal that wrote nothing (manifest) or a partial tree
+  (stream errors, documented); a boot failure exits 125; an export failure removes the session directory; fileserve maps unknown
+  errors to EIO, ends Serve on any stream error and Close releases every descriptor (TestStreamEnd), after which the init aborts
+  the mount; openMount or Export failure stops the boot.
+- Downgrade, rollback and replay: wire version 1 only; FUSE minor negotiated down with fixed layouts; node ids and file handles are
+  never reused (rows 28, 35); the pull protocol is one-shot and a replayed frame is a stream error; the pull VM boots with
+  defaults(), not the session's caps (harmless).
+- Interaction with other surfaces: the pull boot passes a nil audit log and nil allowlist, so a relay or DNS frame from the pull
+  guest records nothing and reaches nothing (S-1003); pull and diff refuse mount sessions by the absence of workspace.ext4; the
+  mount-session record written before boot makes a failed --mount boot shadow the directory's earlier clone session for pull
+  (fail-closed, PARKED line 17); two --mount sessions on one export have two caps (the operator's choice, 2x); a symlinked cwd fails
+  fileserve.Open with ELOOP (TestOpen row; fail-closed DX, PARKED line 17); the data-directory interaction is C19 below. The
+  mount-mode I1 rows dotdot and link-rename reach /workspace/.. in the guest kernel and never exercise fileserve's name checks, as
+  PARKED line 17 noted: the raw-FUSE rows named under C17 would be the first real-VM exercise of the protocol tables.
+
+Observations (R3, not candidates): pull's total time has no bound, since stallLimit is per frame (60 s between frames, 5 s within
+one), so a guest that drips one entry per 59 s holds `workcell pull` as long as it likes; Ctrl-C ends it and one VM at its caps is
+all it costs. A clone export that a repository shape makes fail (a 32 GiB sparse file, a 256-byte name) removes the session directory
+and with it the session_start record, so such a start leaves no I9 record; the guest never ran. Mount mode exposes the real .git,
+so hooks and config the guest writes there run at the user's next git command, A5's explicit option: residual risk for
+docs/security-review.md, as is the hard-link sharing of a `git clone --local` repository (adversarial row 18 pins that the link is
+served). A symlinked cwd records $PWD in the session's repo file, so a pull from the real path says no session has run (DX). STATFS,
+Ino and Nlink pass the host filesystem's figures to the guest: information, not reach. maxFDs 4096 assumes the hard RLIMIT_NOFILE
+leaves headroom; where it does not, a guest holding every slot starves the proxy and the audit log, fail-closed for the network.
+A macOS lead for S-1016, unverified without a Mac: checkPath's .git test is EqualFold, whose fold of ".git" is ASCII-only, and a
+case-insensitive APFS or HFS+ volume that folds U+0130 or U+0131 into i would land `.gIt/hooks/pre-commit` (dotted capital I) in
+`.git/`; refute by creating `.git` and that spelling side by side on such a volume. Two names that differ only by NFC and NFD both
+pass fold and collide on APFS, landing the second's content on the first inside dest; no .git spelling is among them (PARKED line
+21). Interactive interrupt during a long clone export is deferred until boot (export takes context.Background()): DX only.
