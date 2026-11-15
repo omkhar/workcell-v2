@@ -780,6 +780,33 @@ safeguard re-ran a request.
 
 ### S-1006 candidates
 
+C13. ID I10 (host memory, file descriptors and goroutines), on the I4 rebind path; I11 holds. Attacker: the network attacker as the
+host's DNS for an allowed name (the model of the rebind-* rows, map row 14), with guest root making requests. Where:
+internal/proxy/terminate.go Terminate, the http.Transport literal (no TLSHandshakeTimeout, no MaxConnsPerHost; DialContext ignores
+its ctx and calls connect), with internal/proxy/proxy.go connect, which bounds only the TCP dial. Input: the host resolver answers an
+allowed bare (443) name with a public address the attacker runs, whose TCP accept completes and whose server never answers the
+ClientHello (a SYN-dropping variant is bounded by the 30 s dial budget). The guest opens a terminated connection, sends
+`GET / HTTP/1.1\r\nHost: <name>\r\n\r\n`, waits about 100 ms and closes; repeat at the vsock connect rate. Effect: Go 1.27 net/http
+dials on context.WithoutCancel, so the upstream dial is detached from the request, and with TLSHandshakeTimeout 0 the handshake waits
+on the attacker forever. The guest's close ends the handler and releases the relay slot and the proxy slot, but the upstream socket
+and two goroutines stay. Measured by the auditor: 600 requests in 2.5 s left 0 slots held, 600 handshakes open, +600 fds, +1200
+goroutines and +24.9 MiB heap (42.5 KiB each), never closed: about 10 MiB/s and 240 fds/s of host growth outside the 1024-slot bound
+for as long as the attacker holds the sockets. At the fd ceiling Accept fails and the guest loses network (fail closed), but the
+memory is the host's. By contrast a stall on the splice path holds its slot with the socket (bounded by maxConns), and a
+post-handshake stall needs a certificate valid for the allowed name (the provider, out of scope) and is closed on cancel.
+Reproducing test: escape/_pending/S-F8/c13_test.go, TestUpstreamHandshakeEndsWithTheGuest (redteam; package proxy, 53 lines, run by
+overlay): 8 guests each send one request to a tarpit upstream and close; fails on 9e88cea after 12 s with eight lines `upstream
+connection N is still held with no slot held, 12s after its guest closed`, with zero proxy slots held. Outcome: CONFIRMED, high, by
+the verifier: its own 45 s probe saw `slots held after guests closed: 0; goroutines 4 -> 44; fds 10 -> 50` and `after 45 s: 20 of 20
+upstream connections still open`, past dialTimeout (10 s) and connectBudget (30 s), so this is no nearby bound; the dial stub stands
+in for the host resolver returning a public address the attacker runs, the guest side is a plain TLS connection plus one HTTP/1.1
+request, and Terminate marks every allowlisted 443 name terminated, so no rule or broker is needed; the host's resolver is "a host not
+on the allowlist" in section 2's words, the same position the rebind-* rows use, so no precondition lies outside section 2 (the
+verifier notes that a maintainer who reads the LAN-DNS position as a precondition would make it medium; both the auditor and the
+verifier read it as high). The "no idle timeout, like splice" comment covers the guest-side hold, which a slot bounds; the upstream
+pre-handshake hold sits outside the bound, so it is not intended. Fix unit: S-F8, below S-1006 in PLAN.md.
+also in v1 main: egressproxy/terminate.go
+
 C14. ID I9 (every connection attempt recorded). Attacker: guest root speaking the relay header itself. Where: cmd/workcell/relay.go
 stream, the branch for a UDP header to a port other than 53. Input: a version-1 relay header with proto 17 and any port but 53, for
 example UDP 5353. Claimed effect: the stream is closed with no audit record, while the same header with proto 6 to an unserved port is
