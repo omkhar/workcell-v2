@@ -26,8 +26,8 @@ var testRecords = []audit.Record{
 	{Event: audit.SessionEnd},
 }
 
-// auditSession writes testRecords with the audit package itself into a session of a new data directory.
-func auditSession(t *testing.T) (dir string, log []byte) {
+// auditSession writes records with the audit package itself into a session of a new data directory.
+func auditSession(t *testing.T, records []audit.Record) (dir string, log []byte) {
 	t.Helper()
 	data := t.TempDir()
 	t.Setenv("XDG_DATA_HOME", data)
@@ -43,7 +43,7 @@ func auditSession(t *testing.T) (dir string, log []byte) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, r := range testRecords {
+	for _, r := range records {
 		if err := l.Record(r); err != nil {
 			t.Fatal(err)
 		}
@@ -59,30 +59,32 @@ func auditSession(t *testing.T) (dir string, log []byte) {
 func TestVerify(t *testing.T) {
 	lines := func(log []byte) []string { return strings.SplitAfter(string(log), "\n")[:len(testRecords)] }
 	tests := []struct {
-		name string
-		edit func(log []byte) string // the log after an offline edit
-		args []string
-		want int
+		name    string
+		records []audit.Record          // what the session wrote
+		edit    func(log []byte) string // the log after an offline edit
+		args    []string
+		want    int
 	}{
-		{"untouched", func(l []byte) string { return string(l) }, []string{testID}, 0},
-		{"an id that is no session", func(l []byte) string { return string(l) }, []string{"../x"}, 2},
-		{"two ids", func(l []byte) string { return string(l) }, []string{testID, testID}, 2},
-		{"a flag", func(l []byte) string { return string(l) }, []string{"-x"}, 2},
-		{"the first record dropped", func(l []byte) string { return strings.Join(lines(l)[1:], "") }, []string{testID}, 1},
-		{"a byte altered", func(l []byte) string { return strings.Replace(string(l), "a.example", "c.example", 1) }, []string{testID}, 1},
-		{"truncated inside a record", func(l []byte) string { return string(l[:len(l)-5]) }, []string{testID}, 1},
-		{"truncated at a record", func(l []byte) string { return strings.Join(lines(l)[:len(testRecords)-1], "") }, []string{testID}, 1},
-		{"the last line repeated", func(l []byte) string { return string(l) + lines(l)[len(testRecords)-1] }, []string{testID}, 1},
-		{"two records swapped", func(l []byte) string {
+		{"untouched", testRecords, func(l []byte) string { return string(l) }, []string{testID}, 0},
+		{"an id that is no session", testRecords, func(l []byte) string { return string(l) }, []string{"../x"}, 2},
+		{"two ids", testRecords, func(l []byte) string { return string(l) }, []string{testID, testID}, 2},
+		{"a flag", testRecords, func(l []byte) string { return string(l) }, []string{"-x"}, 2},
+		{"the first record dropped", testRecords, func(l []byte) string { return strings.Join(lines(l)[1:], "") }, []string{testID}, 1},
+		{"a byte altered", testRecords, func(l []byte) string { return strings.Replace(string(l), "a.example", "c.example", 1) }, []string{testID}, 1},
+		{"truncated inside a record", testRecords, func(l []byte) string { return string(l[:len(l)-5]) }, []string{testID}, 1},
+		{"truncated at a record", testRecords, func(l []byte) string { return strings.Join(lines(l)[:len(testRecords)-1], "") }, []string{testID}, 1},
+		{"the last line repeated", testRecords, func(l []byte) string { return string(l) + lines(l)[len(testRecords)-1] }, []string{testID}, 1},
+		{"two records swapped", testRecords, func(l []byte) string {
 			s := lines(l)
 			s[1], s[2] = s[2], s[1]
 			return strings.Join(s, "")
 		}, []string{testID}, 1},
-		{"emptied", func([]byte) string { return "" }, []string{testID}, 1},
+		{"emptied", testRecords, func([]byte) string { return "" }, []string{testID}, 1},
+		{"cut before session_end, not running", testRecords[:len(testRecords)-1], func(l []byte) string { return string(l) }, []string{testID}, 1},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			dir, log := auditSession(t)
+			dir, log := auditSession(t, tc.records)
 			if err := os.WriteFile(filepath.Join(dir, audit.LogName), []byte(tc.edit(log)), 0o600); err != nil {
 				t.Fatal(err)
 			}
@@ -97,19 +99,24 @@ func TestVerify(t *testing.T) {
 	}
 }
 
-func TestVerifyRefusesAnotherHostsKey(t *testing.T) {
-	auditSession(t)
-	if err := os.Remove(filepath.Join(os.Getenv("XDG_DATA_HOME"), "workcell", "audit.key")); err != nil {
-		t.Fatal(err)
-	}
-	var out, errs bytes.Buffer
-	if got := verify([]string{testID}, &out, &errs); got != 1 {
-		t.Errorf("exit %d, want 1 (stderr %q)", got, errs.String())
+func TestVerifyRefusesAnotherHostOrSession(t *testing.T) {
+	sibling := testID[:len(testID)-1] + "e"
+	for name, tamper := range map[string]func(dir string, _ []byte) (id string, err error){ // an offline change to auditSession's output, and the id to verify after it
+		"another host's key":      func(dir string, _ []byte) (string, error) { return testID, os.Remove(dir + "/../../audit.key") },
+		"renamed to a sibling id": func(dir string, _ []byte) (string, error) { return sibling, os.Rename(dir, dir+"/../"+sibling) },
+	} {
+		t.Run(name, func(t *testing.T) {
+			id, err := tamper(auditSession(t, testRecords))
+			var out, errs bytes.Buffer
+			if got := verify([]string{id}, &out, &errs); err != nil || got != 1 {
+				t.Errorf("exit %d, want 1 (tamper %v, stderr %q)", got, err, errs.String())
+			}
+		})
 	}
 }
 
 func TestOCSF(t *testing.T) {
-	auditSession(t)
+	auditSession(t, testRecords)
 	want := []struct{ class, category, activity, typeUID, status int }{
 		{6002, 6, 3, 600203, 1},
 		{4001, 4, 1, 400101, 1},
