@@ -5,8 +5,8 @@ specification. Run `workcell explain` to see the result for your directory.
 
 ## Where it lives
 
-- Your grants: `~/.config/workcell/config.toml`, or `$XDG_CONFIG_HOME/workcell/config.toml` when that is set.
-  A missing file grants nothing.
+- Your grants: `~/.config/workcell/config.toml`, or `$XDG_CONFIG_HOME/workcell/config.toml` when that is set
+  to an absolute path (a relative value is ignored). A missing file grants nothing.
 - The repository's file: `workcell.toml` in the directory you start the session in. It can only narrow
   your grants (I13). See [Narrowing](#narrowing).
 
