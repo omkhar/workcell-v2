@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Omkhar Arasaratnam
-// Waits for S-F14 (C21 of S-1009): move to cmd/workcell/c21_test.go.
+// Regression test for C21 of S-1009 (I13): a relative XDG_CONFIG_HOME, XDG_DATA_HOME or HOME is ignored, as the XDG base directory spec says.
 
 package main
 
