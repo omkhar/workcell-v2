@@ -1391,6 +1391,16 @@ strings.ContainsFunc(e.Text, unicode.IsSpace) or "#") with the whole cmd/workcel
 S-1009 in PLAN.md. For S-F15 to carry: the test has one row (\r) for the test budget, and the fix must cover every unicode.IsSpace
 rune. Not ported.
 
+C22 FIXED by S-F15, commit aca6678 (PR #215). allowlist in cmd/workcell/policy.go refuses an entry when strings.ContainsFunc(e.Text,
+unicode.IsSpace) holds or it carries "#", before ParseAllowlist, in the one loop that both a --allow value (Line 0) and a config-file
+row (Line > 0) pass through; ParseAllowlist splits only on "\n", "#" and strings.Fields, every one of which that guard now refuses, so
+one entry is one endpoint. The unicode import was paid by folding allowlist's doc comment from four lines to three: product 14999 of
+15000. The pending test became cmd/workcell/c22_test.go TestC22AllowFlagWhitespace, grown from one separator to three (\r, U+00A0,
+U+3000) in a loop, two test lines: it fails on e1e5b98 (err=<nil> for all three, two endpoints accepted, one a forward port) and
+passes on aca6678 with cmd/workcell, internal/proxy and internal/policy green under -race. The reviewer loaded config.toml rows
+carrying \r, U+00A0, U+3000, \n, \t, \f, U+0085 and U+2028 through policy.Parse and each is refused as config.toml:2 has an invalid
+endpoint, so there is no second path; a plain name, name:port and a trailing-dot name take the same path as before. Not ported.
+
 Handoffs: S-1013 takes the chain of C21 with C19 (a relative data home and S-F12's cwd check) and the relative TMPDIR observation;
 S-1010 the audit log's canonical-host recording that C22 relied on; S-1016 nothing. The allowlist() re-parse and the `source` key a
 repository row must carry are less-code and developer-experience notes for the fix units in cmd/workcell.
