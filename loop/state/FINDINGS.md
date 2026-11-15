@@ -1235,3 +1235,147 @@ and mkdir judged by host free blocks and inodes) are the first rows that would e
 they are parked for the fix units or the maintainer, since each needs a control-adapter twin for T2.
 
 Delivery: the unit is blocked by the SPEC section 7 test budget (BLOCKED.md); the four pending tests are on the claim branch named there until the maintainer makes room.
+
+## S-1009: policy loading and merge, CLI parsing, `--allow`, adapter data files (I13), as built at main 01501b5
+
+Trust boundary. Row 17 (repo-local workcell.toml): the malicious repository owns every byte of `<cwd>/workcell.toml`; they enter at
+cmd/workcell/policy.go loadPolicy, then internal/policy/policy.go ReadRepo (O_NOFOLLOW, fstat of the opened fd, regular file, 1 MiB
+cap), Parse (the project's own TOML subset) and Narrow. Authority: the supervisor as the operator's uid before any VM boots, and the
+CLI under `explain`. Narrow keeps only the user's own allow entries whose text a repository entry equals exactly and the user's own
+secret rows whose name a repository row names; a repository string reaches nothing else but the quoted `asked` note. Row 39 (CLI
+arguments): hostile model or tool output that a host-side tool turns into argv; `--allow` values enter at caps.go parseRun and are
+judged by policy.go allowlist and internal/proxy/allowlist.go ParseAllowlist; `--cpus`, `--memory` and `--disk` by parseRun's bounds;
+`--cache` by cache.go's regexp; session ids by session.go validID; the command argv goes verbatim into guest.Exec. The allowlist
+becomes the proxy's sni and forward maps, the resolver's name set, the session CA's name constraints and the kernel cmdline
+`workcell.ports=`. Row 40 (environment): XDG_CONFIG_HOME, XDG_DATA_HOME and HOME at cmd/workcell/data.go xdgDir choose the user
+config file and the data directory, which holds the VMM binary, kernel, initrd, root image, layers, caches, audit key and sessions;
+TERM goes into the guest env; TMPDIR places the VMM socket directory. The operator sets them, but a relative value hands the choice to
+the repository (C21). Row 41 (user config.toml and embedded provider TOML): read by the same reader; cmd/workcell/policy.go bindings
+fills a user row that has neither host nor header from provider.FindSecret after Narrow; grants go to secret.NewBroker and the
+terminate rules to proxy.Terminate. Lenses worked in order: parsing and resources, logic and state, concurrency and check-to-use,
+cryptography and identity, failure modes, downgrade and replay, interaction with other surfaces.
+
+Leads refuted or bounded, with evidence (overlay tests from the scratchpad against the real cmd/workcell and internal/policy packages,
+nothing in the tree changed; every target a file or process of this session; the one end-to-end run held the update channel, so no
+network; nothing here needed a VM):
+- Can a repository widen anything? No, short of C21. Network: Narrow keeps a user entry only when a repository entry equals its text
+  exactly, so a respelling (case, `:443`, trailing dot) keeps nothing and lands in `asked` (TestNarrow; probe with user
+  `API.anthropic.com` and `api.anthropic.com:443` against repo `api.anthropic.com`: kept nothing). Secrets: only the user's rows that a
+  repository row names survive, as the user wrote them; a repository row's host, header, source, env, method, path and repos are never
+  read (TestNarrow; rows repo-policy-rebinds-secret, -lifts-secret-binding, -rewires-secret). Forward ports: the same exact-text rule.
+  Workspace mode and resources: Parse reads past [workspace] and [resources] in every file and only the flags set them (rows
+  repo-policy-mounts-workspace, repo-policy-lifts-memory-cap). [update]: ReadRepo refuses a repository file that carries the table
+  (TestReadRepo). Provider or agent choice: argv alone; layers come from the data directory's markers. Guest env: PATH, HOME, LANG,
+  trust, cache and placeholder variables are host-built, and env names come only from the user's rows or the provider file.
+- Does Narrow compare names as the proxy and resolver match them? Narrow compares text with text; whatever survives is the user's own
+  string, which allowlist then canonicalises (lower case, trailing dot dropped, :443 default) for the proxy maps, the resolver set and
+  the CA constraints, so a repository can only shrink the set and never select a wider spelling. The secret-drop rule compares a
+  secret row's host text with the allow texts, so a row whose host the user spelled differently or left to a provider survives
+  narrowing and is then refused by bindings for want of its host: fail closed (PARKED line 32 confirmed, developer experience only).
+- Fail-open paths: none. A missing workcell.toml leaves the user's grants (I13 speaks of narrowing); a symlink, FIFO or directory is
+  ErrNotRegular, ignored with a stderr line, never beyond the user's own config (docs/policy.md; rows repo-policy-through-symlink,
+  repo-policy-is-a-pipe); a unix socket fails open(2) with ENXIO, a hard refusal; over 1 MiB, invalid UTF-8, control bytes, an unknown
+  table or key, a repository [update] table and a row without name or source each refuse before anything boots; an unreadable user
+  config refuses; HOME unset with no XDG refuses. The parser cannot hang and is bounded by the cap: 209,704 allow entries parse in
+  35 ms and Narrow in 43 ms; 33,824 [[secret]] rows in 58 ms.
+- `--allow`: an IP literal is refused, bracketed, zoned and IPv4-mapped included (netip.ParseAddr); an octal-looking name such as
+  01.02.03.04 is a DNS-shaped name, resolved as one and vetted by blockedAddr at connect (S-1004, S-1006); a port range or sign is
+  refused by ParseUint; control bytes never reach `explain` (it prints the canonical hosts, ports and forwards) or the audit log (the
+  proxy records the allowlist's canonical host), and errors quote the entry. One value admitting two endpoints is C22.
+- Resource flags: `--cpus` 1..32 by flag.Int (Go base-0 syntax, so 0x20, 1_0 and +2 are read; -1 refused); `--memory` 128 MiB to
+  2147483647 MiB; `--disk` 1 MiB to 2147483647 MiB, 0 refused; the export image is a sparse file whose EFBIG beyond 16 TiB on ext4
+  refuses the session. Only the operator sets them (PARKED line 15 has the oversubscription note); no in-scope attacker.
+- Provider defaults and user rows: FindSecret fills host, header and env into a user row only after Narrow and only when the row has
+  neither host nor header; repository rows contribute names only; the embedded files are build-time content and provider_test.go
+  checks their names.
+- validID is an anchored regexp of fixed shape applied by rm, stop, log, verify, attach and ls's filter; no traversal; attach dials the
+  socket path from the host-written vmm file. Writes outside the data directory: the VMM socket directory under TMPDIR and the
+  operator's cwd in mount mode only.
+- Concurrency and check-to-use: ReadRepo fstats the fd it opened; the policy is fixed before boot; run and startup read the user's own
+  file twice. Cryptography and identity: only the [update] key hex and ca pool, the operator's. Downgrade and replay: cooloff "0s" is
+  the default and a negative value is refused; a repository [update] table and an http channel are refused; the client side is
+  S-1011's. PARKED line 25 answered: repository bytes never reach allowlist(), argv is the only route (C22). PARKED lines 29 and 71
+  (bareHost's leading newline, duplicate names, dead `file` and `field` keys) concern build-time data files only.
+
+Observations (R3, not candidates): allowlist() re-parses the whole joined list per entry, so 1000 flags cost 0.16 s and 5000 flags
+4.0 s, operator argv only, and one ParseAllowlist call would be less code since its errors already quote the entry; a relative TMPDIR
+puts the VMM socket directory under cwd, where a mount-mode guest sees it live, and C21's IsAbs rule would cover it; a repository
+[[secret]] row must carry `source` although only `name` is read, so a hostile repository can only refuse the session; a mount-mode
+guest can replace the repository's own narrowing workcell.toml, and the next run returns to the user's grants or refuses; `explain`
+and `run` take cwd from os.Getwd, so the workcell.toml path may run through the operator's own symlinked cwd with the last component
+still O_NOFOLLOW; the `asked` note escapes control and format characters with strconv.Quote and a homoglyph name copied into
+`--allow` is refused by dnsName; log.go ignores configFile's error and names "config.toml" in its remedy; Narrow's note invites the
+operator to allow exactly what the repository asked, the designed approval path, so its wording matters.
+
+Coverage. Examined in full: cmd/workcell/policy.go, caps.go, data.go, cache.go, session.go, main.go, explain.go, log.go, update.go,
+layer.go, cache_vm.go, relay.go, run_vm.go, policy_test.go, caps_test.go, data_test.go, explain_test.go; internal/policy/policy.go
+and policy_test.go; internal/provider/provider.go, provider_test.go and the four TOML files; internal/proxy/allowlist.go and
+proxy.go; internal/resolver/resolver.go; docs/policy.md; escape/suite/repo.go and the repo-policy-* rows of tests.go;
+escape/sandbox/workcell.go policyTOML. In part: internal/proxy/terminate.go and signin.go heads, internal/secret/broker.go and
+source.go heads, internal/guest/guest.go, internal/wire/wire.go WriteFrame, internal/vmm/firecracker/firecracker.go start, the
+S-1001 map and C19, PARKED.md in full. Not opened: the rest of terminate.go and signin.go (S-1005), internal/channel and
+internal/artifact (S-1011), the guest init (S-1002), internal/fileserve and internal/workspace (S-1008), the vz and darwin backends
+(S-1003), pull.go and ocsf.go (S-1008, S-1010). Tools: go test only; FuzzParse exists and the long run is S-1014's. No file on this
+surface is ported, so nothing carries also in v1 main and nothing is private.
+
+### S-1009 candidates
+
+C21. ID I13 (workspace content can only narrow policy; widening needs user-level config or an interactive approval on the host); I14
+where the config home is relative, since the repository then supplies the [update] table; A6 and host integrity where the data home is
+relative, since the repository then supplies the VMM binary the host execs. Attacker: a
+malicious repository, with a hostile tree holding a directory literally named `~`, `.config`, `data`, or whatever the variable's
+relative value is. Precondition the attacker does not control: the operator's XDG_CONFIG_HOME, XDG_DATA_HOME or HOME holds a
+relative path, such as the literal `~/.config` that /etc/environment, ~/.pam_environment and environment.d leave unexpanded; the XDG
+base directory specification says a relative value must be ignored, and the product does not. Where: cmd/workcell/data.go xdgDir
+joins the variable with "workcell" with no IsAbs check, and os.UserHomeDir returns HOME as it is; used by policy.go configFile and
+data.go dataDir, then run_vm.go loadPolicy, loadArtifacts, findLayers and session, and internal/vmm/firecracker/firecracker.go
+exec.Command with the binary path as given (no PATH search). Input: (a) XDG_CONFIG_HOME=~/.config (literal) and a repository holding
+`~/.config/workcell/config.toml` with `[network] allow = ["evil.test"]` and a `[[secret]]` row whose source is `cmd:/bin/sh -c ...`
+on a host of its choosing, then `workcell run <anything>` or `workcell explain` in the repository; (b) XDG_DATA_HOME=data and a
+repository holding data/workcell/{firecracker,vmlinux,initrd.cpio,root.ext4}, then `workcell run -- true`; (c) HOME relative with the
+XDG variables unset, both at once. Effect: (a) the repository's file is the user-level policy: its network allow stands, and a
+secret binding of its choosing whose source is a host program and argv it chose runs on the host under the broker when the guest,
+which the repository's code drives, sends the placeholder; `explain` prints `from ~/.config/workcell/config.toml`, the same text
+as the real path; (b) `workcell run` execs the repository's data/workcell/firecracker on the host as the operator's uid before any
+sandbox exists, mints audit.key and the session directory inside the repository tree, and attaches
+data/workcell/layers/<agent>/current as a layer; every verb that uses the data directory (update, log, verify, ls, rm, doctor,
+explain) reads the repository's tree as the product's state. The auditor's overlay probes showed (a) for `~/.config`, `.config` and
+`cfg` (loadPolicy granted evil.test from a relative file while the real $HOME config granted nothing), (b) in loadArtifacts and
+findLayers, (c) with HOME=h, and end to end: run([--, true]) with the channel held exited 125 after the repository's script ran as
+the VMM with `--no-api --config-file`, and data/workcell/audit.key and a session directory appeared inside the repository. Relation
+to C19 (S-F12), not a re-report: C19's precondition is a cwd that is an ancestor of the real data or config directory; here cwd is
+an ordinary repository and the relative variable moves the product's state into every cwd; S-F12's check closes this only if it
+makes the directories absolute first, and it runs after loadPolicy, startup and findLayers and not at all for explain, update, log,
+verify, ls, rm and doctor. Reproducing test: escape/_pending/S-F14/c21_test.go TestC21RelativeXDGDirs (redteam; package main, run
+by overlay; HOME an empty TempDir, XDG_CONFIG_HOME `~/.config`, XDG_DATA_HOME `data`, cwd a repository holding
+`~/.config/workcell/config.toml` that allows evil.test; asserts loadPolicy grants nothing and names an absolute file, and dataDir is
+absolute): on 01501b5 it fails with `loadPolicy: file="~/.config/workcell/config.toml" err=<nil> allow=&{map[evil.test:true] map[]}`
+and `dataDir: "data/workcell" err=<nil>`; the redteam showed it passes under a scratch fix (xdgDir takes the variable only when
+filepath.IsAbs and errors when the home directory is not absolute) with the whole cmd/workcell package green. Outcome: CONFIRMED, medium, by the verifier, who ran the test on 1c6e96f (the same two failures), then the real binary: in a scratch repository holding `~/.config/workcell/config.toml` with `allow = ["evil.test"]` and a `[[secret]]` row whose source is `cmd:/bin/echo pwned`, `env -i HOME=<abs> XDG_CONFIG_HOME='~/.config' XDG_DATA_HOME=data workcell explain` exits 0 and prints `network: from ~/.config/workcell/config.toml`, `https://evil.test` and `secrets: x: in x-api-key to https://evil.test`, the claimed effect and not a look-alike; the claimed fix as a scratch overlay makes the test pass with the package green, so the test's shape is sound; no IsAbs, Abs, EvalSymlinks or UserHomeDir check exists in cmd/workcell product code beyond the unchecked UserHomeDir call. Scope: the repository supplies only files in its own tree (section 2, hostile config); the precondition is a plausible operator mistake that a conforming product ignores, so medium under S6, not high and not low. The verifier adds that update.go newInstaller reads the same configFile(), so the repository's file also supplies the [update] table (key, channel, ca) and `workcell update` in the hostile repository would install attacker-signed artifacts: I14 as well, and S-F12 does not touch update.
+Fix unit: S-F14, below S-1009 in PLAN.md. For S-F14 to carry: the test cut the loadArtifacts arm and the end-to-end run arm for the
+test budget, and does not express relative HOME with XDG unset or the session directory and audit.key landing inside the repository;
+the fix covers all three by construction, and the same rule should reach TMPDIR if a line is spare. Not ported.
+
+C22. ID I13 (the `--allow` flag is the host-side approval of one endpoint; cmd/workcell/policy.go states that one flag value is one
+host) and the product's own one-entry rule. Attacker: hostile model or tool output that becomes argv of `workcell run` or `workcell
+explain` through a host-side tool that shows the operator the command line. Where: cmd/workcell/policy.go allowlist guards each
+entry with `strings.ContainsAny(e.Text, " \t#")` before internal/proxy/allowlist.go ParseAllowlist, which splits on "\n" and
+strings.Fields, every unicode.IsSpace rune. allowlist.go is ported (`// Ported from v1: egressproxy/allowlist.go`) and its
+whitespace split is that file's documented text format; the weakness is the unported caller's guard, so no `also in v1 main` line
+applies. Input: one value `--allow "evil.example:443<SEP>api.anthropic.com:443"` with SEP any of \r \n \v \f U+0085 U+00A0 U+2028
+U+3000; the hidden half may be a forward port such as `b.example:22`; both halves need an explicit port, since ":443" is appended
+once to the whole string; a terminal renders the \r form with the first half overwritten. Effect: one approved value admits two
+endpoints: a second TLS name or a raw TCP forward port joins the session's allowlist, resolver set and CA constraints. The proxy,
+resolver, CA, audit log and `explain` all hold and show the canonical names of both endpoints, so the only thing hidden is the second
+endpoint in a raw argv display outside the product: low under S6 (hardening with no demonstrated break). PARKED line 25 answered:
+repository bytes never reach this path, since Narrow passes only the user's own entries to allowlist(); argv is the only in-scope
+route. Reproducing test: escape/_pending/S-F15/c22_test.go TestC22AllowFlagWhitespace (redteam; package main, run by overlay; one
+entry `a.example:443\rb.example:22` must be refused with "invalid endpoint"): on 01501b5 it fails with `err=<nil>, want invalid
+endpoint`, two endpoints accepted, one a forward port; the redteam showed it passes under a scratch fix (refuse
+strings.ContainsFunc(e.Text, unicode.IsSpace) or "#") with the whole cmd/workcell package green. Outcome: CONFIRMED, low, by the verifier, who ran the test on 01501b5 (the same failure), then a probe through parseRun and loadPolicy for each separator \r \n \v \f U+0085 U+00A0 U+2028 U+3000: one argv `evil.example:443<SEP>b.example:22` gave Hosts [api.anthropic.com b.example evil.example], TLSHosts [api.anthropic.com evil.example], Ports [22 443] and Forward(22) b.example, since flag.Func keeps the value verbatim; the real binary `workcell explain --allow $'evil.example:443\rb.example:22'` prints both endpoints; run_vm.go hands Ports, Hosts and TLSHosts unfiltered to the adapters, proxy.New, NewSessionCA and resolver.New, so nothing later refuses them. The test takes no extra power: it calls allowlist() with the one Entry loadPolicy builds from one flag value. Low is right: I13 is literally satisfied, since the operator approved the whole byte string, and every product display shows both canonical names; the \r disguise is weaker than claimed, since CR returns to column 0 of the whole line, and the U+00A0 and U+3000 forms, which render as a space, are the convincing ones. The scratch fix is net +1 product line (the `unicode` import), not zero, and a ContainsAny list without it would miss the Z-category runes, so keep the import. Fix unit: S-F15, below
+S-1009 in PLAN.md. For S-F15 to carry: the test has one row (\r) for the test budget, and the fix must cover every unicode.IsSpace
+rune. Not ported.
+
+Handoffs: S-1013 takes the chain of C21 with C19 (a relative data home and S-F12's cwd check) and the relative TMPDIR observation;
+S-1010 the audit log's canonical-host recording that C22 relied on; S-1016 nothing. The allowlist() re-parse and the `source` key a
+repository row must carry are less-code and developer-experience notes for the fix units in cmd/workcell.
