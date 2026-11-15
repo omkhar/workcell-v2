@@ -86,19 +86,10 @@ func (r *naiveResolver) stop() {
 	r.wg.Wait()
 }
 
-// hostIPv4 is the host's first non-loopback IPv4 address, where the judges' canaries listen, or loopback when it has none.
+// hostIPv4 is the host's first non-loopback IPv4 address (HostAddr), where the judges' canaries listen, or loopback when it has none.
 func hostIPv4() net.IP {
-	ifs, _ := net.Interfaces()
-	for _, i := range ifs {
-		if i.Flags&net.FlagLoopback != 0 || i.Flags&net.FlagUp == 0 {
-			continue
-		}
-		addrs, _ := i.Addrs()
-		for _, a := range addrs {
-			if ipn, ok := a.(*net.IPNet); ok && ipn.IP.To4() != nil && !ipn.IP.IsLinkLocalUnicast() {
-				return ipn.IP.To4()
-			}
-		}
+	if a, err := HostAddr(); err == nil {
+		return net.ParseIP(a).To4()
 	}
 	return net.IPv4(127, 0, 0, 1).To4()
 }

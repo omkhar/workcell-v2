@@ -7,7 +7,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -131,12 +130,7 @@ func moveProbe(args []string) Result {
 
 // tryRead returns the first line of the file (of its first 64 KiB), or the error, in a few words.
 func tryRead(path string) string {
-	f, err := os.Open(path)
-	if err != nil {
-		return short(err)
-	}
-	defer f.Close()
-	b, err := io.ReadAll(io.LimitReader(f, 64<<10))
+	b, err := readPrefix(path, 64<<10)
 	if err != nil {
 		return short(err)
 	}

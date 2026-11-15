@@ -92,11 +92,6 @@ func parseDNSQuery(b []byte) (dnsQuestion, bool) {
 	return dnsQuestion{ID: binary.BigEndian.Uint16(b), Name: name.String(), Type: binary.BigEndian.Uint16(b[i:])}, true
 }
 
-// dnsFrame adds the two-byte length prefix of DNS over TCP and TLS (RFC 1035 section 4.2.2, RFC 7858).
-func dnsFrame(msg []byte) []byte {
-	return append(binary.BigEndian.AppendUint16(make([]byte, 0, 2+len(msg)), uint16(len(msg))), msg...)
-}
-
 // withEDNS0 adds an OPT pseudo-record (RFC 6891) to a query: ARCOUNT 1, root name, type OPT, a 4096-byte UDP size in the class field, no options.
 func withEDNS0(msg []byte) []byte {
 	msg = bytes.Clone(msg)
