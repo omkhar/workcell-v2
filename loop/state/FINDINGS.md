@@ -806,6 +806,17 @@ verifier notes that a maintainer who reads the LAN-DNS position as a preconditio
 verifier read it as high). The "no idle timeout, like splice" comment covers the guest-side hold, which a slot bounds; the upstream
 pre-handshake hold sits outside the bound, so it is not intended. Fix unit: S-F8, below S-1006 in PLAN.md.
 also in v1 main: egressproxy/terminate.go
+C13 FIXED by S-F8, commit 4015cf7 (PR #207). Terminate's http.Transport literal in internal/proxy/terminate.go sets
+TLSHandshakeTimeout to dialTimeout (10 s) in place of the zero-valued ForceAttemptHTTP2, so an upstream that accepts TCP and
+never answers the ClientHello is dropped within the dial timeout after the guest has closed, and MaxConnsPerHost to maxConns
+(1024), so the dials the transport holds for one host are bounded by the slot cap as well; the line for the second was paid
+by deleting the dead shed queue of S-1004 C8 (PARKED line 60: shed, lost, the goroutine in New, the select in Serve, and
+TestServeCountsRefusalsTheQueueDropped with stalledLog and countingListener, 17 product and 87 test lines). The pending test
+became internal/proxy/c13_test.go TestUpstreamHandshakeEndsWithTheGuest, unchanged but for its head comment: eight guests
+each send one request to a tarpit upstream and close; it fails on the parent in 12 s and passes on 4015cf7 in 10 s. The
+reviewer ran both and found nothing: a request queued behind the per-host cap waits on its own context, which the server
+cancels when the guest closes, and the proxy makes no request of its own on the transport, so sign-in cannot be starved.
+Product 14984 of 15000.
 
 C14. ID I9 (every connection attempt recorded). Attacker: guest root speaking the relay header itself. Where: cmd/workcell/relay.go
 stream, the branch for a UDP header to a port other than 53. Input: a version-1 relay header with proto 17 and any port but 53, for
