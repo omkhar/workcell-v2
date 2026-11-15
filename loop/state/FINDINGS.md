@@ -779,3 +779,19 @@ public candidate under section 13 with its `also in v1 main` line; cmd/workcell/
 safeguard re-ran a request.
 
 ### S-1006 candidates
+
+C14. ID I9 (every connection attempt recorded). Attacker: guest root speaking the relay header itself. Where: cmd/workcell/relay.go
+stream, the branch for a UDP header to a port other than 53. Input: a version-1 relay header with proto 17 and any port but 53, for
+example UDP 5353. Claimed effect: the stream is closed with no audit record, while the same header with proto 6 to an unserved port is
+recorded as port_not_allowed; nothing is dialled or reached. Reproducing test: TestStreamRecordsARefusedUDPHeader (package main, 36
+lines, run by overlay): fails on 9e88cea with `proto 6 to port 5353 recorded ":5353 port_not_allowed"` beside `proto 17 to port 5353:
+the closed stream recorded nothing`. Outcome: REFUTED by the verifier. The mechanism is real but it is tested, intended behaviour: the
+init has exactly one UDP producer (cmd/workcell-init/net.go, a hard-coded header to 127.0.0.1:53) and one UDP listener (:53), and under
+the AnyIP route a guest datagram to any other port is answered port-unreachable by the guest's own kernel (the udp4-datagram and
+quic-initial rows pin that on a real VM), so the host never has an event to record and the only author of a UDP-5353 header is the
+forger, who creates the one record he then calls missing. relay_test.go rows "UDP on a served port", "UDP on an unserved port" (5353
+exactly), "version 2", "version 0", "proto 0" and "proto 1" all want no record, and relay.go's header comment states the contract: a
+UDP non-53 header is hostile bytes on the channel (I12), not a connection attempt the policy could ever name (I2 has no UDP allow; the
+TCP record exists because the log can tell the user how to allow host:N). C8's reasoning carries: nothing is dialled, no reach is
+gained, no existing record is altered, and the I9 rows are untouched. Low ceiling under S6, and adding a record for an input only its
+author can produce would be a new check without a defect that reached a user, so it is not a hardening item either. The test was deleted.
