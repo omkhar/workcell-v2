@@ -10,9 +10,7 @@ import (
 	"crypto/ed25519"
 	"crypto/tls"
 	"encoding/binary"
-	"encoding/json"
 	"errors"
-	"io"
 	"net"
 	"net/netip"
 	"sync"
@@ -326,91 +324,5 @@ func TestConnectVetsEveryAnswerOnEveryConnection(t *testing.T) {
 				t.Fatalf("dialed %v, want %d dials", *dialed, wantDials)
 			}
 		})
-	}
-}
-
-// stalledLog is a Recorder that takes nothing until release is closed, as a log on a slow disk would, and then keeps each record in the wire
-// form the audit log stores and `workcell verify` and the escape suite read: the JSON fields, port omitted when it is 0.
-type stalledLog struct {
-	release chan struct{}
-	mu      sync.Mutex
-	lines   []map[string]any
-}
-
-func (l *stalledLog) Note(r audit.Record) error {
-	<-l.release
-	var line map[string]any
-	must(0, json.Unmarshal(must(json.Marshal(r)), &line))
-	l.mu.Lock()
-	l.lines = append(l.lines, line)
-	l.mu.Unlock()
-	return nil
-}
-
-// countingListener tells accepts of each call to Accept, which Serve makes only after it has queued or counted the connection before.
-type countingListener struct {
-	net.Listener
-	accepts chan struct{}
-}
-
-func (l *countingListener) Accept() (net.Conn, error) {
-	l.accepts <- struct{}{}
-	return l.Listener.Accept()
-}
-
-// TestServeCountsRefusalsTheQueueDropped: at the connection limit every connection is shed and its
-// refusal queued for the log, so that accept never waits for the disk; a refusal the full queue
-// cannot take is counted, and the queue's reader writes the count as one overloaded line with
-// port 0, so that the listed and the counted refusals together are every connection shed (I9).
-func TestServeCountsRefusalsTheQueueDropped(t *testing.T) {
-	t.Parallel()
-	log := &stalledLog{release: make(chan struct{})}
-	p := New(&Allowlist{}, log)
-	for range cap(p.slots) {
-		p.slots <- struct{}{} // the limit, without a thousand connections
-	}
-	shed := cap(p.shed) + 36 // more than the queue holds while the log is stalled
-	ln := &countingListener{must(net.Listen("tcp", "127.0.0.1:0")), make(chan struct{}, shed+1)}
-	t.Cleanup(func() { _ = ln.Close() })
-	go func() { _ = p.Serve(ln, 443) }()
-	for i := range shed {
-		c := must(net.Dial("tcp", ln.Addr().String()))
-		_ = c.SetReadDeadline(time.Now().Add(5 * time.Second))
-		if _, err := c.Read(make([]byte, 1)); err != io.EOF {
-			t.Fatalf("connection %d at the limit: read = %v, want EOF without waiting for the log", i+1, err)
-		}
-		_ = c.Close()
-	}
-	for range shed + 1 {
-		select {
-		case <-ln.accepts:
-		case <-time.After(5 * time.Second):
-			t.Fatal("Serve did not come back to Accept after the shed connections")
-		}
-	}
-	close(log.release)
-	var listed, counted, counts int
-	for deadline := time.Now().Add(3 * time.Second); ; time.Sleep(10 * time.Millisecond) {
-		log.mu.Lock()
-		listed, counted, counts = 0, 0, 0
-		for _, line := range log.lines {
-			switch count, _ := line["count"].(float64); {
-			case line["result"] != "overloaded":
-				t.Fatalf("line %v, want only overloaded refusals", line)
-			case line["port"] != nil:
-				listed++
-			case count == 0:
-				t.Fatalf("line %v, want a count on a line with no port", line)
-			default:
-				counted, counts = counted+int(count), counts+1
-			}
-		}
-		log.mu.Unlock()
-		if listed+counted >= shed || time.Now().After(deadline) {
-			break
-		}
-	}
-	if listed+counted != shed || counts > listed {
-		t.Fatalf("refusals logged: %d listed + %d counted on %d lines = %d, want the %d connections shed, with at most one count per listed refusal", listed, counted, counts, listed+counted, shed)
 	}
 }

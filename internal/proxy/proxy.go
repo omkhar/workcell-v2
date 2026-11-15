@@ -17,7 +17,6 @@ import (
 	"slices"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/omkhar/workcell/v2/internal/audit"
@@ -79,8 +78,6 @@ type Proxy struct {
 	upstreamRoots *x509.CertPool
 
 	slots chan struct{} // one token per live connection
-	shed  chan uint16   // ports of shed connections awaiting a deny line
-	lost  atomic.Uint64 // shed connections the full queue could not take, awaiting one count line
 
 	rec Recorder
 }
@@ -108,17 +105,8 @@ func New(allow *Allowlist, rec Recorder) *Proxy {
 			return nets, err
 		},
 		slots: make(chan struct{}, maxConns),
-		shed:  make(chan uint16, 64),
 		rec:   rec,
 	}
-	go func() { // each queued refusal's line, then one line counting those the full queue could not take
-		for port := range p.shed {
-			p.Deny("", port, "overloaded")
-			if n := p.lost.Swap(0); n > 0 {
-				_ = p.rec.Note(audit.Record{Event: audit.Connect, Result: "overloaded", Count: n})
-			}
-		}
-	}()
 	return p
 }
 
@@ -141,12 +129,7 @@ func (p *Proxy) Serve(ln net.Listener, port uint16) error {
 				p.handle(conn, port)
 			}()
 		default:
-			_ = conn.Close() // at the limit: shed load, its refusal queued or counted so a stalled log cannot stall accept
-			select {
-			case p.shed <- port:
-			default:
-				p.lost.Add(1)
-			}
+			_ = conn.Close() // at the limit: shed load and record nothing; the relay adapter, the only listener, holds an equal cap and closes first
 		}
 	}
 }
