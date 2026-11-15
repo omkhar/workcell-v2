@@ -25,12 +25,10 @@ import (
 // in and uses the tokens as the row's steps say. The provider chose every real token, so it knows them where the guest shows its hand (its word, its scan) and
 // where a canary saw them.
 
-const (
-	tokenPath   = "/oauth/token"
-	accessMark  = "acce55" // the hex after secretPrefix that starts an access token
-	refreshMark = "5efe5"  // and a refresh token, so that the scan's shape fits both
-	form        = "application/x-www-form-urlencoded"
-)
+const tokenPath = "/oauth/token"
+const accessMark = "acce55" // the hex after secretPrefix that starts an access token
+const refreshMark = "5efe5" // and a refresh token, so that the scan's shape fits both
+const form = "application/x-www-form-urlencoded"
 
 // signedInWant is the sandbox the rows want: withSecret, with the API as the first name and the token host as the second, and the secret from a sign-in flow at
 // the token endpoint there.

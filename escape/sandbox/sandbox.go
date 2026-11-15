@@ -23,10 +23,8 @@ import (
 var ErrNotImplemented = errors.New("not implemented")
 
 // Limits on what the runner keeps of the payload's output; the rest is dropped (I12).
-const (
-	MaxStdout = 4096
-	MaxStderr = 1024
-)
+const MaxStdout = 4096
+const MaxStderr = 1024
 
 // Output is what one payload run produced, as far as the runner keeps it.
 type Output struct {
@@ -156,8 +154,7 @@ func New(name string) (Sandbox, error) {
 // BuildPayload compiles the static Linux payload for the host's architecture into dir.
 func BuildPayload(ctx context.Context, dir string) (string, error) {
 	out := filepath.Join(dir, "payload")
-	cmd := exec.CommandContext(ctx, "go", "build", "-trimpath", "-o", out,
-		"github.com/omkhar/workcell/v2/escape/cmd/payload")
+	cmd := exec.CommandContext(ctx, "go", "build", "-trimpath", "-o", out, "github.com/omkhar/workcell/v2/escape/cmd/payload")
 	cmd.Env = append(os.Environ(), "CGO_ENABLED=0", "GOOS=linux", "GOARCH="+runtime.GOARCH)
 	if b, err := cmd.CombinedOutput(); err != nil {
 		return "", fmt.Errorf("build payload: %v: %s", err, b)
@@ -207,11 +204,9 @@ func LoopbackHolds(ip string) error {
 // to it leaves the host (T8, S12). There the test host holds IsolatedNet on its loopback device, so Neighbour lies on a network of the host's own, and the
 // judge's canaries listen at CanaryAddr, outside that prefix, which a local route alone makes the host's: a product that dials only off the host's networks
 // reaches them still.
-const (
-	IsolatedNet = "192.175.48.1/25"
-	Neighbour   = "192.175.48.2"
-	CanaryAddr  = "192.175.48.129"
-)
+const IsolatedNet = "192.175.48.1/25"
+const Neighbour = "192.175.48.2"
+const CanaryAddr = "192.175.48.129"
 
 // placed is addr with "host" or "neighbour" replaced: where the judge's canaries listen, or an address on a network the test host holds, in the network the
 // product reaches the test host in. In a session's own network (isolated) those are CanaryAddr and Neighbour; in the host's own, both are HostAddr.

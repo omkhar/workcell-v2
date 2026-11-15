@@ -18,11 +18,9 @@ import (
 
 // The pinned arm64 guest: Firecracker's CI kernel, which boots under Virtualization.framework (measured in U-102). The product drives the framework in-process,
 // so there is no hypervisor binary to fetch, and the binary that does it must carry the virtualization entitlement.
-const (
-	guestArch  = "arm64"
-	vmlinuxURL = "https://s3.amazonaws.com/spec.ccfc.min/firecracker-ci/v1.14/aarch64/vmlinux-6.1.155"
-	vmlinuxSum = "61baeae1ac6197be4fc5c71fa78df266acdc33c54570290d2f611c2b42c105be"
-)
+const guestArch = "arm64"
+const vmlinuxURL = "https://s3.amazonaws.com/spec.ccfc.min/firecracker-ci/v1.14/aarch64/vmlinux-6.1.155"
+const vmlinuxSum = "61baeae1ac6197be4fc5c71fa78df266acdc33c54570290d2f611c2b42c105be"
 
 // entitlements is the one entitlement a process needs to start a VM.
 const entitlements = `<?xml version="1.0" encoding="UTF-8"?>
@@ -51,11 +49,9 @@ func hostReady() error {
 // host (SPEC T8); /etc/resolver/<judgeDomain> sends every question for a name under it to the judge's resolver, as `scutil --dns` shows, the product resolving
 // through the system as any program would; and bindHelper, root-owned, which sudo runs for the suite's user without a password, binds a port below 1024 at an
 // alias of lo0 and hands the descriptor over as suite.Bind does. No other sudo exists.
-const (
-	steersResolver = true
-	judgeDomain    = "escape.test"
-	bindHelper     = "/usr/local/libexec/workcell-escape/workcell-bind"
-)
+const steersResolver = true
+const judgeDomain = "escape.test"
+const bindHelper = "/usr/local/libexec/workcell-escape/workcell-bind"
 
 // steered checks that every question for judgeDomain reaches resolver and nowhere else (T8).
 func steered(_, resolver string, _, argv []string, _ int) ([]string, error) {

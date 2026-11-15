@@ -70,10 +70,7 @@ func serveCanaries(ln net.Listener, keys []tls.EncryptedClientHelloKey, cs ...*c
 	if keys != nil {
 		cfg.EncryptedClientHelloKeys, cfg.MinVersion = keys, tls.VersionTLS13
 	}
-	srv := &http.Server{
-		TLSConfig:   cfg,
-		ReadTimeout: 3 * time.Second,
-		ErrorLog:    log.New(io.Discard, "", 0),
+	srv := &http.Server{TLSConfig: cfg, ReadTimeout: 3 * time.Second, ErrorLog: log.New(io.Discard, "", 0),
 		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			c := cs[0]
 			for _, k := range cs {
@@ -245,10 +242,7 @@ func fetchWithin(req *http.Request, addrs map[string]string, cfg *tls.Config, h2
 // transport is the guest's transport of fetch: dialling the judge's address for a name, verifying nothing, HTTP/1.1 unless h2.
 func transport(addrs map[string]string, cfg *tls.Config, h2 bool) *http.Transport {
 	cfg.InsecureSkipVerify = true //nolint:gosec // the probe is the attacker
-	tr := &http.Transport{
-		Proxy:             http.ProxyFromEnvironment,
-		TLSClientConfig:   cfg,
-		ForceAttemptHTTP2: h2,
+	tr := &http.Transport{Proxy: http.ProxyFromEnvironment, TLSClientConfig: cfg, ForceAttemptHTTP2: h2,
 		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
 			if host, _, err := net.SplitHostPort(addr); err == nil && addrs[host] != "" {
 				addr = addrs[host]

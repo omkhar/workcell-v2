@@ -29,10 +29,8 @@ import (
 
 // The adapter on a host with a hypervisor the product drives: Firecracker on Linux, Virtualization.framework on macOS. What differs per OS lives in
 // workcell_linux.go and workcell_darwin.go; the session itself is the same.
-const (
-	maxDownload = 256 << 20 // more than any pinned download; a runaway body stops here
-	module      = "github.com/omkhar/workcell/v2"
-)
+const maxDownload = 256 << 20 // more than any pinned download; a runaway body stops here
+const module = "github.com/omkhar/workcell/v2"
 
 // loader runs inside the guest: it takes the payload from stdin and runs it with the test's arguments.
 const loader = `cat >/tmp/p && chmod 755 /tmp/p && exec /tmp/p "$@"`

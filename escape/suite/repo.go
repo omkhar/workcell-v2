@@ -58,15 +58,12 @@ func repoProbe(args []string) Result {
 			err = errors.Join(err, script(filepath.Join(guest, ".git", "hooks", h), "hook-"+h, ""))
 		}
 	case "config":
-		err = errors.Join(os.Mkdir(filepath.Join(guest, ".hooks"), 0o755),
-			script(filepath.Join(guest, ".hooks", "pre-commit"), "hookspath", ""),
-			script(filepath.Join(guest, ".git", "fsmonitor"), "fsmonitor", "echo /"),
-			script(filepath.Join(guest, ".git", "filter"), "filter", "cat"),
+		err = errors.Join(os.Mkdir(filepath.Join(guest, ".hooks"), 0o755), script(filepath.Join(guest, ".hooks", "pre-commit"), "hookspath", ""),
+			script(filepath.Join(guest, ".git", "fsmonitor"), "fsmonitor", "echo /"), script(filepath.Join(guest, ".git", "filter"), "filter", "cat"),
 			os.WriteFile(filepath.Join(guest, ".gitattributes"), []byte("* filter=escape\n"), 0o644))
 	case "submodule": // the index holds a gitlink at sub, as `update-index --cacheinfo` would leave it
 		err = errors.Join(os.WriteFile(filepath.Join(guest, ".gitmodules"), []byte("[submodule \"sub\"]\n\tpath = sub\n\turl = "+extra+"\n"), 0o644),
-			os.Mkdir(filepath.Join(guest, "sub"), 0o755),
-			r.index(entry{"160000", "sub", (token + token)[:40]}))
+			os.Mkdir(filepath.Join(guest, "sub"), 0o755), r.index(entry{"160000", "sub", (token + token)[:40]}))
 	case "dotdot": // a commit whose tree holds a subtree named "..": git's own tools refuse to make one
 		err = committed(r, func(blob string) ([]entry, error) {
 			sub, err := r.tree(entry{"100644", "written-" + token, blob})
@@ -286,8 +283,7 @@ var (
 	widened = repoPolicy(Want{Workspace: true, Allow: []string{"bound.escape.test"}, Deny: []string{"other.escape.test"}, Resolver: judgeResolver, Isolated: true, Secret: true}, "", "[network]\nallow = [\"bound.escape.test\", \"other.escape.test\"]\n")
 	// respelled allows the other name as the user did not spell it: in capitals, with a trailing dot, by wildcard, as a forward port.
 	respelled = repoPolicy(widened, "", "[network]\nallow = [\"bound.escape.test\", \"OTHER.escape.test\", \"other.escape.test.\", \"*.escape.test\", \"other.escape.test:443\"]\n")
-	// linked is widened through a symbolic link to a file beside the export, outside the repository.
-	linked = repoPolicy(widened, "link", widened.Policy)
+	linked    = repoPolicy(widened, "link", widened.Policy) // widened through a symbolic link to a file beside the export, outside the repository
 	// narrowing allows both names at user level; the repository allows only the bound one.
 	narrowing = repoPolicy(withSecret, "", "[network]\nallow = [\"bound.escape.test\"]\n")
 	// rebound binds the user's secret, in the repository's policy, to the other allowed name as well.
@@ -296,10 +292,8 @@ var (
 	lifted = repoPolicy(narrowed, "", "[[secret]]\nname = \"escape\"\nsource = \"file:/etc/hostname\"\nhost = \"bound.escape.test\"\nheader = \"x-api-key\"\n")
 	// rewired repeats the user's secret with another header and a host file as its source.
 	rewired = repoPolicy(withSecret, "", "[[secret]]\nname = \"escape\"\nsource = \"file:/etc/hostname\"\nhost = \"bound.escape.test\"\nheader = \"authorization\"\n")
-	// mounted asks for the user's tree live in the guest instead of a clone.
-	mounted = repoPolicy(exported, "", "[workspace]\nmode = \"mount\"\n")
-	// piped is a workcell.toml no one will ever write to: a read of it never returns.
-	piped = repoPolicy(exported, "fifo", "")
+	mounted = repoPolicy(exported, "", "[workspace]\nmode = \"mount\"\n") // the user's tree live in the guest instead of a clone
+	piped   = repoPolicy(exported, "fifo", "")                            // a workcell.toml no one will ever write to: a read of it never returns
 	// uncapped asks for more than the user's caps.
 	uncapped = repoPolicy(Want{Workspace: true, CPUs: capped.CPUs, MemoryMiB: capped.MemoryMiB, DiskMiB: capped.DiskMiB}, "", "[resources]\ncpus = 8\nmemory = \"4GiB\"\ndisk = \"20GiB\"\n")
 )

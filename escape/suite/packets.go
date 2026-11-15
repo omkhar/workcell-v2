@@ -7,10 +7,8 @@ import "bytes"
 
 // Pure encoders and parsers for the probes' packets. The bytes a judge parses come from the guest and are hostile, so quicDCID is total and fuzzed.
 
-const (
-	maxCID      = 20   // RFC 9000: a connection ID is at most 20 bytes
-	quicInitMin = 1200 // RFC 9000: a client Initial is padded to at least this
-)
+const maxCID = 20        // RFC 9000: a connection ID is at most 20 bytes
+const quicInitMin = 1200 // RFC 9000: a client Initial is padded to at least this
 
 // quicInitial builds a QUIC version 1 Initial packet with the destination connection ID dcid, padded as a client's first flight must be. Its payload
 // is not a valid handshake; a canary only needs the invariant header.

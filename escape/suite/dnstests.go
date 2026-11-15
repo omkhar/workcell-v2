@@ -92,10 +92,8 @@ func dohProbe(method string) Probe {
 }
 
 // The tunnel carries the token out in pieces, each the data label of a TXT query under one apex, the way DNS tunnels move data: seq.data.tunnel.invalid.
-const (
-	tunnelApex  = "tunnel.invalid."
-	tunnelChunk = 8
-)
+const tunnelApex = "tunnel.invalid."
+const tunnelChunk = 8
 
 // tunnelProbe sends the token to args[0] as a series of TXT queries.
 func tunnelProbe(args []string) Result {
@@ -291,10 +289,7 @@ func dnsOverHTTPS(addr string, got func(dnsQuestion)) (string, func(), error) {
 		ln.Close()
 		return "", nil, err
 	}
-	srv := &http.Server{
-		TLSConfig:   cfg,
-		ReadTimeout: 2 * time.Second,
-		ErrorLog:    log.New(io.Discard, "", 0),
+	srv := &http.Server{TLSConfig: cfg, ReadTimeout: 2 * time.Second, ErrorLog: log.New(io.Discard, "", 0),
 		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			var msg []byte
 			if r.Method == http.MethodGet {

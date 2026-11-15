@@ -21,13 +21,12 @@ type Result struct {
 	Detail string
 }
 
-const (
-	maxStatus = 32
-	maxDetail = 256
-	prefix    = "escape-result "
-	// MaxLine bounds one formatted result, newline included.
-	MaxLine = len(prefix) + maxStatus + 1 + maxDetail + 1
-)
+const maxStatus = 32
+const maxDetail = 256
+const prefix = "escape-result "
+
+// MaxLine bounds one formatted result, newline included.
+const MaxLine = len(prefix) + maxStatus + 1 + maxDetail + 1
 
 // Probe runs inside the guest with the arguments the host chose.
 type Probe func(args []string) Result
