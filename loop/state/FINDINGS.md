@@ -1098,3 +1098,108 @@ case-insensitive APFS or HFS+ volume that folds U+0130 or U+0131 into i would la
 `.git/`; refute by creating `.git` and that spelling side by side on such a volume. Two names that differ only by NFC and NFD both
 pass fold and collide on APFS, landing the second's content on the first inside dest; no .git spelling is among them (PARKED line
 21). Interactive interrupt during a long clone export is deferred until boot (export takes context.Background()): DX only.
+
+Coverage. Read in full: cmd/workcell/pull.go, pull_vm.go, pull_linux.go, pull_darwin.go, run_vm.go, session.go, explain.go,
+mount_linux.go, mount_darwin.go, main.go, caps.go, data.go, backend_linux.go, pull_test.go, pull_vm_test.go; cmd/workcell-init/pull.go,
+mount.go, main.go, root.go, exec.go; internal/fileserve/serve_linux.go, codec.go, ops_linux.go, adversarial_linux_test.go,
+bounds_linux_test.go, harness_linux_test.go, codec_test.go; internal/workspace/workspace.go, workspace_test.go, clone_test.go;
+internal/rootfs/ext4file.go, ext4.go, tree.go, ext4file_test.go; internal/guest/guest.go, walk.go; internal/wire/wire.go;
+escape/suite/files.go, files_linux.go, repo.go, gitdir.go, floods.go, channel_linux.go, tests.go lines 1-200;
+escape/sandbox/workcell_vm.go lines 280-420; docs/adr/accepted/002-workspace-default.md, docs/adr/005-mount-mode.md,
+docs/threat-model.md lines 40-124; escape/enforced.txt; SPEC whole; FINDINGS whole; PARKED whole. Skimmed: cmd/workcell/update.go
+(newInstaller, manifest, daily, startup), cmd/workcell/policy.go (configFile, loadPolicy), internal/vmm/firecracker/firecracker.go
+(Check, Listen, Start), escape/suite/suite.go, escape/sandbox/sandbox.go. Not opened: cmd/workcell/log.go, ocsf.go, update_test.go,
+relay.go, cache*.go, layer.go, bench*.go, term_*.go, verify_test.go; cmd/workcell-init/net.go, root_test.go; internal/rootfs/build.go,
+layer.go, oci.go and their tests; internal/vmm/vz; the other suite and sandbox files; _legacy/. Ran: go test ./internal/fileserve
+./internal/workspace ./internal/rootfs ./internal/guest ./cmd/workcell (green), go test -race ./internal/fileserve (green), four
+overlay probes, a SimpleFold orbit check; nothing on a VM; no probe left the session (S12). No file on this surface carries
+`// Ported from v1` (the ported files are internal/proxy, internal/secret and internal/audit/lines.go only), so no candidate below
+carries an `also in v1 main` line, and nothing is private under section 13. No model declined, and no safeguard re-ran a request.
+
+### S-1008 candidates
+
+C17. ID I10 (host disk), the mount-mode growth cap that --disk sets and the row mount-disk-flood enforces. Attacker: guest root,
+writing raw FUSE request frames on the init's vsock 5002 connection (a duplicate of PID 1's socket by pidfd_getfd, as stealChannel
+does; ADR-005 says outright that guest root may speak the protocol itself). The kernel path cannot reach it, because the guest kernel
+sends end-of-file offsets for O_APPEND; that is why raw frames are needed, not a reason to exclude them. Where:
+internal/fileserve/ops_linux.go openFlags (keeps O_APPEND on the host descriptor) and opWrite (charges grow(fd, offset+len) by the
+request's offset, then pwrites at that offset); internal/fileserve/serve_linux.go grow (an end at or below the current size is free,
+and its comment states the intent "never less than the growth"). Input: INIT; CREATE or OPEN with flags O_RDWR|O_APPEND; WRITE(offset
+0, 60000 bytes) twenty times against a 100000-byte cap. Effect: Linux pwrite on an O_APPEND descriptor appends whatever the offset
+(pwrite(2) BUGS), so every WRITE after the first ends at or below the recorded size, is charged nothing, and still appends: the host
+file is 1,200,000 bytes, twelve times the cap, with no ENOSPC, and nothing bounds it. The auditor's probe against the real Server over
+the harness pipe showed it, and pinned the kernel fact (three pwrite of 4 bytes at offset 0 on an O_APPEND fd: size 12). Reproducing
+test: escape/_pending/S-F10/c17_test.go TestGrowthCapAppend (redteam; package fileserve, run by overlay; arms create and open through
+the package's own kern and startCapped helpers): on 2b03762 both arms fail with `20 writes of 60000 at offset 0 with a cap of 100000:
+20 accepted, 0 ENOSPC, file is 1200000 bytes on the host`, 0.01 s; the redteam showed it passes under two scratch fix shapes (drop
+O_APPEND from openFlags: 20 accepted, file 60000 bytes; or write and charge an append handle at the current end: 1 accepted, 19 ENOSPC)
+with TestGrowthCap still green under both. Outcome: CONFIRMED, high, by the verifier: the test uses fileserve.Open plus Server.Serve
+over a pipe, the same pair mount_linux.go and serveMount use with caps.disk(), and os.Stat on the export shows host disk, not a
+bookkeeping artefact; the attacker takes no power beyond frames the host accepts on the one 5002 stream, which guest root reaches
+through the untrusted init (A1); I10 is in enforced.txt, the row mount-disk-flood (Want cappedLive, judge bounding host free disk and
+file size to cap plus slack) claims the cap in mount mode, and map row 21 names grow as that enforcement; high under S6 because mount
+mode is a supported product mode with its own enforced I10 row and the attacker needs no further precondition inside a mount session,
+medium only if --mount (A5) is read as an S6 precondition; either way S7 fixes it before cutover. Fix unit: S-F10, below S-1008 in
+PLAN.md. Variants for S-F10 to carry: SETATTR size shrink then WRITE at offset 0 on an O_APPEND handle (both fix shapes cover it);
+two WRITEs in flight on one O_APPEND handle are each charged as if alone, never less than the growth, so no second hole. Not ported.
+
+C18. ID I10 (host disk and inodes), the same cap. Attacker: guest root, or any guest process, through the ordinary kernel FUSE path:
+plain `ln -s` and `mkdir` under /workspace in a mount session; no raw frames. Where: internal/fileserve/ops_linux.go opSymlink, opMkdir
+and the create path call Symlinkat, Mkdirat and Openat and never grow(); internal/fileserve/serve_linux.go grown counts WRITE past the
+end and SETATTR size only, while its comment says the host loses at most limit however the guest mixes them, as a clone's image is
+fixed-size. maxNodes (128K) does not bound entries, since FORGET frees nodes and guest root forces it with drop_caches. Input: against a
+100000-byte cap, 200 SYMLINK requests with distinct names and 4000-byte targets, and 200 MKDIR requests. Effect: every request is
+accepted and none answered ENOSPC; on ext4 or xfs each such symlink or directory takes a 4 KiB block (819,200 bytes per arm, eight times
+the cap) and every entry takes a host inode, whose count ext4 fixed at mkfs; at ADR-005's measured rate of about 5,000 requests a second
+that is about 20 MiB/s of blocks and 5,000 inodes a second with no ceiling, so an hour fills tens of GiB and about 18M inodes, after
+which every program of the operator gets ENOSPC whatever the byte cap. Reproducing test: escape/_pending/S-F11/c18_test.go
+TestGrowthCapEntries (redteam; package fileserve, run by overlay; arms symlink and mkdir; the judge is the count of entries accepted
+without ENOSPC against limit/4096 plus 2, so it holds on tmpfs and btrfs too, with the st.Blocks sum logged): on 2b03762 both arms
+fail with `200 accepted, 0 ENOSPC; the host holds 200 entries (inodes) and 819200 bytes of blocks against a cap of 100000`, stable 3 of
+3. Outcome: CONFIRMED, high, by the verifier: startCapped is Open plus Serve over a pipe, the same path TestGrowthCap uses, with
+well-formed frames the guest kernel emits for ln -s and mkdir, no extra power; I10 is claimed here and not intended behaviour
+(serve_linux.go's own comment, the enforced row mount-disk-flood, docs/threat-model.md, ADR-005's I10 bounds that do not exclude
+entries), and the row's judge samples free disk and file size only after a write or truncate probe, so entry growth was never
+exercised; the clone image bounds blocks and inodes together, mount mode bounds neither for entries; the pass condition is fair, since
+the current behaviour is unbounded and the threshold admits a fix that charges 4 KiB per entry or the symlink's target length (one
+nit: a fix charging real st.Blocks on a 1 KiB-block filesystem would fail it); high for the reason C17 gives, medium only under the
+A5 reading. Fix unit: S-F11, below S-1008 in PLAN.md. Variants for S-F11 and S-1013: CREATE of an empty file (an inode, no block) is
+also uncharged and the test leaves it out, so a fix may choose; a RENAME-over or MKDIR-then-RMDIR cycle should give nothing back, as
+grow does; 255-byte names inflate the parent's directory blocks. Not ported.
+
+C19. ID I7 (nothing a session writes is visible to another), I9 (the guest cannot forge a record and verify detects edits), I13
+(widening needs user-level config); I14 and A6 are a stretch here, since the boot does no digest check but the replacement comes by
+pull, not by update, so I7 and I9 carry the severity. Attacker: guest root, driven by a malicious repository or hostile model output,
+doing nothing beyond reading and writing its own /workspace. Precondition the attacker does not control: the operator's cwd, or the
+pull destination, is an ancestor of the product's own state, the data directory (XDG_DATA_HOME/workcell, by default
+~/.local/share/workcell) or the config directory (~/.config/workcell), as in `cd ~ && workcell run claude`. Where:
+cmd/workcell/run_vm.go session (cwd from Getwd; newSession; openAudit mints or loads the key before export; the export or the live mount
+is cwd; boot), export and openMount; cmd/workcell/pull_vm.go pull (opens any destination) and put (unlinks and recreates any existing
+non-directory); cmd/workcell/pull.go checkPath (refuses .git components and path tricks only, so `workcell/audit.key`,
+`workcell/root.ext4` and `workcell/sessions/<id>/audit.log` pass); internal/workspace/workspace.go Export (skips only the image it is
+writing); internal/fileserve/serve_linux.go Open; cmd/workcell/data.go. No code compares cwd or the destination with the data or config
+directory (no Getwd or UserHomeDir check in cmd/workcell). Input: clone: with the data directory inside cwd, `workcell run <cmd>`;
+then `workcell pull` in that cwd. Mount: `workcell run --mount <cmd>`. Effect: the export carries the audit signing key, every other
+session's audit.log and workspace.ext4, root.ext4, vmlinux, initrd.cpio, the layers and config.toml into the guest's /workspace, and
+pull writes the guest's versions back over them: the guest reads other sessions' workspaces and logs (I7), holds the key so a
+rewritten log with a fresh seal passes verify (I9), widens the next session through config.toml (I13), and replaces root.ext4 or a
+layer so the next session boots guest-chosen bytes (A6); mount mode does all of it live with no pull step. PARKED line 17 parked the
+mount half as having no section-3 ID; I7, I9 and I13 name it, and the default clone mode has no labelled opt-in, unlike --mount (A5).
+Reproducing test: escape/_pending/S-F12/c19_test.go TestC19RunRefusesAWorkspaceThatHoldsTheDataDirectory (arms clone, mount and
+config directory; calls the real session() with t.Chdir and a test artifacts directory holding dummy firecracker, vmlinux, initrd.cpio,
+root.ext4 and a prior session's marker audit.log and workspace.ext4) and TestC19PullRefusesADestinationThatHoldsTheDataDirectory
+(XDG_DATA_HOME under the destination; pull must exit 1 with the refusal before any boot) (redteam; package main, run by overlay): on
+2b03762 all four arms fail: `session failed with "start firecracker: invalid argument", want a refusal naming .../workcell`,
+`.../workcell/audit.key was minted inside the directory the guest gets (I9)`, `a session directory ... was made inside the directory
+the guest gets (I7); it holds audit.log audit.seal lock repo vmm workspace.ext4`, and for pull `the session reached boot:
+.../workcell/sessions/<idOld>/vmm was written`. Outcome: CONFIRMED, medium, by the verifier, who reproduced the effect itself in the
+scratchpad (session() with cwd holding the data directory, then debugfs on the produced workspace.ext4): `ls -p /workcell` lists
+audit.key firecracker initrd.cpio root.ext4 sessions vmlinux, the image's /workcell/audit.key is byte-identical to the host's (64
+bytes, cmp), the other session's audit.log and workspace.ext4 markers are present, and root.ext4 and vmlinux bytes are present; the
+write-back path is real from the code (checkPath admits the paths, put replaces); nothing in README.md ("The directory you run
+`workcell run` in is copied into the guest as /workspace"), docs/threat-model.md, policy.md or migrating-from-v1.md warns against the
+home directory; SPEC section 2 excludes host root, same-user malware and later human use of pulled code, not the operator's choice of
+directory; medium under S6, not high, because the ordinary `cd repo && workcell run` is unaffected. Weak points the verifier named:
+the redteam test's assertions are indirect (the key is minted and the session directory made inside the exported tree) and prescribe
+the refusal's shape; its own debugfs run supplies the direct effect. Fix unit: S-F12, below S-1008 in PLAN.md; it should compare
+resolved paths (EvalSymlinks) and refuse the data directory itself as cwd, not only an ancestor. Not ported.
