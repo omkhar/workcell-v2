@@ -276,9 +276,10 @@ func (p *Proxy) Terminate(ca *SessionCA, broker Broker, rules []TerminateRule) e
 	}
 	p.ca, p.broker, p.terminate, p.signin = ca, broker, terminate, signin
 	p.transport = &http.Transport{
-		ForceAttemptHTTP2: false,
-		IdleConnTimeout:   90 * time.Second,
-		TLSClientConfig:   &tls.Config{RootCAs: p.upstreamRoots, MinVersion: tls.VersionTLS12},
+		TLSHandshakeTimeout: dialTimeout, // or a silent upstream the resolver named holds a socket after the guest closed (I10)
+		MaxConnsPerHost:     maxConns,
+		IdleConnTimeout:     90 * time.Second,
+		TLSClientConfig:     &tls.Config{RootCAs: p.upstreamRoots, MinVersion: tls.VersionTLS12},
 		DialContext: func(_ context.Context, _, addr string) (net.Conn, error) {
 			host, _, err := net.SplitHostPort(addr)
 			if err != nil {

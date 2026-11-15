@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Omkhar Arasaratnam
 
-// S-F8, finding C13 of S-1006 (I10, on the I4 rebind path). This file waits here, where Go does not compile it, until its fix lands; the fix unit moves it
-// into internal/proxy/. The transport Terminate builds gives the upstream TLS handshake no timeout, and Go's transport dials on a context cut off from the
-// request's (context.WithoutCancel), so once the host resolver answers an allowed name with an address the network attacker runs, one guest request to the
-// terminated host starts a dial the guest's close does not end: the relay slot and the proxy slot are released, but the upstream socket, its goroutines and
-// its handshake buffers stay for as long as the attacker's server accepts and then stays silent. One request, one host fd, outside the 1024-slot bound.
+// T6 regression test for finding C13 of S-1006 (I10, on the I4 rebind path), fixed in S-F8. Before the fix the transport Terminate built gave the upstream
+// TLS handshake no timeout, and Go's transport dials on a context cut off from the request's (context.WithoutCancel), so once the host resolver answered an
+// allowed name with an address the network attacker runs, one guest request to the terminated host started a dial the guest's close did not end: the relay
+// slot and the proxy slot were released, but the upstream socket, its goroutines and its handshake buffers stayed for as long as the attacker's server
+// accepted and then stayed silent. One request, one host fd, outside the 1024-slot bound.
 package proxy
 
 import (
