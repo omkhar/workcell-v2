@@ -833,3 +833,157 @@ UDP non-53 header is hostile bytes on the channel (I12), not a connection attemp
 TCP record exists because the log can tell the user how to allow host:N). C8's reasoning carries: nothing is dialled, no reach is
 gained, no existing record is altered, and the I9 rows are untouched. Low ceiling under S6, and adding a record for an input only its
 author can produce would be a new check without a defect that reached a user, so it is not a hardening item either. The test was deleted.
+
+## S-1007: secrets: sources, placeholders, sign-in token swap, git credentials, logs, crash output (I5), as built at main 071a385
+
+Trust boundary. Guest root and hostile model output own every byte of a terminated request after S-1005's parsing: the header values
+judged by placeholderForm, the method and path judged by admits and tokenEndpoint, the token-endpoint body (256 KiB) read by
+tokenRequest, and the timing and concurrency of requests. They also own the guest's environment, disk and memory, where only
+placeholders ever arrive (wcph- plus 32 hex, 16 bytes of crypto/rand per rule and per sign-in, minted per session in
+cmd/workcell/policy.go bindings), through guest.Exec Env alone (run_vm.go session; pull and bench boot with nil secrets). The network
+attacker owns no upstream byte on this surface: the token host's answers are verified x509 (S-1005), and an allowed identity
+provider's behaviour (rotation, echo) is a provider trait, not an attack. The operator (out of scope) owns the [[secret]] rows,
+sources and env names. Authority: the supervisor, as the operator's uid, reads the value per use (a file open, or a child process
+with a scrubbed env plus HOME, DBUS_SESSION_BUS_ADDRESS and XDG_RUNTIME_DIR, at a fixed path with no shell, A8), writes it into the
+one outbound header or token body, records every release and denial in the session's audit log before the value leaves (fsynced),
+holds sign-in tokens for the session in broker memory, and rewrites token-endpoint answers before the guest sees a byte. Lenses
+worked in order: parsing and resources, logic and state, concurrency and check-to-use, cryptography and identity, failure modes,
+downgrade and replay, interaction with other surfaces.
+
+Leads refuted or bounded, with evidence (overlay tests from the scratchpad against the real packages, nothing in the tree changed,
+every listener the probe's own on 127.0.0.1; nothing here needed a VM):
+- Parsing and resources, sources: file: needs an absolute path, Stat then a regular-file check, one 64 KiB+1 buffer, one line, trailing
+  newline trimmed, CR refused (TestResolveFile); a FIFO is refused by the Stat check without opening, so no block (probe: `is not a
+  regular file`); a symlink is followed and no mode is checked (a 0644 file and a linked file both resolve), both operator paths with
+  no in-scope attacker (a guest reaches a host path only in --mount mode and only inside the operator's own tree; a FIFO swap between
+  Stat and Open would park one handler, bounded by maxConns, and needs the operator to keep the secret inside the export). cmd: is
+  strings.Fields of the operator's text, absolute program, no shell; secret-tool and security at fixed paths with `lookup service S
+  account A` and `find-generic-password -s S -a A -w`; the value never enters argv or env of the child, whose env is PATH, LC_ALL and
+  the three passed names only (TestResolveCmdRunsProgramWithScrubbedEnv). Output() captures stderr into ExitError.Stderr, which %v
+  never prints (os/exec ExitError.Error is ProcessState.String); a timeout gives `signal: killed` with a canary on stdout and stderr
+  absent; partial output is zeroed on every error path. The proxy drops the broker's error text (broker_denied), so no path name
+  reaches the guest, and no Resolve runs at start, so none reaches the terminal either.
+- Parsing and resources, placeholders: 128 bits of entropy, exact regex, two placeholders per sign-in row; a placeholder from another
+  session or binding is refused wherever it stands: no rule's placeholderForm matches it and carriesPlaceholder refuses it in any
+  header name or value, Basic decoded, or the target raw or decoded (502; existing tests and FuzzCarriesPlaceholder). A value that is
+  itself placeholder-shaped is refused after the swap (fail closed). Token body 256 KiB and header block 64 KiB (S-F6) bound a held
+  slot; 256 MiB at the cap is the hang half of C11, parked.
+- Logic and state, where a placeholder is useless: another allowed 443 host, another header, the path, the query, a cookie-shaped
+  value, the Basic user, two values, a suffix: all refused (TestTerminateRefusesUnswappedPlaceholder, placeholder-misplaced); a
+  forward port, an Upgrade tunnel after 101 and a CONNECT (405) carry raw bytes with no swap (S-1005); a redirect to the other host
+  carries the placeholder, refused there (redirect-carries-secret); a Host header holding a placeholder is 421 host_mismatch; a
+  placeholder as the HTTP method is not scanned but reaches the bound host alone, as a method. Narrowing, through c10's folding
+  upstream with hand-written request lines: `POST /oauth\token` (a raw backslash, which net/http accepts), `/oauth/x/%2e%2e/token`,
+  `/oauth/./%2e%2e/oauth/token` and `Host: LOGIN.EXAMPLE.COM.` are read as the token endpoint and answered with placeholders;
+  `/v1\..\admin`, `/v1/.%2e/admin`, `/v1/%2e./admin` and `/octo/allowed.git\..\other.git/info/refs` are 403 binding_mismatch with
+  the secret withheld; `/v1/x/%5c..%5cadmin` folds to /v1/admin on both readings and is admitted, correctly. Repository scope: 12
+  spellings refused in TestTerminateNarrowedRule and repo-token-elsewhere, plus the ;param forms of c10; real git clone and push
+  through the proxy carry the token for octo/allowed alone (TestGitOverHTTPS). The data files bind one header each (x-api-key,
+  authorization Bearer, x-goog-api-key); a CLI that instead sends `Authorization: token <ph>` (the Copilot exchange U-406 suspects,
+  PARKED line 32) or `?key=<ph>` (Gemini's query form) is refused 502, a denied login and never a leak.
+- Logic and state, token answers: a 2xx that is not one JSON object is refused whole; non-2xx are hidden and passed; gzip, chunked,
+  escaped and oversize framings are covered (TestTokenAnswerFramings, signin-gzip, signin-chunked); hide's JSON pass covers every
+  string of a decoded body, keys included after re-encoding, the plain pass the raw bytes, and the two wire spellings swapRefresh
+  sends (S-F7). Probed: verbatim, QueryEscape, JSON \u escapes of ASCII (decoded first) and json-escaped-in-text are hidden;
+  lowercase-hex percent-encoding (a%2bb), PathEscape's partial encoding (a+b%2Fc), double encoding and base64 are not, each needing
+  an identity provider that echoes and re-encodes: residual for the report (PARKED line 69 judged), not a candidate. Duplicate JSON
+  keys, encoded keys, ;-separated forms and a second refresh_token field all leave the placeholder in place and are refused
+  placeholder_unswapped.
+- Concurrency and check-to-use: Resolve's value goes into the header in the same statement sequence, no gap; grants and tokens maps
+  are immutable after NewBroker; held and Issue run under mu and return clones, so two concurrent sign-ins are both hidden (each
+  learn's swaps are its own copies); Issue after a ledger failure leaves tokens held, but every later release fails record and is
+  zeroed (fail closed). The one cross-request gap is C15 below.
+- Cryptography and identity: none beyond the placeholder entropy and S-1005's TLS; the ledger seal is S-1010's.
+- Failure modes: every error path answers 403, 405, 421 or 502, or closes; a bad source scheme or a missing tool is a per-use
+  broker_denied (TestResolveSecretServiceFailsClosedWithoutTool); a closed, failing or nil ledger withholds every value
+  (TestGrantIsWithheldWhenTheRecordIsNotDurable); ModifyResponse errors give an empty 502 (ReverseProxy's default error handler logs
+  to the discarded ErrorLog); handler panics are recovered per connection by net/http and logged to the discarded ErrorLog; a
+  supervisor crash traceback prints pointers and lengths, never string bytes. Nothing fails open.
+- Downgrade, rollback and replay: the two placeholders are constant across refreshes by design; a new session mints fresh ones, so a
+  placeholder a CLI persisted in the workspace is refused next session; a guest that replays a code grant replaces the held tokens
+  with its own account's, gaining nothing; a token answer cannot be forged (upstream x509); the broker's window uses monotonic time.
+- Interaction, logs, terminal and crash output: audit records carry Event, Host, Header, Name and Result (clipped, JSON-escaped),
+  never Source or a value (TestLookupReleasesOnlyGrantedPairs, TestSignInGrant assert no sk- in the ledger); `workcell log` prints the
+  raw secret line and ocsfLine maps the same fields; `workcell explain` prints name, header, host, narrowing, sign-in endpoint and
+  $ENV, no source; run's startup errors name file:line, host and name, and NewSignIn's %q of a sign-in source holds no secret; the
+  guest Exec env is PATH, HOME, LANG, TrustEnv, cache vars, placeholders and the host's TERM; the escape rows' Detail prints the
+  guest's placeholder and test values only. I5's guest side is pinned by secret-in-guest (/proc environ and cmdline, disk, process
+  memory) and signin-scan.
+- Map row 24, the per-request secret-source process (I10): measured, candidate C16 below, low.
+
+Observations (R3, not candidates): internal/provider/provider.go checkKeys accepts optional `file` and `field` keys in a [[secret]]
+row that parse never stores and no code reads, since no placeholder file is ever written (run_vm.go passes env only): two dead data
+keys. cmd/workcell/policy.go bindings accepts an env name the host sets itself (PATH, HOME, LANG, TERM, SSL_CERT_FILE and the other
+trust variables); the placeholder line comes last and wins, so the guest's PATH or trust store becomes a placeholder string: operator
+misconfiguration, fails closed. Non-token answers of a bound host are never scanned, so a bound host that echoes the credential
+header returns the real bytes to the guest (the fixture upstreams echo by design; a real API that prints a masked key on an invalid
+key does the same): the bound host is the trusted destination, so this is residual risk for docs/security-review.md. tokenEndpoint
+has no method check, so any method with a body reaches the token endpoint swapped (same host and path, no leak); only access_token
+and refresh_token are hidden, so an id_token or other field reaches the guest as issued (the U-403 class, PARKED line 31). The header
+string, the Basic base64 string, hide's spelling copies and json.Marshal outputs are host-side GC copies that cannot be zeroed, and
+none reaches the guest. repoSegment refuses upper-case repository names while GitHub treats them case-insensitively: fails closed.
+Residual for S-F5's fold: NUL truncation (`/oauth/token%00`) and overlong UTF-8 dot segments are not modelled; both need an exotic
+router.
+
+Coverage. Read in full: internal/secret/source.go, broker.go, source_test.go, broker_test.go, keychain_darwin_test.go;
+internal/proxy/signin.go, terminate.go, proxy.go, allowlist.go, signin_test.go, terminate_test.go, git_test.go, providers_test.go,
+c10_test.go, c11_test.go, c12_test.go, c13_test.go; internal/provider/provider.go and the four *.toml; cmd/workcell/policy.go,
+explain.go, run_vm.go, log.go, ocsf.go, main.go; internal/audit/audit.go, lines.go, key.go; internal/policy/policy.go lines 30-320
+(Secret, Read, ReadRepo, Narrow, Parse, secretRow); cmd/workcell-init/main.go, exec.go; internal/guest/guest.go lines 1-120 and
+TrustEnv; escape/suite/secrets.go, signin.go, https.go, terminate.go, tests.go lines 100-160; escape/sandbox/workcell_vm.go lines
+268-300; docs/providers.md lines 15-40, docs/policy.md lines 100-125; SPEC sections 2, 3, 4, 6, 8, 11, 13; FINDINGS lines 1-110 and
+522-835; PARKED whole; GOROOT os/exec Output and ExitError.Error, net/http/httputil ReverseProxy X-Forwarded and defaultErrorHandler,
+net/http conn.serve panic log, encoding/json appendString escaping. Skimmed: proxy_test.go fixtures (testProxy, listen, testLedger,
+denies, recorder), internal/fileserve/ops_linux.go for mknod (none), cmd/workcell/pull_vm.go and bench_vm.go boot calls, cache_vm.go.
+Not opened: internal/proxy/allowlist_test.go, forward_test.go, clients_test.go, proxy_test.go beyond the fixtures,
+cmd/workcell/relay.go and session.go, escape/suite/repo.go, escape/sandbox control adapters, internal/provider/provider_test.go,
+docs/threat-model.md, _legacy/ (v1 paths taken from the ported headers). Ran: go test ./internal/secret ./internal/proxy
+./internal/provider ./internal/audit ./cmd/workcell on the unchanged tree (green) and four overlay probes (the race probe five times
+and once under -race); nothing on a VM or against a real provider (T8, S12); no probe left the session. source.go, broker.go and
+terminate.go are ported, signin.go is not, so C15 in signin.go carries no `also in v1 main` line and C16 does; nothing is private
+under section 13. No model declined, and no safeguard re-ran a request.
+
+### S-1007 candidates
+
+C15. ID I5 (a real token the broker holds never appears in an answer to the guest; signin.go's own contract says "whatever its
+status"). Attacker: guest root, or hostile model output, choosing request timing. Where: internal/proxy/signin.go learn (hide's swaps
+are p.broker.Tokens, the tokens held now, plus those the answer issues) and tokenRequest (the refresh value it swapped in is cleared at
+once and never reaches learn); internal/secret/broker.go Issue zeroes the replaced refresh token and keeps one generation; terminate.go
+neither serialises token-endpoint requests nor passes the swapped-out value from tokenRequest to tokenResponse. Input: after a
+sign-in, with the broker holding access A1 and refresh R1 behind the two placeholders, the guest sends two refresh requests at once,
+each `POST /oauth/token` with `grant_type=refresh_token&refresh_token=<refresh placeholder>`; the proxy swaps both to R1 before either
+answer arrives (tokenRequest runs before the upstream is asked); the provider answers the first with a new pair (A2, R2) and the
+second, now stale, `400 {"error":"invalid_grant","error_description":"refresh token sk-ref-1 was already used"}`. Effect: learn for
+the second answer hides (A2, R2) only, so R1, a refresh token the broker held until a moment before, reaches the guest verbatim. Dead
+at a provider that revokes on rotation (then the gain is the bytes alone, and the stated rule is still broken); live at one with a
+reuse grace window, and the guest can never re-present R1 through the proxy, so this echo is its only route to it. Preconditions the
+attacker does not control: the provider rotates refresh tokens on use and echoes the presented token in its error (the echo
+precondition C12 carried; the suite's own fake provider does both, row signin-error-echo); the concurrency is the attacker's. API-host
+answers are never scanned, so no access-token analogue exists on this path (observation above). The auditor's probe, through the real
+proxy, broker and ledger, failed 5 of 5 and clean under -race. Reproducing test: escape/_pending/S-F9/c15_test.go
+TestConcurrentRefreshHidesTheReplacedToken (redteam; package proxy, 75 lines, run by overlay): the real Terminate, secret.NewBroker
+with a signin grant and a real audit ledger against a loopback provider that holds both refreshes until both have arrived, rotates on
+the first and answers the second 400 with the echo only after the guest holds the first answer, so the order is deterministic; it fails
+on 7cc6129 (the tree of main 071a385) with `the guest read a real token: 400 {"error":"invalid_grant","error_description":"refresh
+token sk-ref-1 was already used"}`, 5 of 5 and under -race with no data race, and only this test fails in the package. Outcome:
+CONFIRMED, medium, by the verifier: it re-ran the test 3 of 3 on 7cc6129; the loopback provider does nothing an allowed provider would
+not, since the hold only makes the natural order (rotate, 200, then reject the stale one) deterministic and the attacker can fire N
+refreshes and retry; docs/providers.md bounds exposure (sign-in unsupported, proven only against the test endpoint) but does not
+sanction the leak; the sequential echo is covered by TestSignInFlow's bad-grant row and C12, so this is the rotation race alone;
+medium fits S6 as C12's precedent, not low (a break is shown) and not high (the provider's rotation, echo and grace window are
+needed). Fix unit: S-F9, below S-1007 in PLAN.md. signin.go is not ported, so no `also in v1 main` line.
+
+C16. ID I10 (host CPU, processes and file descriptors), map row 24, the no-row surface the S-1005 handoff named. Attacker: guest root.
+Where: internal/secret/broker.go release (one Resolve per granted lookup) and internal/secret/source.go run (one child process with three
+pipes per cmd:, secret-service: or keychain: use, 2 min timeout). Input: 300 requests carrying the placeholder in the bound header
+within one minute (the rate window), all at once. Effect: one host process per guest request, outside the guest's --cpus cap. Measured
+by the auditor (package secret by overlay, a sleeping cmd: program marking its pid): `310 concurrent lookups: granted 300,
+rate_limited 10, in 2.3 s; peak concurrent child processes 300; fds 8 -> peak 908 -> after 8`; a program that runs to its 2 min
+timeout lets the next window add 300 more, so about 600 processes and 1800 fds at most, and the ledger grows by at most 600 lines a
+minute. With `security` each use is a keychain prompt until the operator clicks Always Allow; with a vault CLI each is a vault call;
+v1 resolved once at start. No invariant breaks: processes, fds and ledger lines all stay bounded by the window. Outcome: low under S6
+(hardening with no demonstrated break), measured only; no reproducing test and no fix unit, as S-1004's C9. Listed for
+docs/security-review.md (S7) and for S-1013's chains. If hardening is wanted after the freeze: resolve program sources once per
+session and hold the value in the broker under mu, zeroed at Close, as the sign-in tokens already are, about 10 lines in broker.go and
+one sentence in docs/policy.md; lowering the window would throttle legitimate use at 5 requests a second.
+also in v1 main: credbroker/cli.go (source.go) and credbroker/server.go (broker.go)
