@@ -1203,3 +1203,33 @@ directory; medium under S6, not high, because the ordinary `cd repo && workcell 
 the redteam test's assertions are indirect (the key is minted and the session directory made inside the exported tree) and prescribe
 the refusal's shape; its own debugfs run supplies the direct effect. Fix unit: S-F12, below S-1008 in PLAN.md; it should compare
 resolved paths (EvalSymlinks) and refuse the data directory itself as cwd, not only an ancestor. Not ported.
+
+C20. ID: no invariant directly; I12's "confuse the host" and the spirit of I8 at most, so low under S6 (hardening: the product's
+own rule, stated at shown in cmd/workcell/pull.go and followed by lastLines in run_vm.go, that a guest string is quoted before it
+reaches the operator's terminal, is bypassed on one path). Attacker: guest root, or hostile model output naming files in the clone.
+Where: cmd/workcell/pull_vm.go put and sameBytes name the destination os.NewFile(uintptr(fd), e.Path) with the raw guest path, so
+f.Write's or ReadFull's PathError carries the raw name, which write wraps after a quoted shown prefix, and pull prints that error
+with Fprintln to os.Stderr. Input: a manifest entry whose path is valid UTF-8 without NUL but holds terminal control bytes, such as
+ESC ] 0 ; owned BEL ESC [ 2 J ESC [ 3 1 m README (manifest.add and checkPath admit it), and a write that fails after the open: the
+test uses RLIMIT_FSIZE 0 (EFBIG) as a deterministic, unprivileged stand-in; in use the guest claims any Size up to the image's size
+(1 GiB by default, more with --disk), so ENOSPC or EDQUOT on a near-full operator disk is an environmental precondition the attacker
+can await, not a power it needs. Effect: the operator's terminal receives the raw bytes (title set, screen cleared, colours, and OSC
+52 clipboard reads where the terminal allows them); the auditor's probe on a 64 KiB tmpfs showed the same with ENOSPC. Reproducing
+test: escape/_pending/S-F13/c20_test.go TestC20PullWriteErrorQuotesGuestPath (redteam; package main, run by overlay; calls the real
+write with a manifest judged by the real manifest.add): on 2b03762 it fails with `the error carries a raw control byte 0x1b at 45,
+which the terminal would obey: "\"\\x1b]0;owned\\a\\x1b[2J\\x1b[31mREADME\": write \x1b]0;owned\a\x1b[2J\x1b[31mREADME: file too
+large"`, the prefix quoted and the PathError raw; the redteam showed it passes with shown(e.Path) at both os.NewFile sites. Outcome:
+CONFIRMED, low, by the verifier: the real writer and judge are exercised, only the Data source is a double for frames guest root
+controls anyway; the error reaches the terminal unquoted; Fchmod returns a bare errno and sameBytes discards ReadFull's error, so this
+is the one gap; not an I12 break (the host neither crashes, hangs nor is confused) and not a literal I8 break (workcell obeys nothing,
+the terminal does), so exactly S6's hardening with no demonstrated break, and a reproducing test plus the I8 and I12 reference
+satisfies R2 enough to list it under S7 rather than park it. Fix unit: S-F13, below S-1008 in PLAN.md, net 0 product lines, as C3, C6
+and C11 before it. The diff read path (sameBytes) has the same shape and no deterministic unprivileged trigger was found; the same
+change covers it. Not ported.
+
+Handoffs: S-1013 takes the unbounded pull duration (per-frame stall limit only), the export-failure-removes-session_start gap (I9) and
+the C19 chain through a reflinked prior workspace.ext4; S-1016 the APFS case-fold lead on checkPath's .git test; the T5 fuzz target for
+checkPath, fold and manifest.add is still absent and belongs to the first fix unit in cmd/workcell with test lines to spare. The
+real-VM rows the auditor designed for C17 and C18 (mount-disk-append-flood through a stolen 5002 socket, mount-entry-flood with ln -s
+and mkdir judged by host free blocks and inodes) are the first rows that would exercise fileserve's protocol tables from a real guest;
+they are parked for the fix units or the maintainer, since each needs a control-adapter twin for T2.

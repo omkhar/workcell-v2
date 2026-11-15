@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Omkhar Arasaratnam
 
+// Finding C19 of S-1008 (I7, I8, I9, I13, I14). Fix unit S-F12 first moves this file to
+// cmd/workcell/c19_test.go, as this comment says.
+
 //go:build linux || (darwin && arm64 && cgo)
 
 package main
@@ -13,14 +16,13 @@ import (
 	"testing"
 )
 
-// c19Data fills data with what a data directory holds before a session: the pinned artifacts (dummies: nothing boots here), the VMM binary where the
-// backend is a program, and an earlier session of repo with its audit log and its workspace image, each carrying a marker. It mints no audit key: a
-// session that is refused before it starts must leave none behind. It returns the artifacts as loadArtifacts would.
+// c19Data fills data as a data directory before a session: dummy artifacts and an earlier session of
+// repo with a marked audit log and workspace image, and no audit key. It returns the artifacts.
 func c19Data(t *testing.T, data, repo string) artifacts {
 	t.Helper()
 	must(0, os.MkdirAll(data, 0o700))
 	for _, n := range required() {
-		must(0, os.WriteFile(filepath.Join(data, n), []byte("dummy "+n), 0o644)) // not executable: a boot that gets this far fails at once
+		must(0, os.WriteFile(filepath.Join(data, n), []byte("dummy "+n), 0o644))
 	}
 	other := mkSession(t, filepath.Join(data, "sessions"), idOld, repo)
 	must(0, os.WriteFile(filepath.Join(other, "audit.log"), []byte("C19-OTHER-SESSION-AUDIT-LOG\n"), 0o600))
@@ -30,50 +32,40 @@ func c19Data(t *testing.T, data, repo string) artifacts {
 	return a
 }
 
-// c19Untouched fails the test when a session got past the refusal: a new session directory, a minted audit key, or a boot record (vmm) in the earlier
-// session's directory, under the data directory data.
+// c19Untouched fails when a session got past the refusal: a minted audit key, a new session directory
+// or a boot record under data.
 func c19Untouched(t *testing.T, data string) {
 	t.Helper()
-	if _, err := os.Lstat(filepath.Join(data, "audit.key")); err == nil {
-		t.Errorf("%s was minted inside the directory the guest gets: the guest can seal a rewritten log (I9)", filepath.Join(data, "audit.key"))
+	if key := filepath.Join(data, "audit.key"); exists(key) {
+		t.Errorf("%s was minted inside the directory the guest gets: the guest can seal a rewritten log (I9)", key)
 	}
-	entries, _ := os.ReadDir(filepath.Join(data, "sessions"))
-	for _, e := range entries {
+	ents, _ := os.ReadDir(filepath.Join(data, "sessions"))
+	for _, e := range ents {
 		if e.Name() != idOld {
 			t.Errorf("a session directory %s was made inside the directory the guest gets (I7)", e.Name())
-			if files, err := os.ReadDir(filepath.Join(data, "sessions", e.Name())); err == nil {
-				for _, f := range files {
-					t.Logf("  it holds %s", f.Name())
-				}
-			}
 		}
 	}
-	if _, err := os.Lstat(filepath.Join(data, "sessions", idOld, "vmm")); err == nil {
-		t.Errorf("the session reached boot: %s was written", filepath.Join(data, "sessions", idOld, "vmm"))
+	if vmm := filepath.Join(data, "sessions", idOld, "vmm"); exists(vmm) {
+		t.Errorf("the session reached boot: %s was written", vmm)
 	}
 }
 
-// TestC19RunRefusesAWorkspaceThatHoldsTheDataDirectory (I7, I9, I13, I14): `cd ~ && workcell run claude` makes the home directory the workspace, and
-// the data directory (~/.local/share/workcell) and the config directory (~/.config/workcell) lie inside it. In clone mode the export then copies the
-// audit key, every other session's audit log and workspace image, and the boot artifacts into the guest's /workspace, and `workcell pull` writes the
-// guest's versions back over them; in mount mode the guest has them live. A session whose directory holds either must be refused before a session
-// directory, a key or an export is made, with an error that names the directory it holds.
+func exists(p string) bool { _, err := os.Lstat(p); return err == nil }
+
+// TestC19RunRefusesAWorkspaceThatHoldsTheDataDirectory (I7, I9, I13, I14): a workspace that holds the
+// data or the config directory is refused, naming it, before a session directory, key or export is made.
 func TestC19RunRefusesAWorkspaceThatHoldsTheDataDirectory(t *testing.T) {
-	tests := []struct {
-		name   string
-		mount  bool
-		config bool // the workspace holds the config directory alone; the data directory lies elsewhere
-	}{
-		{"clone", false, false},
-		{"mount", true, false},
-		{"clone, config directory", false, true},
-	}
-	for _, tc := range tests {
+	for _, tc := range []struct {
+		name          string
+		mount, config bool // config: the workspace holds the config directory alone
+	}{{"clone", false, false}, {"mount", true, false}, {"clone, config directory", false, true}} {
 		t.Run(tc.name, func(t *testing.T) {
-			work := t.TempDir() // the operator's directory, the session's workspace
+			work := t.TempDir()
 			data, config := filepath.Join(work, "workcell"), filepath.Join(t.TempDir(), "workcell")
+			held := data
 			if tc.config {
-				data, config = filepath.Join(t.TempDir(), "workcell"), filepath.Join(work, "workcell")
+				data, config = config, data
+				held = config
 			}
 			t.Setenv("XDG_DATA_HOME", filepath.Dir(data))
 			t.Setenv("XDG_CONFIG_HOME", filepath.Dir(config))
@@ -85,10 +77,6 @@ func TestC19RunRefusesAWorkspaceThatHoldsTheDataDirectory(t *testing.T) {
 			if r.err == nil {
 				t.Fatal("the session ran")
 			}
-			held := data
-			if tc.config {
-				held = config
-			}
 			if !strings.Contains(r.err.Error(), held) {
 				t.Errorf("session failed with %q, want a refusal naming %s", r.err, held)
 			}
@@ -97,20 +85,18 @@ func TestC19RunRefusesAWorkspaceThatHoldsTheDataDirectory(t *testing.T) {
 	}
 }
 
-// TestC19PullRefusesADestinationThatHoldsTheDataDirectory (I8, I9, I14): `workcell pull <dir>` writes the guest's tree into dir, replacing any file
-// that is there. When dir holds the data directory, the guest's `workcell/audit.key`, `workcell/root.ext4` or `workcell/sessions/<id>/audit.log`
-// passes checkPath and lands on the host's. pull must refuse such a destination before it boots anything.
+// TestC19PullRefusesADestinationThatHoldsTheDataDirectory (I8, I9, I14): a pull destination that holds
+// the data directory is refused in one line, naming it, before anything boots.
 func TestC19PullRefusesADestinationThatHoldsTheDataDirectory(t *testing.T) {
 	dest := t.TempDir()
 	data, repo := filepath.Join(dest, "workcell"), filepath.Join(dest, "repo")
 	must(0, os.Mkdir(repo, 0o700))
 	t.Setenv("XDG_DATA_HOME", dest)
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	c19Data(t, data, repo) // the newest session of repo, whose image pull would boot
+	c19Data(t, data, repo)
 	t.Chdir(repo)
 	var stderr bytes.Buffer
-	code := pull([]string{dest}, &stderr)
-	if code != 1 || !strings.Contains(stderr.String(), data) || strings.Count(stderr.String(), "\n") != 1 {
+	if code := pull([]string{dest}, &stderr); code != 1 || !strings.Contains(stderr.String(), data) || strings.Count(stderr.String(), "\n") != 1 {
 		t.Errorf("pull exited %d with %q, want 1 and one line refusing a destination that holds %s", code, stderr.String(), data)
 	}
 	c19Untouched(t, data)
