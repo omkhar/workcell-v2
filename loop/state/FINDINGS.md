@@ -1356,6 +1356,21 @@ Fix unit: S-F14, below S-1009 in PLAN.md. For S-F14 to carry: the test cut the l
 test budget, and does not express relative HOME with XDG unset or the session directory and audit.key landing inside the repository;
 the fix covers all three by construction, and the same rule should reach TMPDIR if a line is spare. Not ported.
 
+C21 FIXED by S-F14, commits 82a0c71 and 1d8947e (PR #214). xdgDir in cmd/workcell/data.go takes XDG_CONFIG_HOME or XDG_DATA_HOME
+only when filepath.IsAbs holds, else falls back to the home directory as the XDG base directory specification says, and returns an
+error when os.UserHomeDir fails or its answer is not absolute, so configFile and dataDir, and through them run, explain, update, log,
+verify, ls, rm, doctor, pull and bench, never name a tree under cwd; boot in cmd/workcell/run_vm.go refuses a relative TMPDIR before
+MkdirTemp, so the VMM sockets cannot land under a directory a mount session exports (the "if a line is spare" clause: untested, the
+test budget had no room, and TestC21RelativeXDGDirs does not cover it). The lines were paid by deleting the five dead Count lines
+PARKED line 68 named (audit.Record.Count, ocsfEvent.Count and its copy, the "overloaded" case in log.go): product 14999 of 15000.
+The pending test became cmd/workcell/c21_test.go TestC21RelativeXDGDirs, unchanged but for its head comment: it fails on 70e1c8e
+(loadPolicy grants evil.test from "~/.config/workcell/config.toml", dataDir is "data/workcell") and passes on 1d8947e with cmd/workcell
+green under -race. The builder also ran the real binary under strace in a scratch tree holding ~/.config/workcell/config.toml and an
+executable data/workcell/firecracker with HOME absolute, XDG_CONFIG_HOME the literal ~/.config and XDG_DATA_HOME data: explain read
+the home config, run reported the home data directory's firecracker missing, update listed the channel, and no syscall named a path
+under ~ or data; with HOME relative, explain and log exit 2 with the error home directory "home" is not an absolute path. One sentence in
+docs/policy.md. Not ported.
+
 C22. ID I13 (the `--allow` flag is the host-side approval of one endpoint; cmd/workcell/policy.go states that one flag value is one
 host) and the product's own one-entry rule. Attacker: hostile model or tool output that becomes argv of `workcell run` or `workcell
 explain` through a host-side tool that shows the operator the command line. Where: cmd/workcell/policy.go allowlist guards each

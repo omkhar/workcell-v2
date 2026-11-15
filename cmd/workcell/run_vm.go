@@ -261,6 +261,9 @@ func export(dir string, caps limits, repo string) (string, error) {
 // data directory may be deep. The path is recorded in session, a session directory ("" for none), so that rm removes it even after the supervisor was killed
 // (I7).
 func boot(a artifacts, caps limits, sigs <-chan os.Signal, session string, log *audit.Log, image, mount string, allow *proxy.Allowlist, secrets []binding) (*booted, int, error) {
+	if !filepath.IsAbs(os.TempDir()) { // a relative TMPDIR would put the sockets under the directory a session may mount (I13)
+		return nil, 0, fmt.Errorf("TMPDIR %q is not an absolute path", os.TempDir())
+	}
 	dir, err := os.MkdirTemp("", "wc") // short names: see above
 	if err != nil {
 		return nil, 0, err

@@ -16,12 +16,19 @@ import (
 func dataDir() (string, error) { return xdgDir("XDG_DATA_HOME", ".local", "share") }
 
 // xdgDir is workcell's directory under the variable, else under the path beneath the home directory, on every OS alike.
+// A relative variable is ignored, as the XDG spec says, and a relative home is an error: neither may name a tree under cwd (I13).
 func xdgDir(env string, home ...string) (string, error) {
-	if x := os.Getenv(env); x != "" {
+	if x := os.Getenv(env); filepath.IsAbs(x) {
 		return filepath.Join(x, "workcell"), nil
 	}
 	h, err := os.UserHomeDir()
-	return filepath.Join(append(append([]string{h}, home...), "workcell")...), err
+	if err != nil {
+		return "", err
+	}
+	if !filepath.IsAbs(h) {
+		return "", fmt.Errorf("home directory %q is not an absolute path", h)
+	}
+	return filepath.Join(append(append([]string{h}, home...), "workcell")...), nil
 }
 
 // artifacts are the files a session boots from, and the directory they are in: the kernel,
