@@ -41,11 +41,9 @@ func (s Stopped) Error() string { return "stopped: " + string(s) }
 // so the tool never merges it (B4), even if adding the label failed.
 const securityNote = "security: an advisory affects the pinned version and this release fixes it"
 
-var (
-	nameRE    = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{0,63}$`)
-	versionRE = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._+-]{0,63}$`)
-	classes   = []pins.Class{pins.Guest, pins.Trusted}
-)
+var nameRE, versionRE = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{0,63}$`), regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._+-]{0,63}$`)
+
+var classes = []pins.Class{pins.Guest, pins.Trusted}
 
 // NameOK reports whether s may name a pin and its file pins/<s>.json.
 func NameOK(s string) bool { return nameRE.MatchString(s) && !strings.Contains(s, "..") }
@@ -60,18 +58,18 @@ func PathOK(p string) bool {
 	return ok && ok2 && NameOK(name)
 }
 
-// Tool is one run. Upstream fetches listings, artifacts and advisories; OSV is
-// the advisory database; PinTime bounds the planning of one pin (W8); Now is
-// the clock Select reads.
+// Tool is one run. Upstream fetches listings, artifacts and advisories; OSV is the advisory database;
+// PinTime bounds the planning of one pin (W8); Wait bounds the wait for the gate of a pull request
+// the run opened, and zero waits not at all; Now is the clock Select reads.
 type Tool struct {
-	Pins     string
-	Upstream *http.Client
-	OSV      string
-	PinTime  time.Duration
-	GitHub   GitHub
-	DryRun   bool
-	Now      time.Time
-	Out      io.Writer
+	Pins          string
+	Upstream      *http.Client
+	OSV           string
+	PinTime, Wait time.Duration
+	GitHub        GitHub
+	DryRun        bool
+	Now           time.Time
+	Out           io.Writer
 }
 
 // Change is a pin that moves, and the row it moves to. Security marks a
@@ -154,7 +152,7 @@ func (t Tool) Run(ctx context.Context) error {
 		for _, pr := range prs {
 			if class, ok := t.GitHub.class(pr); ok && !open[class] {
 				open[class] = true
-				if err := t.merge(ctx, pr.Number); err != nil {
+				if err := t.merge(ctx, pr.Number, time.Time{}); err != nil {
 					return err
 				}
 			}
