@@ -1967,3 +1967,51 @@ on the Mac; S-1018 takes the residual lines for the unverified guest image on th
 and toolchain directives a free go.mod may carry, the key expiry, the install.sh notes, the toolchain updater gap and the
 corrected pull-request-creation statement; H-905 takes the released artifact set against what the client loads, darwin
 codesigning, --source-ref in the verification docs, and the B6 bound against the gate budget.
+
+## S-1014: the four-hour fuzz run (S10), on the scheduled nightly.yml run of 2026-11-16T04:54Z at main a0a5991
+
+Scope. S10 asks four hours of fuzzing per target. S-1014a set escape/fuzz-minutes.txt to 240, and the first scheduled nightly.yml
+run after its merge (a0a5991, 2026-11-15T17:22Z) ran on 2026-11-16T04:54Z and completed success in 14499 s. Its plan job listed
+every `Fuzz` target of every package without a `Ported from v1:` marker, 18 targets in 12 packages, and started one fuzz job per
+target with `-fuzztime 240m`. The five targets in ported packages (internal/audit FuzzEachLine; internal/proxy
+FuzzCarriesPlaceholder, FuzzHide, FuzzPeekSNI and FuzzSwapRefresh) are H-1015's, on the Mac (S14), and S-1016 triages them.
+
+Evidence. Each fuzz job's log ends with `fuzz: elapsed: 4h0m0s` or `4h0m1s`, then `PASS` and `ok <package> 14400.0xx s` to
+14401.1 s; no log holds `Failing input`, `FAIL` or a `testdata/fuzz` path, and the `if: failure()` step that prints a crasher's
+input ran in none of them. The orchestrator fetched all 18 logs (C6) and read their heads and tails by search, not whole.
+
+| target | execs in 4 h | corpus (new interesting, total) |
+|--------|-------------|---------------------------------|
+| escape/suite FuzzParseDNSQuery | 461,659,047 | 14, 17 |
+| escape/suite FuzzParseDNSReply | 472,589,028 | 109, 111 |
+| escape/suite FuzzQUICDCID | 288,397,485 | 2, 4 |
+| escape/suite FuzzParseResult | 291,617,935 | 24, 27 |
+| escape/suite FuzzFormat | 364,996,572 | 30, 33 |
+| internal/advisory FuzzAnswer | 432,957,936 | 761, 778 |
+| internal/artifact FuzzTarMember | 374,796,425 | 301, 305 |
+| internal/artifact FuzzProvenance | 309,350,462 | 783, 790 |
+| internal/channel FuzzVerify | 360,763,902 | 803, 807 |
+| internal/fileserve FuzzRequest | 1,053,247,232 | 184, 238 |
+| internal/guest FuzzDecode | 1,032,757,466 | 873, 881 |
+| internal/policy FuzzParse | 788,431,439 | 354, 361 |
+| internal/relay FuzzDecode | 2,060,314,883 | 3, 7 |
+| internal/relay FuzzReadFrame | 2,000,808,279 | 2, 5 |
+| internal/resolver FuzzAnswer | 2,215,594,740 | 29, 34 |
+| internal/rootfs FuzzLayer | 571,707,232 | 230, 232 |
+| internal/sigstore FuzzParse | 994,043,024 | 743, 752 |
+| internal/wire FuzzReadFrame | 1,405,399,617 | 31, 35 |
+
+### S-1014 candidates
+
+None. Zero crashers in 18 targets over 72 target-hours and about 15.5 billion executions, so nothing to minimise, and nothing to
+confirm or refute under S4. No redteam or verifier ran. escape/fuzz-minutes.txt is back at 10, so the next nightly.yml run fuzzes
+each target for ten minutes again.
+
+Observations (R3, not findings). The relay and resolver targets reach about 140,000 execs a second and the parsers of signed or
+structured input (sigstore, channel, artifact, advisory) between 21,000 and 69,000, with corpora of 750 to 880 entries, so a
+longer run of those four would add the most coverage per hour if S8 asks for a second sweep. The new corpus entries live only on
+the runner: the fuzz job saves nothing, so each run starts from the seed corpus in the tree and the grown corpus is lost. That
+is the job's design, since nothing in the tree lists what a run found, and it costs nothing at the gate.
+
+Handoffs: S-1016 takes the five ported targets from H-1015's four-hour Mac run, and S-1018 reports 18 targets at four hours
+with no crasher, plus the five on the Mac, as the S10 fuzzing line of the public report; S-1013 has nothing from this unit.
