@@ -59,9 +59,9 @@ type checkRun struct {
 	HeadSHA                  string `json:"head_sha"`
 }
 
-// do sends one request to an absolute API URL and decodes a 2xx answer into out. Any
-// other answer, or one that is not JSON, is Stopped(step); only no answer comes as nil.
-func (g GitHub) do(ctx context.Context, step, method, url string, in, out any) (*http.Response, error) {
+// do sends one request to an absolute API URL and decodes a 2xx answer into
+// out. Any other answer, or one that is not JSON, is Stopped(step).
+func (g GitHub) do(ctx context.Context, step, method, url string, in, out any) (http.Header, error) {
 	var rd io.Reader
 	if in != nil {
 		b, _ := json.Marshal(in)
@@ -83,9 +83,9 @@ func (g GitHub) do(ctx context.Context, step, method, url string, in, out any) (
 	defer resp.Body.Close()
 	b, err := io.ReadAll(io.LimitReader(resp.Body, maxBody))
 	if err != nil || resp.StatusCode/100 != 2 || (out != nil && json.Unmarshal(b, out) != nil) {
-		return resp, Stopped(step)
+		return nil, Stopped(step)
 	}
-	return resp, nil
+	return resp.Header, nil
 }
 
 func (g GitHub) url(format string, a ...any) string {
@@ -97,12 +97,12 @@ func list[T any](ctx context.Context, g GitHub, step, url string) ([]T, error) {
 	var all []T
 	for range maxPages {
 		var page []T
-		resp, err := g.do(ctx, step, http.MethodGet, url, nil, &page)
+		h, err := g.do(ctx, step, http.MethodGet, url, nil, &page)
 		if err != nil {
 			return nil, err
 		}
 		all = append(all, page...)
-		m := nextRE.FindStringSubmatch(resp.Header.Get("Link"))
+		m := nextRE.FindStringSubmatch(h.Get("Link"))
 		if m == nil {
 			return all, nil
 		}
@@ -211,11 +211,11 @@ func (t Tool) merge(ctx context.Context, n int, until time.Time) error {
 func (t Tool) propose(ctx context.Context, class pins.Class, cs []Change) error {
 	g := t.GitHub
 	branch := "bump/" + string(class) + "-" + t.Now.UTC().Format("20060102")
-	switch resp, err := g.do(ctx, "read branch", http.MethodGet, g.url("/git/ref/heads/%s", branch), nil, nil); {
-	case resp == nil:
+	switch prs, err := list[pull](ctx, g, "list pull requests", g.url("/pulls?state=all&base=main&head=%s:%s&per_page=100", strings.SplitN(g.Repo, "/", 2)[0], branch)); {
+	case err != nil:
 		return err
-	case err == nil: // merged or not, this day's branch is the class's one pull request (B13)
-		fmt.Fprintln(t.Out, "branch already there:", class, branch)
+	case len(prs) > 0: // merged or not, this day's pull request is the class's one (B13)
+		fmt.Fprintln(t.Out, "already proposed today:", class, branch)
 		return nil
 	}
 	var ref struct{ Object struct{ SHA string } }

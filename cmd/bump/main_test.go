@@ -38,11 +38,10 @@ var (
 const drip = "\x00drip"
 
 type reply struct {
-	status int
-	body   string
-	later  []string // the bodies of the second read on; the last one repeats
-	link   string   // a Link header; {api} stands for the stand-in's URL
-	slow   bool     // answer after the client gave up
+	status     int
+	body, link string   // link: a Link header; {api} stands for the stand-in's URL
+	later      []string // the bodies of the second read on; the last one repeats
+	slow       bool     // answer after the client gave up
 }
 
 type call struct{ method, uri, body string }
@@ -72,9 +71,7 @@ func (s *standIn) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case n > 0 && len(rp.later) > 0:
 		rp.body = rp.later[min(n, len(rp.later))-1]
 	}
-	if rp.slow {
-		time.Sleep(time.Second)
-	}
+	time.Sleep(map[bool]time.Duration{true: time.Second}[rp.slow])
 	if rp.link != "" {
 		w.Header().Set("Link", strings.ReplaceAll(rp.link, "{api}", "http://"+r.Host))
 	}
@@ -108,10 +105,7 @@ type fixture struct {
 // release records a vendor-manifest release of name under /name; a wrong digest publishes a checksum that is not the artifact's.
 func release(f *fixture, name, version string, built time.Time, wrongDigest bool) {
 	art := "artifact of " + name + " " + version
-	sum := sha256.Sum256([]byte(art))
-	if wrongDigest {
-		sum = sha256.Sum256([]byte("something else"))
-	}
+	sum := sha256.Sum256([]byte(cmp.Or(map[bool]string{true: "something else"}[wrongDigest], art)))
 	root := "/" + name + "/"
 	f.upstream[root+"latest"] = version + "\n"
 	f.upstream[root+version+"/manifest.json"] = fmt.Sprintf(`{"version":%q,"buildDate":%q,"platforms":{"linux-x64":{"checksum":%q,"binary":%q}}}`,
@@ -134,6 +128,17 @@ func pullJSON(n int, ref, repo string, fork bool, changed int, labels ...string)
 	return string(b)
 }
 
+// dayPRs lists the pull requests, merged or not, of the branch of the day of a class, bump/class-YYYYMMDD (B13).
+func dayPRs(class string, at time.Time) string {
+	return "GET /repos/o/r/pulls?state=all&base=main&head=o:bump/" + class + at.Format("-20060102") + "&per_page=100"
+}
+
+// proposed records this day's pull request of the class, number 7, merged: a run opens nothing for the class (B13).
+func proposed(f *fixture, class string, at time.Time) {
+	pr := pullJSON(7, "bump/"+class+at.Format("-20060102"), "o/r", false, 1)
+	f.routes[dayPRs(class, at)] = reply{body: "[" + strings.Replace(pr, `"number":7`, `"merged_at":"2026-11-20T12:30:00Z","number":7,"state":"closed"`, 1) + "]"}
+}
+
 func checks(runs ...string) string {
 	return fmt.Sprintf(`{"total_count": %d, "check_runs": [%s]}`, len(runs), strings.Join(runs, ","))
 }
@@ -148,16 +153,13 @@ const (
 	files7   = "GET /repos/o/r/pulls/7/files?per_page=100"
 	checks5  = "GET /repos/o/r/commits/" + "abababababababababababababababababababab" + "/check-runs?per_page=100" // the head of every pull request
 	merge5   = "PUT /repos/o/r/pulls/5/merge"
-	branch   = "GET /repos/o/r/git/ref/heads/bump/" // the branch of the day, class-YYYYMMDD (B13)
 	rowPatch = `[{"filename":"pins/tool.json","status":"modified","patch":"@@ -16 +16 @@\n-  \"Version\": \"1.2.0\",\n+  \"Version\": \"1.3.0\","}]`
 )
 
-var (
-	green      = checks(checkRun("gate", "completed", "success"), checkRun("guard", "completed", "success"))
-	running    = checks(checkRun("gate", "in_progress", ""), checkRun("guard", "completed", "success"))
-	turnsGreen = reply{body: running, later: []string{running, green}} // green from the third read on
-	red        = reply{body: checks(checkRun("gate", "completed", "failure"))}
-)
+var green = checks(checkRun("gate", "completed", "success"), checkRun("guard", "completed", "success"))
+var running = checks(checkRun("gate", "in_progress", ""), checkRun("guard", "completed", "success"))
+var turnsGreen = reply{body: running, later: []string{running, green}} // green from the third read on
+var red = reply{body: checks(checkRun("gate", "completed", "failure"))}
 
 // open records open bump pull request 5 of the class with the labels, one row changed and a green gate, and then the routes.
 func open(class string, routes map[string]reply, labels ...string) func(*fixture) {
@@ -170,8 +172,7 @@ func open(class string, routes map[string]reply, labels ...string) func(*fixture
 
 // opened keeps the last row only, sets the wait, and records pull request 7, the one a run opens, on this day's branch of the class: one row changed, the labels, the check runs of its head.
 func opened(f *fixture, wait time.Duration, class string, runs reply, labels ...string) {
-	f.pins, f.wait = f.pins[len(f.pins)-1:], wait
-	f.routes["GET /repos/o/r/pulls/7"], f.routes[files7], f.routes[checks5] = reply{body: pullJSON(7, "bump/"+class+"-20261120", "o/r", false, 1, labels...)}, reply{body: rowPatch}, runs
+	f.pins, f.wait, f.routes["GET /repos/o/r/pulls/7"], f.routes[files7], f.routes[checks5] = f.pins[len(f.pins)-1:], wait, reply{body: pullJSON(7, "bump/"+class+"-20261120", "o/r", false, 1, labels...)}, reply{body: rowPatch}, runs
 }
 
 // advised records an OSV advisory on p's npm package, fixed in the version built then, and makes p the only row.
@@ -184,11 +185,9 @@ func advised(f *fixture, p pins.Pin, fixed string, built time.Time) {
 
 func w(method, uri string) call { return call{method: method, uri: uri} }
 
-var (
-	openGuestPR   = []call{w("POST", "/repos/o/r/git/refs"), w("PUT", "/repos/o/r/contents/pins/tool.json"), w("POST", "/repos/o/r/pulls")}
-	openTrustedPR = []call{w("POST", "/repos/o/r/git/refs"), w("PUT", "/repos/o/r/contents/pins/kit.json"), w("POST", "/repos/o/r/pulls")}
-	mergeOnce     = []call{w("PUT", "/repos/o/r/pulls/5/merge")}
-)
+var openGuestPR = []call{w("POST", "/repos/o/r/git/refs"), w("PUT", "/repos/o/r/contents/pins/tool.json"), w("POST", "/repos/o/r/pulls")}
+var openTrustedPR = []call{w("POST", "/repos/o/r/git/refs"), w("PUT", "/repos/o/r/contents/pins/kit.json"), w("POST", "/repos/o/r/pulls")}
+var mergeOnce = []call{w("PUT", "/repos/o/r/pulls/5/merge")}
 
 type runCase struct {
 	name   string
@@ -218,7 +217,6 @@ func datedKit(f *fixture) {
 }
 
 func TestRun(t *testing.T) {
-	ref := "GET /repos/o/r/git/ref/heads/main" // its reply serves for any branch that is there
 	cases := []runCase{
 		{name: "dry run plans, posts nothing", dry: true, code: 0,
 			out: []string{"dry-run: nothing is posted or written", "kit trusted 2.0.0 2.1.0 eligible", "tool guest 1.2.0 1.3.0 eligible",
@@ -309,9 +307,10 @@ func TestRun(t *testing.T) {
 				advised(f, f.pins[0], "2.1.0", now.Add(-time.Hour))
 				opened(f, 8*time.Second, "trusted", reply{body: green}, "security")
 			}},
-		{name: "this day's trusted branch is there (B13): nothing opened for trusted, exit 0", code: 0, writes: openGuestPR, edit: func(f *fixture) { f.routes[branch+"trusted-20261120"] = f.routes[ref] }},
-		{name: "this day's guest branch is there, merged or not: nothing opened, exit 0", code: 0, check: polled(0, 0),
-			edit: func(f *fixture) { f.pins = f.pins[1:]; f.routes[branch+"guest-20261120"] = f.routes[ref] }},
+		{name: "this day's trusted pull request is there (B13): nothing opened for trusted, exit 0", code: 0, writes: openGuestPR,
+			out: []string{"already proposed today: trusted bump/trusted-20261120"}, edit: func(f *fixture) { proposed(f, "trusted", now) }},
+		{name: "this day's guest pull request is there, merged or not: nothing opened, exit 0", code: 0, check: polled(0, 0),
+			out: []string{"already proposed today: guest bump/guest-20261120"}, edit: func(f *fixture) { f.pins = f.pins[1:]; proposed(f, "guest", now) }},
 		{name: "dry run with a wait: nothing to wait for", dry: true, code: 0, out: []string{"would open pull request: guest"}, check: polled(0, 0), edit: func(f *fixture) { f.wait = 8 * time.Second }},
 	}
 	for _, name := range []string{"../.github/workflows/x", "pins/../x", "/etc/x", `..\x`, "a/b", ".x", "", "x\x00", "x\ny", "UP", strings.Repeat("a", 65)} {
@@ -351,8 +350,8 @@ func TestRun(t *testing.T) {
 func baseFixture() fixture {
 	f := fixture{pins: []pins.Pin{pin("kit", pins.Trusted, "2.0.0"), pin("tool", pins.Guest, "1.2.0")},
 		extra: map[string]string{}, upstream: map[string]string{"/osv": `{"vulns":[]}`},
-		routes: map[string]reply{listPRs: {body: "[]"}, "GET /repos/o/r/git/ref/heads/main": {body: `{"object":{"sha":"` + head + `"}}`},
-			"GET /repos/o/r/issues?state=open&per_page=100": {body: "[]"}}}
+		routes: map[string]reply{listPRs: {body: "[]"}, dayPRs("guest", now): {body: "[]"}, dayPRs("trusted", now): {body: "[]"},
+			"GET /repos/o/r/git/ref/heads/main": {body: `{"object":{"sha":"` + head + `"}}`}, "GET /repos/o/r/issues?state=open&per_page=100": {body: "[]"}}}
 	release(&f, "kit", "2.1.0", now.Add(-19*24*time.Hour), false)
 	release(&f, "tool", "1.3.0", now.Add(-120*time.Hour), false)
 	return f
@@ -441,8 +440,7 @@ func securityNote(want bool) func(*testing.T, *standIn) {
 
 // checkOpened checks the branch, the row and the pull request of the guest class.
 func checkOpened(t *testing.T, api *standIn) {
-	cs := api.writes()
-	ref, put, pr := fields(t, cs[0]), fields(t, cs[1]), fields(t, cs[2])
+	ref, put, pr := fields(t, api.writes()[0]), fields(t, api.writes()[1]), fields(t, api.writes()[2])
 	if ref["ref"] != "refs/heads/bump/guest-20261120" || ref["sha"] != head || put["branch"] != "bump/guest-20261120" || pr["head"] != "bump/guest-20261120" {
 		t.Errorf("branch: %v %v %v", ref, put, pr)
 	}
@@ -484,10 +482,9 @@ func runFixture(t *testing.T, f fixture, dry bool) (string, int, *standIn, map[s
 			io.WriteString(w, strings.ReplaceAll(body, "{up}", "https://"+r.Host))
 		}
 	}))
-	t.Cleanup(up.Close)
 	api := &standIn{routes: f.routes}
 	gh := httptest.NewServer(api)
-	t.Cleanup(gh.Close)
+	t.Cleanup(func() { up.Close(); gh.Close() })
 
 	dir := t.TempDir()
 	for _, p := range f.pins {
@@ -503,12 +500,8 @@ func runFixture(t *testing.T, f fixture, dry bool) (string, int, *standIn, map[s
 	var out, stderr bytes.Buffer
 	tool := bump.Tool{Pins: dir, Upstream: up.Client(), OSV: up.URL + "/osv", PinTime: 2 * time.Second, Now: cmp.Or(f.now, now), Wait: f.wait, Out: &out,
 		GitHub: bump.GitHub{Client: &http.Client{Timeout: 300 * time.Millisecond}}}
-	args := append([]string{"-api", gh.URL, "-repo", "o/r"}, f.args...)
-	if dry {
-		args = append(args, "-dry-run")
-	}
-	env := map[string]string{"GITHUB_TOKEN": token}
-	code := run(context.Background(), args, func(k string) string { return env[k] }, tool, &stderr)
+	args := slices.Concat([]string{"-api", gh.URL, "-repo", "o/r"}, f.args, map[bool][]string{true: {"-dry-run"}}[dry])
+	code := run(context.Background(), args, func(k string) string { return map[string]string{"GITHUB_TOKEN": token}[k] }, tool, &stderr)
 	if strings.Contains(stderr.String(), token) {
 		t.Error("stderr holds the token")
 	}
@@ -530,16 +523,16 @@ func snapshot(t *testing.T, dir string) map[string]string {
 
 // TestWeek: seven daily runs against an upstream that ships a guest release every day, each eligible a minute before a run (B3); a real merge moves the row on main,
 // so the test applies the row of each merged pull request. A gate is green from the second read on, or at once the day after. The parent merges a run late (48 h).
+// A second run on each day, with the merged row and a newer eligible release, finds the day's pull request and opens nothing (B13).
 func TestWeek(t *testing.T) {
 	f := baseFixture()
 	f.pins[1].Version = "1.0.0"
-	var open, pending = "", pins.Pin{} // the branch of the pull request left open, and the row it carries
-	var built []time.Time              // the build time of 1.<i+1>.0
+	open, pending, built := "", pins.Pin{}, []time.Time{} // the branch of the pull request left open, the row it carries, and the build time of 1.<i+1>.0
 	for day := range 7 {
 		at := now.Add(time.Duration(day) * 24 * time.Hour)
 		built = append(built, at.Add(-48*time.Hour-time.Minute))
 		release(&f, "tool", fmt.Sprintf("1.%d.0", day+1), built[day], false)
-		f.now, f.routes[listPRs] = at, reply{body: "[]"}
+		f.now, f.routes[listPRs], f.routes[dayPRs("guest", at)] = at, reply{body: "[]"}, reply{body: "[]"}
 		opened(&f, time.Second, "guest", reply{body: running, later: []string{green}})
 		if open != "" {
 			f.routes[listPRs], f.routes[checks5] = reply{body: "[" + pullJSON(7, open, "o/r", false, 1) + "]"}, reply{body: green}
@@ -560,6 +553,11 @@ func TestWeek(t *testing.T) {
 			case "/repos/o/r/pulls":
 				open = fields(t, c)["head"]
 			}
+		}
+		release(&f, "tool", fmt.Sprintf("1.%d.1", day+1), built[day], false)
+		proposed(&f, "guest", at)
+		if out, code, api, _, _ := runFixture(t, f, false); code != 0 || len(api.writes()) > 0 {
+			t.Fatalf("day %d again: exit %d, writes %v:\n%s", day, code, api.writes(), out)
 		}
 		cur, _ := pins.ParseVersion(f.pins[0].Version)
 		for i, b := range built { // P7 at the start of the next day: every release that was eligible 24 hours plus the wait ago is pinned
