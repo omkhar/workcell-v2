@@ -19,19 +19,14 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/omkhar/workcell/v2/internal/pins"
 )
 
-const (
-	maxBody  = 8 << 20
-	maxPages = 10
-)
+const maxBody, maxPages = 8 << 20, 10
 
-var (
-	nextRE = regexp.MustCompile(`<([^>]+)>;\s*rel="next"`)
-	shaRE  = regexp.MustCompile(`^[0-9a-f]{40}$`)
-)
+var nextRE, shaRE = regexp.MustCompile(`<([^>]+)>;\s*rel="next"`), regexp.MustCompile(`^[0-9a-f]{40}$`)
 
 // GitHub drives the REST API of one repository. The commits it makes are made
 // by the API, which signs them; it never runs git or gh (A8).
@@ -163,8 +158,8 @@ func Green(runs []checkRun, total int, sha string) bool {
 }
 
 // merge squashes pull request n once, with the head the checks were read for,
-// when its files are rows only and the gate is green.
-func (t Tool) merge(ctx context.Context, n int) error {
+// when its files are rows only and the gate is green; until then it reads all again.
+func (t Tool) merge(ctx context.Context, n int, until time.Time) error {
 	g := t.GitHub
 	var pr pull
 	if _, err := g.do(ctx, "read pull request", http.MethodGet, g.url("/pulls/%d", n), nil, &pr); err != nil {
@@ -177,23 +172,27 @@ func (t Tool) merge(ctx context.Context, n int) error {
 	if !shaRE.MatchString(pr.Head.SHA) {
 		return Refused("head")
 	}
-	fs, err := list[file](ctx, g, "list changed files", g.url("/pulls/%d/files?per_page=100", n))
-	if err != nil {
+	switch fs, err := list[file](ctx, g, "list changed files", g.url("/pulls/%d/files?per_page=100", n)); {
+	case err != nil:
 		return err
-	}
-	if !FilesOK(fs, pr.ChangedFiles) {
+	case !FilesOK(fs, pr.ChangedFiles):
 		return Refused("changed path")
 	}
 	var cr struct { // one page: a head with more runs than a page holds waits
 		Total int        `json:"total_count"`
 		Runs  []checkRun `json:"check_runs"`
 	}
-	_, err = g.do(ctx, "list check runs", http.MethodGet, g.url("/commits/%s/check-runs?per_page=100", pr.Head.SHA), nil, &cr)
-	switch {
+	switch _, err := g.do(ctx, "list check runs", http.MethodGet, g.url("/commits/%s/check-runs?per_page=100", pr.Head.SHA), nil, &cr); {
 	case err != nil:
 		return err
 	case class == pins.Trusted && (strings.Contains(pr.Body, securityNote) || slices.ContainsFunc(pr.Labels, func(l struct{ Name string }) bool { return l.Name == "security" })):
 		fmt.Fprintln(t.Out, "waits for the maintainer:", n)
+	case !Green(cr.Runs, cr.Total, pr.Head.SHA) && time.Now().Before(until):
+		select {
+		case <-ctx.Done(): // the read that follows stops the run
+		case <-time.After(t.Wait / 20):
+		}
+		return t.merge(ctx, n, until)
 	case !Green(cr.Runs, cr.Total, pr.Head.SHA):
 		fmt.Fprintln(t.Out, "waits for gate:", n)
 	case t.DryRun:
@@ -207,33 +206,33 @@ func (t Tool) merge(ctx context.Context, n int) error {
 	return nil
 }
 
-// propose opens the class's one pull request: a branch named by the class and
-// the date, one API commit per row, and the security label where B4 says so.
+// propose opens the class's one pull request: a branch named by the class and the date, one API
+// commit per row, and the security label where B4 says so. It waits up to Wait to merge it (P7).
 func (t Tool) propose(ctx context.Context, class pins.Class, cs []Change) error {
 	g := t.GitHub
 	branch := "bump/" + string(class) + "-" + t.Now.UTC().Format("20060102")
+	switch prs, err := list[pull](ctx, g, "list pull requests", g.url("/pulls?state=all&base=main&head=%s:%s&per_page=100", strings.SplitN(g.Repo, "/", 2)[0], branch)); {
+	case err != nil:
+		return err
+	case len(prs) > 0: // merged or not, this day's pull request is the class's one (B13)
+		fmt.Fprintln(t.Out, "already proposed today:", class, branch)
+		return nil
+	}
 	var ref struct{ Object struct{ SHA string } }
 	if _, err := g.do(ctx, "read main", http.MethodGet, g.url("/git/ref/heads/main"), nil, &ref); err != nil {
 		return err
 	}
-	in := map[string]string{"ref": "refs/heads/" + branch, "sha": ref.Object.SHA}
-	if _, err := g.do(ctx, "create branch", http.MethodPost, g.url("/git/refs"), in, nil); err != nil {
+	if _, err := g.do(ctx, "create branch", http.MethodPost, g.url("/git/refs"), map[string]string{"ref": "refs/heads/" + branch, "sha": ref.Object.SHA}, nil); err != nil {
 		return err
 	}
-	security := false
 	for _, c := range cs {
-		security = security || c.Security
 		old, err := os.ReadFile(filepath.Join(t.Pins, c.Old.Name+".json"))
 		if err != nil {
 			return Stopped("read pins")
 		}
 		sum := sha1.Sum(append([]byte(fmt.Sprintf("blob %d\x00", len(old))), old...)) // git's blob id of the row on main
-		put := map[string]string{
-			"message": fmt.Sprintf("bump: %s %s to %s", c.Old.Name, cmp.Or(c.Old.Version, "-"), c.New.Version),
-			"content": base64.StdEncoding.EncodeToString(Row(c.New)),
-			"branch":  branch,
-			"sha":     hex.EncodeToString(sum[:]),
-		}
+		put := map[string]string{"message": fmt.Sprintf("bump: %s %s to %s", c.Old.Name, cmp.Or(c.Old.Version, "-"), c.New.Version),
+			"content": base64.StdEncoding.EncodeToString(Row(c.New)), "branch": branch, "sha": hex.EncodeToString(sum[:])}
 		if _, err := g.do(ctx, "write row", http.MethodPut, g.url("/contents/pins/%s.json", c.Old.Name), put, nil); err != nil {
 			return err
 		}
@@ -242,12 +241,15 @@ func (t Tool) propose(ctx context.Context, class pins.Class, cs []Change) error 
 	if _, err := g.do(ctx, "open pull request", http.MethodPost, g.url("/pulls"), map[string]string{"title": "bump: " + string(class) + " pins", "head": branch, "base": "main", "body": body(cs, t.Now)}, &pr); err != nil {
 		return err
 	}
-	if security {
+	if slices.ContainsFunc(cs, func(c Change) bool { return c.Security }) {
 		if _, err := g.do(ctx, "label", http.MethodPost, g.url("/issues/%d/labels", pr.Number), map[string][]string{"labels": {"security"}}, nil); err != nil {
 			return err
 		}
 	}
 	fmt.Fprintln(t.Out, "opened pull request:", class, pr.Number)
+	if t.Wait > 0 {
+		return t.merge(ctx, pr.Number, time.Now().Add(t.Wait))
+	}
 	return nil
 }
 

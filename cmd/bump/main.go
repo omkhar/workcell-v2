@@ -31,7 +31,7 @@ import (
 
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	t := bump.Tool{Pins: "pins", Upstream: http.DefaultClient, OSV: advisory.OSV, PinTime: 3 * time.Minute, Now: time.Now(), Out: os.Stdout,
+	t := bump.Tool{Pins: "pins", Upstream: http.DefaultClient, OSV: advisory.OSV, PinTime: 3 * time.Minute, Wait: 15 * time.Minute, Now: time.Now(), Out: os.Stdout,
 		GitHub: bump.GitHub{Client: &http.Client{Timeout: time.Minute}}}
 	code := run(ctx, os.Args[1:], os.Getenv, t, os.Stderr)
 	stop()
