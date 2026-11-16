@@ -417,7 +417,7 @@ and the fix unit moves it into place (S4).
       accept: the log entry gives the count of `PARKED.md` lines read, names each line deleted or turned into a unit, and gives each scheduled workflow with the date and conclusion of its newest run; gate green
 - [x] S-1014a | flow:mech | model:haiku | env:any | deps:S-1001,W-802b | tries:0 | Ask for the long fuzz run: set `escape/fuzz-minutes.txt` to `240`
       accept: the file on `main` holds `240`
-- [ ] S-1014 | flow:audit | model:fable | env:any | deps:S-1014a | tries:0 | wait:nightly.yml | Collect the long fuzz run, then set `escape/fuzz-minutes.txt` back to `10`. The crashers are the candidates, so no auditor is needed
+- [x] S-1014 | flow:audit | model:fable | env:any | deps:S-1014a | tries:0 | wait:nightly.yml | Collect the long fuzz run, then set `escape/fuzz-minutes.txt` back to `10`. The crashers are the candidates, so no auditor is needed
       accept: every target ran for four hours; each crasher is minimised and confirmed or refuted under S4
 - [H] H-1015 | env:macos | deps:S-1001 | In the second account: in a plain Claude Code session on the best model the account offers, run the Claude Security plugin over the whole repository at `high`, twice. Then fuzz each target in a package ported from v1 for four hours, in a second clone (`~/fuzz`) that is never handed over. Move the crashers to `~/work/loop/private/findings-in/`. `git status` in `~/work` must be clean before S-1016. `REFERENCE.md` section 6 has the commands
       accept: both `CLAUDE-SECURITY-RESULTS.jsonl` files and any crasher are in `~/work/loop/private/findings-in/`, which git ignores
