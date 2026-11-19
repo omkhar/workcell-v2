@@ -45,6 +45,16 @@ func TestC29RefusesACwdInsideTheDataDirectory(t *testing.T) {
 		}
 		c29Untouched(t, data)
 	})
+	t.Run("sibling with a common prefix", func(t *testing.T) { // <parent>/workcell2 neither lies inside <parent>/workcell nor holds it
+		data := filepath.Join(t.TempDir(), "workcell")
+		t.Setenv("XDG_DATA_HOME", filepath.Dir(data))
+		t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+		a, cwd := c19Data(t, data, "/elsewhere"), data+"2"
+		t.Chdir(must(cwd, os.MkdirAll(cwd, 0o700)))
+		if err := session([]string{"true"}, limits{DiskMiB: 16}, false, a, nil, nil).err; err != nil && (strings.Contains(err.Error(), "own directory") || strings.Contains(err.Error()+" ", data+" ")) {
+			t.Errorf("session from %s, a sibling of %s, was refused: %v", cwd, data, err)
+		}
+	})
 }
 
 // c29Untouched fails when a session got past the refusal. audit.key lies at <data>/audit.key, above the directory the guest gets here.
