@@ -109,3 +109,29 @@ func TestShown(t *testing.T) {
 		}
 	}
 }
+
+// FuzzPath (T5) feeds any bytes as a guest path to checkPath, fold, shown and a fresh manifest's
+// add, and checks what they promise for every input: none panics; shown never carries a byte a
+// terminal would obey; fold is idempotent and preserves EqualFold; add keeps only what checkPath
+// admits, and refuses the same path a second time.
+func FuzzPath(f *testing.F) {
+	for _, s := range []string{"README", "a/b.txt", "Ünïcode/ſ", "\x1b]0;owned\x07\x1b[2J\x1b[31mREADME", ".git/x", "a//b", "\xff", ""} {
+		f.Add(s)
+	}
+	f.Fuzz(func(t *testing.T, p string) {
+		if i := strings.IndexFunc(shown(p), func(r rune) bool { return r < 0x20 || r == 0x7f }); i >= 0 {
+			t.Errorf("shown(%q) carries control byte 0x%02x at %d", p, shown(p)[i], i)
+		}
+		if fp := fold(p); fold(fp) != fp || !strings.EqualFold(p, fp) {
+			t.Errorf("fold(%q) = %q: fold(fold) = %q", p, fp, fold(fp))
+		}
+		m := &manifest{limit: 1}
+		err := m.add(guest.Entry{Kind: guest.KindFile, Path: p})
+		if (err == nil) != (checkPath(p) == nil) || (err == nil) != (len(m.entries) == 1) {
+			t.Errorf("add(%q) = %v, checkPath = %v, kept %d", p, err, checkPath(p), len(m.entries))
+		}
+		if err == nil && m.add(guest.Entry{Kind: guest.KindFile, Path: p}) == nil {
+			t.Errorf("add(%q) accepted the same path twice", p)
+		}
+	})
+}

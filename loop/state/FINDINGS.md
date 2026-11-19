@@ -1263,9 +1263,18 @@ satisfies R2 enough to list it under S7 rather than park it. Fix unit: S-F13, be
 and C11 before it. The diff read path (sameBytes) has the same shape and no deterministic unprivileged trigger was found; the same
 change covers it. Not ported.
 
+C20 FIXED by S-F13, commit 128d5aa. put and sameBytes in cmd/workcell/pull_vm.go now name the destination
+os.NewFile(uintptr(fd), shown(e.Path)), so the PathError that f.Write or ReadFull returns after the open carries the quoted name, as
+write's "%s: %w" prefix already did: each occurrence of the path is quoted by one layer, never doubly, and no byte below 0x20 reaches
+the terminal. Two in-place edits, net 0 product lines: product 15000 of 15000 before and after. The test moved from
+escape/_pending/S-F13/ to cmd/workcell/c20_test.go unchanged; it fails on 2b03762 with the raw ESC at offset 45 and passes with the
+fix under -race, as do the existing pull tests. The T5 fuzz target S-1001 asked for landed as FuzzPath in cmd/workcell/pull_test.go,
+seeded with the paths checkPath, fold and manifest.add must agree on.
+
 Handoffs: S-1013 takes the unbounded pull duration (per-frame stall limit only), the export-failure-removes-session_start gap (I9) and
 the C19 chain through a reflinked prior workspace.ext4; S-1016 the APFS case-fold lead on checkPath's .git test; the T5 fuzz target for
-checkPath, fold and manifest.add is still absent and belongs to the first fix unit in cmd/workcell with test lines to spare. The
+checkPath, fold and manifest.add landed with S-F13 as FuzzPath in cmd/workcell/pull_test.go; S-1013 also takes the walk.go
+raw-name error of the S-F13 review (PARKED), the same class as C20 on the diff path. The
 real-VM rows the auditor designed for C17 and C18 (mount-disk-append-flood through a stolen 5002 socket, mount-entry-flood with ln -s
 and mkdir judged by host free blocks and inodes) are the first rows that would exercise fileserve's protocol tables from a real guest;
 they are parked for the fix units or the maintainer, since each needs a control-adapter twin for T2.
