@@ -2217,6 +2217,15 @@ redteam could not express without a VM: the symlink-and-dial itself against vsoc
 a symlink resolving under cwd, a trailing slash or .. components, the attach socket redirected to a guest-chosen socket, and
 racing the unlink against the init's first CONNECT. Not ported.
 
+C28 FIXED by S-F20, commit fa0dc82 (PR #237). session() in cmd/workcell/run_vm.go refuses a mount session when within(cwd,
+os.TempDir()) holds, right after holds(cwd) and before newSession, so no session directory, socket or boot exists when the error
+names the temp directory and run exits 125; within(dir, p) in data.go is the one resolved-path compare (filepath.Rel local, "." or
+below), which holds() now calls and S-F21 can reuse. Clone, pull and bench are unchanged: their guests see no host directory where
+the sockets lie, and the S-F14 IsAbs check in boot stays. Test: cmd/workcell/c28_test.go TestC28TempDirInMountExport, moved by git
+mv with a third arm (TMPDIR a symlink resolving under cwd) and a negative arm (TMPDIR elsewhere, mount runs on into boot); the
+three refusal arms fail on d998add and 36859b1 and pass at fa0dc82 under -race. Paid by two literal folds in data.go and ocsf.go,
+product 15000 of 15000. Not ported.
+
 C29. ID I7 (nothing a session writes is visible to another, and rm leaves nothing behind), with the operator's stop and rm verbs
 turned against the host; I9 and I13 hold, because no cwd strictly inside the data or config directory contains audit.key or
 config.toml. Attacker: guest root, by a malicious repository or hostile model output. Precondition the attacker does not control:
