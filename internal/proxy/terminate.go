@@ -299,11 +299,11 @@ func (p *Proxy) Terminate(ca *SessionCA, broker Broker, rules []TerminateRule) e
 	return nil
 }
 
-// upstreamRoots is the pool the proxy verifies an upstream with: the system roots and, when certFile is the file SSL_CERT_FILE names, the operator's own
-// authorities in it. Go reads that file itself on Linux only; on macOS nil roots mean the platform verifier, which ignores it, so a private authority the
-// operator trusts there verified nothing. One explicit pool is the same on every OS, and a file that cannot be read refuses termination rather than trusting
-// less.
+// upstreamRoots is one explicit pool, the system roots plus SSL_CERT_FILE (certFile), so macOS honours it as Linux does; an unreadable or relative one refuses.
 func upstreamRoots(certFile string) (*x509.CertPool, error) {
+	if certFile != "" && !strings.HasPrefix(certFile, "/") { // or SystemCertPool reads it against the working directory, a repository's own ca.pem (I6)
+		return nil, fmt.Errorf("SSL_CERT_FILE %q is relative: set an absolute path", certFile)
+	}
 	pool, err := x509.SystemCertPool()
 	if err != nil || certFile == "" {
 		return pool, err
