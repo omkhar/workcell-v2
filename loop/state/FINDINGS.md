@@ -2317,6 +2317,17 @@ test order-dependent), a relative SSL_CERT_FILE that is a symlink or a directory
 appended after a legitimate operator one, a CLI-level arm, and the macOS platform verifier, where only the product's own read
 matters. Ported: also in v1 main: egressproxy/terminate.go.
 
+C30 FIXED by S-F22, commit 9577f31 (PR #239). upstreamRoots in internal/proxy/terminate.go refuses a non-empty certFile that does not
+start with / before x509.SystemCertPool runs, with one error `SSL_CERT_FILE "<value>" is relative: set an absolute path`, so Terminate
+returns it before p.ca or p.transport are set, bind in cmd/workcell/run_vm.go returns it through fail(0, err) before any VM boots, and
+run prints it as one line; an absolute file or an unset variable behaves as before. HasPrefix("/") equals filepath.IsAbs on Linux and
+macOS, the only hosts, and saves the import; the four-line doc comment folded to one, so net 0 product lines, product 15000 of 15000.
+Test: internal/proxy/c30_test.go TestRelativeSSLCertFileIsRefused, moved by git mv unchanged; its four arms fail on 5e4fec8 (the
+three spellings return a pool and nil, and the attacker's upstream answered 200 with "real-secret") and pass at 9577f31 under -race
+with the rest of internal/proxy, including the absolute-file and missing-file cases of terminate_test.go. The reviewer confirmed the
+failure in a worktree at 5e4fec8 and considered "~/ca.pem", "//x", "/./x", NUL, a directory and a symlink (refused, absolute,
+absolute, read error, read error, the operator's own). Also in v1 main: egressproxy/terminate.go.
+
 C31. ID none directly: I12's "confuse the host" in spirit and the product's own rule, set by C20 and S-F13, that a guest-chosen
 name is quoted before it reaches the operator's terminal; hardening, as C20. Attacker: guest root in a mount session, since
 fileserve honours Mkdirat's mode (codec.go takes Mode and Name from the guest, checkName refuses only "", ".", "..", "/" and NUL,
