@@ -22,13 +22,10 @@ func xdgDir(env string, home ...string) (string, error) {
 		return filepath.Join(x, "workcell"), nil
 	}
 	h, err := os.UserHomeDir()
-	if err != nil {
-		return "", err
+	if err == nil && !filepath.IsAbs(h) {
+		err = fmt.Errorf("home directory %q is not an absolute path", h)
 	}
-	if !filepath.IsAbs(h) {
-		return "", fmt.Errorf("home directory %q is not an absolute path", h)
-	}
-	return filepath.Join(append(append([]string{h}, home...), "workcell")...), nil
+	return filepath.Join(append(append([]string{h}, home...), "workcell")...), err
 }
 
 // artifacts are the files a session boots from, and the directory they are in: the kernel,

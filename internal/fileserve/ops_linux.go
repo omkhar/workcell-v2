@@ -63,17 +63,16 @@ func (s *Server) op(r request) ([]byte, syscall.Errno) {
 		return buf[:n], 0
 	case opSymlink, opMkdir:
 		p, e := s.at(r.NodeID, syscall.ENOTDIR)
-		if e != 0 {
+		if e = s.charge(e, block); e != 0 {
 			return nil, e
 		}
-		var err error
 		if r.Opcode == opSymlink {
-			err = unix.Symlinkat(r.Name2, p.fd, r.Name)
+			e = errno(unix.Symlinkat(r.Name2, p.fd, r.Name))
 		} else {
-			err = unix.Mkdirat(p.fd, r.Name, r.Mode&0o777)
+			e = errno(unix.Mkdirat(p.fd, r.Name, r.Mode&0o777))
 		}
-		if err != nil {
-			return nil, errno(err)
+		if e != 0 {
+			return nil, e
 		}
 		return s.lookup(p, r.Name)
 	case opUnlink, opRmdir:
@@ -174,15 +173,13 @@ func (s *Server) op(r request) ([]byte, syscall.Errno) {
 	return nil, syscall.ENOSYS
 }
 
-func stat(l loc) (unix.Stat_t, syscall.Errno) {
-	var st unix.Stat_t
-	var err error
+func stat(l loc) (st unix.Stat_t, e syscall.Errno) {
 	if l.fd >= 0 {
-		err = unix.Fstat(l.fd, &st)
+		e = errno(unix.Fstat(l.fd, &st))
 	} else {
-		err = unix.Fstatat(l.pfd, l.name, &st, unix.AT_SYMLINK_NOFOLLOW)
+		e = errno(unix.Fstatat(l.pfd, l.name, &st, unix.AT_SYMLINK_NOFOLLOW))
 	}
-	return st, errno(err)
+	return st, e
 }
 
 func (s *Server) lookup(p loc, name string) ([]byte, syscall.Errno) {
@@ -258,7 +255,7 @@ func (s *Server) open(r request) ([]byte, syscall.Errno) {
 
 func (s *Server) create(r request) ([]byte, syscall.Errno) {
 	p, e := s.at(r.NodeID, syscall.ENOTDIR)
-	if e != 0 {
+	if e = s.charge(e, block); e != 0 {
 		return nil, e
 	}
 	fd, st, e := s.openFile(p.fd, r.Name, int(r.Flags)&openFlags|unix.O_CREAT|unix.O_EXCL, r.Mode&0o777)
