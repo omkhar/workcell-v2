@@ -94,6 +94,9 @@ func session(argv []string, caps limits, mount bool, a artifacts, allow *proxy.A
 	if err == nil {
 		err = holds(cwd) // before a session directory, the key or the export exists (I7, I9, I13)
 	}
+	if err == nil && mount && within(cwd, os.TempDir()) { // the VMM's sockets would lie in the guest's view, for it to swap for a link to any host socket of the operator's (I1, I4)
+		err = fmt.Errorf("%s holds the temp directory %s, where the VMM's sockets would lie in the guest's view: set TMPDIR elsewhere or run without --mount", cwd, os.TempDir())
+	}
 	if err != nil {
 		return result{err: err}
 	}
