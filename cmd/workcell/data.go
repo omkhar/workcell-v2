@@ -28,6 +28,31 @@ func xdgDir(env string, home ...string) (string, error) {
 	return filepath.Join(append(append([]string{h}, home...), "workcell")...), err
 }
 
+// holds is the error for a directory that holds workcell's data or config directory, named: a session there would carry the audit key, every
+// other session and the images into the guest, and pull would write the guest's versions back over them (I7, I9, I13). Neither need exist yet.
+func holds(dir string) error {
+	data, err := dataDir()
+	if err != nil {
+		return err
+	}
+	config, _ := xdgDir("XDG_CONFIG_HOME", ".config") // fails only as dataDir does
+	for _, held := range []string{data, config} {
+		if rel, err := filepath.Rel(resolved(dir), resolved(held)); err == nil && filepath.IsLocal(rel) { // "." or below
+			return fmt.Errorf("%s holds workcell's own directory %s, which no session may see: use another directory", dir, held)
+		}
+	}
+	return nil
+}
+
+// resolved is p absolute, with its symlinks followed where it exists.
+func resolved(p string) string {
+	if r, err := filepath.EvalSymlinks(p); err == nil {
+		p = r
+	}
+	p, _ = filepath.Abs(p)
+	return p
+}
+
 // artifacts are the files a session boots from, and the directory they are in: the kernel,
 // the initramfs, the root image and, where the backend is a program (vmmBinary), that too.
 // run adds the provider layers (findLayers) and the caches (openCaches); pull and bench boot without them.
