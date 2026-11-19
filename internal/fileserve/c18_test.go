@@ -17,7 +17,7 @@ import (
 	"testing"
 )
 
-// TestGrowthCapEntries is I10 on the export through entries: SYMLINK and MKDIR each cost a host block
+// TestGrowthCapEntries is I10 on the export through entries: SYMLINK, MKDIR and CREATE each cost a host block
 // and inode, so against a cap of limit bytes at most limit/4096 plus slack may be accepted.
 func TestGrowthCapEntries(t *testing.T) {
 	const limit, tries, slack = 100_000, 200, 2
@@ -28,6 +28,7 @@ func TestGrowthCapEntries(t *testing.T) {
 	}{
 		{"symlink", func(i int) []byte { return reqSymlink(rootID, fmt.Sprintf("l%03d", i), target) }},
 		{"mkdir", func(i int) []byte { return reqMkdir(rootID, fmt.Sprintf("d%03d", i)) }},
+		{"create", func(i int) []byte { return reqCreate(rootID, fmt.Sprintf("f%03d", i), syscall.O_RDWR, 0o644) }},
 	} {
 		t.Run(arm.name, func(t *testing.T) {
 			export := filepath.Join(t.TempDir(), "export")

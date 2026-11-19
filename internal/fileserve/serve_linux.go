@@ -89,8 +89,8 @@ type Server struct {
 	fhs            map[uint64]*handle
 	nextID, nextFH uint64
 	fds            int
-	// grown is how far files in the export have been made longer this session, by WRITE past the end or SETATTR size, and limit is its cap in bytes (I10): ENOSPC
-	// beyond. Shrinking and unlinking give nothing back, so the host loses at most limit however the guest mixes them, as a clone's image is fixed-size.
+	// grown is what the guest has been charged this session, in bytes: growth by WRITE past the end or SETATTR size, and block per CREATE, MKDIR and SYMLINK.
+	// limit is its cap (I10): ENOSPC beyond. Shrinking and unlinking give nothing back, so the host loses at most limit however the guest mixes them.
 	grown, limit int64
 }
 
@@ -111,22 +111,29 @@ func Open(dir string, limit int64) (*Server, error) {
 		nextID: rootID, fds: 1, limit: limit}, nil
 }
 
-// grow charges the file open on fd for reaching end bytes long, before it does, and is ENOSPC once that would take the export past its limit. A request in
-// flight beside another on the same file charges as if alone: never less than the growth.
+// grow charges the file open on fd for reaching end bytes long, before it does. A request in flight beside another on the same file charges as if alone.
 func (s *Server) grow(fd int, end int64) syscall.Errno {
 	var st unix.Stat_t
 	if err := unix.Fstat(fd, &st); err != nil {
 		return errno(err)
 	}
-	if end <= st.Size {
-		return 0
+	return s.charge(0, end-st.Size)
+}
+
+// block is what a new entry costs the host however little it holds, one block and an inode, charged before the syscall so a failure leaves nothing to undo.
+const block = 4096
+
+// charge takes n bytes of the limit, or is ENOSPC once that would pass it; it is e when the step before failed, so it folds into that step's check.
+func (s *Server) charge(e syscall.Errno, n int64) syscall.Errno {
+	if e != 0 || n <= 0 {
+		return e
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if end-st.Size > s.limit-s.grown {
+	if n > s.limit-s.grown {
 		return syscall.ENOSPC
 	}
-	s.grown += end - st.Size
+	s.grown += n
 	return 0
 }
 
@@ -282,8 +289,7 @@ func (s *Server) at(id uint64, need syscall.Errno) (loc, syscall.Errno) {
 	}
 	for i, c := range l.chain {
 		var st unix.Stat_t
-		err := unix.Fstatat(c.pfd, c.name, &st, unix.AT_SYMLINK_NOFOLLOW)
-		switch {
+		switch err := unix.Fstatat(c.pfd, c.name, &st, unix.AT_SYMLINK_NOFOLLOW); {
 		case i == 0 && errors.Is(err, syscall.ENOENT):
 			return l, syscall.ENOENT
 		case err != nil || st.Ino != c.ino || st.Dev != c.dev:
@@ -429,8 +435,7 @@ func (s *Server) openFile(dirfd int, name string, flags int, mode uint32) (int, 
 	if e != 0 {
 		return -1, st, e
 	}
-	err := unix.Fstat(fd, &st)
-	if e = errno(err); e == 0 && st.Mode&unix.S_IFMT != unix.S_IFREG {
+	if e = errno(unix.Fstat(fd, &st)); e == 0 && st.Mode&unix.S_IFMT != unix.S_IFREG {
 		e = syscall.EPERM
 	}
 	if e != 0 {
