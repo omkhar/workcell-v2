@@ -324,7 +324,7 @@ func put(root int, e guest.Entry, data source) error {
 	if err != nil {
 		return err
 	}
-	f := os.NewFile(uintptr(fd), e.Path)
+	f := os.NewFile(uintptr(fd), shown(e.Path))
 	defer f.Close()
 	if err := unix.Fchmod(fd, mode); err != nil {
 		return err
@@ -391,7 +391,7 @@ func sameBytes(root int, e guest.Entry, data source, check bool) (bool, error) {
 		if err != nil {
 			return false, fmt.Errorf("%s: %w", shown(e.Path), err)
 		}
-		f = os.NewFile(uintptr(fd), e.Path)
+		f = os.NewFile(uintptr(fd), shown(e.Path))
 		defer f.Close()
 	}
 	mine := make([]byte, wire.MaxPayload)
