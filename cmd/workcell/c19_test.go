@@ -56,9 +56,10 @@ func exists(p string) bool { _, err := os.Lstat(p); return err == nil }
 // data or the config directory is refused, naming it, before a session directory, key or export is made.
 func TestC19RunRefusesAWorkspaceThatHoldsTheDataDirectory(t *testing.T) {
 	for _, tc := range []struct {
-		name          string
-		mount, config bool // config: the workspace holds the config directory alone
-	}{{"clone", false, false}, {"mount", true, false}, {"clone, config directory", false, true}} {
+		name                string
+		mount, config, link bool // config: the workspace holds the config directory alone; link: through a symlink, and not made yet
+	}{{"clone", false, false, false}, {"mount", true, false, false}, {"clone, config directory", false, true, false},
+		{"clone, config directory behind a symlink, not made yet", false, true, true}} {
 		t.Run(tc.name, func(t *testing.T) {
 			work := t.TempDir()
 			data, config := filepath.Join(work, "workcell"), filepath.Join(t.TempDir(), "workcell")
@@ -69,8 +70,15 @@ func TestC19RunRefusesAWorkspaceThatHoldsTheDataDirectory(t *testing.T) {
 			}
 			t.Setenv("XDG_DATA_HOME", filepath.Dir(data))
 			t.Setenv("XDG_CONFIG_HOME", filepath.Dir(config))
-			must(0, os.MkdirAll(config, 0o700))
-			must(0, os.WriteFile(filepath.Join(config, "config.toml"), []byte("# C19\n"), 0o600))
+			if tc.link { // first use: $XDG_CONFIG_HOME is a dotfiles symlink to the workspace, and workcell/ under it does not exist yet
+				link := filepath.Join(t.TempDir(), "config-link")
+				must(0, os.Symlink(work, link))
+				t.Setenv("XDG_CONFIG_HOME", link)
+				held = filepath.Join(link, "workcell")
+			} else {
+				must(0, os.MkdirAll(config, 0o700))
+				must(0, os.WriteFile(filepath.Join(config, "config.toml"), []byte("# C19\n"), 0o600))
+			}
 			a := c19Data(t, data, "/elsewhere")
 			t.Chdir(work)
 			r := session([]string{"true"}, limits{DiskMiB: 16}, tc.mount, a, nil, nil)

@@ -44,12 +44,14 @@ func holds(dir string) error {
 	return nil
 }
 
-// resolved is p absolute, with its symlinks followed where it exists.
+// resolved is p absolute, with its symlinks followed: where p does not exist yet, the longest prefix that does is followed and the rest appended.
 func resolved(p string) string {
-	if r, err := filepath.EvalSymlinks(p); err == nil {
-		p = r
-	}
 	p, _ = filepath.Abs(p)
+	if r, err := filepath.EvalSymlinks(p); err == nil {
+		return r
+	} else if d := filepath.Dir(p); d != p { // not the root
+		return filepath.Join(resolved(d), filepath.Base(p))
+	}
 	return p
 }
 
