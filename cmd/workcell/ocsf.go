@@ -54,11 +54,7 @@ type ocsfUnmapped struct {
 // ocsfLine is the event for d, as one line of JSON with no newline. A host is shown as SafeHost
 // shows it, as in the text form.
 func ocsfLine(d audit.Record) []byte {
-	ev := ocsfEvent{
-		Message:  d.Event,
-		StatusID: 1,
-		Metadata: ocsfMetadata{Version: "1.3.0", Product: ocsfApp{Name: "workcell"}},
-	}
+	ev := ocsfEvent{Message: d.Event, StatusID: 1, Metadata: ocsfMetadata{Version: "1.3.0", Product: ocsfApp{Name: "workcell"}}}
 	if t, err := time.Parse(time.RFC3339Nano, d.Time); err == nil {
 		ev.Time = t.UnixMilli()
 	}

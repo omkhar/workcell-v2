@@ -37,11 +37,17 @@ func holds(dir string) error {
 	}
 	config, _ := xdgDir("XDG_CONFIG_HOME", ".config") // fails only as dataDir does
 	for _, held := range []string{data, config} {
-		if rel, err := filepath.Rel(resolved(dir), resolved(held)); err == nil && filepath.IsLocal(rel) { // "." or below
+		if within(dir, held) {
 			return fmt.Errorf("%s holds workcell's own directory %s, which no session may see: use another directory", dir, held)
 		}
 	}
 	return nil
+}
+
+// within says whether p is dir itself or lies under it, both resolved: the relation holds and session's temp-directory check share.
+func within(dir, p string) bool {
+	rel, err := filepath.Rel(resolved(dir), resolved(p))
+	return err == nil && filepath.IsLocal(rel) // "." or below
 }
 
 // resolved is p absolute, with its symlinks followed: where p does not exist yet, the longest prefix that does is followed and the rest appended.
@@ -84,12 +90,7 @@ func loadArtifacts() (artifacts, error) {
 
 // findArtifacts names the files in dir and says which one is missing, if any.
 func findArtifacts(dir string) (artifacts, error) {
-	a := artifacts{
-		kernel: filepath.Join(dir, "vmlinux"),
-		initrd: filepath.Join(dir, "initrd.cpio"),
-		image:  filepath.Join(dir, "root.ext4"),
-		dir:    dir,
-	}
+	a := artifacts{kernel: filepath.Join(dir, "vmlinux"), initrd: filepath.Join(dir, "initrd.cpio"), image: filepath.Join(dir, "root.ext4"), dir: dir}
 	if vmmBinary != "" {
 		a.binary = filepath.Join(dir, vmmBinary)
 	}
