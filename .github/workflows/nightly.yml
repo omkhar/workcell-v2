@@ -57,7 +57,7 @@ jobs:
     timeout-minutes: 45
     permissions: { contents: read }
     env: { GATE_BASE: HEAD } # HEAD: the rewritten rows are the changed pins.
-    outputs: { p7: "${{ steps.fresh.outputs.p7 }}" }
+    outputs: { p7: "${{ github.repository == 'omkhar/workcell' && steps.fresh.outputs.p7 || '' }}" } # Only where bump.yml merges: nothing moves a pin in the loop's repository, so there the lag is printed and no issue is opened (SPEC section 10).
     steps:
       - { uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1, with: { persist-credentials: false } } # v7.0.1
       - { uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e, with: { go-version-file: go.mod, cache: false } } # v7.0.0

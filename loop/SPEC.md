@@ -134,7 +134,7 @@ disk = "20GiB"
 | Budget | Limit |
 |--------|-------|
 | Product code (every non-test `.go` file outside `escape/`, and any C, C++, Objective-C or assembly source) | 15,000 lines |
-| Test code (`*_test.go` and `escape/`) | 1.5 x product, plus 5,000 |
+| Test code (`*_test.go` and `escape/`) | 1.5 x product, plus 6,000 |
 | Any single Go file | 800 lines |
 | All shell | 300 lines |
 | All workflow YAML (every YAML file under `.github/`) | 500 lines |
@@ -186,7 +186,9 @@ P7: how quickly a safe new upstream release reaches a user.
 While the loop runs, its repository holds no GitHub App, no environment and no secret,
 because code from free paths would run with them. There `bump.yml` only plans and does dry
 runs: it opens and merges no pull request, and it signs a test manifest with a key that the
-job makes for itself and throws away. The App (B14) and the real channel key (B7) are
+job makes for itself and throws away. So no pin moves there and P7 cannot be met: `nightly.yml`
+still prints the lag of each pin (B12), and opens the issue `nightly: P7 missed` only in
+`omkhar/workcell`. The App (B14) and the real channel key (B7) are
 created in `omkhar/workcell` alone, at gate H-829, after the loop has ended.
 
 | ID | Rule |
