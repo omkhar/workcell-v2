@@ -1178,6 +1178,20 @@ A5 reading. Fix unit: S-F11, below S-1008 in PLAN.md. Variants for S-F11 and S-1
 also uncharged and the test leaves it out, so a fix may choose; a RENAME-over or MKDIR-then-RMDIR cycle should give nothing back, as
 grow does; 255-byte names inflate the parent's directory blocks. Not ported.
 
+C18 FIXED by S-F11, commit 98cc62a (PR #233). charge(e, n) in internal/fileserve/serve_linux.go takes s.mu, is ENOSPC once n would
+pass limit-grown, and otherwise adds n to grown; grow delegates to it with end-st.Size, so WRITE and SETATTR charge exactly as before;
+the opSymlink/opMkdir arm and create in ops_linux.go charge block (4096 bytes) before the syscall, folded into the existing error check
+after at, so a failed at or an EEXIST leaves nothing to undo and removal gives nothing back, as grow already did. Paid by folds in
+stat, at and openFile and the xdgDir fold of PARKED line 78 (cmd/workcell/data.go, every caller branches on the error first): product
+14999 of 15000, net -1. TestGrowthCapEntries, moved from escape/_pending/S-F11/ to internal/fileserve/c18_test.go with a third arm
+CREATE added by the redteam (reqCreate with O_RDWR, same judge), fails on main 463b7ee in all three arms (200 accepted, 0 ENOSPC, want
+at most 26) and passes at 98cc62a under -race with TestGrowthCap and TestGrowthCapAppend; TestGrowthCap's table now creates both files
+first (8192 charged) and fills to the cap with 31808, every assertion kept. The reviewer reproduced fail-on-main and pass-at-HEAD in a
+worktree and checked that no other opcode makes an entry (LINK and MKNOD are ENOSYS, RENAME moves one), and that the parent
+directory's own growth per entry is covered by the charge. Variants left for S-1013: a 255-byte name or a symlink target over 60
+bytes costs the host more than one block; create-then-unlink churn should exhaust after limit/4096 creates (uncharged removal, by
+design). Not ported.
+
 C19. ID I7 (nothing a session writes is visible to another), I9 (the guest cannot forge a record and verify detects edits), I13
 (widening needs user-level config); I14 and A6 are a stretch here, since the boot does no digest check but the replacement comes by
 pull, not by update, so I7 and I9 carry the severity. Attacker: guest root, driven by a malicious repository or hostile model output,
