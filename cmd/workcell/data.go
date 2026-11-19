@@ -28,8 +28,8 @@ func xdgDir(env string, home ...string) (string, error) {
 	return filepath.Join(append(append([]string{h}, home...), "workcell")...), err
 }
 
-// holds is the error for a directory that holds workcell's data or config directory, named: a session there would carry the audit key, every
-// other session and the images into the guest, and pull would write the guest's versions back over them (I7, I9, I13). Neither need exist yet.
+// holds is the error for a directory that holds, or lies inside, workcell's data or config directory, named: a session there would carry the
+// audit key, other sessions, their records and the images into the guest, and pull would write the guest's versions back (I7, I9, I13).
 func holds(dir string) error {
 	data, err := dataDir()
 	if err != nil {
@@ -37,8 +37,8 @@ func holds(dir string) error {
 	}
 	config, _ := xdgDir("XDG_CONFIG_HOME", ".config") // fails only as dataDir does
 	for _, held := range []string{data, config} {
-		if within(dir, held) {
-			return fmt.Errorf("%s holds workcell's own directory %s, which no session may see: use another directory", dir, held)
+		if within(dir, held) || within(held, dir) { // neither need exist yet
+			return fmt.Errorf("%s lies inside or holds workcell's own directory %s, which no session may see: use another directory", dir, held)
 		}
 	}
 	return nil

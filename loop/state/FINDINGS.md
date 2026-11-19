@@ -2267,6 +2267,18 @@ directions, with one message saying the directory lies inside or holds the held 
 layers consequences above; cwd reaching <data> through a symlink that resolves inside sessions/; cwd <data>/caches; cwd strictly
 inside the config directory (nothing there to reach, but the fix should mirror it). Not ported.
 
+C29 FIXED by S-F21, commit 5d96419 (PR #238). holds(dir) in cmd/workcell/data.go refuses when within(dir, held) || within(held,
+dir) for the data and the config directory, with one message naming both: `<dir> lies inside or holds workcell's own directory
+<held>, which no session may see: use another directory`; session() in run_vm.go and fetch() in pull_vm.go call it as before, so run
+(clone and mount) exits 125 and pull and diff exit 1 with one stderr line, before any session directory, key, export, socket or boot.
+The second direction fits the existing if line and the new message replaces the old, so net 0 product lines, product 15000 of 15000,
+no fold needed; docs/policy.md says holds, or lies inside. Test: cmd/workcell/c29_test.go TestC29RefusesACwdInsideTheDataDirectory,
+moved by git mv with a fifth, negative arm (sibling <parent>/workcell2, not refused); the four refusal arms fail on f03f1ea (each
+reaches firecracker, a session directory and audit.key are made, pull writes vmm) and pass at 5d96419 under -race. The reviewer probed
+the data and config directories themselves, a not-yet-existing <data>/sessions/x/deeper, <config>/sub, symlinks to and through
+<data>/sessions, relative ../workcell/sessions, and found each refused, with <parent>/workcell2, ../workcell2 and <parent>x not
+refused. Not ported.
+
 C30. ID I6 (on a terminated connection the upstream certificate matches one allowed name under the host's trust) and through it I5
 (the real secret is injected only into a verified connection). PARKED line 77, the S-F14 reviewer's finding, now with a
 reproducing test. Attacker: a malicious repository supplying ca.pem, a CA the attacker made whose leaf key it keeps, completed by
