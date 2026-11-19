@@ -13,8 +13,8 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-// openFlags are the only OPEN and CREATE flags the guest chooses; the host adds its own.
-const openFlags = unix.O_ACCMODE | unix.O_TRUNC | unix.O_APPEND
+// openFlags are the only OPEN and CREATE flags the guest chooses. Not O_APPEND: the host must write at the charged offset (I10).
+const openFlags = unix.O_ACCMODE | unix.O_TRUNC
 
 // op serves one request that may use a descriptor. It runs with life held for reading.
 func (s *Server) op(r request) ([]byte, syscall.Errno) {

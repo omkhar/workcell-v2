@@ -1143,6 +1143,17 @@ medium only if --mount (A5) is read as an S6 precondition; either way S7 fixes i
 PLAN.md. Variants for S-F10 to carry: SETATTR size shrink then WRITE at offset 0 on an O_APPEND handle (both fix shapes cover it);
 two WRITEs in flight on one O_APPEND handle are each charged as if alone, never less than the growth, so no second hole. Not ported.
 
+C17 FIXED by S-F10, commit bd49c0f (PR #232). openFlags in internal/fileserve/ops_linux.go is now O_ACCMODE | O_TRUNC, so a
+host descriptor opened through OPEN or CREATE never carries O_APPEND and opWrite's pwrite lands at the offset that grow charged;
+net 0 product lines, the comment on the same line says why. TestGrowthCapAppend, moved from escape/_pending/S-F10/ to
+internal/fileserve/c17_test.go unchanged, fails on main 445ca1d (both arms: 1,200,000 bytes against a cap of 100,000, 0 ENOSPC)
+and passes at bd49c0f under -race with TestGrowthCap and the rest of the package. The reviewer drove the real Server over the harness
+pipe at HEAD: the SETATTR-shrink-then-WRITE-at-0 variant gives 1 accepted, 19 ENOSPC, host size 0; a WRITE at offset 0 after one at
+offset 10 overwrites in place (size 11, no append); WRITE at 1<<40 is ENOSPC; two O_APPEND handles alternating WRITE(0, 60000)
+twenty times leave 60,000 bytes; no op in ops_linux.go other than opWrite and setattr(fattrSize) changes size, and FALLOCATE,
+COPY_FILE_RANGE and LSEEK are ENOSYS, so no guest request places bytes at a host offset other than the charged one. Nothing changes
+for a correct guest: initFlags does not negotiate writeback cache, so the guest kernel sends the end-of-file offset itself. Not ported.
+
 C18. ID I10 (host disk and inodes), the same cap. Attacker: guest root, or any guest process, through the ordinary kernel FUSE path:
 plain `ln -s` and `mkdir` under /workspace in a mount session; no raw frames. Where: internal/fileserve/ops_linux.go opSymlink, opMkdir
 and the create path call Symlinkat, Mkdirat and Openat and never grow(); internal/fileserve/serve_linux.go grown counts WRITE past the
