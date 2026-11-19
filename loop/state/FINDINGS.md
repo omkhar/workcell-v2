@@ -2361,6 +2361,20 @@ walk.go sites and the five workspace.go sites, net 0 product lines. Variants the
 same functions (an unlistable but readable directory, a readlink failure, tree.Put's rejection) and the end-to-end run and diff
 prints, which need a VM. Not ported.
 
+C31 FIXED by S-F23, commit 9170094 (PR #240). `%s` became `%q` at the nine sites the record names:
+internal/guest/walk.go lines 31, 44, 50 and 57 and internal/workspace/workspace.go lines 91, 109, 119, 131 and 152,
+so Walk's and Export's errors now carry the guest-chosen name or the host path quoted once, as `open
+"\x1b]0;owned\a\x1b[2J\x1b[31mREADME": permission denied`. Line 42 of workspace.go (the operator's own cwd) is unchanged, as the
+record asks. Nine in-place edits, net 0 product lines: product 15000 of 15000 before and after, test 28085 of 28500 with the two
+tests now under internal/. Inner errors at the nine sites: Fstatat, Openat and Readlinkat return a bare unix.Errno and tree.Put
+returns ErrPath, ErrNotDir or ErrBadNode with the path already %q-quoted, so no path is printed a second time raw. Residual, not
+reachable by the finding's attacker: the two `read %q` sites wrap the *os.PathError that Readdirnames returns on a readdirent
+failure, whose Path is the raw rel passed to os.NewFile; an unreadable directory fails at Openat, not at readdirent, so a mode trick
+cannot reach it, and only an I/O error on an already-open directory would. Tests: internal/guest/c31_test.go
+TestC31WalkErrorQuotesName and internal/workspace/c31_test.go TestC31ExportErrorQuotesPath, moved from escape/_pending/S-F23/ by
+the redteam unchanged; both fail on d998add and pass after the fix under `setpriv --bounding-set -dac_override,-dac_read_search go
+test -run TestC31 -count=1 ./internal/guest/ ./internal/workspace/`, skip as plain root, and the two packages pass under -race.
+
 Handoffs: four fix units, S-F20 to S-F23, below S-1013 in PLAN.md, each starting with the move of its parked test. The sweep count
 question is S-1017's: this sweep confirmed C28, C29 and C30 at medium, so by S8 a second sweep follows once the fixes land. For
 S-1018's report: the two medium findings in cmd/workcell (C28, C29) are each the other half of a check an earlier fix drew one way

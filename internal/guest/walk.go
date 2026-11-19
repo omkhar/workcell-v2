@@ -28,7 +28,7 @@ func walk(fd int, rel string, visit func(Entry) error) error {
 	defer d.Close()
 	names, err := d.Readdirnames(-1)
 	if err != nil {
-		return fmt.Errorf("read %s: %w", d.Name(), err)
+		return fmt.Errorf("read %q: %w", d.Name(), err)
 	}
 	slices.Sort(names)
 	for _, name := range names {
@@ -41,20 +41,20 @@ func walk(fd int, rel string, visit func(Entry) error) error {
 		}
 		var st unix.Stat_t
 		if err := unix.Fstatat(fd, name, &st, unix.AT_SYMLINK_NOFOLLOW); err != nil {
-			return fmt.Errorf("stat %s: %w", p, err)
+			return fmt.Errorf("stat %q: %w", p, err)
 		}
 		e, cfd := Entry{Path: p}, -1
 		switch uint32(st.Mode) & unix.S_IFMT {
 		case unix.S_IFDIR:
 			if cfd, err = unix.Openat(fd, name, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0); err != nil {
-				return fmt.Errorf("open %s: %w", p, err)
+				return fmt.Errorf("open %q: %w", p, err)
 			}
 			e.Kind = KindDir
 		case unix.S_IFLNK:
 			buf := make([]byte, MaxPath+1)
 			n, err := unix.Readlinkat(fd, name, buf)
 			if err != nil {
-				return fmt.Errorf("read link %s: %w", p, err)
+				return fmt.Errorf("read link %q: %w", p, err)
 			}
 			e.Kind, e.Target = KindLink, string(buf[:n])
 		case unix.S_IFREG:
