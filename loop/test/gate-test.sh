@@ -481,10 +481,10 @@ many 15000 '//' | src spikes/x/big.c
 many 15000 '//' | src proposed/x/big.c
 many 600 '#' | src proposed/dot-github/workflows/x.yml
 t "large files under spikes/ and proposed/ hit no budget" 0 "GATE PASS in"
-for i in 1 2 3 4; do go_file version 790 >"internal/version/a${i}_test.go"; done
-t "3,168 lines of tests for a small product" 1 "$over test code is"
-many 3000 '//' | src escape/native/big.c
-t "3,000 lines of C under escape/" 1 "$over test code is"
+for i in 1 2 3 4 5 6 7 8; do go_file version 790 >"internal/version/a${i}_test.go"; done
+t "6,336 lines of tests for a small product" 1 "$over test code is"
+many 6100 '//' | src escape/native/big.c
+t "6,100 lines of C under escape/" 1 "$over test code is"
 for i in 1 2; do go_file main 400 | src "cmd/bump/a$i.go"; done
 t "804 lines in cmd/bump" 1 "$over bump tool is 804, limit 800"
 many 501 '#' >.github/workflows/big.yml
