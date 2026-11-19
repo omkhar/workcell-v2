@@ -88,7 +88,7 @@ func (w *walker) dir(fd int, rel string) error {
 	defer d.Close()
 	names, err := d.Readdirnames(-1)
 	if err != nil {
-		return fmt.Errorf("read %s: %w", filepath.Join(w.root, rel), err)
+		return fmt.Errorf("read %q: %w", filepath.Join(w.root, rel), err)
 	}
 	for _, name := range names {
 		if err := w.ctx.Err(); err != nil {
@@ -106,7 +106,7 @@ func (w *walker) entry(fd int, rel, name string) error {
 	host := filepath.Join(w.root, p)
 	var st unix.Stat_t
 	if err := unix.Fstatat(fd, name, &st, unix.AT_SYMLINK_NOFOLLOW); err != nil {
-		return fmt.Errorf("stat %s: %w", host, err)
+		return fmt.Errorf("stat %q: %w", host, err)
 	}
 	if st.Dev == w.self.Dev && st.Ino == w.self.Ino {
 		return nil
@@ -116,7 +116,7 @@ func (w *walker) entry(fd int, rel, name string) error {
 	case unix.S_IFDIR:
 		cfd, err := unix.Openat(fd, name, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
 		if err != nil {
-			return fmt.Errorf("open %s: %w", host, err)
+			return fmt.Errorf("open %q: %w", host, err)
 		}
 		n.Kind = rootfs.Dir
 		if err := w.tree.Put(p, n); err != nil {
@@ -128,7 +128,7 @@ func (w *walker) entry(fd int, rel, name string) error {
 		buf := make([]byte, 4097)
 		l, err := unix.Readlinkat(fd, name, buf)
 		if err != nil {
-			return fmt.Errorf("read link %s: %w", host, err)
+			return fmt.Errorf("read link %q: %w", host, err)
 		}
 		n.Kind, n.Target = rootfs.Symlink, string(buf[:l])
 	case unix.S_IFREG:
@@ -149,7 +149,7 @@ func (w *walker) entry(fd int, rel, name string) error {
 		return nil // a socket, FIFO or device: nothing a guest could use
 	}
 	if err := w.tree.Put(p, n); err != nil {
-		return fmt.Errorf("%s: %w", host, err)
+		return fmt.Errorf("%q: %w", host, err)
 	}
 	return nil
 }
