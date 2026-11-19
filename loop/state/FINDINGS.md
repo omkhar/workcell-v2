@@ -1229,6 +1229,17 @@ the redteam test's assertions are indirect (the key is minted and the session di
 the refusal's shape; its own debugfs run supplies the direct effect. Fix unit: S-F12, below S-1008 in PLAN.md; it should compare
 resolved paths (EvalSymlinks) and refuse the data directory itself as cwd, not only an ancestor. Not ported.
 
+C19 FIXED by S-F12, commit 8a2e7d4 (PR #234). holds(dir) in cmd/workcell/data.go is the one rule: it resolves dir and the data
+directory (dataDir) and the config directory (xdgDir XDG_CONFIG_HOME) with resolved, which follows the longest existing prefix with
+EvalSymlinks and re-appends the rest, so a held directory that does not exist yet behind a symlinked parent is still caught (the one
+review finding, I13); it refuses when filepath.Rel(dir, held) is local, so the held directory itself or any descendant, with a
+separator boundary, naming the held directory as xdgDir spells it. session() calls it right after Getwd in both modes, before the
+session directory, the key and the export; fetch() calls it on the destination before opening the root, so pull and diff refuse
+before any boot. Paid by folding newSession and openAudit into one, inlining export, dropping the rand.Read check (crypto/rand
+cannot fail since Go 1.24), and one-line error branches in boot and doctor: product 15000 of 15000, net +1. The test moved from
+escape/_pending/S-F12/ to cmd/workcell/c19_test.go unchanged and gained a fourth run arm (config directory behind a symlink, not
+made yet); all arms fail on 7933eac and pass at 8a2e7d4 under -race. One sentence in docs/policy.md, Where it lives.
+
 C20. ID: no invariant directly; I12's "confuse the host" and the spirit of I8 at most, so low under S6 (hardening: the product's
 own rule, stated at shown in cmd/workcell/pull.go and followed by lastLines in run_vm.go, that a guest string is quoted before it
 reaches the operator's terminal, is bypassed on one path). Attacker: guest root, or hostile model output naming files in the clone.

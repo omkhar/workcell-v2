@@ -41,13 +41,7 @@ func pull(args []string, stderr io.Writer) int {
 	if len(args) == 1 {
 		dest = args[0]
 	}
-	root, err := unix.Open(dest, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_CLOEXEC, 0)
-	if err != nil {
-		fmt.Fprintln(stderr, "workcell pull:", err)
-		return 1
-	}
-	defer unix.Close(root)
-	code, err := fetch(func(m *manifest, data source) error { return write(root, m, data) })
+	code, err := fetch(dest, write)
 	if err != nil {
 		fmt.Fprintln(stderr, "workcell pull:", err)
 		return 1
@@ -63,14 +57,8 @@ func diff(args []string, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "usage: workcell diff\n  lists what the newest session run here changed: A added, M modified, D deleted")
 		return 2
 	}
-	root, err := unix.Open(".", unix.O_RDONLY|unix.O_DIRECTORY|unix.O_CLOEXEC, 0)
-	if err != nil {
-		fmt.Fprintln(stderr, "workcell diff:", err)
-		return 2
-	}
-	defer unix.Close(root)
 	differs := false
-	code, err := fetch(func(m *manifest, data source) (err error) {
+	code, err := fetch(".", func(root int, m *manifest, data source) (err error) {
 		differs, err = compare(root, m, data, os.Stdout)
 		return err
 	})
@@ -88,10 +76,19 @@ func diff(args []string, stderr io.Writer) int {
 type source func(n int) ([]byte, error)
 
 // fetch boots the newest session of the current directory, asks its init for the work tree
-// and gives use the judged manifest and the files' bytes. The whole tree must follow, and
-// the Exit after it, or the result is an error. SIGINT and SIGTERM end the VM, as in run,
-// and give a code of 128 plus the signal.
-func fetch(use func(*manifest, source) error) (int, error) {
+// and gives use the directory dest open as root, the judged manifest and the files' bytes.
+// A dest that holds workcell's own directory is refused first (holds). The whole tree must
+// follow, and the Exit after it, or the result is an error. SIGINT and SIGTERM end the VM,
+// as in run, and give a code of 128 plus the signal.
+func fetch(dest string, use func(int, *manifest, source) error) (int, error) {
+	if err := holds(dest); err != nil {
+		return 0, err
+	}
+	root, err := unix.Open(dest, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_CLOEXEC, 0)
+	if err != nil {
+		return 0, err
+	}
+	defer unix.Close(root)
 	a, err := loadArtifacts()
 	if err != nil {
 		return 0, err
@@ -137,7 +134,7 @@ func fetch(use func(*manifest, source) error) (int, error) {
 	p := &pulled{frames: frames, sigs: sigs}
 	m, err := p.manifest(st.Size())
 	if err == nil {
-		err = use(m, p.data)
+		err = use(root, m, p.data)
 	}
 	if err == nil {
 		err = p.end()

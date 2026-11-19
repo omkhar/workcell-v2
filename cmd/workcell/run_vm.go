@@ -91,19 +91,17 @@ func session(argv []string, caps limits, mount bool, a artifacts, allow *proxy.A
 	defer signal.Stop(sigs)
 	signal.Ignore(syscall.SIGHUP) // a closed terminal detaches the session; it does not end it
 	cwd, err := os.Getwd()
+	if err == nil {
+		err = holds(cwd) // before a session directory, the key or the export exists (I7, I9, I13)
+	}
 	if err != nil {
 		return result{err: err}
 	}
-	dir, lock, err := newSession(a, cwd) // the lock is held until the session ends
+	dir, lock, log, err := newSession(a, cwd) // the lock is held until the session ends
 	if err != nil {
 		return result{err: err}
 	}
 	defer lock.Close()
-	log, err := openAudit(a.dir, dir)
-	if err != nil {
-		os.RemoveAll(dir)
-		return result{err: err}
-	}
 	defer func() { // the last record of the session, whatever way it ended
 		end := "exit " + strconv.Itoa(r.code)
 		if r.err != nil && r.code == 0 {
@@ -114,18 +112,21 @@ func session(argv []string, caps limits, mount bool, a artifacts, allow *proxy.A
 		}
 		log.Close()
 	}()
-	image, live := "", ""
+	// A clone session copies cwd into the session directory: the image the guest gets as /workspace. The image lives in the data directory, not under TMPDIR,
+	// because a reflink only works within one filesystem and the data directory shares the home filesystem with most repositories. It is as big as the
+	// repository plus the room the guest may write, which is --disk or 1 GiB (I10). It stays when the session ends, for diff and pull.
+	image, live := filepath.Join(dir, "workspace.ext4"), ""
 	if mount {
-		live = cwd // the record alone: the work lands in cwd itself
-	} else if image, err = export(dir, caps, cwd); err != nil {
-		return result{err: err}
+		image, live = "", cwd // the record alone: the work lands in cwd itself
+	} else if _, err = workspace.Export(context.Background(), cwd, image, caps.disk()); err != nil {
+		os.RemoveAll(dir)
+		return result{err: fmt.Errorf("copy %s for the guest: %w", cwd, err)}
 	}
 	b, code, err := boot(a, caps, sigs, dir, log, image, live, allow, secrets)
 	if b == nil {
 		return result{code: code, err: err}
 	}
 	defer b.close()
-	raw := b.conn
 
 	_, path := layerArgs(a.layers, 0)
 	req := guest.Exec{Argv: argv, Env: []string{path, "HOME=/root", "LANG=C.UTF-8"}, Dir: "/workspace", CA: b.ca}
@@ -142,7 +143,7 @@ func session(argv []string, caps limits, mount bool, a artifacts, allow *proxy.A
 			req.Env = append(req.Env, "TERM="+term)
 		}
 	}
-	c := wire.New(raw, frameLimit)
+	c := wire.New(b.conn, frameLimit)
 	ln, err := net.Listen("unix", filepath.Join(b.dir, "attach")) // closeAll removes it with the directory
 	if err != nil {
 		return result{err: err}
@@ -202,57 +203,36 @@ type booted struct {
 }
 
 // newSession records a session of the directory repo: <data>/sessions/<id>/ holding a file repo that names the directory, so that diff and pull find the newest
-// session of a directory later. A mount session leaves this record alone, so that pull and diff know the work went into the directory itself; a clone session
-// adds its image. rm removes it (I7). The returned file holds the session's lock until it is closed, which ls and stop read as "running".
-func newSession(a artifacts, repo string) (string, *os.File, error) {
+// session of a directory later, and the session's audit record, signed with the host's key in the data directory, with its first line written: a session that
+// cannot be recorded does not start (I9). A mount session leaves this record alone, so that pull and diff know the work went into the directory itself; a
+// clone session adds its image. rm removes it (I7). The returned file holds the session's lock until it is closed, which ls and stop read as "running".
+func newSession(a artifacts, repo string) (dir string, lock *os.File, log *audit.Log, err error) {
 	var r [4]byte
-	if _, err := rand.Read(r[:]); err != nil {
-		return "", nil, err
+	_, _ = rand.Read(r[:]) // crypto/rand never fails
+	dir = filepath.Join(a.dir, "sessions", time.Now().UTC().Format(sessionTime)+"-"+hex.EncodeToString(r[:]))
+	key, err := audit.LoadKey(a.dir)
+	if err == nil {
+		err = os.MkdirAll(dir, 0o700)
 	}
-	dir := filepath.Join(a.dir, "sessions", time.Now().UTC().Format(sessionTime)+"-"+hex.EncodeToString(r[:]))
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return "", nil, err
+	if err == nil {
+		lock, err = holdSession(dir)
 	}
-	lock, err := holdSession(dir)
 	if err == nil {
 		err = os.WriteFile(filepath.Join(dir, "repo"), []byte(repo+"\n"), 0o600)
 	}
+	if err == nil {
+		log, err = audit.Create(dir, key, time.Now)
+	}
+	if err == nil {
+		if err = log.Record(audit.Record{Event: audit.SessionStart}); err != nil {
+			log.Close()
+		}
+	}
 	if err != nil {
-		lock.Close()
+		lock.Close() // a nil file closes harmlessly
 		os.RemoveAll(dir)
-		return "", nil, err
 	}
-	return dir, lock, nil
-}
-
-// openAudit makes the session's record in the session directory dir, signed with the host's key in data, and writes its first line. A session that cannot be
-// recorded does not start (I9).
-func openAudit(data, dir string) (*audit.Log, error) {
-	key, err := audit.LoadKey(data)
-	if err != nil {
-		return nil, err
-	}
-	log, err := audit.Create(dir, key, time.Now)
-	if err != nil {
-		return nil, err
-	}
-	if err := log.Record(audit.Record{Event: audit.SessionStart}); err != nil {
-		log.Close()
-		return nil, err
-	}
-	return log, nil
-}
-
-// export copies the directory repo into the new session directory dir: the image the guest gets as /workspace. The image lives in the data directory, not under
-// TMPDIR, because a reflink only works within one filesystem and the data directory shares the home filesystem with most repositories. It is as big as the
-// repository plus the room the guest may write, which is --disk or 1 GiB (I10). It stays when the session ends, for diff and pull.
-func export(dir string, caps limits, repo string) (string, error) {
-	image := filepath.Join(dir, "workspace.ext4")
-	if _, err := workspace.Export(context.Background(), repo, image, caps.disk()); err != nil {
-		os.RemoveAll(dir)
-		return "", fmt.Errorf("copy %s for the guest: %w", repo, err)
-	}
-	return image, nil
+	return dir, lock, log, err
 }
 
 // boot starts a guest and waits for its init to dial in. The guest's /workspace is the ext4 image at image (clone mode), or the directory mount itself, served
@@ -267,14 +247,13 @@ func boot(a artifacts, caps limits, sigs <-chan os.Signal, session string, log *
 		return nil, 0, fmt.Errorf("TMPDIR %q is not an absolute path", os.TempDir())
 	}
 	dir, err := os.MkdirTemp("", "wc") // short names: see above
+	if err == nil && session != "" {
+		if err = recordBoot(session, dir); err != nil {
+			os.RemoveAll(dir)
+		}
+	}
 	if err != nil {
 		return nil, 0, err
-	}
-	if session != "" {
-		if err := recordBoot(session, dir); err != nil {
-			os.RemoveAll(dir)
-			return nil, 0, err
-		}
 	}
 	cmdline, first := caps.cmdline(), 'b' // the first layer's drive comes after the root and, in clone mode, the workspace
 	switch {
@@ -688,11 +667,9 @@ func doctor(args []string, stdout, stderr io.Writer) int {
 		a, cfg = artifacts{}, vmm.Config{}
 	}
 	var st unix.Statfs_t
-	var diskErr error
-	for p := dir; ; p = filepath.Dir(p) { // the data directory does not exist before the first update
-		if diskErr = unix.Statfs(p, &st); diskErr != unix.ENOENT {
-			break
-		}
+	var diskErr error = unix.ENOENT
+	for p := dir; diskErr == unix.ENOENT; p = filepath.Dir(p) { // the data directory does not exist before the first update
+		diskErr = unix.Statfs(p, &st)
 	}
 	free := int64(st.Bavail) * int64(st.Bsize)
 	if diskErr == nil && free < minFree {
