@@ -5,6 +5,7 @@ package sandbox
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"fmt"
 	"net"
@@ -23,15 +24,7 @@ const vmlinuxURL = "https://s3.amazonaws.com/spec.ccfc.min/firecracker-ci/v1.14/
 const vmlinuxSum = "61baeae1ac6197be4fc5c71fa78df266acdc33c54570290d2f611c2b42c105be"
 
 // entitlements is the one entitlement a process needs to start a VM.
-const entitlements = `<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-	<key>com.apple.security.virtualization</key>
-	<true/>
-</dict>
-</plist>
-`
+const entitlements = `<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd"><plist version="1.0"><dict><key>com.apple.security.virtualization</key><true/></dict></plist>`
 
 // hostReady says whether this host can run that guest: the pins are arm64, and codesign must be there to entitle the binary.
 func hostReady() error {
@@ -45,13 +38,15 @@ func hostReady() error {
 }
 
 // A Mac has no namespaces to give a session a network and a resolver of its own. The maintainer set this host up instead, once, as root; the adapter relies on
-// it, checks for it and never changes it: lo0 holds CanaryAddr, Neighbour and the judge's addresses as aliases, so nothing bound at one is reached from off the
-// host (SPEC T8); /etc/resolver/<judgeDomain> sends every question for a name under it to the judge's resolver, as `scutil --dns` shows, the product resolving
-// through the system as any program would; and bindHelper, root-owned, which sudo runs for the suite's user without a password, binds a port below 1024 at an
-// alias of lo0 and hands the descriptor over as suite.Bind does. No other sudo exists.
+// it, checks for it and never changes it: lo0 holds landing, Neighbour and the judge's addresses as aliases, so nothing bound at one is reached from off the
+// host (SPEC T8); CanaryAddr is no interface's and in no prefix of one, since the product dials nothing inside a network of the host's, and as macOS binds no
+// socket at such an address a host route keeps it on lo0, where pf hands it to landing; /etc/resolver/<judgeDomain> sends every question for a name under it
+// to the judge's resolver, as `scutil --dns` shows, the product resolving through the system as any program would; and bindHelper, root-owned, which sudo runs
+// for the suite's user without a password, binds a port below 1024 at an alias of lo0 and hands the descriptor over as suite.Bind does. No other sudo exists.
 const steersResolver = true
 const judgeDomain = "escape.test"
 const bindHelper = "/usr/local/libexec/workcell-escape/workcell-bind"
+const landing = "192.175.48.1" // the host's address in IsolatedNet
 
 // steered checks that every question for judgeDomain reaches resolver and nowhere else (T8).
 func steered(_, resolver string, _, argv []string, _ int) ([]string, error) {
@@ -71,19 +66,59 @@ func steered(_, resolver string, _, argv []string, _ int) ([]string, error) {
 	return nil, fmt.Errorf("scutil --dns lists no resolver for %s at %s: /etc/resolver/%s must name it, or a question for the suite's names would leave the host", judgeDomain, resolver, judgeDomain)
 }
 
-// holder is a session's own network on a Mac: the host's own, with CanaryAddr an alias of lo0 that isolate checks; pid is the suite's own.
+// holder is a session's own network on a Mac: the host's own, in the shape isolate checks; pid is the suite's own.
 type holder struct{ pid int }
 
+// isolate checks that shape by what it does, and sends nothing before the route is known to end on lo0 (T8).
 func isolate(string, string) (*holder, error) {
-	if err := LoopbackHolds(CanaryAddr); err != nil {
-		return nil, err
+	if err := shaped(); err != nil {
+		return nil, fmt.Errorf("%w: the Mac needs lo0 aliases %s and %s/32, no interface prefix around %s, a host route for it to lo0, and pf enabled with `rdr pass on lo0 inet proto { tcp, udp } from any to %[4]s -> %s`", err, IsolatedNet, Neighbour, CanaryAddr, landing)
 	}
 	return &holder{pid: os.Getpid()}, nil
 }
 
-// bind binds network/addr, "host" standing for CanaryAddr, as root (RootBind).
+func shaped() error {
+	if err := cmp.Or(LoopbackHolds(landing), LoopbackHolds(Neighbour)); err != nil {
+		return err
+	}
+	addrs, _ := net.InterfaceAddrs()
+	for _, a := range addrs {
+		if ipn, ok := a.(*net.IPNet); ok && ipn.Contains(net.ParseIP(CanaryAddr)) {
+			return fmt.Errorf("the host holds %s, and the product dials nothing inside a network of the host's", ipn)
+		}
+	}
+	if out, err := exec.Command("route", "-n", "get", CanaryAddr).Output(); !strings.Contains(string(out), "interface: lo0\n") {
+		return fmt.Errorf("no route keeps %s on lo0 (route -n get: %v)", CanaryAddr, err)
+	}
+	ln, err := net.Listen("tcp4", landing+":0")
+	if err != nil {
+		return err
+	}
+	defer ln.Close()
+	c, err := net.DialTimeout("tcp4", atCanary{ln}.Addr().String(), time.Second)
+	if err != nil {
+		return fmt.Errorf("nothing hands %s to %s: %w", CanaryAddr, landing, err)
+	}
+	return c.Close()
+}
+
+// bind binds network/addr as root (RootBind), a listener at "host" at landing, which says CanaryAddr: the address the product dials to reach it.
 func (h *holder) bind(network, addr string) (net.Listener, net.PacketConn, error) {
-	return RootBind(network, addr, "", h.pid)
+	host, port, _ := net.SplitHostPort(addr)
+	if host != "host" || network != "tcp4" {
+		return RootBind(network, addr, "", h.pid)
+	}
+	ln, _, err := RootBind(network, net.JoinHostPort(landing, port), "", h.pid)
+	if err != nil {
+		return nil, nil, err
+	}
+	return atCanary{ln}, nil, nil
+}
+
+type atCanary struct{ net.Listener }
+
+func (l atCanary) Addr() net.Addr {
+	return &net.TCPAddr{IP: net.ParseIP(CanaryAddr), Port: l.Listener.Addr().(*net.TCPAddr).Port}
 }
 
 func (*holder) stop() {}

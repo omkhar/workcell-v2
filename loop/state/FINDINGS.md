@@ -401,6 +401,29 @@ low, not medium (no invariant break shown; the supervisor waits as on a sleeping
 it; the loop is bounded by the vCPU cap; the Kill then Close block needs vm.Stop to fail, which the guest does not
 control). The row stays live in the suite as the Linux proof and as the measurement S-1016 runs on the Mac. Not S14.
 
+C5 CONFIRMED on vz by S-1016a (low), from runs on the Mac (macOS 27.2.1, Apple Silicon) at main 7c46d53: the row I12
+guest-reboot failed twice (the full Mac gate at 87ad563 and a run of the I12 rows at 7c46d53: reboot: the run did not end
+within 15s; the other eleven I12 rows passed), and the verifier could not refute it. It drove the harness's signed binary
+with the same probe: stdout said rebooting, reboot(RESTART) never returned, workcell ls still said running after 123 s and,
+in a second run, after 542 s, and the session's workspace.ext4 changed every 5 to 6 s, so the guest restarts in a loop and
+the run never ends by itself. Not a bound artifact and no power beyond guest root's one reboot(2) call. Where: session in
+cmd/workcell/run_vm.go waits on client input, signals and done only, output sits in ReadFrame, which waits without limit
+for a frame to begin, and m.Wait is asked only in accept, during boot; Wait and the Start goroutine in
+internal/vmm/vz/vz.go end only on Stopped or Error, and a guest restart leaves the VM running; the accepted 5000
+connection gives no EOF at the reset, only at the host's next write; once has closed the listener, so each new init's 5 s
+dial fails and halt restarts again (cmd/workcell-init/main.go). Bounds, measured: one SIGINT ends it at once with exit 125
+(guest channel: EOF); workcell stop ends it in 0 s; any host-to-guest frame ends it (one stdin byte, or workcell attach),
+so it hangs only while the host sends nothing, the headless case; the VM's process stayed at 2 to 9 percent of one core and
+about 113 MB with --cpus 1 and with 2, the supervisor below 1.2 percent, so the loop is far below the vCPU cap; after any
+ending no process, no socket directory and nothing beyond a normal ended session's files stay. Severity under S6: low, no
+invariant break shown, since the supervisor answers every control input at once and a command that never ends is guest
+root's by design (a shell that traps INT and TERM ran on through one SIGINT and needed two). The verifier notes the other
+reading for the maintainer: if I12's hang means the run must end by itself once the guest is gone, it is medium, the
+precondition being that the host sends nothing. Either way I12 is in escape/enforced-macos.txt, so the Mac gate is red
+until the row passes. Fix unit: S-F24 (env:macos), below S-1016a in PLAN.md; the row stays in the suite, so nothing waits
+under escape/_pending/. Not S14: internal/vmm/vz is not ported and the wait is this repository's own. The logs are in
+loop/private/ on the Mac (c5-mac-7c46d53-I12.log, gate-mac-87ad563.log, c5-verifier/).
+
 ## S-1004: network path and proxy core: routing, SNI, ECH, connection handling, fail-closed behaviour (I2, I4, I11), as built at main 5f5b941
 
 Trust boundary. Guest root owns every byte on vsock 5001: the 20 B relay header (version, proto, port, 16 B address), all

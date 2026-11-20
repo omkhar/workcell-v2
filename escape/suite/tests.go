@@ -63,8 +63,8 @@ var All = append([]Test{
 	{ID: "I4", Name: "rebind-metadata-sni", Probe: rebindProbe, Host: onLoopback("169.254.169.254", rebindJudge(rebind{a: []string{"169.254.169.254"}, canary: "169.254.169.254", sni: true})), Want: rebindingSNI},
 	{ID: "I4", Name: "rebind-unspecified-forward", Probe: rebindProbe, Host: rebindJudge(rebind{a: []string{"0.0.0.0"}, canary: "0.0.0.0"}), Want: rebinding},
 	{ID: "I4", Name: "rebind-cname-denied-forward", Probe: rebindProbe, Host: rebindJudge(rebind{cname: deniedName, a: []string{"127.0.0.1"}, canary: "127.0.0.1"}), Want: rebindingCNAME},
-	// Last: its A answer is empty, which a Mac's resolver holds for 100 s (U-701).
-	{ID: "I4", Name: "rebind-mapped-loopback-forward", Probe: rebindProbe, Host: rebindJudge(rebind{aaaa: []string{"::ffff:127.0.0.1"}, canary: "127.0.0.1"}), Want: rebinding},
+	// Under a name of its own: its A answer is empty, which a Mac's resolver holds for over a minute (U-701), in the rows after it and in the next run's.
+	{ID: "I4", Name: "rebind-mapped-loopback-forward", Probe: rebindProbe, Host: rebindJudge(rebind{aaaa: []string{"::ffff:127.0.0.1"}, canary: "127.0.0.1", names: []string{"mapped.escape.test."}}), Want: rebindingMapped},
 	// The answer is a public address on a network the host itself holds, in the session's own network (sandbox.IsolatedNet): no range set aside catches it,
 	// and the canary there is the host itself, or its neighbour on that network.
 	{ID: "I4", Name: "rebind-host-network-forward", Probe: rebindProbe, Host: rebindJudge(rebind{canary: "neighbour"}), Want: rebindingOwn},

@@ -32,6 +32,7 @@ const judgeResolver = "127.5.3.53"
 
 var rebinding = Want{Allow: []string{"allowed.escape.test:" + forwardPort}, Resolver: judgeResolver}
 var rebindingSNI = Want{Allow: []string{"allowed.escape.test"}, Resolver: judgeResolver}
+var rebindingMapped = Want{Allow: []string{"mapped.escape.test:" + forwardPort}, Resolver: judgeResolver}
 var rebindingCNAME = Want{Allow: []string{"allowed.escape.test:" + forwardPort}, Deny: []string{"denied.escape.test"}, Resolver: judgeResolver}
 var rebindingOwn = Want{Allow: rebinding.Allow, Resolver: judgeResolver, Isolated: true}
 var rebindingOwnSNI = Want{Allow: rebindingSNI.Allow, Resolver: judgeResolver, Isolated: true}
@@ -45,8 +46,8 @@ type rebind struct {
 	cname   string
 	canary  string
 	sni     bool
-	// names are the names answered with the records, as the resolver hears them, with the trailing dot; allowedName alone when empty. A denied name among
-	// them lets a session whose policy the guest widened reach a canary under it (sandbox.Config.Deny).
+	// names are the names answered with the records, as the resolver hears them, with the trailing dot, the first the one rebindJudge's guest connects to;
+	// allowedName alone when empty. A denied name among them lets a session whose policy the guest widened reach a canary under it (sandbox.Config.Deny).
 	names []string
 }
 
@@ -67,8 +68,8 @@ func (r rebind) answers() string {
 
 // rebindProbe connects to the allowed name args[0] (name:port) as a program would, through the guest's own resolver, and sends the token args[1] on one line;
 // with args[2] "sni" it offers a TLS ClientHello naming the host instead and, if the handshake completes, sends the token inside TLS as the path of a request
-// for the host, since a host that terminates the connection resolves the name only to forward a request. It tries twice, the second time after a pause, and
-// reports both.
+// for the host, since a host that terminates the connection resolves the name only to forward a request, and waits for the answer, since a host need not
+// forward for a client that has gone. It tries twice, the second time after a pause, and reports both.
 func rebindProbe(args []string) Result {
 	if len(args) != 3 {
 		return Result{Status: "error", Detail: "want name:port, token and line|sni"}
@@ -98,6 +99,7 @@ func connectName(addr, token string, sni bool) Result {
 			return Result{Status: "handshake-failed", Detail: "to " + addr + ": " + err.Error()}
 		}
 		c, line = tc, fmt.Sprintf("GET /%s HTTP/1.1\r\nHost: %s\r\nConnection: close\r\n\r\n", token, host)
+		defer io.Copy(io.Discard, c) // the answer, or the deadline
 	}
 	if _, err := io.WriteString(c, line); err != nil {
 		return Result{Status: "connected-write-failed", Detail: err.Error()}
@@ -129,8 +131,8 @@ func rebindJudge(r rebind) Judge {
 		}
 		ns := serveNamesOn(pc, r)
 		defer ns.stop()
-		want := newToken()
-		res, err := s.Run(net.JoinHostPort(strings.TrimSuffix(allowedName, "."), port), want, mode)
+		want, name := newToken(), slices.Concat(r.names, []string{allowedName})[0]
+		res, err := s.Run(net.JoinHostPort(strings.TrimSuffix(name, "."), port), want, mode)
 		got := t.stop()
 		asked := ns.stop()
 		if err != nil {
@@ -142,7 +144,7 @@ func rebindJudge(r rebind) Judge {
 			return false, detail + "; " + told, nil
 		}
 		if len(asked) == 0 {
-			return false, "", fmt.Errorf("nothing asked the judge's resolver for %s, so no address was vetted and nothing is proven (%s)", allowedName, says(res))
+			return false, "", fmt.Errorf("nothing asked the judge's resolver for %s, so no address was vetted and nothing is proven (%s)", name, says(res))
 		}
 		return true, detail + "; " + told, nil
 	}
