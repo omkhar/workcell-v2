@@ -21,8 +21,7 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-// entitlement is what a process must carry to start a VM; an ad hoc signature
-// with it is enough (ADR-001).
+// entitlement is what a process must carry to start a VM; an ad hoc signature with it is enough (ADR-001).
 const entitlement = "com.apple.security.virtualization"
 
 // Machine is one Virtualization.framework VM inside the supervisor process.
@@ -44,8 +43,7 @@ func New(cfg vmm.Config) *Machine {
 	return &Machine{cfg: cfg, exited: make(chan struct{})}
 }
 
-// Check proves the hypervisor is there (kern.hv_support) and that this process
-// may use it: the framework refuses a configuration from a process without the
+// Check proves the hypervisor is there (kern.hv_support) and that this process may use it: the framework refuses a configuration from a process without the
 // entitlement, which is the error a user meets first. It boots nothing.
 func (m *Machine) Check(context.Context) error {
 	hv, err := unix.SysctlUint32("kern.hv_support")
@@ -65,8 +63,7 @@ func (m *Machine) Check(context.Context) error {
 	return entitled(err)
 }
 
-// entitled turns the framework's refusal of an unentitled process into one
-// clear line; any other error passes through.
+// entitled turns the framework's refusal of an unentitled process into one clear line; any other error passes through.
 func entitled(err error) error {
 	if err != nil && strings.Contains(err.Error(), entitlement) {
 		return fmt.Errorf("this workcell binary is not signed with the %s entitlement, so it cannot start a VM", entitlement)
@@ -74,8 +71,7 @@ func entitled(err error) error {
 	return err
 }
 
-// Listen records a port the guest may dial. The framework's listener exists only
-// once the VM does, so Start binds it; until then Accept waits.
+// Listen records a port the guest may dial. The framework's listener exists only once the VM does, so Start binds it; until then Accept waits.
 func (m *Machine) Listen(port uint32) (net.Listener, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -87,8 +83,7 @@ func (m *Machine) Listen(port uint32) (net.Listener, error) {
 	return l, nil
 }
 
-// Start validates the configuration, binds the listeners and boots the guest. It
-// returns once the VM runs.
+// Start validates the configuration, binds the listeners and boots the guest. It returns once the VM runs.
 func (m *Machine) Start(ctx context.Context) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -148,8 +143,7 @@ func (m *Machine) create(c *console) (*vz.VirtualMachine, error) {
 	return vm, nil
 }
 
-// Wait blocks until the VM has stopped, or ctx ends. The framework boots the kernel
-// again when the guest restarts, so a stop comes from Kill or from a failure.
+// Wait blocks until the VM has stopped, or ctx ends. The framework boots the kernel again when the guest restarts, so a stop comes from Kill or from a failure.
 func (m *Machine) Wait(ctx context.Context) error {
 	m.mu.Lock()
 	started := m.vm != nil
@@ -196,9 +190,8 @@ func (m *Machine) Kill() error {
 	return fmt.Errorf("stop the VM: %w", err)
 }
 
-// Close kills the guest if it still runs, waits until it is gone, drops what the
-// listeners hold and releases the console. The framework's listeners go with the
-// VM object. The backend made no file under Dir.
+// Close kills the guest if it still runs, waits until it is gone, drops what the listeners hold and releases the console. The framework's listeners go with
+// the VM object. The backend made no file under Dir.
 func (m *Machine) Close() error {
 	err := m.Kill()
 	m.mu.Lock()
@@ -215,10 +208,8 @@ func (m *Machine) Close() error {
 	return err
 }
 
-// configure is the framework's configuration for cfg, with the console's write
-// end attached: a boot loader, one virtio console, one virtio socket device, one
-// entropy device and the root image read-only before the workspace, so the guest
-// sees them as vda and vdb. There is never a network device.
+// configure is the framework's configuration for cfg, with the console's write end attached: a boot loader, one virtio console, one virtio socket device, one
+// entropy device and the root image read-only before the workspace, so the guest sees them as vda and vdb. There is never a network device.
 func configure(cfg vmm.Config, c *console) (*vz.VirtualMachineConfiguration, error) {
 	opts := []vz.LinuxBootLoaderOption{vz.WithCommandLine(cmdline(cfg.Cmdline))}
 	if cfg.Initrd != "" {
@@ -286,8 +277,7 @@ type drive struct {
 	readOnly bool
 }
 
-// console is the guest's serial console: the framework writes to w, and start's
-// goroutine reads r and passes the bytes on. in is never written, so the guest
+// console is the guest's serial console: the framework writes to w, and start's goroutine reads r and passes the bytes on. in is never written, so the guest
 // gets no input.
 type console struct {
 	r, w, in *os.File
@@ -314,8 +304,7 @@ func (c *console) start(w io.Writer) {
 	}()
 }
 
-// close releases the descriptors. The framework keeps its own copies for as long
-// as the VM object lives, so the read end is closed too, which ends the copy.
+// close releases the descriptors. The framework keeps its own copies for as long as the VM object lives, so the read end is closed too, which ends the copy.
 func (c *console) close() {
 	for _, f := range []*os.File{c.w, c.in, c.r} {
 		if f != nil {
@@ -327,8 +316,7 @@ func (c *console) close() {
 	}
 }
 
-// listener is one host port the guest may dial. Connections arrive from the
-// framework on a goroutine of its own and queue here, up to a backlog; once the
+// listener is one host port the guest may dial. Connections arrive from the framework on a goroutine of its own and queue here, up to a backlog; once the
 // listener is closed, every connection the guest makes is closed at once (I12).
 type listener struct {
 	port   uint32
@@ -356,8 +344,7 @@ func (l *listener) bind(dev *vz.VirtioSocketDevice) error {
 	return nil
 }
 
-// pump takes every connection the framework hands over, so that the framework
-// never waits on this process, and queues it or closes it.
+// pump takes every connection the framework hands over, so that the framework never waits on this process, and queues it or closes it.
 func (l *listener) pump() {
 	for {
 		c, err := l.inner.Accept()
@@ -390,8 +377,7 @@ func (l *listener) Accept() (net.Conn, error) {
 	}
 }
 
-// Close refuses every later connection, drops the queued ones and removes the
-// framework's listener once it has one.
+// Close refuses every later connection, drops the queued ones and removes the framework's listener once it has one.
 func (l *listener) Close() error {
 	if l.drop() && l.inner != nil {
 		_ = l.inner.Close()
@@ -399,8 +385,7 @@ func (l *listener) Close() error {
 	return nil
 }
 
-// drop refuses every later connection and closes the queued ones. It reports
-// whether this call was the first.
+// drop refuses every later connection and closes the queued ones. It reports whether this call was the first.
 func (l *listener) drop() bool {
 	l.mu.Lock()
 	defer l.mu.Unlock()

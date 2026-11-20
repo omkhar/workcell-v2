@@ -6,12 +6,18 @@
 package main
 
 import (
+	"time"
+
 	"github.com/omkhar/workcell/v2/internal/vmm"
 	"github.com/omkhar/workcell/v2/internal/vmm/vz"
 )
 
 // vmmBinary is empty: Virtualization.framework is part of the OS (ADR-001).
 const vmmBinary = ""
+
+// probeEvery is how often a session writes to its guest. The framework boots a guest that restarts again, reports no change of state and leaves the channel
+// open: only a write from the host then ends it, at once (measured, S-F24). So within two of these a session whose guest restarted ends (I12).
+const probeEvery = 2 * time.Second
 
 // newMachine is the macOS backend: the framework, inside this process.
 func newMachine(_ artifacts, cfg vmm.Config) vmm.Machine { return vz.New(cfg) }

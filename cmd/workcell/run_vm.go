@@ -172,12 +172,15 @@ func session(argv []string, caps limits, mount bool, a artifacts, allow *proxy.A
 	done := make(chan result, 1)
 	go output(c, s, done)
 
+	probe := time.Tick(probeEvery) // nil, so never ready, where the VMM itself ends with a guest that restarts
 	signalled := false
 	for {
 		var err error
 		select {
 		case f := <-s.in:
 			err = c.WriteFrame(f)
+		case <-probe: // a guest that restarted answers the write by closing the channel, which output reports (I12)
+			err = c.WriteFrame(wire.Frame{Type: guest.TypePing})
 		case sig := <-sigs:
 			if signalled { // the command ignored the first one: stop waiting for it
 				return result{code: 128 + int(sig.(syscall.Signal))}
