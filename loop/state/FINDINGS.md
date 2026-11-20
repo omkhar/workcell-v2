@@ -2431,17 +2431,53 @@ and S-1016.
 
 Method. One redteam per topic wrote a test in the package where it will live and ran it through `go test -overlay` from
 escape/_pending/, so no file lay in internal/ or cmd/; the orchestrator ran each test again and kept the logs under loop/private/
-(c33-run.log to c35-run.log); one verifier per candidate got the claim, the test and the log, and tried to refute it. The Mac
+(c32-run.log to c35-run.log); one verifier per candidate got the claim, the test and the log, and tried to refute it. The Mac
 gate was green on the unchanged tree before (73 rows, GATE PASS in 430s).
 
 | finding | outcome |
 |---------|---------|
-| A F17, A F18, A F19, C F1, C F2, C F7 | needs the maintainer, see the run's transcript |
+| A F17, C F1 | CONFIRMED, C32 arm a (I5, high) |
+| A F18, A F19, C F2, C F7 | CONFIRMED, C32 arm b (I6, medium); C F2 names both arms |
 | C F9 | CONFIRMED, C33 (I5, medium) |
 | A F20, B F6, B F7 | CONFIRMED, C34 (I5 through I13, medium), one defect with two paths |
 | C F10 | CONFIRMED, C35 (I13, medium) |
 | A F24 | DOWNGRADED to low, C36: intended prefix rule, no fix unit, PARKED |
 | crasher FuzzHide/cff1bc4cc7889cf3 | REFUTED, C37: the fuzz judge, not hide |
+
+C32. ID I5 (arm a) and I6 (arm b). Attacker: guest root. Where: internal/proxy/terminate.go, the terminated handler (its host
+check near line 405, the rule loop at 415, the placeholder check at 434) and internal/proxy/signin.go tokenEndpoint (70 to 77),
+which judge r.Host, r.URL.Path and EscapedPath; httputil.ReverseProxy then writes r.URL.Opaque as the request-target. Input: on a
+terminated HTTP/1.1 connection the guest writes a request line whose target is `x:https://HOST/PATH`. net/url parses it to
+Scheme x, Opaque `https://HOST/PATH` and an empty Path, so every check that reads the path or the URL's host sees nothing, and
+the upstream receives the well-formed absolute-form target `https://HOST/PATH`, which RFC 9112 3.2.2 says a server must accept
+and must prefer to the Host header. Arm a: `POST x:https://login.example.com/oauth/token` with a code grant is not marked as a
+token request, so neither the body swap nor tokenResponse runs, and the endpoint's answer reaches the guest unread:
+`{"access_token":"sk-acc-1",...,"refresh_token":"sk-ref-1"}`. Arm b: `GET x:https://other.example/collect` with Host
+example.com and the placeholder in the bound header passes the host check on the Host header, a rule with no path admits it, the
+real secret is swapped in, and the upstream at the vetted address of example.com receives
+`GET https://other.example/collect | Host: example.com | X-Api-Key: real-secret`. Reproducing test: escape/_pending/S-F25/
+c32_test.go TestC32OpaqueRequestTarget (redteam; package proxy, two arms, the far ends are net/http servers on loopback). On
+05a59da both arms fail: `I5: the guest read a real token through an opaque target` and `I6: upstream got the real secret for
+authority other.example`. Outcome: CONFIRMED by the verifier, who ran the test, wrote the raw request line over TLS in a probe of
+its own with the same result, and checked the fixture against the path cmd/workcell builds (Serve, the SNI peek,
+serveTerminated, the ReverseProxy over p.transport; the doubles are lookup, dial, roots and broker only). Arm a, high: the
+operator has a `signin:` row and signs in for the session, the code reaches the guest's CLI as it must, the guest exchanges it
+through the opaque target and keeps both real tokens, and refreshes by itself afterwards (an opaque refresh with the real
+refresh token gave 200 and a new access token); an opaque refresh with the placeholder crosses unswapped and gets 400, so the
+proxy adds no real value itself; origin form, plain absolute form and `x://host/path` all come back with placeholders. The only
+thing needed of the server is that it serves absolute-form, which the RFC demands and unmodified net/http does; it would be
+medium if that, or the unsupported state of sign-in (docs/providers.md), counted as the precondition. Arm b, medium: the peer is
+the vetted address and the certificate is example.com's, so I6's letter (SNI, Host header, certificate) holds, but the product
+already refuses the same request in plain absolute form with 421 host_mismatch, so the opaque form evades an existing check;
+harm needs the allowed name to sit on a shared front end that routes on the target's authority, which the attacker does not
+control (a neighbour tenant there is an in-scope host, not a compromised provider). Narrowed rows are safe (POST /v1/ and repos
+rules gave 403); rows with no path, which is every shipped provider row, are exposed. HTTP/1.1 only: the terminated side offers
+no h2. This contradicts the second half of the S-1005 sentence above ("An opaque target reaches the right host as a malformed
+request-target only"): only shapes such as `x:oauth/token` are malformed. Fix unit: S-F25. Variants not expressed: an encoded
+authority (`x:https:%2f%2f...`), `OPTIONS *`, a second request pipelined after a 502. Ported: also in v1 main:
+egressproxy/terminate.go (signin.go is v2's own).
+Upstream: the forwarding half is public as Go issue 82431 (ReverseProxy does not clear URL.Opaque; closed 2026-11-04, fixed on
+Go's main branch, not in go 1.27.4, which a run on 1.27.4 showed), so S14 holds nothing back; S-F25 is still needed.
 
 C33. ID I5 (a placeholder is useless outside its binding). Attacker: guest root. Where: internal/proxy/terminate.go admits (128
 to 130) with fold in internal/proxy/signin.go (84). Input: under a rule narrowed to POST with path `/v1/`, the guest sends
@@ -2517,8 +2553,8 @@ appends the re-marshalled leading JSON number of the output to hide's raw bytes 
 `1` completes `sk-acc%2F1` across a seam no client reads: decoded as a form the bytes are `1sk-acc/`, and a JSON reader sees the
 number 1 and then garbage. I5 holds. The judge's over-reading is a PARKED line; the crasher stays out of the tree.
 
-Handoffs: three fix units, S-F26 to S-F28, below S-1016b in PLAN.md, each starting with the move of its parked test (146 test
-lines under escape/_pending/). This part confirmed three medium readings, so by S8 the sweep count rises at S-1017
-whatever the later parts find. For S-1018: C33 is "a check that reads one form of the request while another form
+Handoffs: four fix units, S-F25 to S-F28, below S-1016b in PLAN.md, each starting with the move of its parked test (196 test
+lines under escape/_pending/). This part confirmed one high and four medium readings, so by S8 the sweep count rises at S-1017
+whatever the later parts find. For S-1018: C32 and C33 are both "a check that reads one form of the request while another form
 is forwarded", the class of C10; C34 and C35 are the class of C19 to C30, repository content steering what user-level config
 does. The sixteen notes that run A's reviewers set aside are in PARKED.md (fifteen lines, one note was given twice).
