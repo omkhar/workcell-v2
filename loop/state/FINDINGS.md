@@ -2558,3 +2558,87 @@ lines under escape/_pending/). This part confirmed one high and four medium read
 whatever the later parts find. For S-1018: C32 and C33 are both "a check that reads one form of the request while another form
 is forwarded", the class of C10; C34 and C35 are the class of C19 to C30, repository content steering what user-level config
 does. The sixteen notes that run A's reviewers set aside are in PARKED.md (fifteen lines, one note was given twice).
+
+### S-1016c: mount mode and the workspace export, at main c588645 (twelve findings)
+
+Method. The Mac gate was green on the unchanged tree first (73 rows, GATE PASS in 423s). internal/fileserve is Linux only, so
+its tests ran as linux/arm64, as root, in a workcell guest on the Mac (a cross-compiled test binary in a clone-mode session, no
+network); the regression tests of C17 and C18 pass there (TestGrowthCap, TestGrowthCapAppend create and open,
+TestGrowthCapEntries symlink, mkdir and create), and those of C19, C28, C29, C20 and C31 pass on the Mac itself. One redteam per
+topic compared each finding, input by input, with what the fix covers on main, by running; a test for what was left went under
+escape/_pending/ and ran by `go test -overlay`; the orchestrator ran each again and kept the logs under loop/private/; one
+verifier per candidate got the claim, the test and the log.
+
+| finding | outcome |
+|---------|---------|
+| C F3 | DUPLICATE of C17 (fixed by S-F10) |
+| B F1, C F6 | DUPLICATE of C18 (fixed by S-F11) |
+| C F4 | DUPLICATE of C19 and C29 (fixed by S-F12 and S-F21) |
+| C F14, C F15, C F16 | DUPLICATE of C28 (fixed by S-F20), one claim three times |
+| C F23, C F24 | CONFIRMED, C38 (low), the sites of C31's class that S-F23 did not touch; C F23's pull arm is a DUPLICATE of C20 |
+| C F26 | DOWNGRADED to low, C39: no break shown, no fix unit, PARKED |
+| B F8 | REFUTED, C40: the stated meaning of --mount, residual risk for the report |
+| C F5 | needs the maintainer, see the run's transcript |
+
+Duplicates, with what was run. C F3: openFlags keeps O_ACCMODE and O_TRUNC only, so no host descriptor carries O_APPEND whatever
+access mode the guest asks for, and TestGrowthCapAppend passes. B F1 and C F6: charge takes one 4096-byte block before each
+Symlinkat, Mkdirat and create, and removal gives nothing back; TestGrowthCapEntries passes on all three arms. Nothing else makes
+an entry: raw MKNOD, LINK and SETXATTR frames against the real Server are answered ENOSYS (a raw MKDIR built the same way was
+served, so the frames were well formed), RENAME between 250-byte names reuses freed slots, and create-then-unlink churn only
+makes the cap stricter. C F4: holds() refuses, on resolved paths, a cwd that holds or lies inside the data or the config
+directory, before newSession, the key and the export; beyond the arms of the C19 and C29 tests, a config directory inside a
+mount session's cwd and a cwd strictly inside the config directory were run and are refused. C F14 to C F16: session refuses a
+mount session whose cwd holds os.TempDir() before any socket directory is made; beyond the arms of the C28 test, a TMPDIR with
+a trailing slash, with a `..` component and equal to cwd were run and are refused, and cwd `/` holds every directory.
+
+C38. ID none directly: I12's "confuse the host" in spirit and the product's own rule, set by C20 and C31, that a guest- or
+repository-chosen name is quoted before it reaches the operator's terminal. Attacker: a malicious repository alone, which C31's
+trigger could not be. Where: internal/rootfs/ext4file.go openSource (line 98 returns os.OpenFile's *os.PathError unwrapped,
+line 104 formats `%s changed while the image was written`) and fileSink.file (line 87, `copy %s: %w`); WriteExt4File prefixes
+`rootfs: write image:`, cmd/workcell/run_vm.go wraps it (126) and run prints it with Fprintln (77). Input: the repository holds
+a non-empty file whose absolute path passes PATH_MAX (1024 on macOS, 4096 on Linux) below a directory whose name holds ESC, BEL,
+the C1 CSI or a bidi override. Git commits, clones and checks out such a path, because it works relative to the work tree
+(checked with git 2.56.1: a relative path of 1015 bytes, clone exit 0, status clean). The descriptor-relative walk reaches the
+file and openSource then opens it by absolute path. Effect: the operator's first clone-mode `workcell run` in the checkout
+exits 125 before any boot and prints one line, `workcell: copy <cwd> for the guest: rootfs: write image: open <path>: file name
+too long`, with the name's control runes raw: a title set, a screen cleared, the line reordered, a forged `workcell:` line
+where the name holds CR or LF. Reproducing test: escape/_pending/S-F29/c38_test.go TestC38ExportErrorQuotesFilePath (redteam;
+package workspace; arm 1 is Export on a tree past PATH_MAX on both systems, arm 2 is WriteExt4File with a source that is no
+longer the file the walk saw, the line-104 site; the judge is strconv.IsPrint per rune). On c588645 both arms fail: `the error
+carries a rune the terminal would obey`. Outcome: CONFIRMED, low, by the verifier, who built the repository with git, ran the
+built binary in the clone with scratch data and config directories and found the bytes raw on stderr (1 ESC, 1 BEL, 1 C1 CSI,
+1 RLO), which the redteam had only read; not a duplicate, since C31's and C20's tests pass on this tree while this one fails
+and neither record names ext4file.go. No invariant breaks; the effect is C31's and the reach is wider (no earlier session, both
+systems). Line 104 printed raw in 3 runs of 3 with a host-side writer, which alone is out of scope; a live mount guest on the
+same tree is its in-scope route, read and not run. Other inputs were run and are covered: an unreadable directory and a name
+over 255 bytes are quoted by S-F23, and a mode-0 non-empty regular file, the lead S-F23's reviewer parked, prints raw through
+the same line 98 (guest root of an earlier mount session, operator not root). Fix unit: S-F29, net 0 product lines by quoting.
+The fix must quote, not open by descriptor: arm 1 fails the test if Export succeeds. Variants not expressed: line 87 (ENOSPC or
+EIO while copying, no deterministic trigger), the Linux run of the test (vet only). Not ported: internal/rootfs is v2's own.
+
+C39. C F26: session takes cwd as a string from os.Getwd, and workspace.Export opens that path again (workspace.go 40, no
+O_NOFOLLOW) after holds(), newSession and the audit start, so the guest of a mount session on an ancestor directory could swap
+the directory for a symlink in that window and the new clone session's image would be built from another host directory (I1).
+The redteam's test made the path a symlink and showed that Export copies its target. Outcome: DOWNGRADED to low by the verifier,
+no break shown: the test cannot tell the attack from `cd ~/link-to-project; workcell run`, where os.Getwd gives the logical
+path and following it is intended (S-1008 calls the symlinked cwd DX), so it shows no power an attacker has. The mechanism is
+real (the window exists, nothing resolves again after holds(), and fileserve renames a directory and symlinks its old name),
+but the break needs a second, clone-mode session that the operator starts inside a live mount's tree, a won race, and a way
+out for what the second guest reads under default-deny egress; the first guest cannot itself read through a link it plants
+(ELOOP, ENOTDIR). The tool rated it low too. No fix unit under the freeze; the test left the tree; a PARKED line holds the
+hardening (open cwd once in session and hand that descriptor to Export and to the mount service; O_NOFOLLOW on the leaf alone
+would refuse a symlinked cwd), and S-1018 lists it (S7). A real proof would be a VM row: a mount guest that swaps while a
+clone session starts in a subdirectory.
+
+C40. B F8: mount mode serves the repository's .git read-write, while pull and diff refuse every .git component, so a hook or
+a git config the guest writes there runs at the operator's next git command on the host. Outcome: REFUTED as a break by the
+redteam, no test: .git lies inside the mounted directory, so I1 holds; I8 binds what brings results back, and a mount brings
+nothing back; `workcell explain` says of a mount session "The agent writes directly to the real tree: every change it makes
+lands there as it is made", and what a human later does with a tree a session wrote is out of scope (SPEC section 2), as a
+hostile Makefile in the same tree is. S-1008 noted the same as residual risk. What no document says is that .git, hooks and
+git config are part of that tree; S-1018 carries the sentence (PARKED).
+
+Handoffs: one fix unit, S-F29, below S-1016c in PLAN.md, starting with the move of its parked test (51 test lines). This part
+confirmed nothing at medium or above in public; S-1016b already raised the sweep count (S8). Seven of the twelve findings were
+duplicates of fixes that landed after the scans, and each fix covered every input its findings gave. One finding needs the
+maintainer.
