@@ -13,5 +13,8 @@ import (
 // vmmBinary is the pinned VMM the data directory must hold here: Firecracker (ADR-001).
 const vmmBinary = "firecracker"
 
+// probeEvery is zero, never: a guest that restarts ends Firecracker (reboot=k), and the channel with it.
+const probeEvery = 0
+
 // newMachine is the Linux backend: Firecracker, a child of this process.
 func newMachine(a artifacts, c vmm.Config) vmm.Machine { c.Binary = a.binary; return fc.New(c) }

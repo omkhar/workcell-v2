@@ -26,7 +26,7 @@ const (
 	MaxStdin    = 64 << 10
 )
 
-// Frame types. The host sends the first four; the init sends the rest.
+// Frame types. The host sends the first four and the last; the init sends the rest.
 const (
 	TypeExec   uint8 = 1 // an Exec: run one command. The init runs one at a time
 	TypeStdin  uint8 = 2 // bytes for the command's stdin; an empty payload closes it (pipes only)
@@ -36,6 +36,8 @@ const (
 	TypeStderr uint8 = 6 // bytes the command wrote to stderr, without a PTY
 	TypeExit   uint8 = 7 // an Exit: how the command ended
 	TypeAck    uint8 = 8 // four bytes, big-endian: how many bytes of one Stdin frame the init has written to the command
+	// TypePing has no payload and no answer: the write itself tells the host whether the guest that dialled still runs (I12).
+	TypePing uint8 = 12
 )
 
 // A Pull brings the work tree back. The host sends TypePull, with no payload, while no command

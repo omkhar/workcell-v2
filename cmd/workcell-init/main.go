@@ -206,6 +206,7 @@ func serve() error {
 				} else if cmd != nil {
 					_ = unix.Kill(-cmd.pid, unix.Signal(sig))
 				}
+			case guest.TypePing: // nothing to do: the host only had to write (I12)
 			case guest.TypePull:
 				if cmd != nil {
 					return errors.New("the host asked for the work tree while a command runs")

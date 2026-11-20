@@ -423,6 +423,17 @@ precondition being that the host sends nothing. Either way I12 is in escape/enfo
 until the row passes. Fix unit: S-F24 (env:macos), below S-1016a in PLAN.md; the row stays in the suite, so nothing waits
 under escape/_pending/. Not S14: internal/vmm/vz is not ported and the wait is this repository's own. The logs are in
 loop/private/ on the Mac (c5-mac-7c46d53-I12.log, gate-mac-87ad563.log, c5-verifier/).
+C5 FIXED by S-F24, commit 1355180 (Mac mode, no pull request of its own). On vz the supervisor now writes one frame with no
+payload, guest.TypePing (type 12), to the guest every 2 s (probeEvery in cmd/workcell/backend_darwin.go; the case in session's
+select in run_vm.go); a guest that restarted answers the write by closing the channel, output reports guest channel: EOF and
+the run ends with exit 125 within about two periods. On Linux probeEvery is 0, time.Tick gives a nil channel and nothing is
+sent, since reboot=k already ends Firecracker; the init ignores type 12 (cmd/workcell-init/main.go). vz alone was not
+enough, measured: across three restarts the framework reported only Starting and Running, the accepted connection showed
+nothing to read, poll or SO_ERROR, and the one thing the vz layer sees, the new init's dial of the closed port, would end
+any run whose guest dials 5000 again. Paid by comment folds in internal/vmm/vz (no code line changed there): product 14998
+of 15000. Test: the row I12 guest-reboot, unchanged, fails on a505c35 (the run did not end within 15s) and passes on
+1355180 on the Mac; no Firecracker run was possible here, so the hosted gate is its first Linux run. Not covered: a guest
+that halts without restarting still holds a headless run open until a signal or stop, on both backends as before.
 
 ## S-1004: network path and proxy core: routing, SNI, ECH, connection handling, fail-closed behaviour (I2, I4, I11), as built at main 5f5b941
 
