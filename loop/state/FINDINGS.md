@@ -2417,3 +2417,108 @@ C19, C21, C28, C29 and C30 its members. The redteam variants that need a VM (the
 consequences, the end-to-end raw prints) are the first escape rows to add if test lines are freed after the freeze. Product is at
 15000 of 15000 and test at about 28050 of 28500 with the four parked files, which already count under escape/, so the moves cost
 nothing and every product line of the fixes must be paid by a fold.
+
+## S-1016: the tool findings and the Mac fuzz crasher (S10), triaged under S4 against main as it stands
+
+Inputs, under loop/private/findings-in/, which git ignores (H-1015): three result sets of the Claude Security plugin at `high`,
+A 20261117-123751 (whole repository, scanned at 7731bd9, 10 findings), B 20261118-221116 (nine directories, at 7731bd9, 16) and
+C 20261119-115858 (whole repository, at 1e6a754, 26), and one crasher of FuzzHide from the four-hour Mac run of the five ported
+fuzz targets. The findings are the candidates, so no auditor ran. Their text was read as data. Each is judged against main, not
+against the scanned commit, and has exactly one outcome; S-1016 holds the closing count. Parts: S-1016b (below), S-1016c, S-1016d
+and S-1016.
+
+### S-1016b: the proxy and the secrets, at main 05a59da (twelve findings and the crasher)
+
+Method. One redteam per topic wrote a test in the package where it will live and ran it through `go test -overlay` from
+escape/_pending/, so no file lay in internal/ or cmd/; the orchestrator ran each test again and kept the logs under loop/private/
+(c33-run.log to c35-run.log); one verifier per candidate got the claim, the test and the log, and tried to refute it. The Mac
+gate was green on the unchanged tree before (73 rows, GATE PASS in 430s).
+
+| finding | outcome |
+|---------|---------|
+| A F17, A F18, A F19, C F1, C F2, C F7 | needs the maintainer, see the run's transcript |
+| C F9 | CONFIRMED, C33 (I5, medium) |
+| A F20, B F6, B F7 | CONFIRMED, C34 (I5 through I13, medium), one defect with two paths |
+| C F10 | CONFIRMED, C35 (I13, medium) |
+| A F24 | DOWNGRADED to low, C36: intended prefix rule, no fix unit, PARKED |
+| crasher FuzzHide/cff1bc4cc7889cf3 | REFUTED, C37: the fuzz judge, not hide |
+
+C33. ID I5 (a placeholder is useless outside its binding). Attacker: guest root. Where: internal/proxy/terminate.go admits (128
+to 130) with fold in internal/proxy/signin.go (84). Input: under a rule narrowed to POST with path `/v1/`, the guest sends
+`POST /v1/a%2Fb/../../admin` with the placeholder. admits judges the path as sent (the prefix /v1/ holds) and fold's reading,
+which decodes %2F before path.Clean and gives /v1/admin; no reading cleans the still-encoded path, and the path is forwarded as
+sent. An upstream that removes dot segments while %2F is still opaque and decodes afterwards (RFC 3986 5.2.4 on the raw path)
+serves /admin with the real secret, outside the rule; the comment above admits promises that neither an encoded slash nor `..`
+leads out on either reading. Reproducing test: escape/_pending/S-F26/c33_test.go (redteam; package proxy, C10's fixture, an
+upstream that reads path.Clean of EscapedPath). On 05a59da it fails: `I5: upstream served "/admin" with the real secret, outside
+the rule's path "/v1/"`. Outcome: CONFIRMED, medium, by the verifier: not a duplicate of C10, whose test upstream decodes first and serves this
+spelling inside the rule, and whose nearest row needs a ;param; a WHATWG URL parser gives /admin for it (checked with node),
+which is how fetch-style runtimes read a path, and from memory Kestrel, Envoy with normalize_path and Jetty or Tomcat with
+encoded separators allowed do too, while nginx and HTTP.sys decode first and Apache and default Tomcat refuse %2F; Go's ServeMux
+answers 307 to /admin, whose resend the product refuses. Medium as C10: the bound host must sit behind such a router. Fix unit:
+S-F26. Variants not expressed: double percent-decoding (PARKED), the same spelling against a repos rule. Ported: also in v1
+main: egressproxy/terminate.go.
+
+C34. ID I5, reached through I13. Attacker: the malicious repository. Where: internal/policy/policy.go Narrow (the name path at
+140, the allow path at 147), cmd/workcell/policy.go loadPolicy, and internal/proxy/signin.go tokenEndpoint, which rewrites a
+token answer only for a host that has a sign-in rule. Input: the user's config has a [[secret]] row with a `signin:HOST/PATH`
+source. The repository's workcell.toml either names a [[secret]] row of another name (A F20), or gives an allow array that keeps
+the token host and leaves out the row's API host (B F6); B F7 is both, seen from loadPolicy. Narrowing drops the row and leaves
+the token host allowed and terminated on 443, so the session starts with no rule that reads that host's token answers, and when
+the operator completes a sign-in in that session the real access and refresh tokens reach the guest. `run` says nothing: it
+discards the note that `explain` prints. Reproducing test: escape/_pending/S-F27/c34_test.go TestC34SignInRowDropped (redteam;
+package main in cmd/workcell, through loadPolicy as run calls it; it first checks that without a repository file the rule
+exists). On 05a59da both subtests fail: `I5: the session starts with the token host login.c34.test allowed on 443 and no rule
+that rewrites its token answers`. The test stops at the effective policy. Outcome: CONFIRMED, medium, by the verifier, who
+closed that gap with a scratch test on the sign-in fixture of internal/proxy: with the rule the guest reads placeholders, and
+with Terminate given no rule, which is what run builds once the row is gone, it reads `200 {"access_token":"sk-acc-1",...,
+"refresh_token":"sk-ref-1"}`. Not intended: docs/policy.md documents dropped rows as a narrowing and nowhere says that a dropped
+sign-in row leaves its token host open and unread. Medium, not high: it needs a user config with a sign-in row, and an operator
+who signs in inside that hostile session; sign-in is supported for no shipped provider, which narrows reach and does not make it
+low. Fix unit: S-F27. Variants not expressed: the wire proof on a real VM (the sign-in sandbox plus a workcell.toml in the
+workspace), a mount session whose earlier guest wrote workcell.toml, a repository naming only a second row on the same host.
+Not ported: internal/policy, cmd/workcell and signin.go are v2's own.
+
+C35. ID I13 (workspace content can only narrow), with I5 through it reasoned and not shown. Attacker: the malicious repository,
+and a mount guest that writes the file live. Precondition the attacker does not control: the user's config has a `cmd:` row
+whose program honours its working directory. Where: internal/secret/source.go run, which sets cmd.Env and no cmd.Dir; nothing
+in cmd/workcell changes directory, session takes the workspace from os.Getwd, and the in-process broker resolves on each use of
+the placeholder (terminate.go 424, Lookup, Resolve, run), so the helper's working directory is the repository and the guest
+picks the moment. Input: the repository holds what the helper looks up from its working directory. Reproducing test:
+escape/_pending/S-F28/c35_test.go TestC35CmdHelperDoesNotObeyTheRepository (redteam; package secret, a helper the test builds).
+On 05a59da it fails: `I13: the helper resolved "repository-value in <dir>": the repository's c35.conf decided the value; want
+operator-value`; with cmd.Dir set to / in an overlay copy it passes. Outcome: CONFIRMED, medium, by the verifier, whose own
+probe through Resolve with a system program showed more than the test's stand-in: `cmd:/usr/bin/python3 -m keyring get workcell
+anthropic`, the documented use of that tool, with a planted keyring/__main__.py in the working directory returned the
+repository's value and wrote a marker as the operator's uid, and a planted base64.py beat the installed module for
+`python3 -m base64`: repository code running on the host as the operator, outside the guest and the egress policy. The redteam
+saw the same with `git config --get` and a `!` alias from the directory's .git/config. Value substitution alone gains nothing,
+since the guest can already send any value to the bound host; the break is the code. The fixed program path and the scrubbed
+environment stop PATH and variable hijack and not the search of the working directory; docs/policy.md lists what the helper
+inherits and is silent on the directory, and the `cmd:` form gives the operator no way to set one. Medium as C21 and C30, on an
+operator-side precondition that here is a documented config form. `keychain:` and `secret-service:` are not affected. Fix unit:
+S-F28. Variants not expressed: the live mount race on a VM, a helper that prompts on the supervisor's terminal, a relative HOME
+inherited by the helper. Ported: also in v1 main: credbroker/cli.go (resolveSource, the origin U-400b names).
+
+C36. A F24: a rule's path is a raw string prefix with no segment boundary, so under path `/repos/acme/app` the request
+`GET /repos/acme/app-secrets/contents/prod.env` gets the real secret. The redteam's row showed the effect on 05a59da. Outcome:
+DOWNGRADED to low by the verifier, no break of I5's wording: every statement of the product says prefix (docs/policy.md "under
+that path prefix", explain's "under <path>", the 403 text, the comment on TestTerminateNarrowedRule), no shipped provider file
+sets a path, only `repos` has a boundary because a repository is a name, and a user who means the directory writes the trailing
+slash. The tool rated it low too. No fix unit under the freeze; the row was taken out of the C33 test, a PARKED line holds the
+hardening (a boundary match or one sentence in docs/policy.md), and S-1018 lists it (S7). Its ;param, backslash and repos
+spellings are C10's, fixed by S-F5.
+
+C37. The crasher internal/proxy/testdata/fuzz/FuzzHide/cff1bc4cc7889cf3, `string("10sk-acc%2F")`. It still fails FuzzHide on
+05a59da (`hide("10sk-acc%2F") = "10sk-acc%2F10", carries sk-acc%2F1`) and minimises to `1sk-acc%2F`. Outcome: REFUTED as a
+product finding by the redteam, with no test: hide's own output for the minimised input is `1sk-acc%2F`, which holds no spelling
+of the real token sk-acc/1 (its escaped spelling ends in a 1 that is absent). The failure is made by the target's judge, which
+appends the re-marshalled leading JSON number of the output to hide's raw bytes and searches the joined text, so the appended
+`1` completes `sk-acc%2F1` across a seam no client reads: decoded as a form the bytes are `1sk-acc/`, and a JSON reader sees the
+number 1 and then garbage. I5 holds. The judge's over-reading is a PARKED line; the crasher stays out of the tree.
+
+Handoffs: three fix units, S-F26 to S-F28, below S-1016b in PLAN.md, each starting with the move of its parked test (146 test
+lines under escape/_pending/). This part confirmed three medium readings, so by S8 the sweep count rises at S-1017
+whatever the later parts find. For S-1018: C33 is "a check that reads one form of the request while another form
+is forwarded", the class of C10; C34 and C35 are the class of C19 to C30, repository content steering what user-level config
+does. The sixteen notes that run A's reviewers set aside are in PARKED.md (fifteen lines, one note was given twice).
