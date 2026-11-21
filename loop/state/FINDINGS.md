@@ -2505,6 +2505,19 @@ answers 307 to /admin, whose resend the product refuses. Medium as C10: the boun
 S-F26. Variants not expressed: double percent-decoding (PARKED), the same spelling against a repos rule. Ported: also in v1
 main: egressproxy/terminate.go.
 
+also in v1 main: egressproxy/terminate.go
+C33 FIXED by S-F26, commit 5983bd9 (PR #255). admits in internal/proxy/terminate.go and tokenEndpoint in internal/proxy/signin.go
+now judge a path under a third reading beside the path as sent and fold's: fold of the path with each encoded slash or backslash
+(%2F, %5C, any hex case) doubly encoded, so that ;params are cut, everything else is decoded, a backslash is folded and the dot
+segments are resolved while the separators stay opaque, as a router that removes dot segments before it decodes reads it. A path
+is admitted under a prefix, or within a repository, only when every reading stays inside; a token-endpoint path is claimed when
+any reading names it. The builder drove %2E%2E and .%2E dot segments, lowercase hex, mixed %2F and %5C, %252F, a ;param beside
+the dot segment and a trailing .. through a throwaway test: all refused under POST /v1/, and /v1/a%2Fb/c, /v1/a%2Fb/./c and
+/v1/a/../b served as before. internal/proxy/c33_test.go, moved from escape/_pending/S-F26/, states the accept text in three
+arms; the two bad arms fail on 482ad45 with `got 200 "/admin real-secret", want 403` and pass on the fix. Paid by re-wrapping the
+sign-in paragraph of signin.go: product 15000 of 15000, test 28498 of 28500. The review round did not finish: a safeguard stopped
+the reviewer, which was not retried or rephrased (S11).
+
 C34. ID I5, reached through I13. Attacker: the malicious repository. Where: internal/policy/policy.go Narrow (the name path at
 140, the allow path at 147), cmd/workcell/policy.go loadPolicy, and internal/proxy/signin.go tokenEndpoint, which rewrites a
 token answer only for a host that has a sign-in rule. Input: the user's config has a [[secret]] row with a `signin:HOST/PATH`
