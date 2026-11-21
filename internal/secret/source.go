@@ -102,9 +102,9 @@ func run(ctx context.Context, program string, args []string) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(ctx, programTimeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, program, args...)
+	cmd.Dir = "/" // never the caller's directory: that is the untrusted repository (C35)
 	cmd.Env = []string{"PATH=/usr/bin:/bin:/usr/sbin:/sbin", "LC_ALL=C"}
-	// secret-tool finds the session bus only through the last two.
-	for _, name := range []string{"HOME", "DBUS_SESSION_BUS_ADDRESS", "XDG_RUNTIME_DIR"} {
+	for _, name := range []string{"HOME", "DBUS_SESSION_BUS_ADDRESS", "XDG_RUNTIME_DIR"} { // secret-tool needs the last two for the session bus
 		if v, ok := os.LookupEnv(name); ok {
 			cmd.Env = append(cmd.Env, name+"="+v)
 		}
