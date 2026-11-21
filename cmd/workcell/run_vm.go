@@ -167,13 +167,10 @@ func session(argv []string, caps limits, mount bool, a artifacts, allow *proxy.A
 	}()
 	ours, theirs := net.Pipe() // this terminal is the first client; attach brings others
 	s.sit(ours)
-	shown := make(chan struct{})
-	go func() { client(theirs, restore, tty); close(shown) }()
+	go client(theirs, restore, tty)
 	done := make(chan result, 1)
 	go output(c, s, done)
-
-	probe := time.Tick(probeEvery) // nil, so never ready, where the VMM itself ends with a guest that restarts
-	signalled := false
+	probe, signalled := time.Tick(probeEvery), false // the probe is nil, so never ready, where the VMM itself ends with a guest that restarts
 	for {
 		var err error
 		select {
@@ -188,15 +185,18 @@ func session(argv []string, caps limits, mount bool, a artifacts, allow *proxy.A
 			signalled = true
 			err = c.WriteFrame(wire.Frame{Type: guest.TypeSignal, Payload: guest.EncodeSignal(int(sig.(syscall.Signal)))})
 		case r = <-done:
-			theirs.Close() // when no Exit came, nothing else ends the client; after one it has read it already
-			<-shown        // the last output reaches the terminal first
-			return r
+			return end(theirs, r)
 		}
 		if err != nil {
 			return result{err: fmt.Errorf("guest channel: %w", err)}
 		}
 	}
 }
+
+// end closes this terminal's client and returns r without waiting for it: a client parked in a write the terminal does not take must not hold the VM, the lock
+// and the session_end record (C50). The last output still came first: the client sits on a net.Pipe, so seat.send of the Exit returned only once the client had
+// read it, after its earlier stdout writes returned. When no Exit came, the close is what ends the client.
+func end(theirs net.Conn, r result) result { theirs.Close(); return r }
 
 // booted is a guest whose init has connected. close ends the VM and removes its files; it returns only once the VMM process is gone, so the next boot may reuse
 // the CID.
