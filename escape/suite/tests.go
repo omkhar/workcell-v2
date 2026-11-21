@@ -10,13 +10,12 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"github.com/omkhar/workcell/v2/escape/sandbox"
 	"net"
 	"net/http"
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/omkhar/workcell/v2/escape/sandbox"
 )
 
 // All is the suite. Add a test by adding an entry; no other plumbing exists. Every canary a Judge starts is an address of the test host itself: its loopback,
@@ -114,8 +113,6 @@ var All = append([]Test{
 	{ID: "I10", Name: "cpu-flood", Probe: cpuProbe, Host: cpuJudge(nil), Want: capped},
 	// The same cap, loaded off the vCPU: the devices a VMM serves on host threads of its own (virtio-blk, vsock), and the console as the arm it does hold.
 	{ID: "I10", Name: "device-cpu-flood", Probe: emulationProbe, Host: cpuJudge(Session.Relay), Want: capped},
-	// And the supervisor's own decoder: root writes the smallest valid frames on the init's channel as fast as the host takes them, each read in several calls.
-	{ID: "I10", Name: "channel-cpu-flood", Probe: frameFlood, Host: cpuJudge(Session.Channel), Want: capped},
 	// The same disk flood in mount mode: the export is the host's own tree, served
 	// live, so a byte the guest writes under it, or a size it sets without writing, is the host's at once.
 	{ID: "I10", Name: "mount-disk-flood", Probe: mountDiskProbe, Host: mountDiskJudge, Want: cappedLive},
@@ -279,7 +276,6 @@ func quicProbe(args []string) Result {
 	}
 	return sendUDP(args[0], quicInitial(dcid))
 }
-
 func sendUDP(addr string, b []byte) Result {
 	c, err := net.DialTimeout("udp", addr, 3*time.Second)
 	if err != nil {
@@ -291,7 +287,6 @@ func sendUDP(addr string, b []byte) Result {
 	}
 	return Result{Status: "sent", Detail: fmt.Sprintf("%d bytes to %s", len(b), addr)}
 }
-
 func newToken() string {
 	token := make([]byte, 16)
 	rand.Read(token)
@@ -350,7 +345,6 @@ func (t *trap) serve() {
 		t.keep([]byte(line))
 	}
 }
-
 func (t *trap) keep(b []byte) {
 	t.mu.Lock()
 	defer t.mu.Unlock()

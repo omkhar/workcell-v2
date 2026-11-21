@@ -14,6 +14,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/omkhar/workcell/v2/escape/sandbox"
 	"io"
 	"log"
 	"net"
@@ -24,8 +25,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/omkhar/workcell/v2/escape/sandbox"
 )
 
 // The I14 judges run the product's update client on the host against a channel and an upstream the judge serves on the test host's own loopback (SPEC T8),
@@ -139,7 +138,6 @@ func serve(cfg *tls.Config) (*upstream, error) {
 	go srv.ServeTLS(ln, "", "")
 	return u, nil
 }
-
 func (u *upstream) set(path string, h http.HandlerFunc) {
 	u.mu.Lock()
 	defer u.mu.Unlock()

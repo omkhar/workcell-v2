@@ -192,7 +192,6 @@ func parseTargets(args []string) (targets, Result) {
 	}
 	return t, Result{}
 }
-
 func (t targets) url(name, path string) string {
 	return "https://" + name + ":" + port(t.addrs[name]) + path
 }
@@ -207,7 +206,6 @@ func (t targets) get(name, path string) *http.Request {
 func (t targets) check() string {
 	return "check=" + report(fetch(t.get(t.bound, "/check"), t.addrs, &tls.Config{}, false)).Status
 }
-
 func port(addr string) string {
 	_, p, _ := net.SplitHostPort(addr)
 	return p

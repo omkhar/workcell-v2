@@ -10,6 +10,10 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"github.com/omkhar/workcell/v2/escape/sandbox"
+	internalpins "github.com/omkhar/workcell/v2/internal/pins"
+	providers "github.com/omkhar/workcell/v2/internal/provider"
+	rows "github.com/omkhar/workcell/v2/pins"
 	"net/http"
 	"os"
 	"os/exec"
@@ -19,11 +23,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-
-	"github.com/omkhar/workcell/v2/escape/sandbox"
-	internalpins "github.com/omkhar/workcell/v2/internal/pins"
-	providers "github.com/omkhar/workcell/v2/internal/provider"
-	rows "github.com/omkhar/workcell/v2/pins"
 )
 
 // The pin smoke rows (B6), one per provider that installs a binary. The judge serves a fake Messages API under the provider's first host (SPEC T8) and has the

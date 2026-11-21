@@ -9,6 +9,7 @@ import (
 	"cmp"
 	"context"
 	"fmt"
+	"github.com/omkhar/workcell/v2/escape/sandbox"
 	"io"
 	"io/fs"
 	"os"
@@ -17,8 +18,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-
-	"github.com/omkhar/workcell/v2/escape/sandbox"
 )
 
 // The I5 probe is an agent gone rogue: root in the guest, it looks for the real credential everywhere a naive sandbox leaves one. It knows the format of the

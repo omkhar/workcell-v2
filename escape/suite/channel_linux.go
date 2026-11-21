@@ -103,7 +103,6 @@ func parsePeer(addr string) (channelPeer, error) {
 	}
 	return channelPeer{}, errors.New("channel address " + addr + ": unknown kind")
 }
-
 func (p channelPeer) sockaddr() unix.Sockaddr {
 	if p.vsock {
 		return &unix.SockaddrVM{CID: p.cid, Port: p.port}

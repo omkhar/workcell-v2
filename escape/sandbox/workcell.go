@@ -152,7 +152,6 @@ func cpioEntry(w io.Writer, name string, mode uint32, data []byte) error {
 	_, err := w.Write(pad4(b))
 	return err
 }
-
 func pad4(b []byte) []byte {
 	for len(b)%4 != 0 {
 		b = append(b, 0)

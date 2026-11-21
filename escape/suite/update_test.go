@@ -13,14 +13,13 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"github.com/omkhar/workcell/v2/escape/sandbox"
 	"io"
 	"net/http"
 	"runtime"
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/omkhar/workcell/v2/escape/sandbox"
 )
 
 // careful is a client that makes every check ADR-004 lists, so that each judge is shown to have a pass; idle installs nothing, and sticky installs

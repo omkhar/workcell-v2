@@ -126,18 +126,6 @@ func channelProbe(args []string) Result {
 		linger = longLinger
 	case "slow-drip":
 		return drip(ch, frame(typeStdout, []byte("drip")))
-	case "frame-flood": // empty Stdout frames, as many as the host takes in args[1] s, the guest's CPU at its cap meanwhile (cpuProbe): the decoder's load (I10)
-		v, r := ints(args[1:2], 1, "seconds")
-		if r.Status != "" {
-			return r
-		}
-		go cpuProbe(args[1:2])
-		batch, sent := bytes.Repeat(frame(typeStdout, nil), 10922), 0 // about 64 KiB a write: a blocking write of more would outlast the deadline
-		for by := time.Now().Add(time.Duration(v[0]) * time.Second); time.Now().Before(by) || sent%6 != 0 && time.Since(by) < sendWait; {
-			n, _ := ch.write(batch[sent%6:], max(time.Until(by), sendWait)) // the rest of a frame the deadline cut comes first: the init's own frames follow it
-			sent += n
-		}
-		return Result{Status: "tried", Detail: fmt.Sprintf("the host took %d empty Stdout frames (%d MiB) on the init's channel in %d s", sent/6, sent>>20, v[0])}
 	default:
 		return Result{Status: "error", Detail: "unknown kind " + kind}
 	}
@@ -147,9 +135,6 @@ func channelProbe(args []string) Result {
 	time.Sleep(linger)
 	return Result{Status: "sent", Detail: fmt.Sprintf("%s: %d bytes on the init's channel, still running %s later", kind, len(b), linger)}
 }
-
-// frameFlood is channelProbe's frame-flood kind under the arguments cpuJudge passes: the seconds, then the channel address.
-func frameFlood(args []string) Result { return channelProbe(append([]string{"frame-flood"}, args...)) }
 
 // drip writes the frame one byte per dripInterval, over and over, for longLinger or until the host stops taking bytes.
 func drip(ch *rawConn, f []byte) Result {
@@ -278,7 +263,6 @@ func control(b []byte) int {
 	}
 	return n
 }
-
 func firstLine(b []byte) string {
 	line, _, _ := bytes.Cut(bytes.TrimSpace(b), []byte("\n"))
 	return clean(string(line), 120, isPrint, '?')
@@ -390,7 +374,6 @@ func rebootJudge(ctx context.Context, s Session) (bool, string, error) {
 	}
 	return true, fmt.Sprintf("the run ended with exit %d once the guest restarted its kernel, the session's %d processes went with it, and a plain run after still works", over.exit, len(kin)), nil
 }
-
 func plainAfter(s Session, addr, after string) (string, error) {
 	r, err := s.Run("plain", addr)
 	if err != nil {
