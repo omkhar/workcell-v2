@@ -2824,3 +2824,82 @@ HFS+ (every one of the sixteen code points in several positions and spellings, a
 against `.git` as directory, file, symlink or absent; and every BMP code point put into or in place of a character of `.git`)
 left `.git` unchanged in every case and found no ordinary name refused, on HFS+ and on APFS. GATE_MACOS=1 loop/gate.sh green.
 Left as they were: the diff path only reads; the destination itself is the operator's choice and is not judged.
+
+### S-1016: the last ten findings, at main 071ca1a, and the closing count
+
+Method. The Mac gate was green on the unchanged tree first (73 rows, GATE PASS in 424s). Three redteams at once, one per
+topic, judged each claim against main by running its mechanism on copies and throwaway files in a temporary directory outside
+the repository; none wrote a test and none changed a file. No candidate was offered as confirmed, so no verifier ran (S4 asks
+for one per reproducing test). Six of the ten findings are about the maintainer's kit under loop/, which is locked, no part of
+the product and deleted at cutover; no invariant or target names it.
+
+| finding | outcome |
+|---------|---------|
+| A F25, C F22 | REFUTED under R2, C46: the mechanism is real, its attacker is not in section 2, PARKED |
+| B F3, C F11 | DOWNGRADED to low, C47: kit recovery guide, not R2-valid, for the maintainer, PARKED |
+| B F13 | DOWNGRADED to low, C48: kit checker, not R2-valid, for the maintainer, PARKED |
+| B F16 | DOWNGRADED to low, C49: kit checker, not R2-valid, for the maintainer, PARKED |
+| A F26, B F12, C F21, C F25 | needs the maintainer, see the run's transcript |
+
+C46. A F25 and C F22, one claim: on Linux the escape adapter builds the session's environment from os.Environ()
+(escape/sandbox/workcell_vm.go 373) and steered (escape/sandbox/workcell_linux.go 240 to 245) appends every word that holds `=`
+to the argv of the command that asRoot wraps in `sudo -n`, which parents the steered run, so the environment of whoever runs
+the suite is readable in /proc by other local users and written to sudo's log. Outcome: REFUTED as a finding under R2 by the
+redteam, with no test in the tree. The mechanism is real: the lines, copied into a throwaway program on the Mac with a canary
+variable, gave `argv[0]=sudo argv[1]=-n ... argv[15]=FAKE_TOKEN=canary-f25-not-a-secret`. Only read, not observed, for want of
+a Linux host with sudo: that sudo stays the parent for the run and logs the command. The attacker is another local account on
+the test host or a reader of its system log, and section 2 names neither. No invariant applies: I5 speaks of the guest, and the
+suite's own secret is a canary in a file source. Hosted CI is not affected as the repository shows it: the `gate` job has
+`contents: read`, a checkout without persisted credentials, one step variable (`GATE_REQUIRE_VM`) and no secret, and the jobs
+that hold a token do not run the suite. So the exposure is a person's own Linux test host with credentials exported. On a Mac
+steered returns argv unchanged. The tool's patch no longer applies to main. Low at most, as the tool rated it twice; a PARKED
+line holds the hardening, and S-1018 lists it (S7). The parked note beside it (an environment name that starts with `-`) was
+run with GNU env 9.12: env reads such a word as an option only when it is the first word, and after the privilege drop, so it
+crosses no boundary. Not ported.
+
+C47. B F3 and C F11, one claim: loop/REFERENCE.md section 8, "Rebuild the kit" (528 to 533 on main), has the maintainer judge a
+checkpoint fetched from GitHub by eye from `git verify-tag -v`, which prints the tag's own text before the verdict. Outcome:
+DOWNGRADED to low by the redteam. Run on git 2.56.1 with throwaway repositories: an unsigned tag object whose message copies
+gpg's wording and ends in a terminal sequence was taken by the documented fetch, and `git verify-tag -v` printed that text
+first, then `error: no signature found`, exit status 1; `git verify-tag --raw` printed no VALIDSIG line. The gpg-signed cases
+were not run (no gpg command was allowed in the session); git's ssh signing format stood in and behaved alike. The guide
+itself says that nothing protects those copies, and never names the exit status; in a rebuild the scripts and the pinned
+fingerprint come from the tree the tag names, so nothing checks again. This is git's documented behaviour (`-v` prints the
+tag before validating it), so not S14. Not R2-valid: the attacker is whoever can push to refs/checkpoints/ together with a
+maintainer who misreads the screen in a rare recovery, section 2 holds neither, and no ID names the kit. The file is locked
+and the maintainer's; a PARKED line says what would close it (`--raw` and the exit status, the check that signed_by in
+loop/lib.sh already makes).
+
+C48. B F13: loop/test/check-plan.py line 200, the expression for an accept line that adds IDs to an enforced file, lets a
+backtick end one item or start the next. Outcome: DOWNGRADED to low by the redteam. Run on a copy with `python3 -I` and one
+added unit whose accept line is n items joined by a backtick: n=20 0.15s, 22 0.53s, 24 2.09s, 26 8.22s, n=40 (133
+characters) not finished at 15s, so the time doubles per item; the unchanged plan takes 0.02s and 1000 items without a
+backtick 0.03s. Neither `guard` nor the checker bounds the length of an accept line. Not R2-valid: the writer of PLAN.md is
+the loop, the effect is a hang of a checker that is run by hand (neither loop/gate.sh, loop/guard.sh nor a workflow names
+it), and no gate or signature depends on it. PARKED for the maintainer.
+
+C49. B F16: loop/test/check-prompt.sh line 71 asks its question only when a command of the clone's PROMPT.md is no part of
+any line of the kit's copy (`grep -qF`, a substring), and runs the command through `bash -c` at 179, 183 and 300. Outcome:
+DOWNGRADED to low by the redteam. Run on a byte-identical copy with every program replaced by a stand-in that logs and runs
+nothing: a C0 line that the kit does not hold was asked about and stopped; a C0 line cut out of another line of the kit (the
+bundle command of section 7b) was handed to bash with no question, as was a line spliced from two code spans. Not run: any
+write to /Users/Shared. The reach is text that already stands in a line of the kit's PROMPT.md, so no attacker-chosen
+command. Not R2-valid: it needs a draft PROMPT.md that the maintainer accepted in adopt.sh, in their own account, and no ID
+names the kit. PARKED for the maintainer.
+
+Closing count. Three result sets held 52 findings (A 10, B 16, C 26), and the Mac fuzz run one crasher; each has exactly one
+outcome, in the tables of S-1016b, S-1016c, S-1016d and this part.
+
+| outcome | findings | records |
+|---------|----------|---------|
+| CONFIRMED | 20 | C32 (6), C33 (1), C34 (3), C35 (1), C38 (2), C41 (1), C44 (6) |
+| DOWNGRADED to low | 10 | C36 (1), C39 (1), C42 (4), C47 (2), C48 (1), C49 (1) |
+| REFUTED | 5 | C40 (1), C45 (2), C46 (2) |
+| DUPLICATE of a landed fix | 13 | C1 with C2 (3), C17 (1), C18 (2), C19 with C29 (1), C20 (3), C28 (3) |
+| needs the maintainer | 4 | see the run's transcript |
+| crasher | 1 | REFUTED, C37 |
+
+Per part: S-1016b 12 and the crasher, S-1016c 12, S-1016d 18, this part 10. C43 was confirmed beside the tool's findings and
+is no tool finding. Of the confirmed records, C41 and C44 are fixed (S-F30, S-F32) and C32, C33, C34, C35, C38 and C43 wait for
+S-F25 to S-F29 and S-F31. This sweep confirmed findings at medium and above, so S-1017 counts it (S8). This part added no fix
+unit and no test.
