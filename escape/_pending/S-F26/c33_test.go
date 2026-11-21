@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Omkhar Arasaratnam
 
-// Finding C33 of S-1016b (I5), tool finding F9: a `path`-narrowed credential is released outside its rule's path. fold decodes %2F, so
-// `POST /v1/a%2Fb/../../admin` passes a rule with path `/v1/`, but a router doing RFC 3986 5.2.4 dot-removal on the encoded path (%2F opaque, as
-// path.Clean of EscapedPath) serves /admin. Real terminating Proxy + loopback upstream modelling that router. Fails until fix unit S-F26 lands, which
-// moves it to internal/proxy/c33_test.go.
+// Finding C33 of S-1016b (I5): a `path`-narrowed credential must not be released outside its rule's path. fold decodes %2F before path.Clean, so
+// `POST /v1/a%2Fb/../../admin` passes a rule with path `/v1/`, yet a router doing RFC 3986 5.2.4 dot-removal on the still-encoded path (%2F opaque,
+// as path.Clean of EscapedPath) serves /admin. Real terminating Proxy + loopback upstream modelling that router: the %2F and %5C forms with a dot
+// segment are refused 403 and the upstream never sees the real secret outside /v1/; /v1/a%2Fb/c is served as before with the real secret under /v1/.
 package proxy
 
 import (
@@ -36,8 +36,14 @@ func TestC33PathBindingReleasesSecretOutsideBinding(t *testing.T) {
 		{Host: "v.example.com", Header: "x-api-key", Placeholder: testPlaceholder, Method: "POST", Path: "/v1/"},
 	}))
 	c := clientVia(listen(t, px, 443), caPool(t, ca))
-	_, body := send(t, c, "POST", "https://v.example.com/v1/a%2Fb/../../admin", "", "", "X-Api-Key", testPlaceholder)
-	if served, value, _ := strings.Cut(body, " "); value == "real-secret" && !strings.HasPrefix(served, "/v1/") {
-		t.Errorf("I5: upstream served %q with the real secret, outside the rule's path %q", served, "/v1/")
+	for _, tc := range []struct {
+		target string
+		code   int
+	}{{"/v1/a%2Fb/../../admin", 403}, {"/v1/a%5Cb/../../admin", 403}, {"/v1/a%2Fb/c", 200}} {
+		code, body := send(t, c, "POST", "https://v.example.com"+tc.target, "", "", "X-Api-Key", testPlaceholder)
+		served, value, _ := strings.Cut(body, " ")
+		if code != tc.code || (value == "real-secret") != (tc.code == 200) || value == "real-secret" && served != "/v1/a/b/c" {
+			t.Errorf("I5: POST %s: got %d %q, want %d with the real secret only under the rule's path /v1/", tc.target, code, body, tc.code)
+		}
 	}
 }
