@@ -2572,6 +2572,17 @@ operator-side precondition that here is a documented config form. `keychain:` an
 S-F28. Variants not expressed: the live mount race on a VM, a helper that prompts on the supervisor's terminal, a relative HOME
 inherited by the helper. Ported: also in v1 main: credbroker/cli.go (resolveSource, the origin U-400b names).
 
+C35 FIXED by S-F28, commit 32c6e7d (PR #257). run in internal/secret/source.go sets cmd.Dir to `/` before it starts any
+program, so a `cmd:` helper, `/usr/bin/secret-tool` and `/usr/bin/security` all run with the root directory as their working
+directory, whatever directory the operator started the session from: `/` is root-owned, mode 755, and is never under TMPDIR
+(C28). A helper that honours a file or a module of its working directory now finds nothing of the repository's; a relative
+HOME resolves under `/` too, and a relative argument is looked up in `/` (reviewer, probes through Resolve from the repository,
+/tmp and $HOME, with HOME unset, `.`, `./sub` and a bare name). internal/secret/c35_test.go, moved from
+escape/_pending/S-F28/ with only its head comment changed, fails on main 1a57192 with the recorded I13 message and passes on
+the fix under -race. Paid by folding the secret-tool comment onto the loop line it explains: product 15000 of 15000, test
+28498 of 28500. docs/policy.md says in one sentence that the program runs in `/`. One review round, no findings.
+also in v1 main: credbroker/cli.go.
+
 C36. A F24: a rule's path is a raw string prefix with no segment boundary, so under path `/repos/acme/app` the request
 `GET /repos/acme/app-secrets/contents/prod.env` gets the real secret. The redteam's row showed the effect on 05a59da. Outcome:
 DOWNGRADED to low by the verifier, no break of I5's wording: every statement of the product says prefix (docs/policy.md "under
