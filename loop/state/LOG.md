@@ -1482,3 +1482,4 @@ Proved: redteam ran the pending test by go test -overlay on main 8785614, both b
 Review: none. A safeguard stopped the reviewer before it reported (S11); it was not retried or rephrased, and no finding exists. S-1018 should say the S-F26 fix went unreviewed.
 Learned: a reading that keeps separators opaque but decodes everything else (double-encode %2F and %5C, then fold) covers both a router that normalises %2E before dot removal and one that does not, where a plain path.Clean of EscapedPath misses the first; one regexp and a one-line helper paid for by one re-wrapped paragraph.
 Next: S-F27, S-F28, S-F29 and S-F31 are env:any for the cloud, in PLAN order; product has 0 lines of room and test 2, so each folds first, and S-F27's one-sentence doc change counts against Markdown only. S-1017 counts C33 among this sweep's confirmed findings (S8).
+## 2026-11-21T16:59Z S-F27 START mode=cloud
