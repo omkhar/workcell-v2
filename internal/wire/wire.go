@@ -39,12 +39,12 @@ type Frame struct {
 	Payload []byte
 }
 
-// Conn reads and writes frames on a Stream. One goroutine may read while another writes.
-// After any error a direction is unusable: every later call in it returns the same error,
-// so the stream is never resynchronised on bytes the guest chose.
+// Conn reads and writes frames on a Stream. One goroutine may read while another writes. After any error a direction is unusable: every later call in it
+// returns the same error, so the stream is never resynchronised on bytes the guest chose.
 type Conn struct {
 	s          Stream
-	r          *bufio.Reader // what the stream gave ahead of the frame being read: a flood of small frames costs one read, not three a frame (I10)
+	r          *bufio.Reader   // what the stream gave ahead of the frame being read: a flood of small frames costs one read, not three a frame (I10)
+	h          [headerLen]byte // the header being read, the one reader's alone: on the stack it would escape into io.ReadFull, an allocation a frame
 	limit      time.Duration
 	rerr, werr error
 }
@@ -70,7 +70,7 @@ func (c *Conn) ReadFrame() (f Frame, err error) {
 func (c *Conn) Buffered() int { return c.r.Buffered() }
 
 func (c *Conn) readFrame() (Frame, error) {
-	var h [headerLen]byte
+	h := c.h[:]
 	if c.r.Buffered() == 0 { // only a read that has to wait on the stream needs a deadline: a buffered flood of small frames sets none (I10)
 		if err := c.s.SetReadDeadline(time.Time{}); err != nil {
 			return Frame{}, fmt.Errorf("wire: clear read deadline: %w", err)
