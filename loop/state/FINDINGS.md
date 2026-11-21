@@ -2821,6 +2821,24 @@ is still that image, which replaces a check and adds none. Variants not expresse
 the silent session lives, which is then set aside and skipped until the pin changes; guest root freezing PID 1 and answering
 the host's frames itself, so that keystrokes do not close the window. Not ported.
 
+C43 FIXED by S-F31, commits b8d3148 and 0f127ff (PR #259). In cmd/workcell/update.go, apply (line 275) now puts into fresh,
+per layer it installed, the image it installed paired with the image it replaced, newline-joined, in place of the provider's
+name; fail (line 291) acts only while `current` and `previous` are still exactly that pair, in place of the name check, so
+the check is replaced and none added. The review of the first commit, which paired nothing and compared `current` alone,
+found one R2 variant (I12 with B10, low): a second start's apply installs N+1 during the silent session, the operator runs
+`--rollback`, and `current` is this start's image again while `previous` is N+1, so a forged first frame still set the
+operator's choice aside, moved `current` forward to N+1 and emptied `previous`; the pair closes it, and the second commit
+is that fix round. Probes through the real installer.update and installer.fail: the plain B9 case still sets the fresh
+layer aside and goes back; after `--rollback`, after `--to` of a version this start did not install, and after a second
+start's install plus `--rollback`, a forged first frame changes nothing. Parked as C2's accepted residual: `--rollback` then
+`--to` of the very version this start installed leaves the disk as the plain case, so fail acts and `update --to` restores
+it from disk. Net 0 product lines, paid by re-wording three comments: product 15000 of 15000; test 28500 of 28500, the
+moved test grew from 30 to 35 lines for the second-start arm, paid by re-wrapping three comments in update_test.go. Test:
+cmd/workcell/c43_test.go TestFailSparesALayerThisStartDidNotInstall, moved from escape/_pending/S-F31/ with fresh holding
+the pair and a second arm for the variant; the first arm fails on main 0c7d80f with the recorded message, the second fails
+on b8d3148 with `current "1.0.5-cc.ext4" previous "" failed "1.0.3-bb.ext4"`, and both pass on 0f127ff, also under -race.
+TestFail's rows hold the pair too. escape/_pending/ is gone. Not ported: cmd/workcell/update.go is v2's own.
+
 C44. B F2, B F4, B F5, C F8, C F12 and C F13, one claim. ID I8. Attacker: guest root in a clone session, or anything that can
 name a file in the work tree. Precondition the attacker does not control: the destination of `workcell pull` lies on a
 case-insensitive HFS+ volume. Where: cmd/workcell/pull.go checkPath (84), which refuses a component only when

@@ -86,7 +86,7 @@ func update(args []string, stdout, stderr io.Writer) int {
 }
 
 // installer is what update works with: the data directory, the rows under pins/, the client that fetches (an artifact through pins.Redirect, channel.json
-// following no redirect), the channel's URL, "" when nothing is fetched, the keys trusted to sign it, the user's cool-off (B10) and fresh, the providers whose layer apply installed in this start.
+// following no redirect), the channel's URL, "" when nothing is fetched, the keys trusted to sign it, the user's cool-off (B10) and fresh, per layer apply installed in this start, its image and the one it replaced, newline-joined.
 type installer struct {
 	dir     string
 	rows    []pins.Pin
@@ -247,7 +247,7 @@ func (in installer) daily(now time.Time) bool {
 
 // apply is what a session start makes of the manifest the last daily check kept (B9): <data>/channel.next, removed first whatever follows, is verified again
 // and its pin installed for each provider with a row, as the verb does, except that a pin whose image is the one marked failed is skipped (B10); each result or
-// error is one line on stderr, and the session goes on. It names the providers whose layer it installed, as against found current or rolled back to: fail's (fresh).
+// error is one line on stderr, and the session goes on. It pairs each image it installed, as against found current or rolled back to, with the one it replaced: fail's (fresh).
 func (in installer) apply(provs []provider.Provider, stderr io.Writer) (fresh []string) {
 	raw := marker(in.dir, "channel.next")
 	if os.Remove(filepath.Join(in.dir, "channel.next")); raw == "" || in.channel == "" {
@@ -272,23 +272,23 @@ func (in installer) apply(provs []provider.Provider, stderr io.Writer) (fresh []
 		if err != nil {
 			line = err.Error()
 		} else if now := marker(dir, "current"); now != cur && now != prev {
-			fresh = append(fresh, p.Name)
+			fresh = append(fresh, now+"\n"+cur)
 		}
 		fmt.Fprintln(stderr, "workcell: update:", line)
 	}
 	return fresh
 }
 
-// fail is the self-rollback (B10): the command's binary is a provider's whose layer apply installed in this very start (fresh), and the init could not start it, so
-// that image is named in layers/<agent>/failed, which apply skips until its pin changes and update brings back from disk, and current goes back to the previous
+// fail is the self-rollback (B10): the command's binary is a provider's whose current and previous layers are still a pair apply installed in this very start (fresh), and the init could not start it,
+// so that image is named in layers/<agent>/failed, which apply skips until its pin changes and update brings back from disk, and current goes back to the previous
 // layer by itself, nothing fetched and no manifest read; with no previous, the next session boots without the layer. One record line, "failed", names the layer set
-// aside. For a layer an earlier start installed, nothing: the guest's word alone changes nothing on the host (I12).
+// aside. For a layer an earlier start installed, or one the operator chose since (B10), nothing: the guest's word alone changes nothing on the host (I12).
 func (in installer) fail(binary string, stderr io.Writer) {
 	provs, _ := provider.All() // startup reported an error here already
 	for _, p := range provs {
 		dir := filepath.Join(in.dir, "layers", p.Name)
 		cur := marker(dir, "current")
-		if p.Binary != binary || cur == "" || !slices.Contains(in.fresh, p.Name) {
+		if p.Binary != binary || cur == "" || !slices.Contains(in.fresh, cur+"\n"+marker(dir, "previous")) {
 			continue
 		}
 		v, d := parse(cur)

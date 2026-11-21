@@ -94,9 +94,8 @@ func TestUnpack(t *testing.T) {
 	}
 }
 
-// TestUpdate walks one data directory through installs of each shape, a rollback, --to and the refusals, against a loopback TLS upstream (T8) with rows the
-// test supplies (A11): the markers only ever name a complete image, a digest mismatch or a shape refused leaves them untouched, and the record holds one line
-// per step.
+// TestUpdate walks one data directory through installs of each shape, a rollback, --to and the refusals, against a loopback TLS upstream (T8) with rows the test
+// supplies (A11): the markers only ever name a complete image, a digest mismatch or a shape refused leaves them untouched, and the record holds one line per step.
 func TestUpdate(t *testing.T) {
 	bodies := map[string][]byte{"/v1.tgz": tarball(t, "one", true, "bin/fake"), "/v2.tgz": tarball(t, "two", true, "fake-x86_64-unknown-linux-musl"),
 		"/v3.tar": tarball(t, "three", false, "bin/fake"), "/v4": []byte("#!/bin/sh\necho four\n"), "/v5.tgz": tarball(t, "five", true, "fake", "LICENSE")}
@@ -229,11 +228,10 @@ func TestUpdateUsage(t *testing.T) {
 	}
 }
 
-// TestChannel runs the product's own update client, as the [update] table of a config file sets it up (channel, ca, key), against a loopback channel (T8): a
-// valid manifest installs its pin and advances the serial kept; each hostile manifest installs nothing and leaves the serial where a verified one put it; a
-// redirect of channel.json is not followed, nor one of the artifact to a listener that is not https, while one to a path of the same https server is;
-// channel.json is read to 64 KiB and no further; --to outside pins and previous installs nothing; a valid successor installs again; the cool-off with nothing
-// before it installs nothing.
+// TestChannel runs the product's own update client, as the [update] table of a config file sets it up (channel, ca, key), against a loopback channel (T8): a valid
+// manifest installs its pin and advances the serial kept; each hostile manifest installs nothing and leaves the serial where a verified one put it; a redirect of
+// channel.json is not followed, nor one of the artifact to a listener that is not https, while one to a path of the same https server is; channel.json is read to
+// 64 KiB and no further; --to outside pins and previous installs nothing; a valid successor installs again; the cool-off with nothing before it installs nothing.
 func TestChannel(t *testing.T) {
 	pub, key, _ := ed25519.GenerateKey(rand.Reader)
 	var mu sync.Mutex
@@ -426,10 +424,9 @@ func TestChannel(t *testing.T) {
 	}
 }
 
-// TestFail: the self-rollback (B10) acts on a layer apply installed in this very start alone (fresh). For one an earlier start installed, the guest's first frame
-// changes nothing on the host: markers, images and the record stay as they were (I12). For a fresh one, the image is set aside and kept on disk, the one before
-// it is current, and one record line says failed; a later fail drops the image set aside before it. Then `update --to` the version set aside brings it back from
-// disk, without a fetch, and it is set aside no longer.
+// TestFail: the self-rollback (B10) acts on a layer apply installed in this very start alone (fresh: its image paired with the one it replaced). For one an earlier start installed,
+// the guest's first frame changes nothing on the host: markers, images and the record stay as they were (I12). For a fresh one, the image is set aside and kept on disk, the one
+// before it is current, and one record line says failed; a later fail drops the image set aside before it. Then `update --to` the version set aside brings it back from disk, without a fetch, and it is set aside no longer.
 func TestFail(t *testing.T) {
 	p, dir := must(provider.All())[0], t.TempDir() // fail finds the provider by its binary among the built-in ones
 	layers := filepath.Join(dir, "layers", p.Name)
@@ -444,11 +441,11 @@ func TestFail(t *testing.T) {
 	}
 	for _, s := range []struct {
 		name, cur, prev, want, left string   // left: the images afterwards
-		fresh                       []string // the providers whose layer apply installed in this start
+		fresh                       []string // what apply installed in this start: image, newline, the image it replaced
 	}{
 		{"a layer an earlier start installed is left as it is", img3, img2, img3, img2 + " " + img3, nil},
-		{"the layer this start installed is set aside, its image kept, and the one before it is current", img3, img2, img2, img2 + " " + img3, []string{p.Name}},
-		{"with none before, the session boots without the layer, and the image set aside before goes", img2, "", "", img2, []string{p.Name}},
+		{"the layer this start installed is set aside, its image kept, and the one before it is current", img3, img2, img2, img2 + " " + img3, []string{img3 + "\n" + img2}},
+		{"with none before, the session boots without the layer, and the image set aside before goes", img2, "", "", img2, []string{img2 + "\n"}},
 	} {
 		rec, _ := os.ReadFile(filepath.Join(dir, "updates.log"))
 		var out bytes.Buffer
