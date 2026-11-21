@@ -6,8 +6,8 @@ package secret
 // C35 (audit unit S-1016b, tool finding F10), invariant I13, and I5 through it.
 // A cmd: helper runs on the host with the session's working directory as its
 // own, and that directory is the repository. A helper that honours a file of
-// its working directory then obeys the repository. This test fails until fix
-// unit S-F28 lands, which moves it to internal/secret/c35_test.go.
+// its working directory then obeys the repository. Fixed by unit S-F28: run
+// starts every helper in /.
 
 import (
 	"context"

@@ -107,7 +107,8 @@ secrets: swapped in by the session proxy; the guest holds a placeholder
 - `file:/abs/path` reads a regular file of at most 64 KiB. Its value is its one line.
 - `cmd:/abs/program args` runs a program with no shell. Arguments are split on spaces, with no quoting.
   The environment is cleared, except `PATH`, `LC_ALL`, `HOME`, the D-Bus address and `XDG_RUNTIME_DIR`.
-  The program has two minutes.
+  The program has two minutes. It runs with `/` as its working directory, so nothing in the repository
+  or the caller's directory is read by accident.
 - `secret-service:SERVICE/ACCOUNT` runs `/usr/bin/secret-tool lookup` (Linux).
 - `keychain:SERVICE/ACCOUNT` runs `/usr/bin/security find-generic-password -w` (macOS login keychain).
 
