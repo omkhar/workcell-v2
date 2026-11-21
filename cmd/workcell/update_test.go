@@ -444,11 +444,11 @@ func TestFail(t *testing.T) {
 	}
 	for _, s := range []struct {
 		name, cur, prev, want, left string   // left: the images afterwards
-		fresh                       []string // the providers whose layer apply installed in this start
+		fresh                       []string // the images apply installed in this start
 	}{
 		{"a layer an earlier start installed is left as it is", img3, img2, img3, img2 + " " + img3, nil},
-		{"the layer this start installed is set aside, its image kept, and the one before it is current", img3, img2, img2, img2 + " " + img3, []string{p.Name}},
-		{"with none before, the session boots without the layer, and the image set aside before goes", img2, "", "", img2, []string{p.Name}},
+		{"the layer this start installed is set aside, its image kept, and the one before it is current", img3, img2, img2, img2 + " " + img3, []string{img3}},
+		{"with none before, the session boots without the layer, and the image set aside before goes", img2, "", "", img2, []string{img2}},
 	} {
 		rec, _ := os.ReadFile(filepath.Join(dir, "updates.log"))
 		var out bytes.Buffer
