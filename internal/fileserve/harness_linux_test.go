@@ -49,7 +49,7 @@ func newFixture(t *testing.T) *fixture {
 		os.Symlink("loop1", filepath.Join(e, "loop2")),
 		unix.Mkfifo(filepath.Join(e, "fifo"), 0o644),
 		os.Link(filepath.Join(dir, "other"), filepath.Join(e, "hl")),
-		os.Link(filepath.Join(e, "a.txt"), filepath.Join(dir, "hl2")),
+		os.Link(filepath.Join(e, "big"), filepath.Join(dir, "hl2")),
 	}
 	for _, d := range []string{"d", "swap", "a/b", "sub", "p/q", "r1/r2", "e1", "e2", "c1", "fgd"} {
 		steps = append(steps, os.MkdirAll(filepath.Join(e, d), 0o755))
