@@ -1495,3 +1495,4 @@ Proved: redteam ran the pending test by go test -overlay on the claim commit thr
 Review: one round, no findings. No model declined and no safeguard re-ran a request.
 Learned: when every program a package runs goes through one helper, one cmd.Dir line closes the working-directory route for all of them, and the reviewer's probe with a relative HOME showed the fix closes a variant the record only reasoned; a comment moved onto the line it explains is the cheapest fold when product is at the budget.
 Next: S-F29 and S-F31 are env:any for the cloud, in PLAN order; product has 0 lines of room and test 2, so each folds first (S-F29 is net 0). Then S-1017, which counts C32 to C35 among this sweep's confirmed findings (S8).
+## 2026-11-21T17:40Z S-F29 START mode=cloud
