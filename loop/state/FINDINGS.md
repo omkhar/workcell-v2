@@ -3122,6 +3122,21 @@ reader stays open and never reads, closed only after the judge's bound; command 
 returns within about 15 s with the command's code, Audit shows session_end, ls shows exited); the same stall on stderr;
 a PTY session whose terminal reader stops. Not S14: run_vm.go is not ported.
 
+C50 FIXED by S-F33, commit 4d76ab5 (PR #262). In cmd/workcell/run_vm.go, session() no longer waits for its first client:
+the `shown` channel is gone, the client starts as `go client(theirs, restore, tty)`, and the done arm returns
+`end(theirs, r)`, a new one-line function that closes the client's pipe end and returns r at once. No wait is needed,
+because the first client sits on a net.Pipe: seat.send of the Exit returns only once the client has read it, and the
+client reads the Exit only after each earlier stdout write returned, so the last output reached the terminal before done
+was sent; when no Exit came, the close is what ends the client, which takes the detach path. Paid by joining the probe
+and signalled declarations and one blank line: product 15000 of 15000, test 28500 of 28500. The test moved to
+cmd/workcell/c50_test.go (52 lines, as before) and calls `end` in place of its verbatim copy of the arm; the redteam and the
+reviewer each ran the pending copy on main by go test -overlay (fails with the recorded message, client parked in write(2)
+on fd 1) and the moved test on the fix three times under -race (passes in about 5 s, the seat's frameLimit drop). Probes
+through the real seat, client and output: with a draining reader, every stdout byte was on fd 1 when end ran; with no
+Exit, end returned in microseconds and the client printed detached and restored the terminal; a first client that had
+lost the seat to an attached one changed nothing. Review: one round, no findings; two notes parked (a no-Exit tail cut
+by process exit while a slow reader is mid write, and client's double restore on the detach path). Not S14.
+
 C51. ID I10 (host CPU), the supervisor's own share under a guest channel flood, which the S-F3 affinity pin does not
 cover (it pins the Firecracker child alone); the residual bound C6's verifier named. Attacker: guest root, via a
 malicious repository hook or hostile model output, on the init's channel. Where: cmd/workcell/run_vm.go output(),
