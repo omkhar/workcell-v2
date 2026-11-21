@@ -69,13 +69,10 @@ type Broker interface {
 	Tokens(host, header string) (access, refresh []byte)
 }
 
-// TerminateRule names a host whose TLS the proxy terminates and the header
-// whose placeholder value it swaps for the brokered value. Method, when set,
-// narrows the swap to requests of that method, and Path to requests under
-// that path prefix; Repos, instead of those, to the git repositories
-// "owner/name" it lists, at /owner/name or /owner/name.git and under either:
-// a placeholder sent any other way to the host is refused. SignIn, when set,
-// is the flow that issues the value (signin.go).
+// TerminateRule names a host whose TLS the proxy terminates and the header whose placeholder value it swaps for the brokered value. Method, when set, narrows
+// the swap to requests of that method, and Path to requests under that path prefix; Repos, instead of those, to the git repositories "owner/name" it lists, at
+// /owner/name or /owner/name.git and under either: a placeholder sent any other way to the host is refused. SignIn, when set, is the flow that issues the
+// value (signin.go).
 type TerminateRule struct {
 	Host        string
 	Header      string
@@ -385,8 +382,7 @@ func (p *Proxy) serveTerminated(client net.Conn, host string, replay []byte) {
 		Transport:      p.transport,
 		ModifyResponse: p.tokenResponse,
 		Rewrite: func(r *httputil.ProxyRequest) {
-			r.Out.URL.Scheme = "https"
-			r.Out.URL.Host, r.Out.Host = host, host
+			r.Out.URL.Scheme, r.Out.URL.Host, r.Out.Host = "https", host, host
 		},
 	}
 	// ponytail: no idle timeout, like splice; a peer that never closes holds the conn.
@@ -396,6 +392,12 @@ func (p *Proxy) serveTerminated(client net.Conn, host string, replay []byte) {
 		ErrorLog:                     discardLog,
 		DisableGeneralOptionsHandler: true, // OPTIONS * then meets the handler's judge like every other request (C27)
 		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// A target neither origin-form nor absolute-form (x:https://h/p parses opaque) would go upstream as a request line that no judge below saw (C32).
+			if r.URL.Opaque != "" || r.URL.Scheme != "" && r.URL.Host == "" {
+				p.Deny(host, tlsPort, "target_refused")
+				http.Error(w, "request target must be origin-form or absolute-form", http.StatusBadRequest)
+				return
+			}
 			// TRACE echoes request headers and CONNECT tunnels past the rewrite, so neither may carry a swapped key.
 			if r.Method == http.MethodTrace || r.Method == http.MethodConnect {
 				p.Deny(host, tlsPort, "method_refused")

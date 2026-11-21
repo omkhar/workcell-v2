@@ -2479,6 +2479,16 @@ egressproxy/terminate.go (signin.go is v2's own).
 Upstream: the forwarding half is public as Go issue 82431 (ReverseProxy does not clear URL.Opaque; closed 2026-11-04, fixed on
 Go's main branch, not in go 1.27.4, which a run on 1.27.4 showed), so S14 holds nothing back; S-F25 is still needed.
 
+also in v1 main: egressproxy/terminate.go
+C32 FIXED by S-F25, commit 065da63 (PR #254). The terminated handler in internal/proxy/terminate.go now refuses, as its first
+statement and so before the method, host, rule, token and placeholder judges, any request whose target is neither origin-form
+nor absolute-form: r.URL.Opaque set (`x:https://HOST/PATH`, `x:oauth/token`, an encoded authority) or a scheme with no host
+(`x:`, `x:/p`, `https:///p`); 400 with a constant body, one deny record `target_refused`, nothing dialled or sent upstream, and
+the broker is not asked. Origin-form, plain absolute-form (userinfo and http scheme included), `OPTIONS *` (C27) and CONNECT (405)
+behave as before; the reviewer wrote each form raw over TLS and read what the upstream double received. Both arms of
+internal/proxy/c32_test.go, moved from escape/_pending/S-F25/, fail on 717c747 and pass on the fix, and now also require 400.
+Paid by two folds in terminate.go (a doc comment re-wrapped, the Rewrite assignments joined): product 15000 of 15000.
+
 C33. ID I5 (a placeholder is useless outside its binding). Attacker: guest root. Where: internal/proxy/terminate.go admits (128
 to 130) with fold in internal/proxy/signin.go (84). Input: under a rule narrowed to POST with path `/v1/`, the guest sends
 `POST /v1/a%2Fb/../../admin` with the placeholder. admits judges the path as sent (the prefix /v1/ holds) and fold's reading,
