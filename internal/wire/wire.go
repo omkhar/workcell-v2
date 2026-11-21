@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Omkhar Arasaratnam
 
-// Package wire frames messages on the host-guest channel. The guest is hostile (A1), so
-// every frame has a hard size limit, checked before anything is allocated, and a hard
-// time limit, enforced by the stream's own deadlines (I12).
+// Package wire frames messages on the host-guest channel. The guest is hostile (A1), so every frame has a hard size limit, checked before anything is
+// allocated, and a hard time limit, enforced by the stream's own deadlines (I12).
 //
 // A frame is a 6-byte header, then the payload:
 //
@@ -13,6 +12,7 @@
 package wire
 
 import (
+	"bufio"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -53,6 +53,7 @@ type Frame struct {
 // so the stream is never resynchronised on bytes the guest chose.
 type Conn struct {
 	s          Stream
+	r          *bufio.Reader // what the stream gave ahead of the frame being read: a flood of small frames costs one read, not three a frame (I10)
 	limit      time.Duration
 	rerr, werr error
 }
@@ -62,12 +63,11 @@ func New(s Stream, limit time.Duration) *Conn {
 	if limit <= 0 {
 		panic("wire: the time limit must be positive")
 	}
-	return &Conn{s: s, limit: limit}
+	return &Conn{s: s, r: bufio.NewReader(s), limit: limit}
 }
 
-// ReadFrame returns the next frame. It waits without limit for a frame to begin, so an idle
-// peer is not an error; once the first byte arrives the whole frame must follow within the
-// limit. It returns io.EOF only if the stream ends cleanly between frames.
+// ReadFrame returns the next frame. It waits without limit for a frame to begin, so an idle peer is not an error; once the first byte arrives the whole
+// frame must follow within the limit. It returns io.EOF only if the stream ends cleanly between frames.
 func (c *Conn) ReadFrame() (Frame, error) {
 	if c.rerr != nil {
 		return Frame{}, c.rerr
@@ -84,7 +84,7 @@ func (c *Conn) readFrame() (Frame, error) {
 	if err := c.s.SetReadDeadline(time.Time{}); err != nil {
 		return Frame{}, fmt.Errorf("wire: clear read deadline: %w", err)
 	}
-	if _, err := io.ReadFull(c.s, h[:1]); err != nil {
+	if _, err := io.ReadFull(c.r, h[:1]); err != nil {
 		if err == io.EOF {
 			return Frame{}, io.EOF
 		}
@@ -96,7 +96,7 @@ func (c *Conn) readFrame() (Frame, error) {
 	if err := c.s.SetReadDeadline(time.Now().Add(c.limit)); err != nil {
 		return Frame{}, fmt.Errorf("wire: set read deadline: %w", err)
 	}
-	if _, err := io.ReadFull(c.s, h[1:]); err != nil {
+	if _, err := io.ReadFull(c.r, h[1:]); err != nil {
 		return Frame{}, fmt.Errorf("wire: read header: %w", unexpected(err))
 	}
 	n := binary.BigEndian.Uint32(h[2:])
@@ -104,7 +104,7 @@ func (c *Conn) readFrame() (Frame, error) {
 		return Frame{}, fmt.Errorf("%w: %d bytes declared, limit %d", ErrTooLarge, n, MaxPayload)
 	}
 	f := Frame{Type: h[1], Payload: make([]byte, n)}
-	if _, err := io.ReadFull(c.s, f.Payload); err != nil {
+	if _, err := io.ReadFull(c.r, f.Payload); err != nil {
 		return Frame{}, fmt.Errorf("wire: read %d-byte payload: %w", n, unexpected(err))
 	}
 	return f, nil
