@@ -14,13 +14,12 @@ import (
 	"github.com/omkhar/workcell/v2/internal/guest"
 )
 
-// manifest is what the guest says its work tree holds, judged entry by entry before any of
-// it is written or compared (I8). The guest chose every path, so each is refused unless it
-// is a plain relative path of sound components, and two paths that are the same under case
-// folding are refused together: a launch host folds case (P6), and there the second would
-// land on the first. Nothing the guest says beyond this is trusted; the bytes come later.
-// The entries and their names are bounded by guest.MaxEntries and guest.MaxNames, the bytes of
-// the files by limit: they can be no more than the session's image holds.
+// manifest is what the guest says its work tree holds, judged entry by entry before any of it is written
+// or compared (I8). The guest chose every path, so each is refused unless it is a plain relative path of
+// sound components, and two paths that are the same under case folding are refused together: a launch host
+// folds case (P6), and there the second would land on the first. Nothing the guest says beyond this is
+// trusted; the bytes come later. The entries and their names are bounded by guest.MaxEntries and
+// guest.MaxNames, the bytes of the files by limit: they can be no more than the session's image holds.
 type manifest struct {
 	limit   int64
 	entries []guest.Entry
@@ -59,9 +58,8 @@ func (m *manifest) add(e guest.Entry) error {
 	return nil
 }
 
-// checkPath refuses a path that could name anything but one entry beneath the directory
-// the tree goes into: absolute, empty, holding NUL, not UTF-8, or with a component that
-// is empty, ".", ".." or ".git" in any case.
+// checkPath refuses a path that could name anything but one entry beneath the directory the tree goes into:
+// absolute, empty, holding NUL, not UTF-8, or with a component that is empty, ".", ".." or ".git" in any case.
 func checkPath(p string) error {
 	switch {
 	case p == "":
@@ -100,8 +98,7 @@ func fold(s string) string {
 	}, s)
 }
 
-// shown is a path the guest chose, as one line of output may carry it: quoted when it
-// holds anything a terminal could misread.
+// shown is a path the guest chose, fit for one line of output: quoted if a terminal could misread any of it.
 func shown(p string) string {
 	if q := strconv.Quote(p); q != `"`+p+`"` {
 		return q

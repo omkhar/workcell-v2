@@ -2698,7 +2698,7 @@ and the log, and each wrote a probe of its own.
 | A F21, A F22, C F17, C F18 | DOWNGRADED to low, C42: real mechanism, no in-scope attacker, no fix unit, PARKED |
 | A F23, B F10, B F11 | DUPLICATE of C1 (fixed by S-F1) and of its accepted residual C2 |
 | (found beside them) | CONFIRMED, C43 (I12 with B10, medium), fix unit S-F31 |
-| B F2, B F4, B F5, C F8, C F12, C F13 | CONFIRMED, C44 (I8, medium), one claim six times, fix unit S-F32 |
+| B F2, B F4, B F5, C F8, C F12, C F13 | CONFIRMED, C44 (I8, medium), one claim six times; fixed by S-F32 |
 | B F9, C F19 | REFUTED under R2, C45: the mechanism is real, its attacker is not in section 2, PARKED |
 | B F14, B F15, C F20 | DUPLICATE of C20 (fixed by S-F13) |
 
@@ -2808,3 +2808,19 @@ confirmed two medium findings; S-1016b already raised the sweep count (S8). Six 
 fixes that landed after the scans. For S-1018: C43 is the third reading of one decision (C1, C2), a host state change at the
 guest's first frame, and C44 is the one place where the host's filesystem, not the product's string check, decides what `.git`
 is. Leads set aside are in PARKED.md under S-1016d.
+
+C44 FIXED by S-F32 (Mac mode, no pull request of its own; this record lies in the fix's own commit, subject `S-F32: keep pull
+out of any .git, judged by device and inode`, so it cannot carry that commit's hash). The unit's second route, on the
+maintainer's ruling, and at every directory level: put in cmd/workcell/pull_vm.go now opens an entry's path one component at a
+time, and isGit refuses a component, and the entry's own last name, that is the same device and inode as what `.git` names in
+that same parent, both read at that moment. It asks before a directory is opened, before what is there is kept or removed, and
+again right after put has made a name: a name that has just become the directory's `.git` is removed and refused, so a
+destination with no `.git` before a pull has none after it. The fix does not depend on a list of code points; checkPath keeps
+its EqualFold test and gained nothing. The moved test, cmd/workcell/c44_test.go, makes a case-insensitive HFS+ image and has
+six arms: a hook through `.g<U+200C>it`, a config through `.g<U+FEFF>it`, the same one level down in a nested repository, a
+destination with no `.git`, a `.git` that is a file (a worktree) named as the last component, and an ordinary name with a
+directory `git`, which must land. On main 9c41f1c it fails in the first five; on the fix all pass. The reviewer's own runs on
+HFS+ (every one of the sixteen code points in several positions and spellings, as file, directory, link and inner component,
+against `.git` as directory, file, symlink or absent; and every BMP code point put into or in place of a character of `.git`)
+left `.git` unchanged in every case and found no ordinary name refused, on HFS+ and on APFS. GATE_MACOS=1 loop/gate.sh green.
+Left as they were: the diff path only reads; the destination itself is the operator's choice and is not judged.
