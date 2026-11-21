@@ -2538,6 +2538,19 @@ low. Fix unit: S-F27. Variants not expressed: the wire proof on a real VM (the s
 workspace), a mount session whose earlier guest wrote workcell.toml, a repository naming only a second row on the same host.
 Not ported: internal/policy, cmd/workcell and signin.go are v2's own.
 
+C34 FIXED by S-F27, commit 4ffa02b (PR #256). loadPolicy in cmd/workcell/policy.go keeps the user's policy and builds the
+allowlist and the bindings from the narrowed one; once the --allow entries are added and the final allowlist is built, it walks
+the user's rows and refuses the session, before any boot, for a row whose source parses as a sign-in, whose token host is on the
+final port-443 allowlist (TLSHosts, so letter case and port spellings are judged as the proxy judges them) and which narrowing
+dropped: `<config.toml>:<line>: secret "k": workcell.toml drops this sign-in row but keeps its token host "login.c34.test": name
+the row there, or drop the host`, exit 2 from `explain` and `run` alike, since both call loadPolicy. A dropped row whose token
+host went with it, a repository file that keeps the row, and no repository file behave as before. Both paths of the finding, a
+[[secret]] row of another name and an allow array without the API host, are closed, and so are the --allow re-adding of either
+host, two user rows sharing a token host, and a row that bindings itself refuses (reviewer, about 25 shapes through `explain`).
+cmd/workcell/c34_test.go, moved from escape/_pending/S-F27/ unedited, states the accept text; both subtests fail on f796f2d
+and pass on the fix. Paid by re-wrapping the doc comment of loadPolicy (8 to 4 lines): product 15000 of 15000, test 28498 of
+28500. One review round, no findings. docs/policy.md says in one sentence what the refusal is for.
+
 C35. ID I13 (workspace content can only narrow), with I5 through it reasoned and not shown. Attacker: the malicious repository,
 and a mount guest that writes the file live. Precondition the attacker does not control: the user's config has a `cmd:` row
 whose program honours its working directory. Where: internal/secret/source.go run, which sets cmd.Env and no cmd.Dir; nothing

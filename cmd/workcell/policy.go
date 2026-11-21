@@ -31,14 +31,10 @@ func configFile() (string, error) {
 // repoFile is the policy a repository may carry, in the directory a session starts in.
 const repoFile = "workcell.toml"
 
-// loadPolicy reads the policy and builds what a session needs from it: the proxy's allowlist and
-// the secret bindings. The user's file is narrowed by the workcell.toml of the current directory,
-// which may take grants away and give none (I13); then the entries of this session's --allow flags
-// are added (I13: the operator typed them on the host, and the repository may not undo that). A
-// repository file that is not a regular file is ignored, with a line on stderr. A nil allowlist means
-// the policy allows nothing: no TCP port is relayed. An error names the file and line, or the flag.
-// note is a line for `explain` about what the repository file took away or asked for in vain, "" for
-// none; file is the user's policy file.
+// loadPolicy reads the policy and builds what a session needs from it: the proxy's allowlist (nil: nothing is relayed) and the secret bindings. The
+// user's file is narrowed by the workcell.toml of the current directory, which may take grants away and give none (I13), then this session's --allow
+// entries are added (the operator typed them on the host, and the repository may not undo that). A repository file that is not a regular file is
+// ignored, with a line on stderr. An error names the file and line, or the flag; note is a line for `explain` about what the repository file took away.
 func loadPolicy(extra []string, stderr io.Writer) (allow *proxy.Allowlist, secrets []binding, note, file string, err error) {
 	if file, err = configFile(); err != nil {
 		return nil, nil, "", "", err
@@ -69,14 +65,18 @@ func loadPolicy(extra []string, stderr io.Writer) (allow *proxy.Allowlist, secre
 	case len(narrowed.Allow) < len(p.Allow) || len(narrowed.Secret) < len(p.Secret):
 		note = repoFile + " narrows the policy of " + file + "\n"
 	}
-	p = narrowed
 	for _, text := range extra {
-		p.Allow = append(p.Allow, policy.Entry{Text: text}) // line 0: it comes from a flag
+		narrowed.Allow = append(narrowed.Allow, policy.Entry{Text: text}) // line 0: it comes from a flag
 	}
-	if allow, err = allowlist(p, file); err != nil {
+	if allow, err = allowlist(narrowed, file); err != nil {
 		return nil, nil, "", "", err
 	}
-	secrets, err = bindings(p, allow, file)
+	for _, s := range p.Secret { // a dropped sign-in row whose token host stays would hand the guest the real tokens of a sign-in made there (I5)
+		if si, err := proxy.NewSignIn(s.Source); err == nil && allow != nil && slices.Contains(allow.TLSHosts(), si.Host) && !slices.ContainsFunc(narrowed.Secret, func(n policy.Secret) bool { return n.Line == s.Line }) {
+			return nil, nil, "", "", fmt.Errorf("%s:%d: secret %q: %s drops this sign-in row but keeps its token host %q: name the row there, or drop the host", file, s.Line, s.Name, repoFile, si.Host)
+		}
+	}
+	secrets, err = bindings(narrowed, allow, file)
 	return allow, secrets, note, file, err
 }
 
