@@ -68,7 +68,8 @@ A repository's `workcell.toml` narrows your grants. It cannot widen them (I13).
 - An `allow` array keeps only your entries whose text is exactly the same. Other hosts it names are
   reported as not granted.
 - `[[secret]]` rows, if it has any, keep only your rows with a name it also names. Your row whose host
-  the narrowed allow list drops goes too.
+  the narrowed allow list drops goes too. A dropped `signin:` row whose token host stays allowed refuses the
+  session, since nothing would hide that endpoint's answers from the guest: name the row or drop the host.
 - Its `[workspace]`, `[resources]` and `[update]` tables are ignored. Of its `[[secret]]` rows only the
   `name` is used, but `source` is still required.
 
