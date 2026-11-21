@@ -19,7 +19,7 @@ func TestExplanation(t *testing.T) {
 		not   []string // none in the text
 	}{
 		{"clone", false, "/home/me/repo", []string{"workspace: a copy of /home/me/repo", "workcell pull", "workcell diff"}, []string{"--mount", "directly"}},
-		{"mount", true, "/home/me/repo", []string{"workspace: /home/me/repo, live (--mount)", "writes directly to the real tree"}, []string{"a copy of"}},
+		{"mount", true, "/home/me/repo", []string{"workspace: /home/me/repo, live (--mount)", "writes directly to the real tree", "can be read but not changed"}, []string{"a copy of"}},
 		{"mount names the directory as given", true, "/tmp/with space", []string{"/tmp/with space, live"}, nil},
 	}
 	for _, tc := range tests {

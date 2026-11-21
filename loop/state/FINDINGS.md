@@ -2578,7 +2578,7 @@ verifier per candidate got the claim, the test and the log.
 | C F23, C F24 | CONFIRMED, C38 (low), the sites of C31's class that S-F23 did not touch; C F23's pull arm is a DUPLICATE of C20 |
 | C F26 | DOWNGRADED to low, C39: no break shown, no fix unit, PARKED |
 | B F8 | REFUTED, C40: the stated meaning of --mount, residual risk for the report |
-| C F5 | needs the maintainer, see the run's transcript |
+| C F5 | CONFIRMED, C41 (I1, medium), public on the maintainer's ruling, together with its fix; fixed by S-F30 |
 
 Duplicates, with what was run. C F3: openFlags keeps O_ACCMODE and O_TRUNC only, so no host descriptor carries O_APPEND whatever
 access mode the guest asks for, and TestGrowthCapAppend passes. B F1 and C F6: charge takes one 4096-byte block before each
@@ -2638,7 +2638,49 @@ lands there as it is made", and what a human later does with a tree a session wr
 hostile Makefile in the same tree is. S-1008 noted the same as residual risk. What no document says is that .git, hooks and
 git config are part of that tree; S-1018 carries the sentence (PARKED).
 
-Handoffs: one fix unit, S-F29, below S-1016c in PLAN.md, starting with the move of its parked test (51 test lines). This part
-confirmed nothing at medium or above in public; S-1016b already raised the sweep count (S8). Seven of the twelve findings were
-duplicates of fixes that landed after the scans, and each fix covered every input its findings gave. One finding needs the
-maintainer.
+C41. C F5, recorded on the maintainer's ruling of 2026-11-20: it is the ordinary behaviour of a live mount and is handled in
+public, with a fix unit. ID I1. Attacker: guest root in a `--mount` session. Where: internal/fileserve/ops_linux.go open (235 to
+249, through openFile in serve_linux.go 432) and setattr (276 to 333), none of which looks at st.Nlink. Input: the mounted tree
+holds a regular file that has a second name elsewhere on the host (a hard link: a pnpm or uv store, `git clone --local`,
+`cp -l`). The guest sees Nlink 2 in every attribute answer, so it can pick such files, and writes through its own name for
+them. Effect: a host file that no path inside the export names is changed. Reproducing test, as the audit left it (S-F30 moved it to internal/fileserve/c41_test.go and added arms):
+TestC41MountDoesNotWriteThroughHardLink (redteam; package fileserve, linux; the harness fixture, whose export file `hl` shares
+its inode with dir/other beside the export; four arms, each judged only by what dir/other holds afterwards, so a fix may answer
+any errno, and a one-name file `victim` must stay writable). On f441fb0 every arm fails, run as linux/arm64 in a workcell guest
+on the Mac (log loop/private/c41-run.log): `I1: the guest changed a host file outside the export through the hard link:
+dir/other is now "pwned"` after an O_WRONLY open and a WRITE, and `is now ""` after an O_WRONLY|O_TRUNC open, after SETATTR size
+by node, and after SETATTR size by a writable fh. An arm with SETATTR size through an O_RDONLY fh passed on main and was left
+out. Outcome: CONFIRMED, medium, by the verifier, who ran the test, a probe of its own and three simulated fixes. The harness
+is fileserve.Open and Serve over a pipe, as cmd/workcell/mount_linux.go and run_vm.go wire them; root adds nothing (as uid 1000
+the write, the truncate and an O_RDWR write land too); a 0444 target does not protect (the open is EACCES, then SETATTR mode
+0644 succeeds and the write lands). Medium and not high: the tree must already hold the second name, and the guest cannot make
+one (LINK, MKNOD and RENAME2 are ENOSYS, run; RENAME moves the one name; CREATE is O_EXCL; git carries no hard link, so a
+malicious repository cannot either). Not low: a break is shown. No duplicate: S-1008's observation above (the sharing is "residual risk",
+row 18 pins that the link is served) had no reproduction and no C number, and this record replaces that reading; C40 is .git
+inside the export. Weaknesses of the test, for S-F30's redteam step: it passes after a partial fix that refuses only a
+non-O_RDONLY open and SETATTR size, while an `O_RDONLY|O_TRUNC` open still empties dir/other (openFlags lets it through); it
+has no arm for SETATTR mode (0644 became 0777 on dir/other) or times (mtime became 12345) and none for O_RDWR; the by-fh arm
+is vacuous once the open is refused. A fix that refuses by Nlink also turns TestAdversarial rows 35, 36, 39, 40 and 44 to 47
+red for the wrong reason, because the fixture's a.txt has a second name dir/hl2 beside the export and those rows open it
+O_RDWR; row 18 must change with the fix. Fix unit: S-F30. Variants not expressed: extending through the link (bytes outside the
+export against the growth cap), a link made by a host process during the session, a fh opened before the second name appears,
+and two names that both lie inside the export, which a fix by Nlink also refuses. Not ported: internal/fileserve is v2's own.
+
+C41 FIXED by S-F30, commit 41d1bd4 (Mac mode, no pull request of its own; the same hand-over as this record). internal/fileserve now
+refuses with EPERM, before anything changes, every open that is not exactly O_RDONLY and every SETATTR of mode, size or times
+on a non-directory that has a second name, or had one when its node (LOOKUP or READDIRPLUS) or its handle (OPEN) first saw it;
+O_TRUNC is an Ftruncate after the check and no longer reaches openat for an existing file. Reading, UNLINK and RENAME are as
+before, and a one-name file is unchanged but for an `O_RDONLY|O_TRUNC` open, now EINVAL. The mark is kept because the count
+alone was not enough: the unit's reviewer opened hl O_RDONLY, removed the export's name (UNLINK, or RENAME over it), so that
+the count fell to 1, and changed dir/other's mode through the held fh; by node, a request batched with the UNLINK landed 7 to
+10 times in 5000, and 0 times in 5000 after. A file whose names all lie inside the mounted tree is refused too, as docs/policy.md
+and `workcell explain --mount` now say. Test: internal/fileserve/c41_test.go, 11 arms judged by dir/other's bytes, mode and
+mtime (two writes, two truncating opens, SETATTR size, mode, mtime and mtime-now by node, mode by an O_RDONLY fh, and mode by a
+held fh after UNLINK and after RENAME over); nine fail on f441fb0, all pass on 41d1bd4, run as linux/arm64 in a workcell guest on
+the Mac. No real mount session ran there, so the hosted gate is the first run of the `mount-` rows on this change. Not covered:
+a second name made by a host process during the session, and what PARKED.md lists under S-F30.
+
+Handoffs: one open fix unit, S-F29, below S-1016c in PLAN.md, starting with the move of its parked test (51 test lines);
+S-F30 landed with this record. This part confirmed one medium finding, C41; S-1016b already raised the sweep count (S8). Seven of the twelve
+findings were duplicates of fixes that landed after the scans, and each fix covered every input its findings gave. For S-1018:
+after S-F30 the residual risk of --mount is what the guest does inside the tree (C40), not a second name outside it.

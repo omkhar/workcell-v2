@@ -42,6 +42,7 @@ type node struct {
 	name     string
 	ino, dev uint64
 	mode     uint32 // the S_IFMT bits
+	multi    bool   // a stat by its name once showed a second name. It stays: the guest can lower the link count of a host file, never raise it (single)
 	fd       int    // a directory's own descriptor, else -1
 	nlookup  uint64
 	kids     int // nodes whose parent this is; they keep it, and its descriptor, alive
@@ -54,10 +55,10 @@ type key struct {
 
 // handle is one open file or directory, bound to the node it was opened on.
 type handle struct {
-	fd   int
-	node uint64
-	dir  bool
-	mu   sync.Mutex // one READDIR at a time moves the descriptor's position
+	fd         int
+	node       uint64
+	dir, multi bool       // multi: its node was multi when it was opened, or its file then had a second name
+	mu         sync.Mutex // one READDIR at a time moves the descriptor's position
 }
 
 // link is one step of a node's chain: name in the directory open on pfd must still be the inode (dev, ino) it was when the node was made.
@@ -74,6 +75,7 @@ type loc struct {
 	fd    int // the node's own; -1 unless a directory
 	name  string
 	mode  uint32
+	multi bool
 	chain []link // the node, if a directory, then its ancestors up to the export, nearest first
 }
 
@@ -258,7 +260,7 @@ func (s *Server) loc(id uint64) (loc, syscall.Errno) {
 	if n == nil {
 		return loc{}, syscall.ENOENT
 	}
-	l := loc{id: id, pfd: -1, fd: n.fd, name: n.name, mode: n.mode}
+	l := loc{id: id, pfd: -1, fd: n.fd, name: n.name, mode: n.mode, multi: n.multi}
 	switch {
 	case n.parent == nil:
 		return l, 0
@@ -304,9 +306,8 @@ func (s *Server) at(id uint64, need syscall.Errno) (loc, syscall.Errno) {
 
 // child is the node of name in directory p, with one more lookup counted. A directory gets its own descriptor, and st is refreshed from it.
 func (s *Server) child(p loc, name string, st *unix.Stat_t) (uint64, syscall.Errno) {
-	fd := -1
+	fd, e := -1, syscall.Errno(0)
 	if st.Mode&unix.S_IFMT == unix.S_IFDIR {
-		var e syscall.Errno
 		if fd, e = s.openFD(p.fd, name, unix.O_RDONLY|unix.O_DIRECTORY, 0); e != 0 {
 			return 0, e
 		}
@@ -315,6 +316,7 @@ func (s *Server) child(p loc, name string, st *unix.Stat_t) (uint64, syscall.Err
 			return 0, errno(err)
 		}
 	}
+	multi := fd < 0 && st.Nlink > 1 // a non-directory seen, while this name of it exists, with a second name
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	parent := s.nodes[p.id]
@@ -325,7 +327,7 @@ func (s *Server) child(p loc, name string, st *unix.Stat_t) (uint64, syscall.Err
 	k := key{p.id, name}
 	if n := s.index[k]; n != nil {
 		if n.ino == st.Ino && n.dev == st.Dev && n.mode == st.Mode&unix.S_IFMT {
-			n.nlookup++
+			n.nlookup, n.multi = n.nlookup+1, n.multi || multi
 			s.closeFDLocked(fd) // private until now, so no one can be using it
 			return n.id, 0
 		}
@@ -337,7 +339,7 @@ func (s *Server) child(p loc, name string, st *unix.Stat_t) (uint64, syscall.Err
 	}
 	s.nextID++
 	n := &node{id: s.nextID, parent: parent, name: name, ino: st.Ino, dev: st.Dev, mode: st.Mode & unix.S_IFMT,
-		fd: fd, nlookup: 1}
+		multi: multi, fd: fd, nlookup: 1}
 	parent.kids++
 	s.nodes[n.id], s.index[k] = n, n
 	return n.id, 0

@@ -45,7 +45,8 @@ that one TCP port as it is. IP addresses are refused. With no entry, the guest h
 The reader checks the syntax of these tables, but not their keys yet. A typo in them passes silently.
 Use the flags instead:
 
-- `--mount` makes the workspace live. Without it the guest gets a copy (A5).
+- `--mount` makes the workspace live. Without it the guest gets a copy (A5). Under `--mount` a file with more than
+  one hard link can be read but not changed, also when all its names lie inside the directory; a copy has no such limit.
 - `--cpus` (1 to 32, default 2), `--memory` (at least 128MiB, default 1GiB) and `--disk` (default 1GiB).
 - `workcell update` installs provider CLIs. The `[update]` channel and cool-off of SPEC B10 are not read yet.
 
