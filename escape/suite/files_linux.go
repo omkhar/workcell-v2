@@ -6,13 +6,12 @@ package suite
 import (
 	"encoding/binary"
 	"fmt"
+	"golang.org/x/sys/unix"
 	"io"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
-
-	"golang.org/x/sys/unix"
 )
 
 // deviceProbe makes a block device node with the numbers args[0]:args[1] and reads through it.

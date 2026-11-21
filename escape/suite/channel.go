@@ -9,11 +9,10 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"github.com/omkhar/workcell/v2/escape/sandbox"
 	"slices"
 	"sync"
 	"time"
-
-	"github.com/omkhar/workcell/v2/escape/sandbox"
 )
 
 // SPEC I12. Root in the guest reaches the host end of the channel as a duplicate of the init's connection (pidfd_getfd on pid 1), where a forged frame is
@@ -134,8 +133,8 @@ func channelProbe(args []string) Result {
 		}
 		go cpuProbe(args[1:2])
 		batch, sent := bytes.Repeat(frame(typeStdout, nil), 10922), 0 // about 64 KiB a write: a blocking write of more would outlast the deadline
-		for by := time.Now().Add(time.Duration(v[0]) * time.Second); time.Now().Before(by); {
-			n, _ := ch.write(batch, time.Until(by)) // an error is the deadline, which ends the loop, or the host's end: nothing to do then but wait it out
+		for by := time.Now().Add(time.Duration(v[0]) * time.Second); time.Now().Before(by) || sent%6 != 0 && time.Since(by) < sendWait; {
+			n, _ := ch.write(batch[sent%6:], max(time.Until(by), sendWait)) // the rest of a frame the deadline cut comes first: the init's own frames follow it
 			sent += n
 		}
 		return Result{Status: "tried", Detail: fmt.Sprintf("the host took %d empty Stdout frames (%d MiB) on the init's channel in %d s", sent/6, sent>>20, v[0])}

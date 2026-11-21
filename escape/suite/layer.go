@@ -10,6 +10,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"fmt"
+	"github.com/omkhar/workcell/v2/escape/sandbox"
 	"io"
 	"io/fs"
 	"maps"
@@ -20,8 +21,6 @@ import (
 	"slices"
 	"strings"
 	"time"
-
-	"github.com/omkhar/workcell/v2/escape/sandbox"
 )
 
 // The provider layer row (I7, B8). The host installs the agents in layers from an upstream the judge serves (T8), each in its real upstream's shape; root in

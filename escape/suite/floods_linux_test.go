@@ -29,8 +29,7 @@ func TestBusyTicksCountsGuestTimeOnce(t *testing.T) {
 // A mount-mode disk flood whose run failed, or whose probe never reported the flood as tried, must not pass on a zero loss: the error is the row's,
 // and any other report fails the row with the guest's own words in it.
 func TestMountDiskJudgeNeverPassesWithoutATriedReport(t *testing.T) {
-	ws := t.TempDir()
-	want := errors.New("payload exited 137: killed")
+	ws, want := t.TempDir(), errors.New("payload exited 137: killed")
 	s := Session{Workspace: ws, Guest: "/workspace", Run: func(...string) (Result, error) { return Result{}, want }}
 	if pass, _, err := mountDiskJudge(context.Background(), s); pass || !errors.Is(err, want) {
 		t.Fatalf("a failed run judged pass=%v err=%v, want the run's error", pass, err)

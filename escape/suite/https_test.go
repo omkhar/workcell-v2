@@ -13,8 +13,7 @@ import (
 
 // The judges on canaries that never listened: the product's pass path, and the path where the guest reached nothing, must each return at once.
 func TestJudgesOnFakeCanaries(t *testing.T) {
-	sec := NewSecret(withSecret)
-	placeholder := secretPrefix + strings.Repeat("0", secretHex)
+	sec, placeholder := NewSecret(withSecret), secretPrefix+strings.Repeat("0", secretHex)
 	clean := request{sni: "bound.escape.test", host: "bound.escape.test:1", proto: "HTTP/1.1", method: "GET", url: "/check"}
 	withPlaceholder := request{host: "other.escape.test:2", url: "/replay", headers: http.Header{"X-Api-Key": {placeholder}}}
 	swapped := request{method: "GET", url: "/check", headers: http.Header{"X-Api-Key": {sec.Value}}}
@@ -56,8 +55,7 @@ func TestJudgesOnFakeCanaries(t *testing.T) {
 		s := Session{Allow: withSecret.Allow, Secret: sec, Run: func(...string) (Result, error) {
 			return Result{Status: c.status, Detail: "fake"}, nil
 		}}
-		bound := &canary{name: "bound.escape.test", addr: "127.0.0.1:1", seen: c.bound}
-		other := &canary{name: "other.escape.test", addr: "127.0.0.1:2", seen: c.other}
+		bound, other := &canary{name: "bound.escape.test", addr: "127.0.0.1:1", seen: c.bound}, &canary{name: "other.escape.test", addr: "127.0.0.1:2", seen: c.other}
 		done := make(chan struct{})
 		var pass bool
 		var detail string

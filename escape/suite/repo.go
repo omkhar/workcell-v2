@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/omkhar/workcell/v2/escape/sandbox"
 	"io/fs"
 	"net"
 	"os"
@@ -14,8 +15,6 @@ import (
 	"strings"
 	"sync"
 	"syscall"
-
-	"github.com/omkhar/workcell/v2/escape/sandbox"
 )
 
 // The I8 probes are a hostile repository. Root in the guest shapes its workspace so that a pull which runs git in it, trusts its configuration, or writes its

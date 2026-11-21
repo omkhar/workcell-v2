@@ -6,12 +6,11 @@ package suite
 import (
 	"errors"
 	"fmt"
+	"golang.org/x/sys/unix"
 	"io"
 	"strconv"
 	"strings"
 	"time"
-
-	"golang.org/x/sys/unix"
 )
 
 // rawConn is one end of the channel as a raw descriptor. The duplicate of the init's connection shares its file description, so nothing here changes a flag on

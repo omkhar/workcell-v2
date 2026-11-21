@@ -5,14 +5,13 @@ package suite
 
 import (
 	"fmt"
+	"github.com/omkhar/workcell/v2/escape/sandbox"
+	"golang.org/x/sys/unix"
 	"io"
 	"net"
 	"os"
 	"strings"
 	"syscall"
-
-	"github.com/omkhar/workcell/v2/escape/sandbox"
-	"golang.org/x/sys/unix"
 )
 
 // A canary or a resolver on a port below 1024 needs root on the test host, which the suite does not have on a hosted runner, where sudo answers without a

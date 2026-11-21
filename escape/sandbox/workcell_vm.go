@@ -80,8 +80,7 @@ func handedOver(argv []string, network, where string) (*os.File, error) {
 	}
 	defer ln.Close()
 	argv[len(argv)-1] = path
-	cmd := exec.Command(argv[0], argv[1:]...)
-	out := &bounded{limit: MaxStderr}
+	cmd, out := exec.Command(argv[0], argv[1:]...), &bounded{limit: MaxStderr}
 	cmd.Stdout, cmd.Stderr = out, out
 	if err := cmd.Start(); err != nil {
 		return nil, fmt.Errorf("%s: %w", where, err)
@@ -147,8 +146,7 @@ func prepareWorkcell(ctx context.Context, dir string) error {
 	if err != nil {
 		return fmt.Errorf("workcell adapter: find the module: %w", err)
 	}
-	repo := strings.TrimSpace(string(root))
-	xdg := filepath.Join(dir, "xdg")
+	repo, xdg := strings.TrimSpace(string(root)), filepath.Join(dir, "xdg")
 	data := filepath.Join(xdg, "workcell")
 	tmp := filepath.Join(dir, "build")
 	if err := errors.Join(os.MkdirAll(data, 0o755), os.MkdirAll(tmp, 0o755)); err != nil {
@@ -605,8 +603,7 @@ func (w *workcell) Install(ctx context.Context, l Layer) (string, error) {
 
 // updateTable is the [update] table of u as a user would write it: the channel, a CA file under dir, and u.Key in hex (A11).
 func updateTable(dir string, u UpdateConfig) ([]byte, error) {
-	ca := filepath.Join(dir, "ca.pem")
-	table := []byte("[update]\n")
+	ca, table := filepath.Join(dir, "ca.pem"), []byte("[update]\n")
 	var err error
 	for _, kv := range []struct{ key, value string }{{"channel", u.Channel}, {"ca", ca}, {"key", hex.EncodeToString(u.Key)}} {
 		if table, err = quoted(append(table, kv.key+" = "...), "update "+kv.key, kv.value); err != nil {

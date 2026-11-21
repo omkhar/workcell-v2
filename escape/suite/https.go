@@ -13,6 +13,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"github.com/omkhar/workcell/v2/escape/sandbox"
 	"io"
 	"log"
 	"net"
@@ -24,8 +25,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/omkhar/workcell/v2/escape/sandbox"
 )
 
 // The I6 probes and the placeholder replay drive HTTPS requests from the guest to canaries the judge runs under the session's two allowed names: the bound one
@@ -276,8 +275,7 @@ func mismatchProbe(h2 bool) Probe {
 		if bad.Status != "" {
 			return bad
 		}
-		check := t.check()
-		req := t.get(t.bound, "/mismatch")
+		check, req := t.check(), t.get(t.bound, "/mismatch")
 		req.Host = t.other + ":" + port(t.addrs[t.other])
 		return after(check, report(fetch(req, t.addrs, &tls.Config{ServerName: t.bound}, h2)))
 	}

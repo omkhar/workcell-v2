@@ -9,8 +9,7 @@ import (
 )
 
 func TestFindSecrets(t *testing.T) {
-	a := secretPrefix + strings.Repeat("a", secretHex)
-	b := secretPrefix + strings.Repeat("b", secretHex)
+	a, b := secretPrefix+strings.Repeat("a", secretHex), secretPrefix+strings.Repeat("b", secretHex)
 	cases := []struct {
 		in   string
 		want string

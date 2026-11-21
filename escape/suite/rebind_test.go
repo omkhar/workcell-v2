@@ -11,8 +11,7 @@ import (
 // TestRebindAnswer checks what the judge's resolver says, read back with the suite's own reply parser: the allowed name gets the row's records of
 // the type asked, however the name is spelled, a CNAME first when the row has one, nothing of a type it lacks, and every other name is refused.
 func TestRebindAnswer(t *testing.T) {
-	loop := rebind{a: []string{"127.0.0.1"}}
-	both := rebind{a: []string{"10.255.255.254", "169.254.169.254"}, aaaa: []string{"::ffff:127.0.0.1"}}
+	loop, both := rebind{a: []string{"127.0.0.1"}}, rebind{a: []string{"10.255.255.254", "169.254.169.254"}, aaaa: []string{"::ffff:127.0.0.1"}}
 	alias := rebind{cname: deniedName, a: []string{"127.0.0.1"}}
 	cases := []struct {
 		name    string

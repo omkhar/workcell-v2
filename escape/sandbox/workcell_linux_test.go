@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"golang.org/x/sys/unix"
 	"net"
 	"os"
 	"os/exec"
@@ -17,8 +18,6 @@ import (
 	"syscall"
 	"testing"
 	"time"
-
-	"golang.org/x/sys/unix"
 )
 
 // TestCLICancel checks that a cancelled steered session ends when its context does, and leaves no product behind: at once when the product

@@ -125,8 +125,7 @@ func (c *control) Exec(ctx context.Context, args ...string) (Output, error) {
 	defer end.Close()
 	cctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	stdout := &bounded{limit: MaxStdout}
-	stderr := &bounded{limit: MaxStderr}
+	stdout, stderr := &bounded{limit: MaxStdout}, &bounded{limit: MaxStderr}
 	host := &naiveHost{stdout: stdout, stderr: stderr, cancel: cancel}
 	host.wg.Go(func() { host.accept(c.ln) })
 	// The loader makes every mount private in the run's own mount namespace, binds the session's resolv.conf over /etc/resolv.conf, then becomes the payload,

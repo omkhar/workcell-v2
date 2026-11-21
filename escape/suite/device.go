@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"golang.org/x/sys/unix"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -14,8 +15,6 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
-
-	"golang.org/x/sys/unix"
 )
 
 // deviceJudge binds a host block device (a loop device) to an image holding the token, tells the guest its numbers, and fails if the guest reads the

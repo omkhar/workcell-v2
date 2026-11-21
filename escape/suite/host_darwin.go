@@ -30,10 +30,9 @@ import "C"
 import (
 	"errors"
 	"fmt"
+	"golang.org/x/sys/unix"
 	"os"
 	"syscall"
-
-	"golang.org/x/sys/unix"
 )
 
 // The host as the judge sees it, from Mach and sysctl: the memory the I12 flood row reads and the processes the I11 rows kill and count. The other
