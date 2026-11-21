@@ -197,7 +197,6 @@ func parseTargets(args []string) (targets, Result) {
 func (t targets) url(name, path string) string {
 	return "https://" + name + ":" + port(t.addrs[name]) + path
 }
-
 func (t targets) get(name, path string) *http.Request {
 	req, _ := http.NewRequest(http.MethodGet, t.url(name, path), nil)
 	req.Header = t.header.Clone()

@@ -111,9 +111,11 @@ var All = append([]Test{
 	{ID: "I10", Name: "disk-flood", Probe: diskProbe, Host: diskJudge, Want: capped},
 	{ID: "I10", Name: "descriptor-flood", Probe: fileProbe, Host: fileJudge, Want: capped},
 	{ID: "I10", Name: "log-flood", Probe: logProbe, Host: logJudge, Want: capped},
-	{ID: "I10", Name: "cpu-flood", Probe: cpuProbe, Host: cpuJudge(false), Want: capped},
+	{ID: "I10", Name: "cpu-flood", Probe: cpuProbe, Host: cpuJudge(nil), Want: capped},
 	// The same cap, loaded off the vCPU: the devices a VMM serves on host threads of its own (virtio-blk, vsock), and the console as the arm it does hold.
-	{ID: "I10", Name: "device-cpu-flood", Probe: emulationProbe, Host: cpuJudge(true), Want: capped},
+	{ID: "I10", Name: "device-cpu-flood", Probe: emulationProbe, Host: cpuJudge(Session.Relay), Want: capped},
+	// And the supervisor's own decoder: root writes the smallest valid frames on the init's channel as fast as the host takes them, each read in several calls.
+	{ID: "I10", Name: "channel-cpu-flood", Probe: ackFlood, Host: cpuJudge(Session.Channel), Want: capped},
 	// The same disk flood in mount mode: the export is the host's own tree, served
 	// live, so a byte the guest writes under it, or a size it sets without writing, is the host's at once.
 	{ID: "I10", Name: "mount-disk-flood", Probe: mountDiskProbe, Host: mountDiskJudge, Want: cappedLive},
@@ -409,7 +411,6 @@ func says(r Result) string { return fmt.Sprintf("guest says %s: %s", r.Status, r
 func tcpCanary(network, addr, dialHost string) Judge {
 	return trapJudge(network, addr, dialHost, lineToken, true)
 }
-
 func udpCanary(addr string, carries func(b []byte, token string) bool) Judge {
 	return trapJudge("udp4", addr, "", carries, false)
 }

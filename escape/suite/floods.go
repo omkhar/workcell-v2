@@ -17,6 +17,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/omkhar/workcell/v2/escape/sandbox"
 	"golang.org/x/sys/unix"
 )
 
@@ -151,13 +152,13 @@ func exportSize(dir string) (int64, error) {
 	return size, nil
 }
 
-// cpuJudge runs the probe for cpuSpin seconds, told the host end of the relay too when relay is set, and fails if the host spent more CPU time on
-// the run than the guest's one CPU could have, plus slack. A host with one CPU cannot show this.
-func cpuJudge(relay bool) Judge {
+// cpuJudge runs the probe for cpuSpin seconds, told a host end too when open names one (Session.Relay, Session.Channel), and fails if the host spent more
+// CPU time on the run than the guest's one CPU could have, plus slack. A host with one CPU cannot show this.
+func cpuJudge(open func(Session, context.Context) (sandbox.Channel, error)) Judge {
 	return func(ctx context.Context, s Session) (bool, string, error) {
 		args := []string{strconv.Itoa(cpuSpin)}
-		if relay {
-			ch, err := s.Relay(ctx)
+		if open != nil {
+			ch, err := open(s, ctx)
 			if err != nil {
 				return false, "", err
 			}

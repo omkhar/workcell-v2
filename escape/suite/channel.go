@@ -71,13 +71,13 @@ func hostileText(n int) []byte {
 	return b[:n]
 }
 
-// channelProbe takes the init's channel to the host at args[1] and sends the hostile traffic of kind args[0], then stays alive so that the host's answer to the
-// frame, and not the command's end, is what ends the run. The storm kind uses fresh connections instead; plain sends nothing.
+// channelProbe takes the init's channel to the host at the last argument and sends the hostile traffic of kind args[0], then stays alive so that the host's
+// answer to the frame, and not the command's end, is what ends the run. The storm kind uses fresh connections instead; plain sends nothing.
 func channelProbe(args []string) Result {
-	if len(args) != 2 {
+	if len(args) < 2 {
 		return Result{Status: "error", Detail: "want kind and channel address"}
 	}
-	kind, addr := args[0], args[1]
+	kind, addr := args[0], args[len(args)-1]
 	switch kind {
 	case "plain":
 		return Result{Status: "ran", Detail: "nothing hostile sent"}
@@ -127,6 +127,18 @@ func channelProbe(args []string) Result {
 		linger = longLinger
 	case "slow-drip":
 		return drip(ch, frame(typeStdout, []byte("drip")))
+	case "ack-flood": // 10-byte Acks as fast as the host takes them for args[1] s, the guest's CPU at its cap meanwhile (cpuProbe): the decoder's load (I10)
+		v, r := ints(args[1:2], 1, "seconds")
+		if r.Status != "" {
+			return r
+		}
+		go cpuProbe(args[1:2])
+		batch, sent := bytes.Repeat(frame(typeAck, []byte{0, 0, 0, 1}), 6553), 0 // about 64 KiB a write: a blocking write of more would outlast the deadline
+		for by := time.Now().Add(time.Duration(v[0]) * time.Second); time.Now().Before(by); {
+			n, _ := ch.write(batch, time.Until(by)) // an error is the deadline, which ends the loop, or the host's end: nothing to do then but wait it out
+			sent += n
+		}
+		return Result{Status: "tried", Detail: fmt.Sprintf("the host took %d Ack frames (%d MiB) on the init's channel in %d s", sent/10, sent>>20, v[0])}
 	default:
 		return Result{Status: "error", Detail: "unknown kind " + kind}
 	}
@@ -136,6 +148,9 @@ func channelProbe(args []string) Result {
 	time.Sleep(linger)
 	return Result{Status: "sent", Detail: fmt.Sprintf("%s: %d bytes on the init's channel, still running %s later", kind, len(b), linger)}
 }
+
+// ackFlood is channelProbe's ack-flood kind under the arguments cpuJudge passes: the seconds, then the channel address.
+func ackFlood(args []string) Result { return channelProbe(append([]string{"ack-flood"}, args...)) }
 
 // drip writes the frame one byte per dripInterval, over and over, for longLinger or until the host stops taking bytes.
 func drip(ch *rawConn, f []byte) Result {
