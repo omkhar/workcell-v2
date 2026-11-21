@@ -3189,6 +3189,36 @@ the slack, which the 20 s bound precludes. Residual risk of the row: if the init
 3 s (a Ping reply on vz), the same desync as on the first two runs can occur mid-flood; the Linux runs showed none. Not
 S14: no file involved is ported.
 
+C51 FIXED by S-F34, commits 32b5d2e, a4d0453 and 18b8057 (PR #263). In internal/wire/wire.go, Conn reads through a
+bufio.Reader set in New (4 KiB fills, so one read syscall serves hundreds of six-byte frames); the first-byte wait still
+has no deadline and a clean io.EOF there is still a clean end; the now+limit deadline is armed only at the first read of
+a frame that finds fewer buffered bytes than it needs, so a frame already in the buffer sets none and a peer that stalls
+mid-frame still fails with the deadline error; ErrTooLarge is still checked before any allocation; and the header is
+read into a buffer owned by Conn, so no frame allocates (the header array used to escape into io.ReadFull). In
+cmd/workcell/run_vm.go, output() coalesces adjacent buffered Stdout or Stderr frames into one send bounded by
+wire.MaxPayload, flushes before any frame of another kind or an error (Ack and Exit order unchanged) and never relays
+an empty output frame; Buffered() on Conn is the one new method. The payload reuse the unit line named was measured as
+below noise (an empty payload never allocates) and was not done. Paid by folds in wire.go (package, Conn and ReadFrame
+comments, trailing const and var comments, the unexpected helper folded into readFrame) and run_vm.go (bootLimit and
+frameLimit on one line, tail.bytes as a one-liner, one blank line): product 14995 of 15000, test 28482 of 28492. The
+row channel-cpu-flood is back (escape/suite/channel.go frame-flood case and frameFlood, tests.go after
+device-cpu-flood) and escape/_pending/ is gone. Hosted gate on the real VM: on 6ddbd17 (the row alone) fail, 7.0 CPU s
+in 3.6 s, allowed 4.6, 404114 frames in 3 s; on 32b5d2e (bufio alone) fail, 6.3 in 3.5, allowed 4.5, 1343406 frames,
+so the decoder was no longer the cost but the per-frame stdout relay was, as the builder's local chain measurement
+said (6991 to 3415 ns a frame, still one core); on a4d0453 pass, 4.4 in 3.4, allowed 4.4, 31335218 frames (179 MiB),
+with cpu-flood and device-cpu-flood at 3.5 beside it (local chain 48 ns a frame); on 18b8057 pass, 4.4 in 3.5, allowed 4.5, 63500508 frames (363 MiB), cpu-flood 3.5 and device-cpu-flood 3.7 beside it. T2 on control
+stands from the record above (11.4 CPU s in 3.0 s, allowed 4.0); a control run in the cloud session was refused by its
+safeguard, and S12 asks for none there. Review: one round, one low I10 finding accepted and fixed in the fix round (the
+per-frame header allocation: 34 to 22 ns a frame and 65540 to 5 allocs in a 65536-frame benchmark). The reviewer's
+probes: header then stall (deadline error), 5 bytes then EOF (ErrUnexpectedEOF), frames split across fills, idle four
+times the limit before the first byte and between frames (both read), a 0xffffffff length after a frame (ErrTooLarge
+before any allocation), 148 deadline calls for 100000 buffered frames, every error sticky, and a seated client fed
+Stdout, Stderr, Ack, an empty frame, a MaxPayload-1 frame and Exit with byte order kept and no frame over MaxPayload.
+Residual: the hosted margin is a few tenths of a second, since the guest's push rate rises with the host's speed; what
+still costs the host per frame is the bufio and ReadFull call chain (about 20 ns) and one vsock read per 4 KiB fill.
+Variants not expressed (redteam): 1-byte frames, Stdout and Stderr alternating, the flood on a fresh connection to the
+port, a flood cut mid-header at its deadline. Not S14: no file involved is ported.
+
 Sweep 2 verdict for this surface: two candidates, both confirmed at low (C50, C51), nothing at medium or above. Both
 get fix units (S-F33, S-F34), as sweep 1 did with its lows (S7 lists them; the fix units are hardening the loop can
 still afford). No model declined and no safeguard re-ran a request in the audit, the two redteams or the two verifiers.
