@@ -19,19 +19,13 @@ import (
 	"strings"
 )
 
-// A sign-in flow (I5): a [[secret]] row whose source is "signin:HOST/PATH"
-// has no value of its own. Its token endpoint, PATH on HOST, an allowed name
-// terminated like every other, issues the row's tokens in a JSON body:
-// access_token, which the rule swaps in its header as it would a static
-// secret, and refresh_token, which the guest presents back at the endpoint
-// for new ones. The proxy reads each answer of the endpoint whole before
-// the guest sees a byte, hands the tokens to the broker, which holds them
-// in place of the ones before, and sends the guest the row's placeholder
-// for the access token and a second one for the refresh token: the same two
-// whatever the endpoint issues, so a client that keeps them across a
-// refresh keeps something that still works. A real token the broker holds
-// never appears in an answer, whatever its status, and a placeholder sent
-// anywhere but its own place is refused as a static secret's would be.
+// A sign-in flow (I5): a [[secret]] row whose source is "signin:HOST/PATH" has no value of its own. Its token endpoint, PATH on HOST, an allowed name
+// terminated like every other, issues the row's tokens in a JSON body: access_token, which the rule swaps in its header as it would a static secret, and
+// refresh_token, which the guest presents back at the endpoint for new ones. The proxy reads each answer of the endpoint whole before the guest sees a
+// byte, hands the tokens to the broker, which holds them in place of the ones before, and sends the guest the row's placeholder for the access token and
+// a second one for the refresh token: the same two whatever the endpoint issues, so a client that keeps them across a refresh keeps something that still
+// works. A real token the broker holds never appears in an answer, whatever its status, and a placeholder sent anywhere but its own place is refused as
+// a static secret's would be.
 
 // SignIn is the sign-in flow of a rule: the token endpoint and the refresh placeholder, as NewSignIn mints it.
 type SignIn struct {
@@ -64,20 +58,21 @@ func validPath(p string) bool {
 	return p != "" && p[0] == '/' && !strings.ContainsAny(p, "?#") && strings.IndexFunc(p, func(c rune) bool { return c < '!' || c > '~' }) < 0
 }
 
-// tokenEndpoint returns the rule whose token endpoint a request to u on host goes to: one whose path a common router would read as u's, taken as sent or as
-// decoded and folded, in either case. The match is wide because an answer taken for another path would reach the guest unread (I5), while a request taken
-// for the endpoint is only read whole and rewritten.
+// tokenEndpoint returns the rule whose token endpoint a request to u on host goes to: one whose path a common router would read as u's, taken as sent or
+// under either fold, in any case. The match is wide because an answer taken for another path would reach the guest unread (I5), while a request taken for
+// the endpoint is only read whole and rewritten.
 func (p *Proxy) tokenEndpoint(host string, u *url.URL) (TerminateRule, bool) {
+	sent := u.EscapedPath()
 	for _, r := range p.signin[host] {
-		if strings.EqualFold(u.EscapedPath(), r.SignIn.Path) || strings.EqualFold(fold(u.EscapedPath()), r.SignIn.Path) {
+		if strings.EqualFold(sent, r.SignIn.Path) || strings.EqualFold(fold(sent), r.SignIn.Path) || strings.EqualFold(fold(opaque(sent)), r.SignIn.Path) {
 			return r, true
 		}
 	}
 	return TerminateRule{}, false
 }
 
-// params is a ;param suffix of a path segment.
-var params = regexp.MustCompile(`;[^/]*`)
+// params is a ;param suffix of a path segment; sep an encoded slash or backslash.
+var params, sep = regexp.MustCompile(`;[^/]*`), regexp.MustCompile(`(?i)%(2F|5C)`)
 
 // fold reads a path as sent the way a router that cuts ;params from each segment before it decodes (so a param hides an encoded slash) and again after,
 // takes a backslash for a slash and then resolves dot segments does. PathUnescape cannot fail on a path as sent; were it to, "." matches nothing.
@@ -85,6 +80,9 @@ func fold(escaped string) string {
 	p, _ := url.PathUnescape(params.ReplaceAllString(escaped, ""))
 	return path.Clean(strings.ReplaceAll(params.ReplaceAllString(p, ""), `\`, "/"))
 }
+
+// opaque doubly encodes each encoded separator of a path as sent, so that fold reads it as a router that resolves dot segments before it decodes does (C33).
+func opaque(escaped string) string { return sep.ReplaceAllString(escaped, "%25$1") }
 
 // tokenRequest reads the body of a request to rule's token endpoint and swaps the refresh placeholder in its refresh_token field for the refresh token the
 // broker releases. It returns the body the request now carries and a copy of that refresh token, both for the caller to wipe once the request has gone, and
