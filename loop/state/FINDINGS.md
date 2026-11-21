@@ -2663,6 +2663,17 @@ the same line 98 (guest root of an earlier mount session, operator not root). Fi
 The fix must quote, not open by descriptor: arm 1 fails the test if Export succeeds. Variants not expressed: line 87 (ENOSPC or
 EIO while copying, no deterministic trigger), the Linux run of the test (vet only). Not ported: internal/rootfs is v2's own.
 
+C38 FIXED by S-F29, commit 04b8f34 (PR #258). `%s` became `%q` at the three sites the record names in
+internal/rootfs/ext4file.go: line 87 (`copy %q: %w`), line 98 (os.OpenFile's *os.PathError is now `open %q: %w` with the
+PathError's Err as the wrapped errno, so errors.Is still finds ENAMETOOLONG) and line 104 (`%q changed while the image was
+written`). The path is quoted once: the probe of Export on a tree past PATH_MAX below a directory named with ESC, BEL, U+009B
+and U+202E, wrapped as run_vm.go wraps it, printed `copy <cwd> for the guest: rootfs: write image: open "<path>": file name too
+long` with the runes escaped and the cwd, the operator's own, unquoted as C31 intends. cmd/workcell/update.go's image errors
+quote the operator's paths too, as the unit line accepts. Three in-place edits, net 0 product lines: product 15000 of 15000 and
+test 28498 of 28500 before and after. Test: internal/workspace/c38_test.go TestC38ExportErrorQuotesFilePath, moved from
+escape/_pending/S-F29/ with only its head comment changed; both arms fail on 292a046 (main b95bd10 plus the claim line) and
+pass on the fix, also under -race. Not ported: internal/rootfs is v2's own.
+
 C39. C F26: session takes cwd as a string from os.Getwd, and workspace.Export opens that path again (workspace.go 40, no
 O_NOFOLLOW) after holds(), newSession and the audit start, so the guest of a mount session on an ancestor directory could swap
 the directory for a symlink in that window and the new clone session's image would be built from another host directory (I1).
