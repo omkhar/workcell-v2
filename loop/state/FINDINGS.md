@@ -1,6 +1,6 @@
 # Findings
 
-Phase 10 record (SPEC section 11). Sweep count: 1. One section per audit unit: the attack-surface map (S-1001),
+Phase 10 record (SPEC section 11). Sweep count: 2. One section per audit unit: the attack-surface map (S-1001),
 then each audit's coverage list and candidates, each confirmed, refuted or downgraded under S4.
 
 ## S-1001: attack-surface map, as built at main 30ea6e2
@@ -2979,3 +2979,20 @@ Per part: S-1016b 12 and the crasher, S-1016c 12, S-1016d 18, this part 10. C43 
 is no tool finding. Of the confirmed records, C41 and C44 are fixed (S-F30, S-F32) and C32, C33, C34, C35, C38 and C43 wait for
 S-F25 to S-F29 and S-F31. This sweep confirmed findings at medium and above, so S-1017 counts it (S8). This part added no fix
 unit and no test.
+
+## S-1017: sweep verdict, sweep 1, at main 73b7f81
+
+Sweep 1 is S-1002 to S-1013 with S-1014 and S-1016 (S10), and its 32 fix units S-F1 to S-F32 are all `[x]`. It confirmed
+21 findings at medium or above, so by S8 it does not end Phase 10: the sweep count above rises from 1 to 2, and S-1002 to
+S-1013, R-3, R-4 and S-1017 go back to `[ ]` with `tries:0` for sweep 2, as the unit line says. S-1014 and S-1016 are not
+reset, because the unit line does not name them; the four `needs the maintainer` records of S-1016 stand as they are.
+
+| severity | count | records |
+|----------|-------|---------|
+| high | 5 | C13, C17, C18, C23, C32 |
+| medium | 16 | C1, C7, C10, C12, C15, C19, C21, C28, C29, C30, C33, C34, C35, C41, C43, C44 |
+| low, fixed all the same (S7 lists them) | 11 | C3, C5, C6, C11, C20, C22, C25, C26, C27, C31, C38 |
+
+Sweep 2 audits every surface again, as built after those fixes, in a fresh context each (S3). It ends Phase 10 if it
+confirms nothing at medium or above; otherwise the count rises to 3 and a third sweep follows, after which S-1017 is
+marked `[!]` for the maintainer (S8).
