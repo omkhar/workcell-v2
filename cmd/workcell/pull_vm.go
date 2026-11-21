@@ -75,11 +75,10 @@ func diff(args []string, stderr io.Writer) int {
 // source hands out the next bytes of the files, at most n and at least one, in manifest order.
 type source func(n int) ([]byte, error)
 
-// fetch boots the newest session of the current directory, asks its init for the work tree
-// and gives use the directory dest open as root, the judged manifest and the files' bytes.
-// A dest that holds workcell's own directory is refused first (holds). The whole tree must
-// follow, and the Exit after it, or the result is an error. SIGINT and SIGTERM end the VM,
-// as in run, and give a code of 128 plus the signal.
+// fetch boots the newest session of the current directory, asks its init for the work tree and gives use
+// the directory dest open as root, the judged manifest and the files' bytes. A dest that holds workcell's
+// own directory is refused first (holds). The whole tree must follow, and the Exit after it, or the result
+// is an error. SIGINT and SIGTERM end the VM, as in run, and give a code of 128 plus the signal.
 func fetch(dest string, use func(int, *manifest, source) error) (int, error) {
 	if err := holds(dest); err != nil {
 		return 0, err
@@ -145,8 +144,7 @@ func fetch(dest string, use func(int, *manifest, source) error) (int, error) {
 	return 0, err
 }
 
-// newest is the directory of the newest session whose repo file names dir: the session
-// directories sort by time.
+// newest is the directory of the newest session whose repo file names dir: session directories sort by time.
 func newest(sessions, dir string) (string, error) {
 	l, err := list(sessions)
 	if err != nil {
@@ -165,8 +163,7 @@ type framed struct {
 	err error
 }
 
-// pulled is the init's answer as it arrives. The frames come on a goroutine, so that a
-// signal, or a guest that stalls, ends the wait for one (I12).
+// pulled is the init's answer as it arrives, on a goroutine so that a signal or a stalled guest ends a wait (I12).
 type pulled struct {
 	frames <-chan framed
 	sigs   <-chan os.Signal
@@ -213,8 +210,7 @@ func (p *pulled) manifest(limit int64) (*manifest, error) {
 	}
 }
 
-// odd is the error for a frame that does not belong where it came: an Exit there says the
-// init stopped, with its reason when it has one.
+// odd is the error for a frame out of place: an Exit there says the init stopped, with its reason if any.
 func (p *pulled) odd(f wire.Frame) error {
 	if f.Type != guest.TypeExit {
 		return fmt.Errorf("frame type %d from the guest", f.Type)
@@ -266,12 +262,12 @@ func (p *pulled) end() error {
 	return p.odd(f)
 }
 
-// write puts the tree into the directory open as root, in manifest order, so that each
-// directory is there before what it holds. Every path is the guest's (R6): it is resolved
-// beneath root without following any symlink (dirBeneath, createBeneath), and what is there already is
-// kept when both are directories, removed first otherwise, and never written through. A
-// directory that is not empty is not removed: that is refused, with the error of unlinkat.
-// What is on the host and not in the tree is left alone.
+// write puts the tree into the directory open as root, in manifest order, so that each directory is there
+// before what it holds. Every path is the guest's (R6): it is opened beneath root one component at a time,
+// through no symlink (dirBeneath, createBeneath), and no component may be its directory's .git (isGit, I8).
+// What is there already is kept when both are directories, removed first otherwise and never written
+// through. A directory that is not empty is not removed: that is refused, with the error of unlinkat. What is
+// on the host and not in the tree is left alone, and a directory with no .git before the pull has none after.
 func write(root int, m *manifest, data source) error {
 	for _, e := range m.entries {
 		if err := put(root, e, data); err != nil {
@@ -281,21 +277,29 @@ func write(root int, m *manifest, data source) error {
 	return nil
 }
 
-// split is the directory and the name of a path.
-func split(p string) (dir, name string) {
-	if i := strings.LastIndexByte(p, '/'); i >= 0 {
-		return p[:i], p[i+1:]
-	}
-	return "", p
+// isGit reports whether name, in the directory open as dir, is what ".git" names there, however name is
+// spelled: the same device and inode, both read now, never remembered (C44: HFS+ ignores some code points).
+func isGit(dir int, name string) bool {
+	var git, st unix.Stat_t
+	return unix.Fstatat(dir, ".git", &git, unix.AT_SYMLINK_NOFOLLOW) == nil && unix.Fstatat(dir, name, &st, unix.AT_SYMLINK_NOFOLLOW) == nil && st.Dev == git.Dev && st.Ino == git.Ino
 }
 
 func put(root int, e guest.Entry, data source) error {
-	dir, name := split(e.Path)
-	pfd, err := dirBeneath(root, dir)
+	refused := errors.New("a component is the .git of its directory")
+	pfd, err := dirBeneath(root, ".")
+	name, rest, deeper := strings.Cut(e.Path, "/")
+	for ; err == nil && deeper && !isGit(pfd, name); name, rest, deeper = strings.Cut(rest, "/") {
+		up := pfd
+		pfd, err = dirBeneath(up, name)
+		unix.Close(up)
+	}
 	if err != nil {
 		return fmt.Errorf("open its directory: %w", err)
 	}
 	defer unix.Close(pfd)
+	if isGit(pfd, name) { // the last name, or the directory at which the walk stopped
+		return refused
+	}
 	var st unix.Stat_t
 	if unix.Fstatat(pfd, name, &st, unix.AT_SYMLINK_NOFOLLOW) == nil {
 		isDir := uint32(st.Mode)&unix.S_IFMT == unix.S_IFDIR
@@ -310,18 +314,24 @@ func put(root int, e guest.Entry, data source) error {
 			return fmt.Errorf("remove what is there: %w", err)
 		}
 	}
-	switch e.Kind {
-	case guest.KindDir:
-		return unix.Mkdirat(pfd, name, 0o755)
-	case guest.KindLink:
-		return unix.Symlinkat(e.Target, pfd, name)
-	}
-	mode := uint32(0o644)
+	mode, fd, rm := uint32(0o644), -1, 0
 	if e.Exec {
 		mode = 0o755
 	}
-	fd, err := createBeneath(pfd, name, mode)
-	if err != nil {
+	switch e.Kind {
+	case guest.KindDir:
+		err, rm = unix.Mkdirat(pfd, name, 0o755), unix.AT_REMOVEDIR
+	case guest.KindLink:
+		err = unix.Symlinkat(e.Target, pfd, name)
+	default:
+		fd, err = createBeneath(pfd, name, mode)
+	}
+	if err == nil && isGit(pfd, name) { // no .git was here, and this name has just made one: take it away again
+		unix.Close(fd) // -1 unless a file was made
+		unix.Unlinkat(pfd, name, rm)
+		return refused
+	}
+	if err != nil || fd < 0 {
 		return err
 	}
 	f := os.NewFile(uintptr(fd), shown(e.Path))
@@ -342,10 +352,9 @@ func put(root int, e guest.Entry, data source) error {
 	return nil
 }
 
-// compare writes one line per difference between the tree and the directory open as root:
-// A for what the guest has and the host has not, M for what differs in kind, executable
-// bit, link target or bytes, D for what the host has and the guest has not. The host's
-// directory is walked by the rules the init walked the guest's. The bytes are compared
+// compare writes one line per difference between the tree and the directory open as root: A for what only
+// the guest has, M for what differs in kind, executable bit, link target or bytes, D for what only the host
+// has. The host's directory is walked by the rules the init walked the guest's. The bytes are compared
 // here, file by file as they arrive; nothing the guest says about sameness counts.
 func compare(root int, m *manifest, data source, out io.Writer) (differs bool, err error) {
 	wfd, err := unix.Dup(root)

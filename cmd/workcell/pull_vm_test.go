@@ -175,8 +175,7 @@ func TestWrite(t *testing.T) {
 }
 
 func TestCompare(t *testing.T) {
-	// The host has: a dir d with d/same and d/gone, a file changed, an executable script,
-	// a link l -> old, a .git with a hook, and a FIFO.
+	// The host has: a dir d with d/same and d/gone, a file changed, an executable script, a link l -> old, a .git with a hook, and a FIFO.
 	tests := []struct {
 		name    string
 		entries []guest.Entry
