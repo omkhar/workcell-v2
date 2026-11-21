@@ -2,13 +2,8 @@
 // Copyright 2026 Omkhar Arasaratnam
 
 // Package wire frames messages on the host-guest channel. The guest is hostile (A1), so every frame has a hard size limit, checked before anything is
-// allocated, and a hard time limit, enforced by the stream's own deadlines (I12).
-//
-// A frame is a 6-byte header, then the payload:
-//
-//	byte 0     version, always Version
-//	byte 1     type, which the caller interprets
-//	bytes 2-5  payload length, big-endian, at most MaxPayload
+// allocated, and a hard time limit, enforced by the stream's own deadlines (I12). A frame is a 6-byte header, then the payload: byte 0 the version, always
+// Version; byte 1 the type, which the caller interprets; bytes 2-5 the payload length, big-endian, at most MaxPayload.
 package wire
 
 import (
@@ -21,18 +16,14 @@ import (
 )
 
 const (
-	// Version is the only protocol version this package reads or writes.
-	Version = 1
-	// MaxPayload is the hard limit on the payload of one frame, in bytes.
-	MaxPayload = 64 << 10
+	Version    = 1        // the only protocol version this package reads or writes
+	MaxPayload = 64 << 10 // the hard limit on the payload of one frame, in bytes
 	headerLen  = 6
 )
 
 var (
-	// ErrVersion means a frame carried a version other than Version.
-	ErrVersion = errors.New("wire: unsupported version")
-	// ErrTooLarge means a frame declared a payload longer than MaxPayload.
-	ErrTooLarge = errors.New("wire: frame too large")
+	ErrVersion  = errors.New("wire: unsupported version") // a frame carried a version other than Version
+	ErrTooLarge = errors.New("wire: frame too large")     // a frame declared a payload longer than MaxPayload
 )
 
 // Stream is the channel to the guest. net.Conn and a pollable *os.File satisfy it.
@@ -68,21 +59,22 @@ func New(s Stream, limit time.Duration) *Conn {
 
 // ReadFrame returns the next frame. It waits without limit for a frame to begin, so an idle peer is not an error; once the first byte arrives the whole
 // frame must follow within the limit. It returns io.EOF only if the stream ends cleanly between frames.
-func (c *Conn) ReadFrame() (Frame, error) {
-	if c.rerr != nil {
-		return Frame{}, c.rerr
+func (c *Conn) ReadFrame() (f Frame, err error) {
+	if c.rerr == nil {
+		f, c.rerr = c.readFrame()
 	}
-	f, err := c.readFrame()
-	if err != nil {
-		c.rerr = err
-	}
-	return f, err
+	return f, c.rerr
 }
+
+// Buffered is how many bytes of the frames to come the Conn already holds: the next ReadFrame waits on the stream only if it needs more.
+func (c *Conn) Buffered() int { return c.r.Buffered() }
 
 func (c *Conn) readFrame() (Frame, error) {
 	var h [headerLen]byte
-	if err := c.s.SetReadDeadline(time.Time{}); err != nil {
-		return Frame{}, fmt.Errorf("wire: clear read deadline: %w", err)
+	if c.r.Buffered() == 0 { // only a read that has to wait on the stream needs a deadline: a buffered flood of small frames sets none (I10)
+		if err := c.s.SetReadDeadline(time.Time{}); err != nil {
+			return Frame{}, fmt.Errorf("wire: clear read deadline: %w", err)
+		}
 	}
 	if _, err := io.ReadFull(c.r, h[:1]); err != nil {
 		if err == io.EOF {
@@ -93,29 +85,31 @@ func (c *Conn) readFrame() (Frame, error) {
 	if h[0] != Version {
 		return Frame{}, fmt.Errorf("%w: got %d, want %d", ErrVersion, h[0], Version)
 	}
-	if err := c.s.SetReadDeadline(time.Now().Add(c.limit)); err != nil {
-		return Frame{}, fmt.Errorf("wire: set read deadline: %w", err)
+	timed := false
+	rest := func(p []byte) error { // the rest of the frame, within the limit from its first read that has to wait on the stream
+		if !timed && c.r.Buffered() < len(p) {
+			if err := c.s.SetReadDeadline(time.Now().Add(c.limit)); err != nil {
+				return fmt.Errorf("set read deadline: %w", err)
+			}
+			timed = true
+		}
+		if _, err := io.ReadFull(c.r, p); err != io.EOF {
+			return err
+		}
+		return io.ErrUnexpectedEOF // the stream ended inside the frame
 	}
-	if _, err := io.ReadFull(c.r, h[1:]); err != nil {
-		return Frame{}, fmt.Errorf("wire: read header: %w", unexpected(err))
+	if err := rest(h[1:]); err != nil {
+		return Frame{}, fmt.Errorf("wire: read header: %w", err)
 	}
 	n := binary.BigEndian.Uint32(h[2:])
 	if n > MaxPayload {
 		return Frame{}, fmt.Errorf("%w: %d bytes declared, limit %d", ErrTooLarge, n, MaxPayload)
 	}
 	f := Frame{Type: h[1], Payload: make([]byte, n)}
-	if _, err := io.ReadFull(c.r, f.Payload); err != nil {
-		return Frame{}, fmt.Errorf("wire: read %d-byte payload: %w", n, unexpected(err))
+	if err := rest(f.Payload); err != nil {
+		return Frame{}, fmt.Errorf("wire: read %d-byte payload: %w", n, err)
 	}
 	return f, nil
-}
-
-// unexpected reports the end of the stream inside a frame as a truncation.
-func unexpected(err error) error {
-	if err == io.EOF {
-		return io.ErrUnexpectedEOF
-	}
-	return err
 }
 
 // WriteFrame writes f within the limit, in one Write. A payload over MaxPayload is

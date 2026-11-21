@@ -36,10 +36,7 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-const (
-	bootLimit  = 20 * time.Second // from Start to the guest's connection
-	frameLimit = 5 * time.Second  // one frame, once it has begun
-)
+const bootLimit, frameLimit = 20 * time.Second, 5 * time.Second // from Start to the guest's connection; one frame, once it has begun
 
 // run is `workcell run [--mount] [--cpus N] [--memory SIZE] [--disk SIZE] [--allow HOST]... [--cache NAME[:rw]]... [--] <cmd> [args...]`: it boots a guest with
 // a copy of the current directory in it, or with the directory itself served live (`--mount`, A5), runs the command there and exits as the command did. This
@@ -130,7 +127,6 @@ func session(argv []string, caps limits, mount bool, a artifacts, allow *proxy.A
 		return result{code: code, err: err}
 	}
 	defer b.close()
-
 	_, path := layerArgs(a.layers, 0)
 	req := guest.Exec{Argv: argv, Env: []string{path, "HOME=/root", "LANG=C.UTF-8"}, Dir: "/workspace", CA: b.ca}
 	if b.ca != nil {
@@ -424,18 +420,27 @@ type result struct {
 }
 
 // output passes the guest's output to the seat and gives back a window slot for every Ack, until the command's Exit or an error ends the session. It decodes
-// bytes the guest chose, so every payload is checked.
+// bytes the guest chose, so every payload is checked. Adjacent Stdout, or Stderr, frames the channel already holds reach the seat as one frame of at most
+// wire.MaxPayload: each is a byte stream, so no byte order changes, and a flood of small frames costs one send a batch, not one a frame (I10).
 func output(c *wire.Conn, s *seat, done chan<- result) {
-	first := true
+	first, held := true, wire.Frame{} // held: the output not yet sent
+	flush := func(now bool) {
+		if now && len(held.Payload) > 0 {
+			s.send(held)
+			held.Payload = held.Payload[:0] // WriteFrame copied it
+		}
+	}
 	for {
 		f, err := c.ReadFrame()
+		flush(err != nil || f.Type != held.Type || len(held.Payload)+len(f.Payload) > wire.MaxPayload) // output comes before whatever follows it: an Exit's order holds
 		if err != nil {
 			done <- result{err: fmt.Errorf("guest channel: %w", err)}
 			return
 		}
 		switch f.Type {
 		case guest.TypeStdout, guest.TypeStderr:
-			s.send(f)
+			held.Type, held.Payload = f.Type, append(held.Payload, f.Payload...)
+			flush(c.Buffered() == 0) // more is here already: the next frame may merge in
 		case guest.TypeAck:
 			if _, err := guest.DecodeAck(f.Payload); err != nil {
 				done <- result{err: err}
@@ -634,11 +639,7 @@ func (t *tail) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
-func (t *tail) bytes() []byte {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	return slices.Clone(t.b)
-}
+func (t *tail) bytes() []byte { t.mu.Lock(); defer t.mu.Unlock(); return slices.Clone(t.b) }
 
 // lastLines is the last n lines of console output, safe to print on a terminal: the guest chose these bytes, so anything but printable ASCII becomes '?', and
 // carriage returns go.
