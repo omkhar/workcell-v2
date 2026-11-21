@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Omkhar Arasaratnam
 
-// Finding C38 of S-1016c (the quoting rule of C20 and C31). Fix unit S-F29 first moves this file to
-// internal/workspace/c38_test.go, package workspace, as this comment says.
+// Finding C38 of S-1016c (the quoting rule of C20 and C31), moved here from escape/_pending/S-F29/ by unit S-F29.
+// Export names a repository file in an error only quoted, so control and bidi runes in a path never reach a terminal raw.
 
 package workspace
 

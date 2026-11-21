@@ -84,7 +84,7 @@ func (s *fileSink) file(g seg) error {
 		return err
 	}
 	if _, err := io.CopyN(s.f, src, min(int64(g.n)*blockSize, g.src.Size-g.off)); err != nil {
-		return fmt.Errorf("copy %s: %w", g.src.Path, err)
+		return fmt.Errorf("copy %q: %w", g.src.Path, err)
 	}
 	s.pos += int64(g.n) * blockSize
 	return nil
@@ -95,13 +95,13 @@ func openSource(h *HostFile) (*os.File, error) {
 	// O_NONBLOCK so that a file swapped for a FIFO cannot hold the open.
 	f, err := os.OpenFile(h.Path, syscall.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK|syscall.O_NOCTTY, 0)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("open %q: %w", h.Path, err.(*os.PathError).Err)
 	}
 	fi, err := f.Stat()
 	if err == nil {
 		st, ok := fi.Sys().(*syscall.Stat_t)
 		if !ok || !fi.Mode().IsRegular() || uint64(st.Dev) != h.Dev || uint64(st.Ino) != h.Ino || fi.Size() != h.Size {
-			err = fmt.Errorf("%s changed while the image was written", h.Path)
+			err = fmt.Errorf("%q changed while the image was written", h.Path)
 		}
 	}
 	if err != nil {
