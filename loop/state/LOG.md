@@ -1503,3 +1503,4 @@ Proved: redteam ran the pending test by go test -overlay on the claim commit, bo
 Review: one round, no findings. No model declined and no safeguard re-ran a request.
 Learned: when a stdlib call documents that it returns *os.PathError on every error, a one-line type assertion on its Err is the cheapest way to quote the path once and keep the errno for errors.Is; a probe of each error site with a swapped source (symlink, FIFO, resized file) shows the quoting holds for the variants the test does not express.
 Next: S-F31 is the last env:any fix unit for the cloud (I12 with B10, medium; product has 0 lines of room and test 2, so it folds first). Then S-1017, which counts C32 to C35, C38, C41, C43 and C44 among this sweep's confirmed findings (S8).
+## 2026-11-21T17:58Z S-F31 START mode=cloud
