@@ -2684,3 +2684,127 @@ Handoffs: one open fix unit, S-F29, below S-1016c in PLAN.md, starting with the 
 S-F30 landed with this record. This part confirmed one medium finding, C41; S-1016b already raised the sweep count (S8). Seven of the twelve
 findings were duplicates of fixes that landed after the scans, and each fix covered every input its findings gave. For S-1018:
 after S-F30 the residual risk of --mount is what the guest does inside the tree (C40), not a second name outside it.
+
+### S-1016d: `pull`, `attach`, `update` and artifact verification, at main ab0b8cd (eighteen findings)
+
+Method. The Mac gate was green on the unchanged tree first (73 rows, GATE PASS in 422s; its row `I12
+channel-first-frame-rollback` passes under vz). One redteam per topic, five at once, compared each finding, input by input, with
+main by running; a test for what was left went under escape/_pending/ and ran by `go test -overlay`; the orchestrator ran each
+again and kept the logs under loop/private/s1016d/ (d1-run.log to d3-run.log); one verifier per candidate got the claim, the test
+and the log, and each wrote a probe of its own.
+
+| finding | outcome |
+|---------|---------|
+| A F21, A F22, C F17, C F18 | DOWNGRADED to low, C42: real mechanism, no in-scope attacker, no fix unit, PARKED |
+| A F23, B F10, B F11 | DUPLICATE of C1 (fixed by S-F1) and of its accepted residual C2 |
+| (found beside them) | CONFIRMED, C43 (I12 with B10, medium), fix unit S-F31 |
+| B F2, B F4, B F5, C F8, C F12, C F13 | CONFIRMED, C44 (I8, medium), one claim six times, fix unit S-F32 |
+| B F9, C F19 | REFUTED under R2, C45: the mechanism is real, its attacker is not in section 2, PARKED |
+| B F14, B F15, C F20 | DUPLICATE of C20 (fixed by S-F13) |
+
+Duplicates, with what was run. A F23, B F10 and B F11: TestFail, TestOutput, TestUpdate and TestChannel of cmd/workcell pass, and
+the vz row passes in the gate. An Exit of kind 2 as the guest's first frame changes nothing outside the start that installed the
+layer (TestFail row 1), no image is deleted any more (rows 2 and 3), and B F11's "repeating it leaves no layer" is false on main.
+What is left in the fresh start is C2, confirmed low and accepted as B9's own self-rollback. B F11's remark that the match is on
+filepath.Base(args[0]) gives the forger nothing: only the operator's own command line reaches it (PARKED). B F14, B F15 and C F20:
+TestC20PullWriteErrorQuotesGuestPath passes; both os.NewFile sites in cmd/workcell/pull_vm.go (327 and 394) pass shown(e.Path).
+The redteam drove the real write, put, compare and manifest code with eight hostile names (ESC, BEL, OSC 52, C1 controls, bidi
+overrides, a lone CR, LF, DEL, zero-width runes) through EFBIG, a real ENOSPC on a 2 MB image, a read-only destination, names
+over 255 bytes, wrong entry kinds, every manifest refusal and the diff lines: no rune that strconv.IsPrint rejects in about 1100
+messages, each finding's own name among them; with the fix undone in an overlay copy the same probe flags all three. Not forced:
+fchmod, EDQUOT and EIO, which take the same route. The fix landed on main as d998add (PR #235); 128d5aa in C20's record is the
+branch commit.
+
+C42. A F21, A F22, C F17 and C F18, one claim. Rule: B5, not an invariant. Where: internal/artifact/verify.go tarMember (near
+305), which for a pin with Signing.Members checks the Sigstore bundle against the SHA-256 of the one tar entry whose name equals
+the member and skips every other entry, while the row pins the SHA-256 of the whole tarball and unpack in cmd/workcell/update.go
+applies every entry and takes bin/<binary> if there is one, else the one root file. Input: a release tarball that keeps the
+genuine signed member and adds an entry `bin/<binary>`, a later `./<member>`, or a whiteout `.wh.<member>` with another root
+file. Effect: Verify accepts it, the tarball's digest is pinned, and the layer's binary is the added bytes, which upstream's
+release workflow never signed. The redteam's test (package artifact, three shapes, judged by which bytes become the binary)
+failed on ab0b8cd: `verified, yet the binary of the layer is "trojan", not the signed member`; `././<member>`, an opaque whiteout
+with bin/<binary>, and bin/<binary> as a hard link or a symlink did the same through the real unpack, while the member twice by
+exact name, an extra root file and an alias of the member are refused. Outcome: DOWNGRADED to low by the verifier, who ran the
+real Verify and the real unpack on the same bytes (all four shapes install the added bytes 0755; the genuine one-member tarball
+and a swapped member behave as they should). No attacker of section 2 can replace an upstream release asset: guest root, the
+repository and model output never touch a pin, the network attacker has availability only (TLS, digest-pinned), and S-1012 ruled
+a hostile upstream an allowlisted provider's own service, out of scope. I14 holds as written, since the installed digest is the
+one in the signed manifest; B5 is met to the letter and misses its purpose for member pins, the asset swap that the suite's own
+row `2E meta-matches-swapped-body github member` models. The end state is hostile code as guest root, which A1 and A10 assume.
+Today the codex row pins no version and bump is a dry run until H-905. The tool rated it low four times. No fix unit under the
+freeze; the test left the tree; a PARKED line holds the hardening (tarMember refuses any entry but the member, which turned the
+test green in a scratch overlay and needs TestTarMember's two-entry rows changed), and S-1018 lists it (S7). It answers the two
+parked tool notes on the same code. Not ported.
+
+C43. ID I12, with B10 ("the user stays in control": `workcell update --to` and `--rollback`). Attacker: guest root, reached by a
+malicious repository, as in C1. Where: cmd/workcell/update.go apply (275: fresh gets the provider's NAME) and fail (291: acts
+when the provider is in fresh, on whatever `current` names when the session ends). S-F1 meant "only a layer that this very start
+installed"; the check compares the provider and not the image. Input: in the start in which apply installed version N, guest
+root holds PID 1's channel and stays silent, as C1's forgery does; the operator, seeing a session hang right after an update
+line, runs `workcell update <agent> --rollback` (or `--to`) in another terminal; the guest then sends one Exit frame of kind 2
+as its first frame. Effect: the layer the operator chose, N-1, is marked failed although this session never booted it,
+`current` moves forward again to the N the operator rejected, `previous` is emptied so the next `--rollback` is refused, and
+updates.log says N-1 failed. Reproducing test: escape/_pending/S-F31/c43_test.go TestFailSparesALayerThisStartDidNotInstall
+(redteam; package main of cmd/workcell, through the real installer.update and installer.fail). On ab0b8cd it fails: `after the
+operator's --rollback and one forged first frame: current "1.0.3-bb.ext4", failed "1.0.1-aa.ext4"; want the operator's
+"1.0.1-aa.ext4" and nothing set aside`. Outcome: CONFIRMED, medium (at its floor), by the verifier, whose own probe ran the verb
+`update --rollback claude` while a session lock was held (exit 0: update takes no lock), then fail: current 1.0.3, previous
+empty, failed 1.0.1, both images kept, a second --rollback refused with `there is no earlier layer to roll back to`. `update
+--to 1.0.1` restores from disk while the manifest still lists 1.0.1 as previous, and is refused once it lists 1.0.3 and 1.0.2,
+so then no command brings the operator's choice back. Not C2's accepted residual: C2 sets aside the image this start installed
+and goes back, which B9 orders; here the operator's own choice is set aside and the host goes forward, the side of the line
+that fail's comment draws ("for a layer an earlier start installed, nothing"). Harm is bounded: both versions are
+manifest-verified (I14 holds), nothing is deleted, the terminal shows the line. Three preconditions the attacker does not
+control: the session is the one that installed the layer; the forgery beats the agent's first byte and any acknowledged Stdin
+frame (one keystroke on a tty, or at once with stdin at EOF); and the operator updates that provider while the session is
+silent. Graded by harm it would read as low; by S6's wording it is medium. Not shown: the silent hold end to end on a VM (the
+forgery leg rests on C1's row). Fix unit: S-F31: fresh holds the image that apply installed, and fail acts only while `current`
+is still that image, which replaces a check and adds none. Variants not expressed: a later start's apply installing N+1 while
+the silent session lives, which is then set aside and skipped until the pin changes; guest root freezing PID 1 and answering
+the host's frames itself, so that keystrokes do not close the window. Not ported.
+
+C44. B F2, B F4, B F5, C F8, C F12 and C F13, one claim. ID I8. Attacker: guest root in a clone session, or anything that can
+name a file in the work tree. Precondition the attacker does not control: the destination of `workcell pull` lies on a
+case-insensitive HFS+ volume. Where: cmd/workcell/pull.go checkPath (84), which refuses a component only when
+strings.EqualFold(c, ".git"), as does the init's walk (internal/guest/walk.go 35), and put in cmd/workcell/pull_vm.go with
+dirBeneath and createBeneath in pull_darwin.go, whose O_NOFOLLOW_ANY does not object because no symlink is involved. Input: the
+work tree holds `.g<U+200C>it/hooks/pre-commit`, executable, or `.g<U+200C>it/config`. Case-insensitive HFS+ ignores U+200C in
+a name, so the spelling resolves to the real `.git`. Effect: pull creates `.git/hooks/pre-commit` 0755 in the destination
+repository, and the operator's next git command there runs it on the host. Measured on this Mac (macOS 27.2.1) with images made
+by hdiutil, a real `.git` beside each spelling: on case-insensitive HFS+ all sixteen ignorable code points the findings list
+(U+200C to U+200F, U+202A to U+202E, U+206A to U+206F, U+FEFF) alias `.git` and a write through them lands in it; on the boot
+APFS volume, an APFS image, case-sensitive HFS+, exFAT and FAT32 none does. `GIT~1`, a trailing dot or space and
+`::$INDEX_ALLOCATION` alias on no volume a Mac mounts. The older lead of S-1008 is refuted: U+0130 and U+0131 fold to i on no
+volume, and `.git` is ASCII, so NFC and NFD do not differ. Reproducing test: escape/_pending/S-F32/c44_test.go (redteam; package
+main of cmd/workcell, darwin; it makes the HFS+ image while it runs and skips where it cannot; the real manifest.add and write;
+judged by whether `.git/hooks/pre-commit` exists afterwards, so a fix in checkPath or in put both pass). On ab0b8cd it fails:
+`I8: guest wrote the real .git/hooks/pre-commit through the U+200C alias on HFS+`. Outcome: CONFIRMED, medium, by the verifier:
+nothing earlier on the real path stops the name (DecodeEntry checks UTF-8 and size, Walk forwards it, the fold map sees no
+collision, holds(dest) asks the filesystem nothing); the guest's ext4 keeps the name distinct, so the stock init reports it;
+on a fresh image of its own a plain `git commit` ran the planted hook; on default APFS the two names are two directories.
+Medium and not high on the precondition: HFS+ has not been the macOS default since 2017, and `workcell pull [dir]` promises no
+restriction to APFS. Not a duplicate: C40 is `.git` under --mount. Public: the filesystem's behaviour is what git's own
+core.protectHFS documents, the defect is this repository's check, and no v1 release holds a pull. Fix unit: S-F32. Variants not
+expressed: a Linux casefold directory (needs a Linux host with the feature), NTFS or vfat aliases behind SMB or 9p, the same
+spelling as a symlink or directory entry kind, `.g<U+200C>it` as the last component (a file named like `.git`).
+
+C45. B F9 and C F19, one claim: attach (cmd/workcell/run_vm.go 593 to 622) takes the socket directory from the session's `vmm`
+record and dials `<dir>/attach` without asking whether the session still holds its lock, whose the directory is, or who the
+peer is; the directory is removed when the session ends and the record stays until `workcell rm`. Outcome: REFUTED as a finding
+under R2 by the redteam, with no test in the tree. The mechanism is real, run with the built binary on an ended session: with
+the directory gone attach says `connect: no such file or directory`, and with the directory made again 0777 and a listener the
+probe started, the listener got the typed bytes as Stdin frames and its Stdout frames reached the terminal. But the only party
+who can make that directory and listen is another local user of a host with a shared temp directory, or a process of the
+operator's own, and section 2 names neither. Every in-scope route was tried and is closed: a mount session with TMPDIR below
+cwd in three spellings is refused (C28, TestC28TempDirInMountExport passes), a session whose data or session directory lies in
+the tree is refused (C19, C29), no guest byte reaches `vmm` (recordBoot alone writes it, with MkdirTemp's own name), and
+attach's id is an anchored pattern. The guest of a live session already owns that session's terminal. Correction to the tool:
+macOS is covered only while TMPDIR is set; with it unset os.TempDir() is the shared /tmp. Low at most, as the tool rated it; a
+PARKED line holds the hardening (attach refuses unless the session's lock is held and the recorded directory is the caller's,
+0700), and S-1018 lists it (S7).
+
+Handoffs: two fix units, S-F31 and S-F32, below S-1016d in PLAN.md, each starting with the move of its parked test. This part
+confirmed two medium findings; S-1016b already raised the sweep count (S8). Six of the eighteen findings were duplicates of
+fixes that landed after the scans. For S-1018: C43 is the third reading of one decision (C1, C2), a host state change at the
+guest's first frame, and C44 is the one place where the host's filesystem, not the product's string check, decides what `.git`
+is. Leads set aside are in PARKED.md under S-1016d.
