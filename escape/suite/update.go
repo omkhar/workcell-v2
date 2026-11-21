@@ -145,7 +145,6 @@ func (u *upstream) set(path string, h http.HandlerFunc) {
 	defer u.mu.Unlock()
 	u.paths[path] = h
 }
-
 func (u *upstream) requests() []string {
 	u.mu.Lock()
 	defer u.mu.Unlock()

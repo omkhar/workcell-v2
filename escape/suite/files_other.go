@@ -12,9 +12,7 @@ func handleProbe([]string) Result    { return linuxOnly("handle") }
 func forkProbe([]string) Result      { return linuxOnly("fork") }
 func emulationProbe([]string) Result { return linuxOnly("emulation") }
 func rebootGuest(string) Result      { return linuxOnly("reboot") }
-
-func memoryBacked(string) bool { return true }
-
+func memoryBacked(string) bool       { return true }
 func linuxOnly(name string) Result {
 	return Result{Status: "error", Detail: "the " + name + " probe is Linux only"}
 }

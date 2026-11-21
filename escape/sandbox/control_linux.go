@@ -49,7 +49,6 @@ const controlLoader = `mount --make-rprivate / && mount --bind "$0" /etc/resolv.
 var helperNames = []string{"proxy", "resolver", "broker", "supervisor"}
 
 func newControl() (Sandbox, error) { return &control{}, nil }
-
 func (c *control) Start(_ context.Context, cfg Config) (string, error) {
 	dir, err := os.MkdirTemp("", "escape-control-")
 	if err != nil {

@@ -40,7 +40,6 @@ func dnsUDPProbe(args []string) Result {
 // is the attacker, and the server is its own).
 func dnsTCPProbe(args []string) Result { return dnsStream(args, false) }
 func dotProbe(args []string) Result    { return dnsStream(args, true) }
-
 func dnsStream(args []string, withTLS bool) Result {
 	if len(args) != 2 {
 		return Result{Status: "error", Detail: "want address and token"}

@@ -111,7 +111,6 @@ func (p channelPeer) sockaddr() unix.Sockaddr {
 	}
 	return &unix.SockaddrUnix{Name: p.path}
 }
-
 func (p channelPeer) matches(sa unix.Sockaddr) bool {
 	switch sa := sa.(type) {
 	case *unix.SockaddrVM:
