@@ -115,7 +115,7 @@ var All = append([]Test{
 	// The same cap, loaded off the vCPU: the devices a VMM serves on host threads of its own (virtio-blk, vsock), and the console as the arm it does hold.
 	{ID: "I10", Name: "device-cpu-flood", Probe: emulationProbe, Host: cpuJudge(Session.Relay), Want: capped},
 	// And the supervisor's own decoder: root writes the smallest valid frames on the init's channel as fast as the host takes them, each read in several calls.
-	{ID: "I10", Name: "channel-cpu-flood", Probe: ackFlood, Host: cpuJudge(Session.Channel), Want: capped},
+	{ID: "I10", Name: "channel-cpu-flood", Probe: frameFlood, Host: cpuJudge(Session.Channel), Want: capped},
 	// The same disk flood in mount mode: the export is the host's own tree, served
 	// live, so a byte the guest writes under it, or a size it sets without writing, is the host's at once.
 	{ID: "I10", Name: "mount-disk-flood", Probe: mountDiskProbe, Host: mountDiskJudge, Want: cappedLive},

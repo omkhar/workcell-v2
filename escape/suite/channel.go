@@ -127,18 +127,18 @@ func channelProbe(args []string) Result {
 		linger = longLinger
 	case "slow-drip":
 		return drip(ch, frame(typeStdout, []byte("drip")))
-	case "ack-flood": // 10-byte Acks as fast as the host takes them for args[1] s, the guest's CPU at its cap meanwhile (cpuProbe): the decoder's load (I10)
+	case "frame-flood": // empty Stdout frames, as many as the host takes in args[1] s, the guest's CPU at its cap meanwhile (cpuProbe): the decoder's load (I10)
 		v, r := ints(args[1:2], 1, "seconds")
 		if r.Status != "" {
 			return r
 		}
 		go cpuProbe(args[1:2])
-		batch, sent := bytes.Repeat(frame(typeAck, []byte{0, 0, 0, 1}), 6553), 0 // about 64 KiB a write: a blocking write of more would outlast the deadline
+		batch, sent := bytes.Repeat(frame(typeStdout, nil), 10922), 0 // about 64 KiB a write: a blocking write of more would outlast the deadline
 		for by := time.Now().Add(time.Duration(v[0]) * time.Second); time.Now().Before(by); {
 			n, _ := ch.write(batch, time.Until(by)) // an error is the deadline, which ends the loop, or the host's end: nothing to do then but wait it out
 			sent += n
 		}
-		return Result{Status: "tried", Detail: fmt.Sprintf("the host took %d Ack frames (%d MiB) on the init's channel in %d s", sent/10, sent>>20, v[0])}
+		return Result{Status: "tried", Detail: fmt.Sprintf("the host took %d empty Stdout frames (%d MiB) on the init's channel in %d s", sent/6, sent>>20, v[0])}
 	default:
 		return Result{Status: "error", Detail: "unknown kind " + kind}
 	}
@@ -149,8 +149,8 @@ func channelProbe(args []string) Result {
 	return Result{Status: "sent", Detail: fmt.Sprintf("%s: %d bytes on the init's channel, still running %s later", kind, len(b), linger)}
 }
 
-// ackFlood is channelProbe's ack-flood kind under the arguments cpuJudge passes: the seconds, then the channel address.
-func ackFlood(args []string) Result { return channelProbe(append([]string{"ack-flood"}, args...)) }
+// frameFlood is channelProbe's frame-flood kind under the arguments cpuJudge passes: the seconds, then the channel address.
+func frameFlood(args []string) Result { return channelProbe(append([]string{"frame-flood"}, args...)) }
 
 // drip writes the frame one byte per dripInterval, over and over, for longLinger or until the host stops taking bytes.
 func drip(ch *rawConn, f []byte) Result {
