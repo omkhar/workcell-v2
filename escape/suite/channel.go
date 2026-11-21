@@ -9,11 +9,10 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"github.com/omkhar/workcell/v2/escape/sandbox"
 	"slices"
 	"sync"
 	"time"
-
-	"github.com/omkhar/workcell/v2/escape/sandbox"
 )
 
 // SPEC I12. Root in the guest reaches the host end of the channel as a duplicate of the init's connection (pidfd_getfd on pid 1), where a forged frame is
@@ -71,13 +70,13 @@ func hostileText(n int) []byte {
 	return b[:n]
 }
 
-// channelProbe takes the init's channel to the host at args[1] and sends the hostile traffic of kind args[0], then stays alive so that the host's answer to the
-// frame, and not the command's end, is what ends the run. The storm kind uses fresh connections instead; plain sends nothing.
+// channelProbe takes the init's channel to the host at the last argument and sends the hostile traffic of kind args[0], then stays alive so that the host's
+// answer to the frame, and not the command's end, is what ends the run. The storm kind uses fresh connections instead; plain sends nothing.
 func channelProbe(args []string) Result {
-	if len(args) != 2 {
+	if len(args) < 2 {
 		return Result{Status: "error", Detail: "want kind and channel address"}
 	}
-	kind, addr := args[0], args[1]
+	kind, addr := args[0], args[len(args)-1]
 	switch kind {
 	case "plain":
 		return Result{Status: "ran", Detail: "nothing hostile sent"}
@@ -264,7 +263,6 @@ func control(b []byte) int {
 	}
 	return n
 }
-
 func firstLine(b []byte) string {
 	line, _, _ := bytes.Cut(bytes.TrimSpace(b), []byte("\n"))
 	return clean(string(line), 120, isPrint, '?')
@@ -376,7 +374,6 @@ func rebootJudge(ctx context.Context, s Session) (bool, string, error) {
 	}
 	return true, fmt.Sprintf("the run ended with exit %d once the guest restarted its kernel, the session's %d processes went with it, and a plain run after still works", over.exit, len(kin)), nil
 }
-
 func plainAfter(s Session, addr, after string) (string, error) {
 	r, err := s.Run("plain", addr)
 	if err != nil {

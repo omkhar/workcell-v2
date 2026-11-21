@@ -6,9 +6,8 @@
 package suite
 
 import (
-	"net"
-
 	"github.com/omkhar/workcell/v2/escape/sandbox"
+	"net"
 )
 
 // loopbackAddr adds nothing off Linux: a canary address is an alias the host's loopback interface already holds. It checks that; nothing to remove.

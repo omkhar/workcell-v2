@@ -7,11 +7,10 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"github.com/omkhar/workcell/v2/escape/sandbox"
 	"net"
 	"strings"
 	"testing"
-
-	"github.com/omkhar/workcell/v2/escape/sandbox"
 )
 
 func TestRelayHeader(t *testing.T) {
@@ -102,8 +101,7 @@ func deliver(args ...string) Result {
 
 // Under ADR-003 every address is local to the guest, so a connect that the relay then drops must pass, as a refusal must; anything at the canary fails.
 func TestTCPCanaryJudge(t *testing.T) {
-	ctx := context.Background()
-	judge := tcpCanary("tcp4", "127.0.0.1:0", "")
+	ctx, judge := context.Background(), tcpCanary("tcp4", "127.0.0.1:0", "")
 	cases := []struct {
 		name string
 		run  func(args ...string) Result

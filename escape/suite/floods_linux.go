@@ -5,14 +5,13 @@ package suite
 
 import (
 	"fmt"
+	"golang.org/x/sys/unix"
 	"os"
 	"path/filepath"
 	"strconv"
 	"sync/atomic"
 	"time"
 	"unsafe"
-
-	"golang.org/x/sys/unix"
 )
 
 // forkProbe runs itself again as a child that forks args[1] processes at once, holds them, and reaps them, so that a guest which kills the child still reports.

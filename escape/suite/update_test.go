@@ -13,19 +13,17 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"github.com/omkhar/workcell/v2/escape/sandbox"
 	"io"
 	"net/http"
 	"runtime"
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/omkhar/workcell/v2/escape/sandbox"
 )
 
 // careful is a client that makes every check ADR-004 lists, so that each judge is shown to have a pass; idle installs nothing, and sticky installs
-// once and never fetches again, so that each judge is shown to error rather
-// than pass on them. Nothing else of Observe is called: a nil interface stands for it.
+// once and never fetches again, so that each judge is shown to error rather than pass on them. Nothing else of Observe is called: a nil interface stands for it.
 type careful struct {
 	sandbox.Observe
 	serial    int64

@@ -6,12 +6,11 @@ package suite
 import (
 	"context"
 	"fmt"
+	"github.com/omkhar/workcell/v2/escape/sandbox"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"time"
-
-	"github.com/omkhar/workcell/v2/escape/sandbox"
 )
 
 // SPEC I12, through the self-rollback of B9 and B10. The operator installs a provider layer and runs it by name, `workcell run claude`. An Exit frame of

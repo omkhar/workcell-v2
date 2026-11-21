@@ -9,10 +9,9 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"github.com/omkhar/workcell/v2/escape/sandbox"
 	"strings"
 	"time"
-
-	"github.com/omkhar/workcell/v2/escape/sandbox"
 )
 
 // Result is what a probe reports: a short token such as "connected" and one line of printable ASCII, both bounded and sanitised by Format.
@@ -166,7 +165,6 @@ func ParseResult(b []byte) (Result, error) {
 
 func isToken(c byte) bool { return c >= 'a' && c <= 'z' || c >= '0' && c <= '9' || c == '-' }
 func isPrint(c byte) bool { return c >= ' ' && c <= '~' }
-
 func all(b []byte, ok func(byte) bool) bool {
 	for _, c := range b {
 		if !ok(c) {
@@ -175,7 +173,6 @@ func all(b []byte, ok func(byte) bool) bool {
 	}
 	return true
 }
-
 func clean(s string, n int, ok func(byte) bool, sub byte) string {
 	b := []byte(s)
 	if len(b) > n {

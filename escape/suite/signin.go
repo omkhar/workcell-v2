@@ -182,13 +182,11 @@ func (f *flow) send(label string, req *http.Request) string {
 	}
 	return fmt.Sprintf("%s=%d", label, resp.StatusCode)
 }
-
 func (f *flow) post(label, name, path, ctype, body string) string {
 	req, _ := http.NewRequest(http.MethodPost, f.t.url(name, path), strings.NewReader(body))
 	req.Header.Set("Content-Type", ctype)
 	return f.send(label, req)
 }
-
 func (f *flow) get(label, name, path, header, value string) string {
 	req, _ := http.NewRequest(http.MethodGet, f.t.url(name, path), nil)
 	req.Header.Set(header, value)

@@ -14,14 +14,13 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"github.com/omkhar/workcell/v2/escape/sandbox"
+	"github.com/omkhar/workcell/v2/escape/suite"
 	"os"
 	"os/signal"
 	"path/filepath"
 	"syscall"
 	"time"
-
-	"github.com/omkhar/workcell/v2/escape/sandbox"
-	"github.com/omkhar/workcell/v2/escape/suite"
 )
 
 // Outcomes of one test.
@@ -55,8 +54,7 @@ func main() { os.Exit(app()) }
 
 // app is main without os.Exit, so that the deferred cleanup runs.
 func app() int {
-	name := flag.String("sandbox", "", "adapter: control or workcell")
-	list := flag.Bool("list", false, "list the tests and exit")
+	name, list := flag.String("sandbox", "", "adapter: control or workcell"), flag.Bool("list", false, "list the tests and exit")
 	only := flag.String("only", "", "run only the tests for these invariant IDs, comma-separated")
 	flag.Parse()
 	tests, err := suite.Select(*only)
@@ -90,8 +88,7 @@ func app() int {
 		fmt.Fprintln(os.Stderr, "escape:", err)
 		return 2
 	}
-	rep := run(ctx, *name, func() (sandbox.Sandbox, error) { return sandbox.New(*name) }, payload, roots, tests)
-	enc := json.NewEncoder(os.Stdout)
+	rep, enc := run(ctx, *name, func() (sandbox.Sandbox, error) { return sandbox.New(*name) }, payload, roots, tests), json.NewEncoder(os.Stdout)
 	enc.SetIndent("", "  ")
 	enc.Encode(rep)
 	if rep.Passed != len(rep.Results) {

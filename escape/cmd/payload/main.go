@@ -12,10 +12,9 @@
 package main
 
 import (
+	"github.com/omkhar/workcell/v2/escape/suite"
 	"os"
 	"time"
-
-	"github.com/omkhar/workcell/v2/escape/suite"
 )
 
 func main() {

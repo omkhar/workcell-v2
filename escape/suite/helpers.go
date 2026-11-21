@@ -9,6 +9,7 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"github.com/omkhar/workcell/v2/escape/sandbox"
 	"io"
 	"net"
 	"net/http"
@@ -18,8 +19,6 @@ import (
 	"sync"
 	"syscall"
 	"time"
-
-	"github.com/omkhar/workcell/v2/escape/sandbox"
 )
 
 // The I11 rows. The proxy and the resolver are parts of the one supervisor that owns the VM (A9), so "the proxy dies" is that process killed, SIGKILL, while
@@ -60,8 +59,7 @@ func holdProbe(args []string) Result {
 	}
 	allowed, denied := args[0], args[2]
 	addrs := map[string]string{allowed: args[1], denied: args[3]}
-	t := targets{addrs: addrs}
-	before := lookupName(allowed)
+	t, before := targets{addrs: addrs}, lookupName(allowed)
 	r := report(fetch(t.get(allowed, "/reach"), addrs, &tls.Config{}, false))
 	if r.Status != "served" {
 		time.Sleep(300 * time.Millisecond)
@@ -186,7 +184,6 @@ func helperKilled(name string, atStart bool) Judge {
 		}
 		defer ns.stop()
 		defer stop()
-
 		// The guest's run, under a context of this judge's own, so that a run that outlives the helper is cut short before the canaries go.
 		rctx, cancel := context.WithCancel(ctx)
 		defer cancel()
@@ -223,7 +220,6 @@ func helperKilled(name string, atStart bool) Judge {
 			}
 			return says(r)
 		}
-
 		// A helper the product does not have is known before anything is waited for; the pid that is killed is asked for again at the kill.
 		if _, err := s.Helper(ctx, name); err != nil {
 			return false, "", err

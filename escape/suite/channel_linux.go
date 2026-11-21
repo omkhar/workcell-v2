@@ -6,12 +6,11 @@ package suite
 import (
 	"errors"
 	"fmt"
+	"golang.org/x/sys/unix"
 	"io"
 	"strconv"
 	"strings"
 	"time"
-
-	"golang.org/x/sys/unix"
 )
 
 // rawConn is one end of the channel as a raw descriptor. The duplicate of the init's connection shares its file description, so nothing here changes a flag on
@@ -104,14 +103,12 @@ func parsePeer(addr string) (channelPeer, error) {
 	}
 	return channelPeer{}, errors.New("channel address " + addr + ": unknown kind")
 }
-
 func (p channelPeer) sockaddr() unix.Sockaddr {
 	if p.vsock {
 		return &unix.SockaddrVM{CID: p.cid, Port: p.port}
 	}
 	return &unix.SockaddrUnix{Name: p.path}
 }
-
 func (p channelPeer) matches(sa unix.Sockaddr) bool {
 	switch sa := sa.(type) {
 	case *unix.SockaddrVM:

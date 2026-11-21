@@ -77,8 +77,7 @@ func netlink(typ, flags uint16, body []byte) error {
 	}
 	defer syscall.Close(fd)
 	syscall.SetsockoptTimeval(fd, syscall.SOL_SOCKET, syscall.SO_RCVTIMEO, &syscall.Timeval{Sec: 2})
-	le := binary.NativeEndian
-	msg := make([]byte, syscall.SizeofNlMsghdr, syscall.SizeofNlMsghdr+len(body))
+	le, msg := binary.NativeEndian, make([]byte, syscall.SizeofNlMsghdr, syscall.SizeofNlMsghdr+len(body))
 	le.PutUint32(msg[0:], uint32(cap(msg)))
 	le.PutUint16(msg[4:], typ)
 	le.PutUint16(msg[6:], syscall.NLM_F_REQUEST|syscall.NLM_F_ACK|flags)

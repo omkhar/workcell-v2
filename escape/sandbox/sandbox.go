@@ -274,7 +274,6 @@ func (b *bounded) Write(p []byte) (int, error) {
 	b.buf = append(b.buf, p[:min(len(p), b.limit-len(b.buf))]...)
 	return len(p), nil
 }
-
 func (b *bounded) bytes() []byte {
 	b.mu.Lock()
 	defer b.mu.Unlock()

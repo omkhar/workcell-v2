@@ -8,6 +8,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/omkhar/workcell/v2/escape/sandbox"
+	"golang.org/x/sys/unix"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -16,8 +18,6 @@ import (
 	"sync"
 	"syscall"
 	"time"
-
-	"golang.org/x/sys/unix"
 )
 
 // capped is the sandbox the I10 tests want: each judge holds the host to these caps, with slack, while the probe asks for twice as much.
@@ -151,13 +151,13 @@ func exportSize(dir string) (int64, error) {
 	return size, nil
 }
 
-// cpuJudge runs the probe for cpuSpin seconds, told the host end of the relay too when relay is set, and fails if the host spent more CPU time on
-// the run than the guest's one CPU could have, plus slack. A host with one CPU cannot show this.
-func cpuJudge(relay bool) Judge {
+// cpuJudge runs the probe for cpuSpin seconds, told a host end too when open names one (Session.Relay, Session.Channel), and fails if the host spent more
+// CPU time on the run than the guest's one CPU could have, plus slack. A host with one CPU cannot show this.
+func cpuJudge(open func(Session, context.Context) (sandbox.Channel, error)) Judge {
 	return func(ctx context.Context, s Session) (bool, string, error) {
 		args := []string{strconv.Itoa(cpuSpin)}
-		if relay {
-			ch, err := s.Relay(ctx)
+		if open != nil {
+			ch, err := open(s, ctx)
 			if err != nil {
 				return false, "", err
 			}
@@ -177,8 +177,7 @@ func cpuJudge(relay bool) Judge {
 		if err != nil {
 			return false, "", err
 		}
-		busy := float64(after-before) / ticksPerSec
-		allowed := float64(capped.CPUs)*wall + cpuSlack
+		busy, allowed := float64(after-before)/ticksPerSec, float64(capped.CPUs)*wall+cpuSlack
 		detail := fmt.Sprintf("the host spent %.1f CPU seconds in %.1f s of wall time while the guest, capped at %d CPU, loaded it (allowed %.1f; guest says %s: %s)", busy, wall, capped.CPUs, allowed, r.Status, r.Detail)
 		return busy <= allowed, detail, nil
 	}
@@ -288,8 +287,7 @@ func onDisk() (f *os.File, dir string, err error) {
 
 // fill writes mib MiB to f a MiB at a time, stops at the first error, syncs, and says how far it got.
 func fill(f *os.File, mib int) string {
-	chunk := bytes.Repeat([]byte{0x5a}, 1<<20)
-	wrote := 0
+	chunk, wrote := bytes.Repeat([]byte{0x5a}, 1<<20), 0
 	var err error
 	for ; wrote < mib; wrote++ {
 		if _, err = f.Write(chunk); err != nil {
@@ -405,8 +403,7 @@ func cpuProbe(args []string) Result {
 	if r.Status != "" {
 		return r
 	}
-	secs := v[0]
-	n := min(runtime.NumCPU(), 8)
+	secs, n := v[0], min(runtime.NumCPU(), 8)
 	deadline := time.Now().Add(time.Duration(secs) * time.Second)
 	var wg sync.WaitGroup
 	for range n {

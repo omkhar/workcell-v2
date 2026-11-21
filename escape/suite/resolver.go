@@ -44,31 +44,29 @@ const deniedName = "denied.escape.test."
 // The lookups the rows ask. The allowed name must resolve however it is spelled; every other name, every other type for it, and the allowed name under a policy
 // that allows nothing must be refused. The allowed row asks one denied name too: a resolver that answers everything, the control sandbox's, is then no pass
 // (SPEC T2), and "only for allowed names" is shown on the one resolver that answered.
-var (
-	allowedLookups = []lookup{
-		{"a", "A:" + allowedName, "addr"},
-		{"u", "A:" + strings.ToUpper(allowedName), "addr"},
-		{"m", "A:aLlOwEd.EsCaPe.TeSt.", "addr"},
-		{"e", "A+edns:" + allowedName, "addr"},
-		{"q", "AAAA:" + allowedName, "answered"},
-		{"t", "TXT:" + allowedName, "answered"},
-		{"d", "A:" + deniedName, "refused"},
-	}
-	deniedLookups = []lookup{
-		{"d", "A:" + deniedName, "refused"},
-		{"i", "A:TOKEN.invalid.", "refused"},
-		{"s", "A:sub." + allowedName, "refused"},
-		{"p", "A:evil" + allowedName, "refused"},
-		{"x", "A:" + allowedName + "TOKEN.invalid.", "refused"},
-		{"6", "AAAA:" + deniedName, "refused"},
-		{"t", "TXT:" + deniedName, "refused"},
-		{"y", "ANY:" + deniedName, "refused"},
-		{"r", "PTR:1.0.0.127.in-addr.arpa.", "refused"},
-		{"e", "A+edns:" + deniedName, "refused"},
-	}
-	bothLookups    = []lookup{allowedLookups[0], deniedLookups[0], deniedLookups[1]}
-	nothingLookups = []lookup{{"a", "A:" + allowedName, "refused"}, {"d", "A:" + deniedName, "refused"}}
-)
+var allowedLookups = []lookup{
+	{"a", "A:" + allowedName, "addr"},
+	{"u", "A:" + strings.ToUpper(allowedName), "addr"},
+	{"m", "A:aLlOwEd.EsCaPe.TeSt.", "addr"},
+	{"e", "A+edns:" + allowedName, "addr"},
+	{"q", "AAAA:" + allowedName, "answered"},
+	{"t", "TXT:" + allowedName, "answered"},
+	{"d", "A:" + deniedName, "refused"},
+}
+var deniedLookups = []lookup{
+	{"d", "A:" + deniedName, "refused"},
+	{"i", "A:TOKEN.invalid.", "refused"},
+	{"s", "A:sub." + allowedName, "refused"},
+	{"p", "A:evil" + allowedName, "refused"},
+	{"x", "A:" + allowedName + "TOKEN.invalid.", "refused"},
+	{"6", "AAAA:" + deniedName, "refused"},
+	{"t", "TXT:" + deniedName, "refused"},
+	{"y", "ANY:" + deniedName, "refused"},
+	{"r", "PTR:1.0.0.127.in-addr.arpa.", "refused"},
+	{"e", "A+edns:" + deniedName, "refused"},
+}
+var bothLookups = []lookup{allowedLookups[0], deniedLookups[0], deniedLookups[1]}
+var nothingLookups = []lookup{{"a", "A:" + allowedName, "refused"}, {"d", "A:" + deniedName, "refused"}}
 
 // reachable is the sandbox the resolver rows want: one allowed name and one denied, both of which the host resolver is to know of.
 var reachable = Want{Allow: []string{"allowed.escape.test"}, Deny: []string{"denied.escape.test"}}
@@ -280,8 +278,7 @@ func garbage(token string) [][]byte {
 		binary.BigEndian.PutUint16(b[4:], qd)
 		return b
 	}
-	loop := append(hdr(1), 0xC0, 12, 0, 1, 0, 1)
-	long := append(hdr(1), 70)
+	loop, long := append(hdr(1), 0xC0, 12, 0, 1, 0, 1), append(hdr(1), 70)
 	long = append(long, strings.Repeat("x", 70)...)
 	long = append(long, 0, 0, 1, 0, 1)
 	many := dnsQuery(dnsQuestion{ID: 0x55AA, Name: token + ".invalid.", Type: dnsTypeA})

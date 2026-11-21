@@ -116,8 +116,7 @@ func isolate(dir, payload string) (*holder, error) {
 	}
 	defer ln.Close()
 	argv := asRoot("unshare", "-n", payload, "netns", path)
-	cmd := exec.Command(argv[0], argv[1:]...)
-	stderr := &bounded{limit: MaxStderr}
+	cmd, stderr := exec.Command(argv[0], argv[1:]...), &bounded{limit: MaxStderr}
 	cmd.Stderr = stderr
 	if err := cmd.Start(); err != nil {
 		return nil, fmt.Errorf("start the holder of the session's network namespace: %w", err)

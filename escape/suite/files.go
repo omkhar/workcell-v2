@@ -45,8 +45,7 @@ func outsideArgs(args []string) (target, error) {
 // the probe reports the secret's token or a file appears beside the export.
 func outside(plant func(workspace string) error) Judge {
 	return func(ctx context.Context, s Session) (bool, string, error) {
-		root := filepath.Dir(s.Workspace)
-		token := newToken()
+		root, token := filepath.Dir(s.Workspace), newToken()
 		secret := filepath.Join(root, "secret")
 		if err := os.WriteFile(secret, []byte(token+"\n"), 0o644); err != nil {
 			return false, "", err
@@ -123,8 +122,7 @@ func moveProbe(args []string) Result {
 	if err := errors.Join(os.Mkdir(dir, 0o755), os.WriteFile(file, []byte("escape\n"), 0o644)); err != nil {
 		return Result{Status: "error", Detail: "make entries: " + err.Error()}
 	}
-	out := status(os.Rename(dir, t.guest+"/../written-"+t.token))
-	link := status(os.Link(file, t.guest+"/../written-"+t.token+"-link"))
+	out, link := status(os.Rename(dir, t.guest+"/../written-"+t.token)), status(os.Link(file, t.guest+"/../written-"+t.token+"-link"))
 	return Result{Status: "tried", Detail: "hardlink=" + in + " rename=" + out + " linkout=" + link}
 }
 
@@ -208,8 +206,7 @@ func residueProbe(args []string) Result {
 		return Result{Status: "error", Detail: "want plant|seek|clean, token and export paths"}
 	}
 	verb, token := args[0], args[1]
-	places := append(append([]string{}, residueDirs...), args[2:]...)
-	n := 0
+	places, n := append(append([]string{}, residueDirs...), args[2:]...), 0
 	var where []string
 	for _, d := range places {
 		path := filepath.Join(d, residueName(token))

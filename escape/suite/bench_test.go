@@ -6,10 +6,9 @@ package suite
 import (
 	"context"
 	"fmt"
+	"github.com/omkhar/workcell/v2/escape/sandbox"
 	"strings"
 	"testing"
-
-	"github.com/omkhar/workcell/v2/escape/sandbox"
 )
 
 func TestParseBench(t *testing.T) {

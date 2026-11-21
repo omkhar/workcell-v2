@@ -10,6 +10,10 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"github.com/omkhar/workcell/v2/escape/sandbox"
+	internalpins "github.com/omkhar/workcell/v2/internal/pins"
+	providers "github.com/omkhar/workcell/v2/internal/provider"
+	rows "github.com/omkhar/workcell/v2/pins"
 	"net/http"
 	"os"
 	"os/exec"
@@ -19,11 +23,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-
-	"github.com/omkhar/workcell/v2/escape/sandbox"
-	internalpins "github.com/omkhar/workcell/v2/internal/pins"
-	providers "github.com/omkhar/workcell/v2/internal/provider"
-	rows "github.com/omkhar/workcell/v2/pins"
 )
 
 // The pin smoke rows (B6), one per provider that installs a binary. The judge serves a fake Messages API under the provider's first host (SPEC T8) and has the
@@ -71,7 +70,6 @@ func pinSmoke() []Test {
 	for _, p := range all {
 		if p.Install.Method == "binary" && len(p.Secrets) > 0 && len(p.Hosts) > 1 {
 			out = append(out, Test{ID: "B6", Name: "pin-smoke-" + p.Name, Probe: smokeProbe, Host: smokeJudge(p), Bound: 15 * time.Minute, // a download may be 100 MB or more
-
 				Want: Want{Workspace: true, Allow: p.Hosts, Header: p.Secrets[0].Header, Resolver: judgeResolver, Isolated: true, Secret: true}})
 		}
 	}

@@ -8,14 +8,13 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"github.com/omkhar/workcell/v2/escape/sandbox"
+	"golang.org/x/sys/unix"
 	"io/fs"
 	"os"
 	"strconv"
 	"strings"
 	"syscall"
-
-	"github.com/omkhar/workcell/v2/escape/sandbox"
-	"golang.org/x/sys/unix"
 )
 
 // The host as the judge sees it, from /proc. A guest's load must not show here.

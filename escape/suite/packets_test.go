@@ -10,9 +10,7 @@ import (
 
 func TestQUICDCID(t *testing.T) {
 	cid := bytes.Repeat([]byte{0xAB}, 16)
-	good := quicInitial(cid)
-	short := quicInitial(cid)[:quicInitMin-1]
-	v2 := quicInitial(cid)
+	good, short, v2 := quicInitial(cid), quicInitial(cid)[:quicInitMin-1], quicInitial(cid)
 	v2[4] = 2
 	shortHeader := quicInitial(cid)
 	shortHeader[0] = 0x43

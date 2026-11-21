@@ -10,13 +10,12 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"github.com/omkhar/workcell/v2/escape/sandbox"
 	"net"
 	"net/http"
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/omkhar/workcell/v2/escape/sandbox"
 )
 
 // All is the suite. Add a test by adding an entry; no other plumbing exists. Every canary a Judge starts is an address of the test host itself: its loopback,
@@ -111,9 +110,9 @@ var All = append([]Test{
 	{ID: "I10", Name: "disk-flood", Probe: diskProbe, Host: diskJudge, Want: capped},
 	{ID: "I10", Name: "descriptor-flood", Probe: fileProbe, Host: fileJudge, Want: capped},
 	{ID: "I10", Name: "log-flood", Probe: logProbe, Host: logJudge, Want: capped},
-	{ID: "I10", Name: "cpu-flood", Probe: cpuProbe, Host: cpuJudge(false), Want: capped},
+	{ID: "I10", Name: "cpu-flood", Probe: cpuProbe, Host: cpuJudge(nil), Want: capped},
 	// The same cap, loaded off the vCPU: the devices a VMM serves on host threads of its own (virtio-blk, vsock), and the console as the arm it does hold.
-	{ID: "I10", Name: "device-cpu-flood", Probe: emulationProbe, Host: cpuJudge(true), Want: capped},
+	{ID: "I10", Name: "device-cpu-flood", Probe: emulationProbe, Host: cpuJudge(Session.Relay), Want: capped},
 	// The same disk flood in mount mode: the export is the host's own tree, served
 	// live, so a byte the guest writes under it, or a size it sets without writing, is the host's at once.
 	{ID: "I10", Name: "mount-disk-flood", Probe: mountDiskProbe, Host: mountDiskJudge, Want: cappedLive},
@@ -277,7 +276,6 @@ func quicProbe(args []string) Result {
 	}
 	return sendUDP(args[0], quicInitial(dcid))
 }
-
 func sendUDP(addr string, b []byte) Result {
 	c, err := net.DialTimeout("udp", addr, 3*time.Second)
 	if err != nil {
@@ -289,7 +287,6 @@ func sendUDP(addr string, b []byte) Result {
 	}
 	return Result{Status: "sent", Detail: fmt.Sprintf("%d bytes to %s", len(b), addr)}
 }
-
 func newToken() string {
 	token := make([]byte, 16)
 	rand.Read(token)
@@ -348,7 +345,6 @@ func (t *trap) serve() {
 		t.keep([]byte(line))
 	}
 }
-
 func (t *trap) keep(b []byte) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -409,7 +405,6 @@ func says(r Result) string { return fmt.Sprintf("guest says %s: %s", r.Status, r
 func tcpCanary(network, addr, dialHost string) Judge {
 	return trapJudge(network, addr, dialHost, lineToken, true)
 }
-
 func udpCanary(addr string, carries func(b []byte, token string) bool) Judge {
 	return trapJudge("udp4", addr, "", carries, false)
 }

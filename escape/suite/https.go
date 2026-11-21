@@ -13,6 +13,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"github.com/omkhar/workcell/v2/escape/sandbox"
 	"io"
 	"log"
 	"net"
@@ -24,8 +25,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/omkhar/workcell/v2/escape/sandbox"
 )
 
 // The I6 probes and the placeholder replay drive HTTPS requests from the guest to canaries the judge runs under the session's two allowed names: the bound one
@@ -193,11 +192,9 @@ func parseTargets(args []string) (targets, Result) {
 	}
 	return t, Result{}
 }
-
 func (t targets) url(name, path string) string {
 	return "https://" + name + ":" + port(t.addrs[name]) + path
 }
-
 func (t targets) get(name, path string) *http.Request {
 	req, _ := http.NewRequest(http.MethodGet, t.url(name, path), nil)
 	req.Header = t.header.Clone()
@@ -209,7 +206,6 @@ func (t targets) get(name, path string) *http.Request {
 func (t targets) check() string {
 	return "check=" + report(fetch(t.get(t.bound, "/check"), t.addrs, &tls.Config{}, false)).Status
 }
-
 func port(addr string) string {
 	_, p, _ := net.SplitHostPort(addr)
 	return p
@@ -277,8 +273,7 @@ func mismatchProbe(h2 bool) Probe {
 		if bad.Status != "" {
 			return bad
 		}
-		check := t.check()
-		req := t.get(t.bound, "/mismatch")
+		check, req := t.check(), t.get(t.bound, "/mismatch")
 		req.Host = t.other + ":" + port(t.addrs[t.other])
 		return after(check, report(fetch(req, t.addrs, &tls.Config{ServerName: t.bound}, h2)))
 	}

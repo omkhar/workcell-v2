@@ -7,12 +7,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/omkhar/workcell/v2/escape/sandbox"
+	"github.com/omkhar/workcell/v2/escape/suite"
 	"os"
 	"path/filepath"
 	"testing"
-
-	"github.com/omkhar/workcell/v2/escape/sandbox"
-	"github.com/omkhar/workcell/v2/escape/suite"
 )
 
 // fake is a sandbox whose payload prints canned bytes; nothing of Observe is called, so a nil interface stands for it.
@@ -34,7 +33,6 @@ func (f *fake) Exec(_ context.Context, args ...string) (sandbox.Output, error) {
 }
 func (f *fake) Pull(context.Context, string) error { return nil }
 func (f *fake) Stop() error                        { f.stops++; return nil }
-
 func TestRunOutcomes(t *testing.T) {
 	judge := func(_ context.Context, s suite.Session) (bool, string, error) {
 		r, err := s.Run("x")
