@@ -58,7 +58,6 @@ func icmpReply(b []byte, raw bool) ([]byte, bool) {
 	}
 	return b[8:], true
 }
-
 func icmpChecksum(b []byte) uint16 {
 	var sum uint32
 	for i := 0; i+1 < len(b); i += 2 {

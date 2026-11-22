@@ -57,7 +57,6 @@ func FuzzQUICDCID(f *testing.F) {
 		}
 	})
 }
-
 func TestICMP(t *testing.T) {
 	payload := []byte("0123456789abcdef0123456789abcdef")
 	req := icmpEcho(0x1234, 1, payload)

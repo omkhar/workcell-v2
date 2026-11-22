@@ -255,7 +255,6 @@ func goBuild(ctx context.Context, repo, out, pkg, overlay string, env ...string)
 	}
 	return nil
 }
-
 func (w *workcell) Start(_ context.Context, cfg Config) (string, error) {
 	if prepared.bin == "" {
 		return "", errors.New("workcell: Prepare did not run")

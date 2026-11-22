@@ -18,7 +18,6 @@ func TestFrame(t *testing.T) {
 		t.Fatalf("empty frame = % x", f)
 	}
 }
-
 func TestHostileText(t *testing.T) {
 	for _, n := range []int{maxExitText - 1, 100, 40, 0} {
 		b := hostileText(n)
@@ -33,7 +32,6 @@ func TestHostileText(t *testing.T) {
 		t.Errorf("exitTag = % x", b)
 	}
 }
-
 func TestControlBytes(t *testing.T) {
 	cases := []struct {
 		in   string

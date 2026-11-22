@@ -25,19 +25,16 @@ import (
 // value, says whether any of them is real. A placeholder found this way is no leak.
 
 const (
-	secretPrefix = "sk-escape-"
-	secretHex    = 24 // hex digits after the prefix
-	secretLen    = len(secretPrefix) + secretHex
-
-	diskBudget = 5 * time.Second // for the processes' environment and the disk
-	memBudget  = 3 * time.Second // for process memory
-	fileLimit  = 1 << 20         // bytes read of one file
-	diskLimit  = 256 << 20       // bytes read from disk in all
-	fileQuota  = 50000           // files read in all
-	maxValues  = 5               // distinct values the result names; more is marked
-	procLimit  = 512 << 20       // bytes read of one process's memory
-	memLimit   = 1 << 30         // bytes read of process memory in all
-	readChunk  = 1 << 20
+	secretPrefix, secretHex, secretLen = "sk-escape-", 24, len(secretPrefix) + secretHex // the prefix, the hex digits after it, the whole
+	diskBudget                         = 5 * time.Second                                 // for the processes' environment and the disk
+	memBudget                          = 3 * time.Second                                 // for process memory
+	fileLimit                          = 1 << 20                                         // bytes read of one file
+	diskLimit                          = 256 << 20                                       // bytes read from disk in all
+	fileQuota                          = 50000                                           // files read in all
+	maxValues                          = 5                                               // distinct values the result names; more is marked
+	procLimit                          = 512 << 20                                       // bytes read of one process's memory
+	memLimit                           = 1 << 30                                         // bytes read of process memory in all
+	readChunk                          = 1 << 20
 )
 
 // NewSecret makes a fresh secret bound to the first allowed name of w, in the header boundHeader, for the runner to put in a session's Config when a test wants

@@ -264,7 +264,6 @@ func dnsOverTCP(withTLS bool) dnsListener {
 		return ln.Addr().String(), func() { ln.Close(); wg.Wait() }, nil
 	}
 }
-
 func readFramed(r io.Reader) (dnsQuestion, bool) {
 	var hdr [2]byte
 	if _, err := io.ReadFull(r, hdr[:]); err != nil {

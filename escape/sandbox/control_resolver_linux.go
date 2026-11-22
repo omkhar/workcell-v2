@@ -31,7 +31,6 @@ func listenNaiveResolver(addr string) (*naiveResolver, error) {
 	r.wg.Go(r.serve)
 	return r, nil
 }
-
 func (r *naiveResolver) serve() {
 	buf := make([]byte, 65535)
 	for {
@@ -80,7 +79,6 @@ func (r *naiveResolver) answer(q []byte) []byte {
 	a = binary.BigEndian.AppendUint16(a, uint16(len(data)))
 	return append(a, data...)
 }
-
 func (r *naiveResolver) stop() {
 	r.pc.Close()
 	r.wg.Wait()

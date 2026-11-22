@@ -189,7 +189,6 @@ func residueJudge(ctx context.Context, s Session) (bool, string, error) {
 	}
 	return true, "second session says " + r2.Status + ": " + r2.Detail + " (first session: " + r.Detail + ")", nil
 }
-
 func residueName(token string) string { return "escape-residue-" + token }
 
 // inode is the file's inode number on the host.

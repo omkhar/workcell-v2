@@ -18,17 +18,14 @@ import (
 // speak that header itself, with any address, port, proto or version. The host must dial none of it: the canary's catch is the evidence of reach. A stream
 // whose header never completes must be dropped, or a guest that sent ten bytes holds a slot of a bounded relay; the guest's side is the only witness.
 const (
-	relayVersion = 1
-	protoTCP     = 6
-	protoUDP     = 17
-	headerLen    = 20
-	shortHeader  = 10               // header bytes the short kind sends
-	dripBytes    = headerLen - 1    // the slow kind sends every header byte but the last
-	dripEvery    = 400 * ms         // between bytes of the slow header
-	answerWait   = 3 * time.Second  // how long a whole-header stream waits for the host's answer
-	headerWait   = 8 * time.Second  // a stream with no complete header must be dropped within this
-	relayWait    = 25 * time.Second // a relay run must end within this
-	relayBound   = 30 * time.Second // Test.Bound for the header kinds that wait
+	relayVersion, protoTCP, protoUDP, headerLen = 1, 6, 17, 20
+	shortHeader                                 = 10               // header bytes the short kind sends
+	dripBytes                                   = headerLen - 1    // the slow kind sends every header byte but the last
+	dripEvery                                   = 400 * ms         // between bytes of the slow header
+	answerWait                                  = 3 * time.Second  // how long a whole-header stream waits for the host's answer
+	headerWait                                  = 8 * time.Second  // a stream with no complete header must be dropped within this
+	relayWait                                   = 25 * time.Second // a relay run must end within this
+	relayBound                                  = 30 * time.Second // Test.Bound for the header kinds that wait
 )
 
 // errHeld is read's answer when the peer neither wrote nor closed in time.
