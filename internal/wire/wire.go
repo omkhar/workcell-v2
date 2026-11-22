@@ -21,10 +21,8 @@ const (
 	headerLen  = 6
 )
 
-var (
-	ErrVersion  = errors.New("wire: unsupported version") // a frame carried a version other than Version
-	ErrTooLarge = errors.New("wire: frame too large")     // a frame declared a payload longer than MaxPayload
-)
+var ErrVersion = errors.New("wire: unsupported version") // a frame carried a version other than Version
+var ErrTooLarge = errors.New("wire: frame too large")    // a frame declared a payload longer than MaxPayload
 
 // Stream is the channel to the guest. net.Conn and a pollable *os.File satisfy it.
 type Stream interface {
@@ -43,7 +41,7 @@ type Frame struct {
 // returns the same error, so the stream is never resynchronised on bytes the guest chose.
 type Conn struct {
 	s          Stream
-	r          *bufio.Reader   // what the stream gave ahead of the frame being read: a flood of small frames costs one read, not three a frame (I10)
+	r          *bufio.Reader   // what the stream gave ahead of the frame being read, MaxPayload at most: a flood of small frames costs one read a buffer (I10)
 	h          [headerLen]byte // the header being read, the one reader's alone: on the stack it would escape into io.ReadFull, an allocation a frame
 	limit      time.Duration
 	rerr, werr error
@@ -54,7 +52,7 @@ func New(s Stream, limit time.Duration) *Conn {
 	if limit <= 0 {
 		panic("wire: the time limit must be positive")
 	}
-	return &Conn{s: s, r: bufio.NewReader(s), limit: limit}
+	return &Conn{s: s, r: bufio.NewReaderSize(s, MaxPayload), limit: limit}
 }
 
 // ReadFrame returns the next frame. It waits without limit for a frame to begin, so an idle peer is not an error; once the first byte arrives the whole
@@ -70,22 +68,25 @@ func (c *Conn) ReadFrame() (f Frame, err error) {
 func (c *Conn) Buffered() int { return c.r.Buffered() }
 
 func (c *Conn) readFrame() (Frame, error) {
-	h := c.h[:]
-	if c.r.Buffered() == 0 { // only a read that has to wait on the stream needs a deadline: a buffered flood of small frames sets none (I10)
-		if err := c.s.SetReadDeadline(time.Time{}); err != nil {
-			return Frame{}, fmt.Errorf("wire: clear read deadline: %w", err)
+	if b, _ := c.r.Peek(min(c.r.Buffered(), headerLen)); len(b) == headerLen && b[0] == Version { // a frame here whole waits on nothing: no deadline (I10)
+		if n := binary.BigEndian.Uint32(b[2:]); n <= MaxPayload && int(n) <= c.r.Buffered()-headerLen {
+			f := Frame{Type: b[1], Payload: make([]byte, n)}
+			c.r.Discard(headerLen)
+			c.r.Read(f.Payload) // from the buffer, like the header: neither call can fail
+			return f, nil
 		}
 	}
-	if _, err := io.ReadFull(c.r, h[:1]); err != nil {
-		if err == io.EOF {
-			return Frame{}, io.EOF
-		}
+	h, timed := c.h[:], false
+	if err := c.s.SetReadDeadline(time.Time{}); err != nil {
+		return Frame{}, fmt.Errorf("wire: clear read deadline: %w", err)
+	}
+	if _, err := io.ReadFull(c.r, h[:1]); err == io.EOF {
+		return Frame{}, io.EOF
+	} else if err != nil {
 		return Frame{}, fmt.Errorf("wire: read header: %w", err)
-	}
-	if h[0] != Version {
+	} else if h[0] != Version {
 		return Frame{}, fmt.Errorf("%w: got %d, want %d", ErrVersion, h[0], Version)
 	}
-	timed := false
 	rest := func(p []byte) error { // the rest of the frame, within the limit from its first read that has to wait on the stream
 		if !timed && c.r.Buffered() < len(p) {
 			if err := c.s.SetReadDeadline(time.Now().Add(c.limit)); err != nil {
@@ -112,8 +113,7 @@ func (c *Conn) readFrame() (Frame, error) {
 	return f, nil
 }
 
-// WriteFrame writes f within the limit, in one Write. A payload over MaxPayload is
-// refused before anything is written, and leaves the Conn usable.
+// WriteFrame writes f within the limit, in one Write. A payload over MaxPayload is refused before anything is written, and leaves the Conn usable.
 func (c *Conn) WriteFrame(f Frame) error {
 	if c.werr != nil {
 		return c.werr

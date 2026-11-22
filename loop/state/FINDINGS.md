@@ -3218,6 +3218,19 @@ Residual: the hosted margin is a few tenths of a second, since the guest's push 
 still costs the host per frame is the bufio and ReadFull call chain (about 20 ns) and one vsock read per 4 KiB fill.
 Variants not expressed (redteam): 1-byte frames, Stdout and Stderr alternating, the flood on a fresh connection to the
 port, a flood cut mid-header at its deadline. Not S14: no file involved is ported.
+C51 margin, second fix (Mac, after the halt main-red of issue 274). The residual above was the cause of the halt: in
+nine hosted gate runs after PR #263 the row passed eight times with 0.0 to 0.2 CPU s of room (4.2 of 4.4, 4.3 of 4.4,
+4.2 of 4.4, 4.3 of 4.4, 4.3 of 4.3, 4.4 of 4.5, 4.4 of 4.4, 4.1 of 4.3) and failed once, on the claim commit of S-F36,
+which changes no code (4.6 of 4.6 as printed, 50525172 frames); cpu-flood and device-cpu-flood beside it kept 0.7 to
+1.0 of room in all nine. The fix takes away both costs the residual names, in internal/wire/wire.go alone: readFrame
+returns a frame that the buffer already holds whole from one Peek, with no ReadFull chain, no closure and no deadline
+call, and falls to the old path, unchanged but for clearing the deadline without asking Buffered() first, only when it
+must wait on the stream; and New sizes the buffer at MaxPayload, so a flood costs one stream read per 64 KiB, not per
+4 KiB. The length is still checked against MaxPayload before any allocation, on both paths. Measured on the Mac (no
+VM): the decoder alone 22 to 30 ns a frame before and 8.3 after, 0 allocs; output() on an in-memory flood 24.8 before
+and 12.7 after; output() fed by a writer over a unix socket for 3 s, process CPU a frame, writer included, 36.5 before
+and 17.8 after, system time 0.65 to 0.80 s before and 0.64 to 0.67 s after at twice the frames. Paid by folds in
+wire.go, net zero lines. The hosted number is the row's line in the gate of the pull request that lands this record.
 
 Sweep 2 verdict for this surface: two candidates, both confirmed at low (C50, C51), nothing at medium or above. Both
 get fix units (S-F33, S-F34), as sweep 1 did with its lows (S7 lists them; the fix units are hardening the loop can
