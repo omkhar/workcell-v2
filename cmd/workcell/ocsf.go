@@ -11,8 +11,7 @@ import (
 )
 
 // ocsfEvent is one audit record as an OCSF 1.3.0 event. Its fields are those of the record and a
-// constant per kind, so the same record gives the same bytes, and, as the record holds no secret
-// value, neither does the event.
+// constant per kind, so the same record gives the same bytes, and, as the record holds no secret value, neither does the event.
 type ocsfEvent struct {
 	ActivityID   int           `json:"activity_id"`
 	ActivityName string        `json:"activity_name,omitempty"`
@@ -51,8 +50,7 @@ type ocsfUnmapped struct {
 	Header string `json:"header,omitempty"`
 }
 
-// ocsfLine is the event for d, as one line of JSON with no newline. A host is shown as SafeHost
-// shows it, as in the text form.
+// ocsfLine is the event for d, as one line of JSON with no newline. A host is shown as SafeHost shows it, as in the text form.
 func ocsfLine(d audit.Record) []byte {
 	ev := ocsfEvent{Message: d.Event, StatusID: 1, Metadata: ocsfMetadata{Version: "1.3.0", Product: ocsfApp{Name: "workcell"}}}
 	if t, err := time.Parse(time.RFC3339Nano, d.Time); err == nil {

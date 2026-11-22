@@ -3367,6 +3367,27 @@ pass but before MkdirTemp or newSession (a second host process of the operator, 
 volume mounted at a second path; pull into an alias of the data directory (holds() on the destination has the same
 spelling-only check). Not S14: data.go and run_vm.go are v2's own, nothing ported.
 
+C52 FIXED by S-F35, commits 995ad0e and 03bcda5 (PR #269). In cmd/workcell/data.go, within() keeps its Rel test and, when that
+fails, stats dir once and walks resolved(p) and its ancestors by filepath.Dir up to the root, returning true when os.Stat of
+one is os.SameFile with dir; an absent dir holds nothing yet and starts no walk. So a cwd that is a bind-mount alias of a tree
+holding TMPDIR (--mount) or the data or config directory (clone or mount) is now refused with the C28 and C19 messages
+verbatim, naming the alias. The optional EvalSymlinks(dir) hand-off to the backend was not done: the refusal fires before the
+backend sees cwd. Paid by six joined comment pairs in ocsf.go, layer.go and data.go (product 15000 of 15000) and in
+c19_test.go, c20_test.go and log_test.go (test 28499 of 28500). The test moved to cmd/workcell/c52_test.go: where the test
+process is not root it runs `sudo -n true`, skips only when that asks for a password, and otherwise re-runs itself under
+`sudo -n env TMPDIR=<os.TempDir()>` with -test.run on its own name, logging the child's output and failing on its exit; the
+arms are named mount and clone so the socket path stays under 108 bytes. Proved: the redteam ran the parked copy by go test
+-overlay on the claim commit (both arms fail, plain and -race); the builder ran it against main's data.go (four Errorf lines)
+and on the fix (passes, C19, C28 and C29 beside it, go test -race ./cmd/workcell green), and the non-root path as uid 1000 with
+a sudo shim over unshare -Urm (passes on the fix, surfaces the child's four lines on main); the reviewer ran it in a worktree
+of main (fails) and on the fix as root and as uid 999 through real passwordless sudo (the child runs both arms as euid 0);
+hosted gate, gate-arm64, gate-macos and guard green on 03bcda5; no bind mount or root-owned scratch directory left behind.
+Residual, not fixed here: the reviewer's probe of the other direction of holds(), the data directory bind-mounted beneath cwd
+(mount --bind $XDG_DATA_HOME/workcell work/data; cd work), still passes, because within(dir, p) relates p's ancestors to dir
+and never finds p's inode beneath dir; bind mounts on one filesystem share st_dev, so the export walker descends into it. It
+is the same precondition class as C52 in the rarer direction and needs its own candidate, reproducing test and verifier
+(S4) in the next S-1003 audit, not a fix-round edit under S1; PARKED.md carries the line. Not S14: data.go is v2's own.
+
 Sweep 2 verdict for this surface: one candidate, C52, confirmed at medium, so sweep 2 confirms a finding at medium or above and
 S-1017 will call a third sweep (S8). The fix unit is S-F35. In the audit, the redteam and the verifier no model declined and no
 safeguard re-ran a request; the two earlier auditor attempts on this unit were stopped by a safeguard, as LOG.md records.

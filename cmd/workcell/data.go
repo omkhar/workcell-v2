@@ -11,8 +11,7 @@ import (
 	"github.com/omkhar/workcell/v2/internal/vmm"
 )
 
-// dataDir is where the pinned artifacts live: $XDG_DATA_HOME/workcell, or ~/.local/share/workcell.
-// update and doctor fill it; run only reads it.
+// dataDir is where the pinned artifacts live: $XDG_DATA_HOME/workcell, or ~/.local/share/workcell. update and doctor fill it; run only reads it.
 func dataDir() (string, error) { return xdgDir("XDG_DATA_HOME", ".local", "share") }
 
 // xdgDir is workcell's directory under the variable, else under the path beneath the home directory, on every OS alike.
@@ -44,10 +43,19 @@ func holds(dir string) error {
 	return nil
 }
 
-// within says whether p is dir itself or lies under it, both resolved: the relation holds and session's temp-directory check share.
+// within says whether p is dir itself or lies under it, both resolved: the relation holds and session's temp-directory check share. The kernel judges by
+// identity, not spelling: a bind mount (a firmlink on macOS) gives dir a second name that Rel never relates, so p's ancestors are also compared by inode.
 func within(dir, p string) bool {
-	rel, err := filepath.Rel(resolved(dir), resolved(p))
-	return err == nil && filepath.IsLocal(rel) // "." or below
+	if rel, err := filepath.Rel(resolved(dir), resolved(p)); err == nil && filepath.IsLocal(rel) { // "." or below
+		return true
+	}
+	d, err := os.Stat(dir) // absent: dir holds nothing yet
+	for q, up := resolved(p), ""; err == nil && q != up; q, up = filepath.Dir(q), q {
+		if s, err := os.Stat(q); err == nil && os.SameFile(s, d) {
+			return true
+		}
+	}
+	return false
 }
 
 // resolved is p absolute, with its symlinks followed: where p does not exist yet, the longest prefix that does is followed and the rest appended.

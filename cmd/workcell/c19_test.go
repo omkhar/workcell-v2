@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Omkhar Arasaratnam
 
-// Finding C19 of S-1008 (I7, I8, I9, I13, I14). Fix unit S-F12 first moves this file to
-// cmd/workcell/c19_test.go, as this comment says.
+// Finding C19 of S-1008 (I7, I8, I9, I13, I14). Fix unit S-F12 first moves this file to cmd/workcell/c19_test.go, as this comment says.
 
 //go:build linux || (darwin && arm64 && cgo)
 
@@ -32,8 +31,7 @@ func c19Data(t *testing.T, data, repo string) artifacts {
 	return a
 }
 
-// c19Untouched fails when a session got past the refusal: a minted audit key, a new session directory
-// or a boot record under data.
+// c19Untouched fails when a session got past the refusal: a minted audit key, a new session directory or a boot record under data.
 func c19Untouched(t *testing.T, data string) {
 	t.Helper()
 	if key := filepath.Join(data, "audit.key"); exists(key) {
