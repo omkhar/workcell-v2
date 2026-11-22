@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Omkhar Arasaratnam
 
-// Finding C52 of S-1003 (I1, I4, I7, I9, I13). Fix unit S-F35 first moves this file to cmd/workcell/c52_test.go, package main, tag `linux`.
+// Finding C52 of S-1003 (I1, I4, I7, I9, I13). Moved here by fix unit S-F35.
 
 //go:build linux
 
