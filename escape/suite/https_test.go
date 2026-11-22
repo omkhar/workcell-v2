@@ -19,8 +19,7 @@ func TestJudgesOnFakeCanaries(t *testing.T) {
 	swapped := request{method: "GET", url: "/check", headers: http.Header{"X-Api-Key": {sec.Value}}}
 	unswapped := request{method: "GET", url: "/check", headers: http.Header{"X-Api-Key": {placeholder}}}
 	elsewhere := request{method: "GET", url: "/check", headers: http.Header{"X-Api-Key": {sec.Value}, "Cookie": {"k=" + sec.Value}}}
-	judges := map[string]func(Session, *canary, *canary) (bool, string, error){"strict": strictJudge, "termination": terminationJudge, "upstream": upstreamJudge,
-		"swap": swapJudge("GET,bound,/check,header", "GET,other,/replay,header")}
+	judges := map[string]func(Session, *canary, *canary) (bool, string, error){"strict": strictJudge, "termination": terminationJudge, "upstream": upstreamJudge, "swap": swapJudge("GET,bound,/check,header", "GET,other,/replay,header")}
 	cases := []struct {
 		judge        string
 		bound, other []request
@@ -114,8 +113,7 @@ func TestExchange(t *testing.T) {
 		}
 	}
 	repo := NewSecret(scoped)
-	for spec, want := range map[string]bool{"GET,bound,/octo/allowed.git/info/refs?service=git-upload-pack,basic": true, "POST,bound,/octo/allowed,auth": true, "GET,bound,/octo/allowed.git,basic": true, "GET,bound,/octo/allowed,header": false, "GET,other,/octo/allowed,basic": false,
-		"GET,bound,/octo/allowed.git/../other.git/x,basic": false, "GET,bound,/octo/allowed.git%2F..%2Fother.git/x,basic": false, "GET,bound,//octo/allowed.git/x,basic": false, "GET,bound,/octo/allowed-x,basic": false, "GET,bound,/octo/allowedx/../allowed,basic": false, "GET,bound,/octo/allowed.gitx,basic": false, "GET,bound,/Octo/allowed,basic": false} {
+	for spec, want := range map[string]bool{"GET,bound,/octo/allowed.git/info/refs?service=git-upload-pack,basic": true, "POST,bound,/octo/allowed,auth": true, "GET,bound,/octo/allowed.git,basic": true, "GET,bound,/octo/allowed,header": false, "GET,other,/octo/allowed,basic": false, "GET,bound,/octo/allowed.git/../other.git/x,basic": false, "GET,bound,/octo/allowed.git%2F..%2Fother.git/x,basic": false, "GET,bound,//octo/allowed.git/x,basic": false, "GET,bound,/octo/allowed-x,basic": false, "GET,bound,/octo/allowedx/../allowed,basic": false, "GET,bound,/octo/allowed.gitx,basic": false, "GET,bound,/Octo/allowed,basic": false} {
 		if e, ok := parseExchange(spec); !ok || e.admitted(repo) != want {
 			t.Errorf("%q: ok %v, admitted %v under a repository scope; want %v", spec, ok, !want, want)
 		}

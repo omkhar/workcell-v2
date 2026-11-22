@@ -3544,3 +3544,171 @@ are residual for the report (S-1018). Not S14: the ported files of this surface 
 
 Sweep 2 verdict for this surface: no candidates, so it adds nothing at medium or above; sweep 2 already confirms a
 medium on S-1003 (C52), so S-1017 will still call a third sweep (S8). No model declined and no safeguard re-ran a request.
+
+## S-1005, sweep 2: TLS termination and HTTP handling: smuggling, HTTP/2, WebSocket, redirects, CONNECT, CA handling (I5, I6), as built at main 8f61f34
+
+Fresh context, the whole surface read in full as built (not a diff), after the 32 fix units of sweep 1 and S-F33 to
+S-F35 of sweep 2, at the claim commit 85fdfdb on main 8f61f34. One auditor run, finished without a stop: no model
+declined and no safeguard re-ran a request. No hypervisor in the session, and nothing on this surface needed a VM.
+Result: one candidate, C53.
+
+Trust boundary. Guest root and hostile model output own every byte of a 443 stream after the relay header: the
+ClientHello (peeked and replayed by S-1004's path), then everything the per-connection tls.Server decrypts and
+net/http parses in internal/proxy/terminate.go serveTerminated: request line, target, headers, bodies, pipelining,
+count, rate and timing, and the token-endpoint bodies that signin.go tokenRequest reads whole. The malicious
+repository owns the working directory of the supervisor (cmd/workcell/run_vm.go session takes cwd from Getwd and
+nothing changes directory before bind calls Terminate), the one thing on this surface that reaches the host process
+from outside the guest. The network attacker owns the host resolver's answers for allowed names (the rebind position),
+the TCP path to whatever they name, and every byte of an upstream that is not the real provider; it does not own an
+allowed host's x509 identity. Authority: the supervisor, as the operator's uid, dials the vetted address of the SNI
+host (the transport's DialContext re-enters p.connect), verifies the upstream chain against upstreamRoots (system
+roots plus SSL_CERT_FILE, ServerName the SNI host, TLS 1.2 or later, no proxy environment), asks the broker per
+request (Lookup and Refresh, a host process per use for cmd: and secret-service: sources), writes the real value into
+the outgoing header or token body, rewrites token-endpoint answers before the guest reads a byte, and records one
+Allowed record per connection and one refusal record per refused request. sameHost's port is the relay header's port,
+which stream delivers to the 443 adapter only when it is 443. Ported from v1: terminate.go, proxy.go, allowlist.go and
+their tests. Not ported: signin.go, relay.go, run_vm.go, policy.go, internal/guest/trust.go.
+
+Lenses (S9). Parsing and resources: the header block is bounded at 64 KiB (S-F6) and the handshake plus header read at
+10 s absolute; the token body and the token answer at 256 KiB plus 1 before and after gzip (the transport's own gunzip
+runs under readToken's LimitReader, so a bomb stops at the bound); hide and learn decode with UseNumber under
+encoding/json's depth cap of 10000 and fall to the plain-bytes pass on any decode error; fold's regular expressions are
+linear in a header-bounded path; every index on guest bytes is guarded; url.ParseRequestURI refuses control bytes and
+bad escapes with 400; no panic was found reachable from guest bytes, and net/http recovers a handler panic per
+connection; a terminated connection costs about 69 KiB idle and three goroutines inside the 1024 slots, and upstream
+dials are bounded by TLSHandshakeTimeout and MaxConnsPerHost (S-F8). Logic and state: the handler's order is an opaque
+or scheme-without-host target (400, S-F25), TRACE and CONNECT (405), sameHost against the connection's SNI (421), the
+per-rule swap gated by admits (403), the token endpoint read whole and swapped (502 on any reason), carriesPlaceholder
+(502), then ReverseProxy with Rewrite forcing scheme, URL host and Host to the SNI host; sameHost's ASCII-only fold is
+sound, since the one non-ASCII letter that lowers to ASCII (the Kelvin sign) changes the byte length; absolute-form
+wins over the Host header in Go's reader, so the upstream never sees a foreign Host; //host/path stays a path;
+userinfo tricks name another host (421) or fail to parse (400); the judge and the wire agree, since both read
+EscapedPath and Go re-encodes a raw #, backslash, quote and non-ASCII byte before either sees them; of 25 spellings
+tried under a rule narrowed to POST /v1/, each one that a known router would read outside the prefix is refused by at
+least one of the three readings (C10, C33), except the residuals already parked (double decoding, NUL truncation,
+trailing-space stripping, overlong UTF-8, and /v1/;%2F../admin of the S-F26 note); sign-in claims the endpoint by
+EqualFold, the wide and safe direction, swaps a refresh token only in its own field of a form or of top-level JSON,
+refuses a second placeholder anywhere, wants one JSON object at 2xx, and issues before hide, with the carried token
+(S-F9) and both tokens the broker holds, in the verbatim, URL-escaped and JSON-escaped spellings (S-F7). Concurrency
+and check-to-use: p.terminate, p.signin, p.ca, p.broker, p.transport and p.upstreamRoots are written once in Terminate
+before any Serve goroutine starts; SessionCA.leaf is under a mutex and its cache is keyed by allowed names only; the
+token context rides the request context into the cloned outgoing request, so a retry reuses it; the broker is under
+a mutex; rules are read-only per connection; nothing changes r.URL between admits and the clone that ReverseProxy
+sends; the peek and the terminating server parse the same replayed bytes with the same library; three generations of
+a refresh token under concurrent requests (the C15 class) are covered by the carried swap. Cryptography and identity:
+the session CA is P-256, lives at most 24 h, NotBefore one minute back, with critical PermittedDNSDomains equal to
+the 443 allowlist, every IP range excluded, path length 0 and KeyUsageCertSign; a leaf has the routed SNI host as its
+SAN, the ServerAuth usage and a random 128-bit serial, and is issued only for the routed, lowered, allowed name; the
+key stays in host memory, and the guest gets the certificate PEM, at most 16 KiB, as a convenience (A1); a fresh
+tls.Config per connection, so no ticket resumption across connections, and Go has no 0-RTT; upstream, RootCAs is the
+explicit pool, ServerName comes from the rewritten URL host, HTTP/1.1 only, connections pooled per host string, no
+Proxy; wildcard, CN-only, expired, other-SAN and other-root leaves behave as x509 says, as in sweep 1. Not held: the
+pool itself takes a relative SSL_CERT_DIR entry from the working directory (C53). Failure modes: every error path
+refuses or closes: a leaf error fails the handshake; an upstreamRoots error (an unreadable or relative SSL_CERT_FILE,
+a SystemCertPool error) fails Terminate before any VM boots; a broker error is 502; a token reason is 502 with no
+byte forwarded; a ModifyResponse error is 502 with an empty body; a 101 answered to a token request or to a plain
+request is 502; a connection that cannot be recorded half-closes before any dial or handshake (S-F16); an
+SSL_CERT_FILE that holds no certificate adds nothing and leaves the system roots. Nothing was found to fail open
+but the pool of C53. Downgrade, rollback and replay: TLS 1.2 or later on both sides; HTTP/1.1 only on the terminated
+side (an h2-only ALPN is refused, and the h2 preface is a PRI request without a Host, 421); HTTP/1.0 without a Host is
+421; a replayed request carries placeholders only and meets every check anew; the guest never holds a real refresh
+token to replay; the broker holds one generation and zeroes the replaced one. Interaction: the refusal records of a
+kept-alive connection fill the audit log in seconds, and S-F16 then refuses every connection, a loss of the guest's
+network and never a gain; the ledger record precedes every release (S-1007); the resolver's hint is never dialled
+(S-1006); loadPolicy's C34 check works per row, so two rows on one token host cannot leave one unread; the escape
+adapter hands the product an absolute SSL_CERT_FILE and the runner's environment as data. The one hole between
+surfaces is the repository's directory reaching the x509 loader through the supervisor's working directory (C53).
+
+Refuted or re-checked before anything was raised. CL.TE, TE.CL, a duplicate Host, obs-fold, chunk extensions,
+declared and undeclared trailers, `Connection: X-Api-Key`, `OPTIONS *`, the h2 preface, an h2c upgrade and a
+lower-case connect: sweep 1's results stand on a reading of go1.27.4's request reader, and each pipelined request
+is judged on its own. A 101 answered at a sign-in token endpoint (probe): no 101 reaches the guest; the handler waits
+in readToken on the hijacked body with no deadline, and its slot is held after the guest closes until the upstream
+closes (one slot held, then none); bounded by the 1024 slots and MaxConnsPerHost, and it needs a token host that
+upgrades at its token path (R3 note). Path readings (probe): /v1/%2e%2e, .%2e, ;/.., x;/../.., %5c..%5c, ..%5c/,
+//.., ./.., a/..%2f..%2f, %2f.., chained %2e%2e and ..;x=1/.. are all refused; %252e%252e, ..%00, x%00/.., ..%20,
+three dots, the overlong forms %c0%ae%c0%ae and %e0%80%ae, ;%2F.., #/.. and ?/.. are admitted, and each is either a
+residual already parked that needs a router of that kind, or harmless (a query, or a fragment byte that Go
+re-encodes); %u002e is 400. No new spelling. sameHost and the port: an IPv6 literal, an empty port, 0443, two colons,
+a trailing dot with a port, and the Kelvin and ideographic-stop spellings are all false or fail closed. Transparent
+gzip: the transport adds Accept-Encoding: gzip after tokenRequest drops the guest's, and gunzips under readToken's
+bound; x-gzip takes readToken's own branch; any other encoding is 502. JSON in learn and hide: null, arrays, strings,
+a BOM, comments, trailing commas, NaN and two values are refused at 2xx; duplicate keys collapse to the last, with the
+real value gone from both; a non-string access_token or a nested token reaches the guest as issued (the U-403 class,
+a provider's shape, no in-scope attacker). Lookup and Refresh run before carriesPlaceholder refuses, so a refused
+request can leave a granted record while the value never leaves the host (R3 note). Issue stores tokens before its
+ledger record; after one failed write the audit log fails for the rest of the session, so an unrecorded sign-in's
+tokens are never released. The guest-side trust installation (internal/guest/trust.go and the init) is a convenience,
+and nothing flows back to the host from it. C30 stays fixed: upstreamRoots refuses a relative SSL_CERT_FILE before
+SystemCertPool runs, and c30_test.go is green.
+
+Coverage. Read in full:
+internal/proxy/{terminate,signin,proxy,allowlist,terminate_test,signin_test,proxy_test,c10_test,c11_test,c12_test,c13_test,c15_test,c30_test,c32_test,c33_test,unrecorded_test,clients_test,forward_test,git_test,providers_test}.go;
+internal/secret/{broker,source}.go; internal/guest/{trust,guest}.go; cmd/workcell/{run_vm,policy,relay}.go;
+escape/suite/{terminate,secrets,signin,https}.go; docs/threat-model.md; internal/provider/{claude,codex,copilot,gemini}.toml;
+SPEC and CLAUDE.md; PARKED.md whole; FINDINGS.md for S-1005 sweep 1 with the records of C10 to C16, C23 to C25 and
+C30 to C34, and S-1004 sweep 2; go1.27.4's crypto/x509 root.go (loadSystemRoots, loadOnDiskRoots), root_darwin.go and
+root_unix.go. Skimmed: cmd/workcell-init/main.go (the WriteTrust call), escape/suite/tests.go (the I5 and I6 rows),
+escape/sandbox (the environment handling, by search), internal/audit/audit.go lines 1 to 65, docs/policy.md (network,
+secret and how a secret reaches the guest), ADR-003 by search, the Phase 10 lines of PLAN.md. Not opened:
+cmd/workcell/explain.go, internal/policy/policy.go (S-1009), internal/resolver (S-1006), cmd/workcell-init/{net,exec}.go,
+the escape adapters beyond the search, docs/providers.md, ADR-004 and ADR-005, the rest of FINDINGS.md, and Go's
+net/http server and ReverseProxy sources, which sweep 1 read: this sweep took their behaviour as sweep 1 recorded it
+and confirmed it by probe where it mattered. Ran: go test ./internal/proxy/ on 85fdfdb (ok); the C53 probe by go test
+-overlay on 85fdfdb (fails) and with a two-line change to upstreamRoots laid over terminate.go (passes under -race, the
+package green, c30_test.go and TestSessionCANameConstraints included); the 101 probe and the path probe by overlay; go
+vet and gofmt on the probe files. Every listener was a loopback socket that the probe itself started, nothing in the
+tree changed and no packet left the session (S12, T8). Not run: the escape suite or anything on a real VM, the fuzz
+targets (S10), the cmd/workcell tests.
+
+### S-1005 candidates, sweep 2
+
+C53. ID I6 (on a terminated connection the upstream certificate matches one allowed name under the host's trust), and
+through it I5 (the real secret is injected only into a verified connection); the sibling of C30 that the S-F22 reviewer
+parked for this sweep. ATTACKER: the malicious repository, which ships a directory of PEM files holding a CA whose key
+it keeps, completed by the network attacker as the host resolver's answer for an allowed name or on the path.
+Precondition the attacker does not control: the operator's environment holds a relative SSL_CERT_DIR entry (certs, ".",
+or one entry of a list such as /etc/ssl/certs:certs), the class of C30's relative SSL_CERT_FILE and C21's relative XDG
+value. SEVERITY: medium (S6). WHERE: internal/proxy/terminate.go upstreamRoots (lines 301 to 313): the HasPrefix("/")
+refusal covers SSL_CERT_FILE alone, then x509.SystemCertPool runs, and go1.27.4's loadOnDiskRoots splits SSL_CERT_DIR
+by the list separator and reads every file of every entry, a relative entry against the working directory, which is the
+repository (run_vm.go session, boot, bind, Terminate; nothing in cmd/workcell reads SSL_CERT_DIR or changes directory).
+INPUT: the repository holds certs/ca.pem; the operator runs a session with a [[secret]] row bound to an allowed host
+and SSL_CERT_DIR=certs in the environment; the attacker's upstream for that host presents a leaf for the name signed
+by that CA; the guest sends the placeholder in the bound header. EFFECT: Terminate returns no error, the transport
+verifies the attacker's leaf, swaps the real secret into the bound header and sends it to the attacker, for every
+terminated name of the session; on Linux the default files still load beside the directory, so every other connection
+works and nothing shows; an absolute SSL_CERT_FILE beside it changes nothing. Reproducing test, by the redteam, who
+was given the claim and not the auditor's probe: TestRelativeSSLCertDirIsRefused, package proxy, 46 lines, parked at
+escape/_pending/S-F36/c53_test.go. Go loads the system pool once per process, so the test re-runs its own binary once
+per spelling (certs, ".", /etc/ssl/certs:certs) in a fresh working directory; the child writes ca.pem and certs/ca.pem,
+starts a loopback TLS upstream with a leaf of that CA for api.example.com that echoes X-Api-Key, and asserts that
+Terminate refuses, or that a GET with the placeholder gets a status of 400 or above and never the real secret. Run by
+the orchestrator by go test -overlay on 85fdfdb, plain and -race, log saved: all three spellings fail with "through a
+relative SSL_CERT_DIR the attacker's upstream answered (200, "real-secret"); want the secret withheld"; with an empty
+SSL_CERT_DIR the child passes (the upstream logs a bad certificate, the guest gets 502). The 46 lines were paid by 45
+folded lines under escape/ (the lookup rows of resolver.go joined as bothLookups already was, and wrapped expressions
+and short declarations joined in fifteen more files), no row removed or renamed and no verdict changed. Outcome:
+CONFIRMED at medium by the verifier, who ran the test (three failures, plain and -race, as in the saved log, the rest
+of the package green), found that the fixtures give the test only what C30 was confirmed with (a repository directory
+of PEM files, the lookup and dial seams standing for the DNS position that I6 exists to defeat, a fake broker, and the
+environment precondition), traced the real path from session() to x509.SystemCertPool with no product code bypassed,
+and read go1.27.4 crypto/x509 root.go: one loadSystemRoots falls through to loadOnDiskRoots whenever SSL_CERT_DIR is
+set, on darwin as on Linux, so the claim holds on both launch hosts (the redteam had taken macOS to ignore the
+variable; no Mac ran the test). Severity by S6: a demonstrated break with one precondition the attacker does not
+control, so medium, not high and not low. Fix unit: S-F36, below S-1005 in PLAN.md: refuse a relative entry of
+SSL_CERT_DIR in upstreamRoots as the relative SSL_CERT_FILE is refused, before x509.SystemCertPool runs, about two
+product lines; the auditor ran such a change by overlay (the test and the package pass under -race) and paid for it
+by folding closeNotifyConn.Close to one line. Product is at 15000 of 15000 and test at 28500 of 28500. Variants not
+expressed (redteam): an absolute SSL_CERT_DIR entry that is the repository's own path, or a symlink to it, which
+needs the operator's environment to name the repository and is no distinct finding. Not S14: terminate.go is ported,
+and no v1 release holds it (SPEC section 13); the Go behaviour is Go's documented reading of SSL_CERT_DIR, not a
+defect of that project.
+also in v1 main: egressproxy/terminate.go
+
+Sweep 2 verdict for this surface: one candidate, C53, confirmed at medium; sweep 2 already confirmed a medium on S-1003
+(C52), so S-1017 will call a third sweep (S8). The fix unit is S-F36; the next candidate number is C54. The other
+shapes found are R3 notes, copied to PARKED.md: the slot a 101 at a token endpoint holds, the granted record of a
+refused request, the macOS reading of SSL_CERT_FILE and SSL_CERT_DIR since go1.27, the missing fuzz target over the
+path readings, and readToken's gzip branch. In the auditor, the redteam and the verifier no model declined and no
+safeguard re-ran a request.

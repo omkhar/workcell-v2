@@ -57,12 +57,9 @@ func repoProbe(args []string) Result {
 			err = errors.Join(err, script(filepath.Join(guest, ".git", "hooks", h), "hook-"+h, ""))
 		}
 	case "config":
-		err = errors.Join(os.Mkdir(filepath.Join(guest, ".hooks"), 0o755), script(filepath.Join(guest, ".hooks", "pre-commit"), "hookspath", ""),
-			script(filepath.Join(guest, ".git", "fsmonitor"), "fsmonitor", "echo /"), script(filepath.Join(guest, ".git", "filter"), "filter", "cat"),
-			os.WriteFile(filepath.Join(guest, ".gitattributes"), []byte("* filter=escape\n"), 0o644))
+		err = errors.Join(os.Mkdir(filepath.Join(guest, ".hooks"), 0o755), script(filepath.Join(guest, ".hooks", "pre-commit"), "hookspath", ""), script(filepath.Join(guest, ".git", "fsmonitor"), "fsmonitor", "echo /"), script(filepath.Join(guest, ".git", "filter"), "filter", "cat"), os.WriteFile(filepath.Join(guest, ".gitattributes"), []byte("* filter=escape\n"), 0o644))
 	case "submodule": // the index holds a gitlink at sub, as `update-index --cacheinfo` would leave it
-		err = errors.Join(os.WriteFile(filepath.Join(guest, ".gitmodules"), []byte("[submodule \"sub\"]\n\tpath = sub\n\turl = "+extra+"\n"), 0o644),
-			os.Mkdir(filepath.Join(guest, "sub"), 0o755), r.index(entry{"160000", "sub", (token + token)[:40]}))
+		err = errors.Join(os.WriteFile(filepath.Join(guest, ".gitmodules"), []byte("[submodule \"sub\"]\n\tpath = sub\n\turl = "+extra+"\n"), 0o644), os.Mkdir(filepath.Join(guest, "sub"), 0o755), r.index(entry{"160000", "sub", (token + token)[:40]}))
 	case "dotdot": // a commit whose tree holds a subtree named "..": git's own tools refuse to make one
 		err = committed(r, func(blob string) ([]entry, error) {
 			sub, err := r.tree(entry{"100644", "written-" + token, blob})
@@ -87,8 +84,7 @@ func repoProbe(args []string) Result {
 		dir := filepath.Join(guest, "updir")
 		err = errors.Join(os.RemoveAll(dir), os.Mkdir(dir, 0o755), os.WriteFile(filepath.Join(dir, "written-"+token), []byte("escape\n"), 0o644))
 	case "case":
-		err = errors.Join(os.WriteFile(filepath.Join(guest, "Readme"), []byte("upper\n"), 0o644),
-			os.WriteFile(filepath.Join(guest, "readme"), []byte("lower\n"), 0o644))
+		err = errors.Join(os.WriteFile(filepath.Join(guest, "Readme"), []byte("upper\n"), 0o644), os.WriteFile(filepath.Join(guest, "readme"), []byte("lower\n"), 0o644))
 	default:
 		err = errors.New("unknown shape " + shape)
 	}
