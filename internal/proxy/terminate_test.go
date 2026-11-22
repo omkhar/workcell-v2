@@ -127,10 +127,7 @@ func TestTerminateSwapsOnlyExactPlaceholder(t *testing.T) {
 	addr, ca, p, log := terminateFixture(t, broker)
 	c := clientVia(addr, caPool(t, ca))
 	cases := []struct{ sent, want string }{
-		{testPlaceholder, "example.com real-secret"},
-		{"Bearer " + testPlaceholder, "example.com Bearer real-secret"},
-		{"user-key", "example.com user-key"},
-		{"", "example.com "},
+		{testPlaceholder, "example.com real-secret"}, {"Bearer " + testPlaceholder, "example.com Bearer real-secret"}, {"user-key", "example.com user-key"}, {"", "example.com "},
 	}
 	for _, tc := range cases {
 		if code, body := get(t, c, "https://example.com/v1?key=user-key", tc.sent); code != http.StatusOK || body != tc.want {
@@ -299,11 +296,10 @@ func TestSessionCANameConstraints(t *testing.T) {
 	if ca.key.Curve != elliptic.P256() {
 		t.Fatal("CA key is not P-256")
 	}
-	// The CA is trusted only through the file SSL_CERT_FILE would name, as an operator's private authority is; a leaf of another authority is not, and a file that
-	// cannot be read refuses.
+	// The CA is trusted only through the file SSL_CERT_FILE would name, as an operator's private authority is; a leaf of another authority is not, and a file that cannot be read refuses.
 	file := filepath.Join(t.TempDir(), "roots.pem")
 	must(0, os.WriteFile(file, ca.CertPEM(), 0o600))
-	roots := must(upstreamRoots(file))
+	roots := must(upstreamRoots(file, ""))
 	verify := func(name string, leaf *x509.Certificate) error {
 		_, err := leaf.Verify(x509.VerifyOptions{DNSName: name, Roots: roots})
 		return err
@@ -319,8 +315,14 @@ func TestSessionCANameConstraints(t *testing.T) {
 	if err := verify("api.example.com", must(other.leaf("api.example.com")).Leaf); err == nil {
 		t.Error("a leaf of another authority verified under the pool")
 	}
-	if _, err := upstreamRoots(file + ".missing"); err == nil {
+	if _, err := upstreamRoots(file+".missing", ""); err == nil {
 		t.Error("upstreamRoots read a missing file without error")
+	}
+	// An SSL_CERT_DIR list of absolute or empty entries passes; one relative entry refuses, naming the variable, before the system pool reads it (C53; c53_test.go has Terminate).
+	for dirs, ok := range map[string]bool{"": true, "/etc/ssl/certs": true, "/etc/ssl/certs:" + filepath.Dir(file) + ":": true, "certs": false, ".": false, "/etc/ssl/certs:certs": false, ":certs": false} {
+		if _, err := upstreamRoots(file, dirs); (err == nil) != ok || err != nil && !strings.Contains(err.Error(), "SSL_CERT_DIR") {
+			t.Errorf("upstreamRoots with SSL_CERT_DIR=%q: %v; want accepted %t, else a refusal naming SSL_CERT_DIR", dirs, err, ok)
+		}
 	}
 	key, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	for _, name := range []string{"evil.example", "example.com"} {

@@ -25,7 +25,7 @@ func TestRelativeSSLCertFileIsRefused(t *testing.T) {
 	t.Chdir(dir)
 	t.Setenv("SSL_CERT_FILE", "ca.pem")
 	for _, name := range []string{"ca.pem", "./ca.pem", ".." + dir[strings.LastIndex(dir, "/"):] + "/ca.pem"} {
-		if _, err := upstreamRoots(name); err == nil {
+		if _, err := upstreamRoots(name, ""); err == nil {
 			t.Errorf("upstreamRoots(%q) read the repository's file against the working directory without error; want a refusal", name)
 		}
 	}

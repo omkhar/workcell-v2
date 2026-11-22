@@ -269,7 +269,7 @@ func (p *Proxy) Terminate(ca *SessionCA, broker Broker, rules []TerminateRule) e
 	}
 	if p.upstreamRoots == nil {
 		var err error
-		if p.upstreamRoots, err = upstreamRoots(os.Getenv("SSL_CERT_FILE")); err != nil {
+		if p.upstreamRoots, err = upstreamRoots(os.Getenv("SSL_CERT_FILE"), os.Getenv("SSL_CERT_DIR")); err != nil {
 			return err
 		}
 	}
@@ -298,10 +298,14 @@ func (p *Proxy) Terminate(ca *SessionCA, broker Broker, rules []TerminateRule) e
 	return nil
 }
 
-// upstreamRoots is one explicit pool, the system roots plus SSL_CERT_FILE (certFile), so macOS honours it as Linux does; an unreadable or relative one refuses.
-func upstreamRoots(certFile string) (*x509.CertPool, error) {
-	if certFile != "" && !strings.HasPrefix(certFile, "/") { // or SystemCertPool reads it against the working directory, a repository's own ca.pem (I6)
+// upstreamRoots is one explicit pool, the system roots plus SSL_CERT_FILE (certFile), so macOS honours it as Linux does; an unreadable or relative one refuses, as
+// does a relative entry of the SSL_CERT_DIR list (certDirs), since SystemCertPool reads both against the working directory, a repository's own ca.pem or certs/ (I6).
+func upstreamRoots(certFile, certDirs string) (*x509.CertPool, error) {
+	if certFile != "" && !strings.HasPrefix(certFile, "/") {
 		return nil, fmt.Errorf("SSL_CERT_FILE %q is relative: set an absolute path", certFile)
+	}
+	if slices.ContainsFunc(strings.Split(certDirs, ":"), func(dir string) bool { return dir != "" && !strings.HasPrefix(dir, "/") }) { // the separator SystemCertPool splits on
+		return nil, fmt.Errorf("SSL_CERT_DIR %q has a relative entry: set absolute paths", certDirs)
 	}
 	pool, err := x509.SystemCertPool()
 	if err != nil || certFile == "" {
@@ -346,11 +350,7 @@ type closeNotifyConn struct {
 	ln *oneConnListener
 }
 
-func (c *closeNotifyConn) Close() error {
-	err := c.Conn.Close()
-	_ = c.ln.Close()
-	return err
-}
+func (c *closeNotifyConn) Close() error { err := c.Conn.Close(); _ = c.ln.Close(); return err }
 
 // sameHost reports whether an HTTP Host or :authority names sni, which is canonical: the same name in any letter case, with or without a trailing dot and the
 // port, :443 or the one the connection came in on, which is 443 too except on a test's listener. As in route, a non-ASCII fold is no match.
