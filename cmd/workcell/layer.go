@@ -60,8 +60,7 @@ func cacheArgs(caches []vmm.Cache, next rune) string {
 	return s.String()
 }
 
-// cacheEnv points the tools of the two caches workcell knows at their directories; any other
-// cache is mounted and sets nothing.
+// cacheEnv points the tools of the two caches workcell knows at their directories; any other cache is mounted and sets nothing.
 func cacheEnv(caches []vmm.Cache) []string {
 	known := map[string][]string{
 		"go":  {"GOMODCACHE=/cache/go/mod", "GOCACHE=/cache/go/build"},

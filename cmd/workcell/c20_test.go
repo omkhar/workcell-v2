@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Omkhar Arasaratnam
 
-// Finding C20 of S-1008 (I8, I12). Fix unit S-F13 first moves this file to
-// cmd/workcell/c20_test.go, as this comment says.
+// Finding C20 of S-1008 (I8, I12). Fix unit S-F13 first moves this file to cmd/workcell/c20_test.go, as this comment says.
 
 //go:build linux || (darwin && arm64 && cgo)
 
@@ -21,8 +20,7 @@ import (
 // c20Path is a valid, NUL-free UTF-8 name the manifest accepts that holds terminal control bytes.
 const c20Path = "\x1b]0;owned\x07\x1b[2J\x1b[31mREADME"
 
-// c20NoFileGrowth makes every write that would grow a regular file fail with EFBIG for the rest of
-// the test, by lowering the soft RLIMIT_FSIZE to zero.
+// c20NoFileGrowth makes every write that would grow a regular file fail with EFBIG for the rest of the test, by lowering the soft RLIMIT_FSIZE to zero.
 func c20NoFileGrowth(t *testing.T) {
 	t.Helper()
 	var was unix.Rlimit

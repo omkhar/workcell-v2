@@ -11,6 +11,7 @@ import (
 	"errors"
 	"golang.org/x/sys/unix"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -18,10 +19,21 @@ import (
 
 // TestC52BindMountAliasEvadesWithin (I1, I4; I7, I9, I13): within() compares spellings, the kernel compares identities. A bind mount
 // (`mount --bind repo /mnt/repo; cd /mnt/repo`) gives a tree a second name that Abs, EvalSymlinks and Rel never relate to the first, so the refusals
-// of C28 (TMPDIR inside a mount export) and C19/C29 (cwd holds the data directory) do not fire. Needs root; skips where mount(2) is refused with EPERM.
+// of C28 (TMPDIR inside a mount export) and C19/C29 (cwd holds the data directory) do not fire. Needs root: the gate's runner is not, so the test re-runs
+// itself through sudo -n, as escape/sandbox does, and skips only where that asks for a password. The arms are named short to keep the socket path under 108 bytes.
 func TestC52BindMountAliasEvadesWithin(t *testing.T) {
+	if os.Geteuid() != 0 {
+		if err := exec.Command("sudo", "-n", "true").Run(); err != nil {
+			t.Skip("not root, and sudo -n fails:", err)
+		}
+		out, err := exec.Command("sudo", "-n", "env", "TMPDIR="+os.TempDir(), must(os.Executable()), "-test.run=^TestC52BindMountAliasEvadesWithin$", "-test.v", "-test.count=1").CombinedOutput()
+		if t.Logf("as root:\n%s", out); err != nil {
+			t.Fatal(err)
+		}
+		return
+	}
 	for _, mount := range []bool{true, false} {
-		t.Run(map[bool]string{true: "mount, TMPDIR inside the export", false: "clone, data directory inside the export"}[mount], func(t *testing.T) {
+		t.Run(map[bool]string{true: "mount", false: "clone"}[mount], func(t *testing.T) { // mount: TMPDIR inside the export; clone: the data directory inside it
 			real, alias, data, tmp := t.TempDir(), t.TempDir(), filepath.Join(t.TempDir(), "workcell"), t.TempDir() // all before TMPDIR moves; their removal runs after the unmount
 			if err := unix.Mount(real, alias, "", unix.MS_BIND, ""); errors.Is(err, unix.EPERM) {
 				t.Skip("not root, or the bind mount is refused:", err)
