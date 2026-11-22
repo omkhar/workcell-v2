@@ -2,9 +2,7 @@
 // Copyright 2026 Omkhar Arasaratnam
 
 // Finding C53 of S-1005 (I6, through it I5; medium), the sibling of C30: upstreamRoots refuses a relative SSL_CERT_FILE, yet x509.SystemCertPool also reads each entry of
-// SSL_CERT_DIR (certs, ".", or one of a list; a precondition the attacker does not control) against the working directory, so the repository ships certs/ca.pem and a leaf
-// that CA signed, from the network attacker as DNS for an allowed name, verifies, and the real secret is sent to it. Fix unit S-F36 first moves this file to
-// internal/proxy/c53_test.go, package proxy, no build tag. While it waits: go test -overlay o.json -run RelativeSSLCertDir ./internal/proxy, o.json mapping that path to this file.
+// SSL_CERT_DIR against the working directory, so a repository's certs/ca.pem signs the leaf that the network attacker, as DNS for an allowed name, serves to get the real secret.
 
 package proxy
 
@@ -14,12 +12,12 @@ import (
 	"net/netip"
 	"os"
 	"os/exec"
+	"strings"
 	"testing"
 	"time"
 )
 
-// TestRelativeSSLCertDirIsRefused re-runs this test binary once per relative spelling of SSL_CERT_DIR, since Go loads the system pool once per process. The child, in
-// a working directory holding ca.pem and certs/ca.pem, must have Terminate refuse, or withhold the secret from the attacker's upstream.
+// TestRelativeSSLCertDirIsRefused re-runs this binary once per relative spelling of SSL_CERT_DIR (Go loads the system pool once per process) in a directory holding ca.pem and certs/ca.pem.
 func TestRelativeSSLCertDirIsRefused(t *testing.T) {
 	if os.Getenv("C53_CHILD") == "" {
 		for _, dir := range []string{"certs", ".", "/etc/ssl/certs:certs"} {
@@ -38,9 +36,11 @@ func TestRelativeSSLCertDirIsRefused(t *testing.T) {
 	ln := must(tls.Listen("tcp", "127.0.0.1:0", &tls.Config{Certificates: []tls.Certificate{*must(repoCA.leaf("api.example.com"))}}))       // the attacker's upstream, where its DNS answer sends the proxy
 	go http.Serve(ln, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write([]byte(r.Header.Get("X-Api-Key"))) })) // echoes the credential header it got
 	p, _, _ := testProxy(t, "api.example.com:443", []netip.Addr{netip.MustParseAddr("8.8.8.8")}, ln.Addr().String())
-	if p.Terminate(sessionCA, &fakeBroker{value: "real-secret"}, []TerminateRule{{Host: "api.example.com", Header: "X-Api-Key", Placeholder: testPlaceholder}}) == nil { // an error here is the fix
-		if code, body := get(t, clientVia(listen(t, p, 443), caPool(t, sessionCA)), "https://api.example.com/v1/x", testPlaceholder); code < 400 || body == "real-secret" {
-			t.Errorf("through a relative SSL_CERT_DIR the attacker's upstream answered (%d, %q); want the secret withheld", code, body)
+	if err := p.Terminate(sessionCA, &fakeBroker{value: "real-secret"}, []TerminateRule{{Host: "api.example.com", Header: "X-Api-Key", Placeholder: testPlaceholder}}); err != nil { // the fix is this error
+		if !strings.Contains(err.Error(), "SSL_CERT_DIR") {
+			t.Errorf("Terminate refused for another reason: %v; want an error naming SSL_CERT_DIR", err)
 		}
+	} else if code, body := get(t, clientVia(listen(t, p, 443), caPool(t, sessionCA)), "https://api.example.com/v1/x", testPlaceholder); code < 400 || body == "real-secret" {
+		t.Errorf("through a relative SSL_CERT_DIR the attacker's upstream answered (%d, %q); want the secret withheld", code, body)
 	}
 }
