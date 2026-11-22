@@ -3391,3 +3391,156 @@ is the same precondition class as C52 in the rarer direction and needs its own c
 Sweep 2 verdict for this surface: one candidate, C52, confirmed at medium, so sweep 2 confirms a finding at medium or above and
 S-1017 will call a third sweep (S8). The fix unit is S-F35. In the audit, the redteam and the verifier no model declined and no
 safeguard re-ran a request; the two earlier auditor attempts on this unit were stopped by a safeguard, as LOG.md records.
+
+## S-1004, sweep 2: network path and proxy core: routing, SNI, ECH, connection handling, fail-closed behaviour (I2, I4, I11), as built at main 7110fb2
+
+Fresh context, the whole surface read in full as built (not a diff), after the 32 fix units of sweep 1 and S-F33 to
+S-F35 of sweep 2, at the claim commit 640800c on main 7110fb2. One auditor run, finished without a stop: no model
+declined and no safeguard re-ran a request. No hypervisor in the session, so nothing that needs a VM ran. Result:
+no candidates.
+
+Trust boundary. Guest root owns every byte of every vsock connection to host port 5001: the 20-byte relay header
+(version, proto, port, 16-byte address), all that follows it (a ClientHello on 443, raw bytes on a forward port,
+one 2-byte length-framed DNS message on UDP 53), and the count, rate and timing of streams (bounded by Firecracker's
+1023-connection muxer cap on Linux and by vz's backlog of 16 per listener on macOS). The network attacker owns the host
+resolver's answers for allowed names (the rebind model, map row 14) and every upstream byte on a forward port; on 443
+the upstream's identity is bound by x509 (S-1005). The malicious repository and hostile model output reach this surface
+only through the guest. Entry, in order: cmd/workcell/run_vm.go boot (m.Listen(relay.Port), newAdapters(allow.Ports()),
+proxy.New, bind to Terminate for every port-443 name, one p.Serve per port, go serveRelay); cmd/workcell/relay.go
+serveRelay (1024 slots) and stream (exactly 20 bytes under 5 s, relay.Decode, UDP 53 to the resolver, TCP to a served
+port to its adapter with the deadline lifted, anything else closed, a TCP header to an unserved port recorded first);
+internal/relay/relay.go Decode and ReadFrame; internal/proxy/proxy.go Serve (1024 slots, a shed connection closed with
+no record), handle (route, one Allowed record before anything else, then terminated or connect and splice), route (the
+forward map, or a 16 KiB and 10 s ClientHello peek with the ECH refusal and an ASCII-only lower-case exact match),
+connect (one rooted lookup, nets() read per connect, every answer through blockedAddr before any dial, a 30 s budget
+shared across addresses, the dial by IP literal), splice, closeWrite and Deny; internal/proxy/allowlist.go. Trusted
+from here: internal/proxy/terminate.go (S-1005), internal/resolver/resolver.go (S-1006), internal/audit/audit.go
+Note (S-1010), both backends' Listen and Close, and the init's net.go as data (A1). Authority: the supervisor, as the
+operator's uid, dials TCP from the host to a policy host's vetted address at a policy port, holds up to 1024 relay and
+1024 proxy slots (about 50 to 70 KiB each), writes one audit line per attempt, and on 443 injects secrets (S-1005,
+S-1007). The guest-chosen header address is never dialled; it reaches only relayConn.LocalAddr, whose port (always
+the adapter's) sameHost reads. Ported from v1: internal/proxy/proxy.go, allowlist.go, terminate.go and their three
+tests. Not ported: cmd/workcell/relay.go, run_vm.go, internal/relay, internal/resolver, signin.go, both backends, the init.
+
+Lenses (S9). Parsing and resources: the header is a fixed 20-byte array read with ReadFull under an absolute 5 s deadline
+before any allocation, and Decode is total (exact length, version, proto); FuzzDecode and FuzzReadFrame ran about 2
+billion execs each in S-1014 with no crasher; a DNS frame is at most 65535 bytes in one allocation and the resolver
+bounds every index and replies at most 287 bytes; the ClientHello is read by crypto/tls on a recording conn capped at
+16 KiB with a 10 s absolute deadline, and a hello spread over tiny records, a 64 KiB record, plaintext, a truncation
+and an empty SNI are each refused (TestPeekSNI, FuzzPeekSNI); memory per slot is the peek buffer plus crypto/tls's
+input, or io.Copy's two 32 KiB buffers on a splice, or about 69 KiB terminated (S-F6), and slots cap at 1024 twice;
+host CPU of the splice path measured in this session at 0.86 CPU s per GiB with client and sink in the same process
+(an upper bound), about 0.2 CPU s per wall second at ADR-003's 238 MiB/s vsock rate, inside the class of C6 and C51;
+nets() is one netlink dump per connect, bounded by the vsock connect rate. Logic and state: a port other than 443
+routes to the forward map's one host with no SNI (ADR-003); 443 routes by SNI, lower-cased with a length check so a
+non-ASCII fold (Kelvin sign, invalid UTF-8) never matches, by exact set membership, the lowered name used thereafter
+for the leaf, the Rewrite and the record; every allowed 443 host is terminated in production, so the 443 splice
+branch is reached only in tests; the relay's served set equals allow.Ports(); ParseAllowlist refuses IP literals,
+port 0, non-DNS names and two hosts on one forward port. Address vetting is Unmap, then IsGlobalUnicast, IsPrivate,
+IPv6 outside 2000::/3, the explicit list (0/8, CGNAT, 192.0.0/24, Azure 168.63.129.16/32, 2001::/23, 2002::/16,
+documentation, benchmarking, the 6to4 relay, 240/4, 2001:db8::/32, 3fff::/20) and every interface prefix of the host;
+the auditor walked the IANA special-purpose registries for v4 and v6 (every block refused or public anycast; AS112
+192.175.48.0/24 is the suite's isolated net on purpose) and the metadata endpoints of AWS (v4, the v6 ULA, ECS and
+EKS), GCP, Azure (IMDS and WireServer), Oracle, Alibaba, Tencent, Huawei, OpenStack, Hetzner, DigitalOcean, Vultr,
+Linode (v4 and fe80::a9fe:a9fe), Scaleway, IBM, Yandex, Fly (fdaa::/16) and Tailscale (100.64/10 and its ULA): all
+refused. Concurrency and check-to-use: p.terminate, p.allow, p.transport and p.ca are written once in Terminate before
+any Serve goroutine starts; SessionCA.leaf is under a mutex; slots are channels; every path that takes a relayConn
+closes it exactly once, and Close releases the slot through sync.Once; one lookup per connection, every answer vetted
+before any dial, the dial by literal, no second lookup (TestConnectVetsEveryAnswerOnEveryConnection), and the terminated
+transport re-enters connect per upstream connection; the peek and the terminating server parse the same bytes with
+the same library, so the routed name and the leaf's name cannot diverge; a first write that carries bytes after the
+hello gets a reset and no dial (probe); nets() and the dial are microseconds apart and only the operator's own network
+change could move the list between them; the S-F8 reviewer's nanosecond window (proxy slot released after the relay slot)
+stands as recorded. Cryptography and identity: SNI is routing identity only; on 443 the upstream is checked by x509 with
+ServerName the SNI host, system roots plus an absolute SSL_CERT_FILE (S-F22), TLS 1.2 or later, no proxy environment;
+forward ports carry no identity check by design (ADR-003, docs/policy.md). ECH was re-verified on go1.27.4 by reading
+crypto/tls (processECHClientHello runs before GetConfigForClient, and with no keys the outer hello is handed through
+with extension 0xfe0d in hello.Extensions) and by probe: a real ECH hello built with a config list, inner and outer
+names both allowed, gets no name and the route no_sni, an inner-type ECH extension on a plain hello is refused too,
+and the empty-body form fails earlier as malformed; the row ech-hidden-sni proves the same on a real VM. A fresh
+tls.Config per connection, so no resumption across connections; no client certificate is requested. Failure modes:
+every error path refuses or closes (a SetReadDeadline error or a peek failure is no_sni, a lookup error or an empty
+set resolve_failed, an unreadable interface list or one blocked answer blocked_address, a dial failure dial_failed,
+a failed replay write a close); the Allowed record precedes the dial and the terminated handshake, and a record that
+cannot be taken half-closes, drains for at most 10 s and returns (S-F16, TestUnrecordedConnectionIsNotServed on both
+paths); a nil audit log (pull, bench) refuses everything, and those boots pass a nil allowlist, so no adapter exists;
+serveRelay ends on any Accept error and closes every adapter, which ends every Serve loop (TestRelayCloseEndsAdapters,
+TestStreamAfterAdaptersClosed); on Firecracker a closed 5001 listener is an unlinked socket and the muxer resets
+every later connect, on vz drop() closes the queued ones; proxy and resolver are in-process, so a dead helper is
+a dead supervisor, and Firecracker dies with it by Pdeathsig (vz's VM object with the process); no panic reachable
+from guest bytes was found. I11 holds on every path traced. Downgrade, rollback and replay: header version 1 only;
+TLS 1.2 minimum on both sides; a replayed stream is another connection meeting the same checks; the relay holds no
+state across streams; the product caches no DNS answer and vets per connection; HTTP/1.1 only on the terminated side,
+an h2-only ALPN fails closed. Interaction: streams go to the proxy and DNS frames to the in-process resolver (S-1006),
+443 to serveTerminated (S-1005), refusal records to audit (S-1010, fail closed after SoftLimit since S-F16: a loss
+of the guest's network, never a gain); the sockets the backend connects by path lie in the 0700 MkdirTemp directory
+that S-F20, S-F21 and S-F35 keep out of any export; m.Close ends the listeners and so the Serve loops (A9); a handle
+goroutine mid-connect at teardown can finish one dial to a vetted address and then meets a closed guest conn; the
+forward-port path dials the allowed upstream the moment a stream is delivered, before the guest sends a byte (probe),
+which opens only a connection the guest could open anyway.
+
+Refuted or re-checked before anything was raised. ECH, real and inner-type, on go1.27.4: refused before any name is
+read; GREASE ECH from a Chrome-class client still means no_sni, a cost in experience (PARKED 55). Mixed, changing and
+IPv6 answer sets, mapped and compatible encodings, the NAT64 well-known prefix, 6to4, Teredo, ORCHID, documentation,
+benchmarking, CGNAT, AS112 v6, a zone-bearing fe80::1%eth0, ::ffff:0.0.0.0 and ::ffff:255.255.255.255: all refused,
+and 2001:200::1, 2620:0:ccc::2 and 2001:470::1 allowed (probe, TestBlockedAddr). A host prefix with host bits set still
+matches its network (Prefix.Contains masks). The relay header's address is never dialled; only its port is read, and
+only on the 443 adapter, where it is always 443 (relay-header rows, TestStreamDemultiplexes). Port 0 in a TCP header:
+served[0] never exists, recorded as port_not_allowed with no port (S-1010's note). A UDP header to a port other than
+53 is closed without a record (C14's intended behaviour) and so is a connection at the slot cap (C8's); on Linux the
+muxer's 1023 cap keeps the relay below 1024. A guest that closes a forward-port stream while the upstream holds keeps
+its slot until the upstream closes (probe: one slot held after the guest's close, none after the upstream's): self-harm
+inside the same 1024 (R3 note). An upstream half-close becomes a full close of the guest stream (PARKED 75). A hello
+followed by junk in one write: reset after the server's first flight, nothing dialled. SNI bytes: API.EXAMPLE.COM
+routes to api.example.com; a leading 0xFF byte, a NUL, a trailing space and an xn-- spelling are sni_not_allowed; the
+raw SNI reaches the record clipped and JSON-escaped (S-1010). serveRelay ignores the error of its first SetDeadline:
+a fail-open shape that is unreachable, since SetDeadline on a UnixConn or a vz FileConn fails only once closed (R3
+note). serveRelay ends on any Accept error, EMFILE included, where Serve retries: the guest then loses its network
+for the session, self-inflicted and fail closed, and Serve's retry branch is dead because the adapter never errors
+(R3 and less-code note). EMFILE cannot reach the audit record, whose files are opened at Create (S-1013). Interface
+hot-plug between nets() and the dial: a microsecond window the attacker cannot time, and a splice that outlives a host
+network change gains nothing. The resolver's hint address, search suffixes, /etc/hosts and CNAME chasing: S-1006's
+record stands. C9 (interface prefixes, not routes) stands as residual, with two variants named for the report and
+not demonstrated: a NAT64 network-specific prefix inside an ISP's global space (an AAAA that embeds a private IPv4 is
+accepted and the NAT64 gateway decides the reach) and an ISATAP-style tunnel address; both need an operator network
+of that shape and a route-table read to close. A guest that holds every slot idle, fills the audit log to lose its
+own network, or dials the allowed provider 1024 times with no data: bounded, by design, no reach. Sweep 1's C7 fix
+(168.63.129.16/32) holds, the IPv4-mapped form included.
+
+Coverage. Read in full:
+internal/proxy/{proxy,allowlist,terminate,signin,proxy_test,allowlist_test,forward_test,clients_test,c13_test,c30_test,unrecorded_test}.go
+and the fixtures of terminate_test.go (lines 1 to 140); internal/relay/{relay,relay_test}.go;
+internal/resolver/resolver.go; cmd/workcell/{relay,relay_test,run_vm,policy,backend_linux,backend_darwin}.go;
+internal/policy/policy.go; internal/audit/audit.go; internal/vmm/vmm.go,
+firecracker/firecracker.go and vz/vz.go; cmd/workcell-init/{net,main}.go as data (A1);
+escape/suite/{relay,rebind,packets,https,icmp_linux,floods,floods_linux,helpers,lifecycle,suite,tests,dns,addr_linux,host_linux}.go;
+escape/sandbox/{sandbox,workcell_vm,workcell_linux,control_linux,control_relay_linux,control_resolver_linux}.go;
+docs/adr/003-network-path.md and docs/policy.md; SPEC sections 2, 3, 4, 6, 8, 11 and 13; FINDINGS.md and
+PARKED.md whole; both enforced lists; the S-1004 and S-F lines of PLAN.md; go1.27.4's crypto/tls readClientHello,
+processECHClientHello, parseECHExt and the server_name parser. Skimmed: docs/threat-model.md (the I2, I4, I11 and
+I12 paragraphs), internal/proxy/{c11_test,c32_test}.go by their records, cmd/workcell/{pull_vm,bench_vm}.go (the boot
+calls with a nil allowlist and a nil log). Not opened: internal/proxy/{c10,c12,c15,c33,git,providers,signin}_test.go;
+internal/resolver/resolver_test.go; the suite files of other surfaces (dnstests, resolver, device, secrets, signin,
+terminate, repo, gitdir, files, channel, layer, update, rollback, smoke, audit, priv, and the darwin and other-OS
+stubs); escape/sandbox/{workcell,workcell_darwin,workcell_other,control_other,control_channel_linux}.go and the
+adapter tests; the pinned vz library's connection type (S-1003 read it); the rest of cmd/workcell; internal/secret;
+_legacy/. The clone is shallow, so nothing was compared with the sweep-1 baseline 5f5b941. Ran: go vet and go test on
+internal/proxy, internal/relay, internal/resolver and cmd/workcell (all pass); seven probes in package proxy by go
+test -overlay from the session's scratch directory (ECH hellos, the address table, SNI spellings, hello plus junk,
+the dial before the first byte, the held slot, the splice's CPU), every listener a loopback socket or net.Pipe the
+probe itself started, nothing in the tree changed and no packet left the session (S12, T8). Not run: anything on a
+real VM, the full gate, any probe against a third party. Evidence gaps, not findings, for S-1013 or the report: no
+escape row floods a forward port for host CPU (the number above is the only measurement), none holds all 1024 slots
+idle to measure the bounded memory on a real VM, and none but ech-hidden-sni sends a real ECH hello from a guest.
+
+### S-1004 candidates, sweep 2
+
+None. The auditor raised no candidate: nothing at medium or above, and nothing at low that names an invariant an
+in-scope attacker puts at risk with a reproducible input (R2). So no reproducing test was written, no verifier ran,
+no fix unit is added and escape/_pending/ stays absent; the next candidate number is still C53. The shapes found are
+R3 notes, copied to PARKED.md: serveRelay's exit on any Accept error beside Serve's dead retry branch, its ignored
+first SetDeadline error, and the slot a forward-port stream holds after the guest's close. The two C9 variants above
+are residual for the report (S-1018). Not S14: the ported files of this surface hold nothing new.
+
+Sweep 2 verdict for this surface: no candidates, so it adds nothing at medium or above; sweep 2 already confirms a
+medium on S-1003 (C52), so S-1017 will still call a third sweep (S8). No model declined and no safeguard re-ran a request.
