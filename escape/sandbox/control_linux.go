@@ -108,7 +108,6 @@ func (c *control) record(line string) error {
 	_, err = fmt.Fprintf(f, "%s %s\n", time.Now().UTC().Format(time.RFC3339Nano), line)
 	return err
 }
-
 func (c *control) Exec(ctx context.Context, args ...string) (Output, error) {
 	if c.update != nil { // a naive daily check: every start, from whatever the channel says
 		c.Update(ctx, *c.update)
@@ -252,7 +251,6 @@ func (c *control) Verify(context.Context) error {
 	}
 	return err
 }
-
 func (c *control) Helper(_ context.Context, name string) (int, error) {
 	if err := c.startHelpers(); err != nil {
 		return 0, err
@@ -268,11 +266,9 @@ func (c *control) Helper(_ context.Context, name string) (int, error) {
 func (c *control) Bind(_ context.Context, network, addr string) (net.Listener, net.PacketConn, error) {
 	return bindHere(network, addr)
 }
-
 func (c *control) Channel(context.Context) (Channel, error) {
 	return Channel{Addr: "unix:" + c.ln.Addr().String()}, nil
 }
-
 func (c *control) Relay(context.Context) (Channel, error) {
 	return Channel{Addr: "unix:" + c.relay.ln.Addr().String()}, nil
 }
@@ -337,7 +333,6 @@ func (c *control) Update(_ context.Context, u UpdateConfig) ([]byte, error) {
 	}
 	return art, os.WriteFile(filepath.Join(c.dir, "installed-"+u.Name), art, 0o755)
 }
-
 func (c *control) Installed(_ context.Context, name string) ([]byte, error) {
 	b, err := os.ReadFile(filepath.Join(c.dir, "installed-"+name))
 	if errors.Is(err, fs.ErrNotExist) {
@@ -387,7 +382,6 @@ func (c *control) Install(ctx context.Context, l Layer) (string, error) {
 func (c *control) Bench(context.Context) (Output, error) {
 	return Output{Stderr: []byte("control: a plain container boots no VM\n"), Exit: 1}, nil
 }
-
 func (c *control) Stop() error {
 	if c.dir == "" {
 		return nil

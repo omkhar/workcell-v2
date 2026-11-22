@@ -216,7 +216,6 @@ func probe(ctx context.Context, sb sandbox.Sandbox, name string) suite.Run {
 		return r, err
 	}
 }
-
 func classify(err error) (string, string) {
 	if errors.Is(err, sandbox.ErrNotImplemented) {
 		return NotImplemented, err.Error()

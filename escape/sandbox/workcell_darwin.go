@@ -76,7 +76,6 @@ func isolate(string, string) (*holder, error) {
 	}
 	return &holder{pid: os.Getpid()}, nil
 }
-
 func shaped() error {
 	if err := cmp.Or(LoopbackHolds(landing), LoopbackHolds(Neighbour)); err != nil {
 		return err
@@ -120,7 +119,6 @@ type atCanary struct{ net.Listener }
 func (l atCanary) Addr() net.Addr {
 	return &net.TCPAddr{IP: net.ParseIP(CanaryAddr), Port: l.Listener.Addr().(*net.TCPAddr).Port}
 }
-
 func (*holder) stop() {}
 
 // settle waits out mDNSResponder's cache after a session resolved the suite's names through it: an answer is held 15 s whatever its TTL (U-701) and no user can

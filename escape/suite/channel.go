@@ -23,31 +23,28 @@ import (
 // Frames: a 6-byte header of version 1, a type and a big-endian length of at most 65536, then the payload. Guest-to-host types are Stdout 5, Stderr 6, Exit 7
 // and Ack 8. An Exit payload is a tag byte and a value: 0 then one byte of status, 1 then one byte of signal, 2 then up to 256 bytes of text.
 const (
-	typeStdout = 5
-	typeExit   = 7
-	typeAck    = 8
-	tagCode    = 0 // Exit payload: a code
-	tagText    = 2 // Exit payload: an error text
-	forgedCode = 7 // the status every forged Exit names; the command's own is 0
-
-	maxExitText  = 256              // bytes of error text an Exit may carry
-	hangBound    = 15 * time.Second // a hostile run must end within this
-	shortLinger  = 2 * time.Second  // the probe stays alive after a frame the host may ignore
-	longLinger   = 40 * time.Second // the probe holds the channel hostage past hangBound
-	sendWait     = 2 * time.Second  // a write to a host that stopped reading gives up
-	dripInterval = time.Second      // between bytes of the slow drip
-	stormSize    = 32               // fresh connections in the storm
-	stormHold    = time.Second      // how long each is held open
-	floodSize    = 768              // fresh connections in the flood
-	floodBytes   = 256 << 10        // bytes each flood connection offers the host side
-	floodWait    = 500 * ms         // how long a flood connection waits for the host side to take more
-	floodSlack   = 64               // MiB the host may lose during the flood beyond a plain run
-	cutPayload   = 100              // bytes a cut frame's header promises
-	cutSent      = 10               // bytes of it sent before the cut
-	channelBound = 45 * time.Second // Test.Bound: several boots, one of which may hang
-	rawCleanExit = 125              // the CLI's status for a session it could not keep
-	rawNoStart   = 126              // the CLI's status when the guest could not start the command
-	sanitised    = " \t\n"          // control bytes a host may write to its stderr
+	typeStdout, typeExit, typeAck = 5, 7, 8
+	tagCode                       = 0                // Exit payload: a code
+	tagText                       = 2                // Exit payload: an error text
+	forgedCode                    = 7                // the status every forged Exit names; the command's own is 0
+	maxExitText                   = 256              // bytes of error text an Exit may carry
+	hangBound                     = 15 * time.Second // a hostile run must end within this
+	shortLinger                   = 2 * time.Second  // the probe stays alive after a frame the host may ignore
+	longLinger                    = 40 * time.Second // the probe holds the channel hostage past hangBound
+	sendWait                      = 2 * time.Second  // a write to a host that stopped reading gives up
+	dripInterval                  = time.Second      // between bytes of the slow drip
+	stormSize                     = 32               // fresh connections in the storm
+	stormHold                     = time.Second      // how long each is held open
+	floodSize                     = 768              // fresh connections in the flood
+	floodBytes                    = 256 << 10        // bytes each flood connection offers the host side
+	floodWait                     = 500 * ms         // how long a flood connection waits for the host side to take more
+	floodSlack                    = 64               // MiB the host may lose during the flood beyond a plain run
+	cutPayload                    = 100              // bytes a cut frame's header promises
+	cutSent                       = 10               // bytes of it sent before the cut
+	channelBound                  = 45 * time.Second // Test.Bound: several boots, one of which may hang
+	rawCleanExit                  = 125              // the CLI's status for a session it could not keep
+	rawNoStart                    = 126              // the CLI's status when the guest could not start the command
+	sanitised                     = " \t\n"          // control bytes a host may write to its stderr
 )
 
 // frame encodes one channel frame.

@@ -62,5 +62,4 @@ func (r *naiveRelay) one(c net.Conn) {
 	}()
 	io.Copy(c, up)
 }
-
 func (r *naiveRelay) stop() { r.ln.Close() }

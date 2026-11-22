@@ -39,7 +39,6 @@ func (h *naiveHost) accept(ln net.Listener) {
 		h.add(c)
 	}
 }
-
 func (h *naiveHost) add(c net.Conn) {
 	h.mu.Lock()
 	h.conns = append(h.conns, c)

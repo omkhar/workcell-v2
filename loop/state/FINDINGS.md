@@ -3222,3 +3222,151 @@ port, a flood cut mid-header at its deadline. Not S14: no file involved is porte
 Sweep 2 verdict for this surface: two candidates, both confirmed at low (C50, C51), nothing at medium or above. Both
 get fix units (S-F33, S-F34), as sweep 1 did with its lows (S7 lists them; the fix units are hardening the loop can
 still afford). No model declined and no safeguard re-ran a request in the audit, the two redteams or the two verifiers.
+
+## S-1003, sweep 2: VM configuration and device model, Linux and macOS backends (I1, I4, A7), as built at main 362391b
+
+Fresh context, the whole surface read in full (not a diff), after the 32 fix units of sweep 1 and S-F33 and S-F34 of sweep 2.
+Third attempt: two earlier auditor runs on the same brief were stopped by a safeguard after their reading and before their
+first analysis line (LOG.md, 2026-11-21T23:32Z and 2026-11-22T00:04Z), so an architect's diagnosis preceded this one as
+PROMPT section 4 asks at tries:2; this run's auditor finished, and no model declined and no safeguard re-ran a request in it.
+
+Trust boundary. Attacker bytes on this surface are what the guest does with the devices the host hands it (virtio-blk
+requests to root ro, workspace rw, layers ro, caches ro or rw by flag; AF_VSOCK connects to CID 2 at any port; bytes on the
+serial console, ttyS0 on Firecracker and hvc0 on vz; virtio-rng reads on vz; the guest's own reboot, halt, panic and kexec),
+the guest-written ext4 images the host reattaches later (sessions/<id>/workspace.ext4 to the pull guest rw, caches/<name>.ext4
+to later guests of any repository with --cache; the host never parses either), the VMM process's exit code and Firecracker's
+stdout and stderr on the paced console pipe, and the vz state channel. Entry: Firecracker's device threads (child process,
+operator uid, default seccomp, no jailer, CPU mask pinned to --cpus by S-F3); on vz Apple's helper and the supervisor's pump
+and console goroutines; firecracker.go Start (paced reader into a 4 KiB tail) and Wait (fixed strings), run_vm.go accept (the
+tail printed only through lastLines), vz.go listener pump (backlog 16) and console copy. Host-built inputs the guest cannot
+touch: the kernel cmdline (integers, fixed words, build-time provider names ^[a-z][a-z0-9-]*$, validated cache names
+^[a-z0-9][a-z0-9_-]{0,31}$, uint16 ports), firecracker.json 0600 in a 0700 MkdirTemp directory under an absolute TMPDIR, drive
+paths under the IsAbs-guarded data directory and sessions/<id>/. Authority: the supervisor (operator uid) execs
+<data>/firecracker by absolute path with cwd = the repository, makes and removes the wc* socket directory, creates cache images
+and holds their flocks, writes the session directory; the Firecracker child (same uid) connects by path to <Dir>/vsock_<port>
+on every guest CONNECT (pinned v1.17.0 muxer, confirmed from vsock.md and muxer.rs fetched as data) and listens on <Dir>/vsock
+for host-initiated connects, which nothing uses. Persistent host state a guest changes through a device: its own workspace
+image and an rw cache it was given (operator opt-in). No file of this surface carries `// Ported from v1`.
+
+Lenses (S9). Parsing and resources: no parser of guest bytes here (exit status is an *exec.ExitError string, the console tail is
+bounded and sanitised, vz state is an enum); CPU is pinned on Linux by S-F3 and unpinned on vz, where I10 is not enforced;
+memory is bounded by mem_size_mib, Firecracker's MAX_CONNECTIONS and the relay's 1024 slots; disk space by the image's fixed
+capacity (tree plus --disk, sparse, truncated) and the charged mount growth of S-F10 and S-F11; disk bandwidth is unbounded by
+any Firecracker rate_limiter and cache_type Unsafe advertises no flush, so it is bounded in practice by --disk per dirty_expire
+and no invariant names bandwidth (R3 note); descriptors by the muxer's cap, the relay slots and FUSE's maxFDs; a cmdline
+truncation only drops trailing args (PARKED 48). Logic and state: drive order and the cmdline's letters agree on both backends
+(root, workspace, layers, caches; vz skips empty paths exactly where the letter logic does); a duplicate Firecracker drive_id
+would overwrite, but no id is guest- or repository-chosen; once{} takes one connection then unlinks the socket (Firecracker,
+RST after) or refuses and closes queued ones (vz); openCaches stats, locks, creates under a temp name and renames, the lock
+outliving the VM; findLayers refuses non-bare marker names and missing images; reboot=k and panic=-1 end the VMM on Linux, the
+Ping of S-F24 ends a restarted run on vz; a guest that halts without restarting equals sleep infinity (PARKED 110).
+Concurrency and check-to-use: Listen before Start, every boot exit path runs closeAll; a connection accepted after the select
+returned leaks one descriptor until the process exits, with no effect; Pdeathsig follows the forking thread, which is locked
+for the child's life; the TMPDIR-in-export check of C28 (S-F20) and the holds() check of C19 and C29 (S-F12, S-F21) are
+evaluated once before anything is made and compare spellings (filepath.Abs, EvalSymlinks, Rel) where the kernel compares
+identities: candidate C52. Cryptography and identity: none by design; the vsock peer is the VMM by the 0700 directory and the
+per-VM device. Failure modes: nothing fails open (a missing socket is RST to the guest, a failed cache or layer mount is no
+cache or no agent on PATH, a boot with no connection in 20 s, a dead VMM or a signal tears down and exits 125 or 128+sig);
+vz Close waits on exited only if the framework refuses to stop a Running VM, which the guest cannot cause. Downgrade,
+rollback, replay: not applicable to the device model; the pull guest boots the image again with no more authority than the
+first guest had. Interaction: the relay and FUSE listeners end with m.Close, which ends the proxy's Serve loops (A9); an rw
+cache is a guest-to-guest channel across repositories by operator opt-in, ruled by S-1013; pull and bench guests get no
+layers, caches or network; TMPDIR and the data directory are S-1009's row 40 and their IsAbs guards (S-F14) hold here.
+
+Refuted or re-checked before anything was raised. A TMPDIR of the form <dir>/<symlink into the export>/../tmp passes within()
+(Clean folds the `..` before EvalSymlinks sees the link) and MkdirTemp makes the directory inside the export, but Listen's and
+encode's filepath.Join clean the same `..` and bind under a directory that does not exist, so the boot fails closed and
+RemoveAll removes the directory through the raw path: cosmetic error only (R3 note; probe arm a). pull with TMPDIR under the
+destination (PARKED 97): the guest cannot name wcNNN. A retargetable symlink component in TMPDIR or XDG_DATA_HOME: the random
+wc name, or an environment set by repository tooling (S-1009 row 40). Caches as a cross-repository channel: operator opt-in
+(S-1013). Firecracker drive_id overwrite: build-time names only. cache_type Unsafe and the absent rate_limiter: bandwidth is
+named by no invariant. Console and logger on one paced pipe: a full pipe blocks the child's writer, the guest's own loss. A
+guest that halts without restarting (PARKED 110); kexec and virtio reset end the muxer's connections or leave the same idle
+wait. CID 3 on every VM: the muxer is per process and userspace, vz ignores the CID. vz Close after a failed Stop, vz backlog
+16, Pdeathsig thread lifetime, drive letters and truncation (PARKED 48), pin() placement, bench's boot record and the vz
+console through the poller (PARKED 50, 150, 151): unchanged. A7: six methods, per-OS constants only. The export walk is
+S-1008's. The nil audit log in pull and bench: append and Close check l == nil. Sweep 1's C5 and C6 fixes hold as recorded.
+
+Coverage. Read in full: internal/vmm/vmm.go; internal/vmm/firecracker/{firecracker,doc,firecracker_test,run_test,init_test,
+mount_test}.go and testdata/{guest,probe}/main.go; internal/vmm/vz/{vz,args,doc,vz_test,args_test}.go; cmd/workcell/{run_vm,
+backend_linux,backend_darwin,mount_linux,mount_darwin,caps,cache,cache_vm,layer,data,session,bench,bench_vm,main,run_other,
+term_vm,term_linux,term_darwin,pull_vm,pull,pull_linux,pull_darwin,relay,run_vm_test,cache_vm_test,caps_test,layer_test,
+c19_test,c28_test,c29_test,data_test}.go; cmd/workcell-init/{main,root,exec,net,mount,pull,root_test}.go; cmd/mkimage/main.go;
+internal/workspace/{workspace,workspace_test,c31_test,c38_test}.go; internal/rootfs/{ext4,ext4file,tree,build}.go;
+internal/guest/guest.go; escape/suite/{device,floods,floods_linux,layer,files,files_linux,files_other,lifecycle,tests,suite,
+helpers,host_linux,channel,channel_linux,rollback}.go; escape/sandbox/{sandbox,workcell,workcell_vm,workcell_linux,
+workcell_darwin,workcell_other}.go; docs/adr/accepted/001 and 002, docs/adr/003, 004 and 005, docs/threat-model.md, both
+enforced lists; the sweep-1 S-1003 record, the S-1002 sweep-2 record, the C28 and C29 records, the PARKED lines on this
+surface, the S-1003, S-F3 and S-F24 log entries; Firecracker v1.17.0 vsock.md, block-caching.md, logger.md, actions.md and,
+by grep, muxer.rs and drive.rs (fetched as data); vz v3.8.0 socket.go and storage.go (module cache, as data). Skimmed:
+internal/provider/provider.go, internal/fileserve/serve_linux.go, cmd/workcell/update.go, internal/audit/audit.go,
+escape/sandbox/control_linux.go, loop/gate.sh, .github/workflows/ci.yml, docs/policy.md. Not opened: cmd/workcell/{explain,
+log,ocsf,policy}.go and the remaining cmd/workcell tests; internal/rootfs/{layer,oci}.go and tests; internal/fileserve/
+{ops_linux,codec}.go; internal/guest/{trust,walk}.go; internal/wire, relay, resolver, proxy, secret, policy, channel, pins,
+artifact, sigstore; the suite files of other surfaces; escape/sandbox/control_* bodies and the adapter tests; escape/cmd;
+pins/*.json; _legacy/; docs/benchmarks.md, docs/providers.md. Ran: go test and go vet on internal/vmm/..., cmd/workcell,
+cmd/workcell-init, internal/workspace and internal/rootfs (all pass; VM-booting tests skip without /dev/kvm); a three-arm
+overlay probe of session() with dummy artifacts; a casefold tmpfs mount attempt (refused by this kernel, so the
+case-insensitive variant is reasoned only); bind mounts of scratch directories, released after. Not run: anything on a real
+VM; the guest's symlink-and-dial after C52's placement is the VM step a hosted row would add (shape: the adapter mounts the
+export's source under an alias and sets TMPDIR under the source; the guest finds /workspace/tmp/wc*/vsock_5001, replaces it
+with a symlink to a canary unix socket the judge started beside the export, dials 2:5001 and writes a token; the judge reads
+the canary; T2 on control needs the same layout), as C28's own record also left it.
+
+### S-1003 candidates, sweep 2
+
+C52. ID I1 and I4 through the TMPDIR rule of C28 (S-F20), and I7, I9 and I13 through the holds() rule of C19 and C29
+(S-F12, S-F21). Attacker: guest root, driven by a malicious repository or hostile model output, exactly as in C28 and C19.
+Where: cmd/workcell/data.go:48 within() and :54 resolved(), called by data.go:33 holds() and run_vm.go:94 (the mount-mode
+TMPDIR refusal); the backend then gets the unresolved Dir (run_vm.go:251-277). Input: within() compares spellings
+(filepath.Abs, EvalSymlinks, Rel) where the kernel compares identities, and a bind mount is not a symlink. Mount mode: the
+operator's working directory is a second name of a tree that holds TMPDIR (mount --bind /home/u/repo /mnt/repo; cd /mnt/repo;
+TMPDIR=/home/u/repo/tmp workcell run --mount). Clone or mount mode: the working directory is a second name of a tree that
+holds the data directory. The guest then takes C28's step (replace /workspace/tmp/wc*/vsock_5001 by a symlink to any operator
+socket and dial 2:5001) or C19's (the export carries audit.key, every session's record and image, root.ext4 and the firecracker
+binary, and pull writes the guest's versions back). Effect: neither refusal fires; the VMM's socket directory is made and
+vsock_5000, 5001 and 5002 are bound inside the live export, or audit.key is minted inside the exported tree and the whole data
+directory is copied into the guest image. Auditor's evidence: an overlay probe of the real session() with dummy artifacts, both
+arms, by inode identity (os.SameFile). Severity claimed: low (hardening of a check; the operator's step is rarer than C28's
+cd /tmp, and the Mac form was judged R3 by S-F12's reviewer, PARKED 91), with the note that S6's letter makes it medium.
+Reproducing test: TestC52BindMountAliasEvadesWithin, a cmd/workcell package test written by the redteam from the candidate
+alone, parked at escape/_pending/S-F35/c52_test.go (60 lines, tag linux): bind-mounts a scratch directory onto a second
+scratch directory (MS_BIND, both t.TempDir), changes into the alias and calls session() with c19Data's artifacts; the mount
+arm sets TMPDIR under the real name, the clone arm sets XDG_DATA_HOME there; each arm wants a refusal naming the alias and
+then proves the placement by os.SameFile (the recorded VMM directory's parent against alias/tmp; data/audit.key against
+alias/workcell/audit.key); it skips on EPERM (not root) and unmounts with MNT_DETACH before t.TempDir's removal. On the current
+tree, plain and -race, by go test -overlay: the mount arm fails with "the VMM's socket directory .../001/tmp/wcNNN was made in
+.../001/tmp, which is .../002/tmp inside the mount export .../002 (os.SameFile; I1, I4)" and the clone arm with "audit.key was
+minted at .../001/workcell/audit.key, which is .../002/workcell/audit.key inside the exported tree .../002 (os.SameFile; I7,
+I9)"; the package is green without the overlay; as uid 65534 both arms skip; with a scratch overlay of data.go whose within()
+also walks p's ancestors comparing os.SameFile, this test and the C19, C28 and C29 tests all pass. The 60 lines were paid by
+50 folded lines under escape/ (one const group in dns.go to one line, three joined declaration groups in relay.go, channel.go
+and secrets.go, 28 blank lines between same-kind undocumented declarations gofmt does not re-insert). Outcome: CONFIRMED and
+UPGRADED to medium by the verifier, who ran the test as root (both arms fail in 0.02 s as in the saved log), read within(),
+holds() and the two call sites, and traced the guest-side chain unchanged in code (fileserve/ops_linux.go Symlinkat to any
+target and Unlinkat, firecracker.go Listen in cfg.Dir with uds_path there, pull.go checkPath still admitting workcell/audit.key):
+the effect is real to the same standard C19 and C28 were confirmed at; no identity check exists anywhere in cmd/workcell (the
+only Stat_t compare is pull_vm.go's .git check); the test takes no attacker power, since root is used once for the bind mount,
+which models the operator's environment (fstab, a dev-container volume, sudo), and the rest is session() with c19_test.go's
+dummy artifacts; the precondition is operator- or environment-chosen and not attacker-controlled, and given it an in-scope
+attacker breaks I1 and I4 (mount) or I7 and I9 (clone), which is S6's medium by the letter, the same shape as C19, C28 and C29,
+only rarer. The verifier notes that S-1013's record filed this shape as "bind mount needs host root, out of scope, residual",
+which misreads section 2: it excludes host root as the attacker, not as the operator's own mount tooling. Nits, not refutations:
+the mount arm stops at bind: invalid argument (t.TempDir's path exceeds a unix socket's 108 bytes) earlier than the real flow,
+but the asserted placement is already done; a SameFile-against-ancestors fix closes bind mounts but not FUSE, bindfs or a
+network re-export; on macOS the firmlink alias (/System/Volumes/Data/Users/x against /Users/x) is a no-root form of the same
+precondition, untested here. Fix unit: S-F35, below S-1003 in PLAN.md: compare identities as well as spellings in within(),
+after the Rel test walking resolved(p) and its ancestors by filepath.Dir and returning true on os.SameFile with dir's info (about
+six lines; product has five lines of room, so fold first), and optionally hand the backend filepath.EvalSymlinks(dir) so the
+VMM's per-CONNECT connect(2) walks no symlink. The hosted gate runs go test as the runner user, not root, so the moved test must
+run its arms under sudo -n, as escape/sandbox does for unshare, or under unshare -Urm, or it skips there and proves nothing.
+Variants not expressed (redteam): the same alias through a FUSE or overlayfs mount or a mount namespace, where SameFile of
+the top directory still matches but device numbers differ for children; a hard-linked audit.key or session file into the
+workspace in clone mode (files, not directories, so within() never sees them); a bind mount into cwd after holds() and within()
+pass but before MkdirTemp or newSession (a second host process of the operator, likely parked); the macOS firmlink or an APFS
+volume mounted at a second path; pull into an alias of the data directory (holds() on the destination has the same
+spelling-only check). Not S14: data.go and run_vm.go are v2's own, nothing ported.
+
+Sweep 2 verdict for this surface: one candidate, C52, confirmed at medium, so sweep 2 confirms a finding at medium or above and
+S-1017 will call a third sweep (S8). The fix unit is S-F35. In the audit, the redteam and the verifier no model declined and no
+safeguard re-ran a request; the two earlier auditor attempts on this unit were stopped by a safeguard, as LOG.md records.

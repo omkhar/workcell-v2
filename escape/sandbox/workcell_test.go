@@ -70,7 +70,6 @@ func TestPolicyTOML(t *testing.T) {
 		}
 	}
 }
-
 func TestRunArgs(t *testing.T) {
 	tail := []string{"--", "/bin/sh", "-c", "L", "sh", "probe", "x"}
 	cases := []struct {

@@ -46,7 +46,6 @@ type bench struct {
 func (b bench) Bench(context.Context) (sandbox.Output, error) {
 	return sandbox.Output{Stdout: []byte(b.line)}, nil
 }
-
 func TestBenchJudgeBudget(t *testing.T) {
 	for _, tc := range []struct {
 		p50  int

@@ -56,7 +56,6 @@ func TestParseDNSQuery(t *testing.T) {
 		t.Errorf("framed = % x", f[:4])
 	}
 }
-
 func FuzzParseDNSQuery(f *testing.F) {
 	f.Add(dnsQuery(dnsQuestion{ID: 1, Name: "0123456789abcdef.invalid.", Type: dnsTypeA}))
 	f.Add(dnsQuery(dnsQuestion{Name: "0.deadbeef.0123456789abcdef.invalid.", Type: dnsTypeTXT}))
@@ -109,7 +108,6 @@ func TestTunnelled(t *testing.T) {
 		}
 	}
 }
-
 func TestParseDNSReply(t *testing.T) {
 	q := dnsQuery(dnsQuestion{ID: 0x1234, Name: "a.test.", Type: dnsTypeA})
 	reply := func(rcode byte, rrs ...[]byte) []byte {
@@ -164,7 +162,6 @@ func TestParseDNSReply(t *testing.T) {
 		t.Errorf("withEDNS0 = % x", e)
 	}
 }
-
 func FuzzParseDNSReply(f *testing.F) {
 	q := dnsQuery(dnsQuestion{ID: 1, Name: "a.test.", Type: dnsTypeA})
 	f.Add(q)

@@ -19,7 +19,6 @@ func TestHostMemAvailable(t *testing.T) {
 		t.Fatalf("available memory %d, %v", mem, err)
 	}
 }
-
 func TestHelperAlive(t *testing.T) {
 	if alive, err := helperAlive(os.Getpid()); err != nil || !alive {
 		t.Fatalf("self: %v %v", alive, err)

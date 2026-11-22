@@ -369,7 +369,6 @@ func (e exchange) credential(v string) string {
 	basic := "Basic " + base64.StdEncoding.EncodeToString([]byte("x-access-token:"+v))
 	return cmp.Or(map[string]string{"bearer": "Bearer " + v, "auth": "Bearer " + v, "basic": basic}[e.where], v)
 }
-
 func parseExchange(spec string) (exchange, bool) {
 	f := strings.Split(spec, ",")
 	if len(f) != 4 || f[0] == "" || f[1] != "bound" && f[1] != "other" || !strings.HasPrefix(f[2], "/") ||

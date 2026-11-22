@@ -13,19 +13,7 @@ import (
 // A minimal DNS wire codec (RFC 1035 section 4.1) for the I3 probes and their canaries. The bytes a canary parses come from the guest and are hostile, so
 // parseDNSQuery is total and fuzzed. A name is "label.label.", always with the trailing dot, every label 1 to 63 bytes of printable ASCII without a dot.
 
-const (
-	dnsTypeA        = 1
-	dnsTypeCNAME    = 5
-	dnsTypePTR      = 12
-	dnsTypeTXT      = 16
-	dnsTypeAAAA     = 28
-	dnsTypeOPT      = 41
-	dnsTypeANY      = 255
-	dnsClassIN      = 1
-	dnsRcodeRefused = 5
-	maxLabel        = 63
-	maxName         = 255
-)
+const dnsTypeA, dnsTypeCNAME, dnsTypePTR, dnsTypeTXT, dnsTypeAAAA, dnsTypeOPT, dnsTypeANY, dnsClassIN, dnsRcodeRefused, maxLabel, maxName = 1, 5, 12, 16, 28, 41, 255, 1, 5, 63, 255
 
 // Response codes (RFC 1035 section 4.1.1), as the resolver probes name them.
 var rcodeNames = map[uint16]string{0: "noerror", 1: "formerr", 2: "servfail", 3: "nxdomain", 4: "notimp", 5: "refused"}
@@ -105,7 +93,6 @@ type dnsReply struct {
 	Rcode   uint16
 	Answers []dnsRR
 }
-
 type dnsRR struct {
 	Type uint16
 	Data []byte
