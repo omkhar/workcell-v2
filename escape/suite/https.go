@@ -78,8 +78,7 @@ func serveCanaries(ln net.Listener, keys []tls.EncryptedClientHelloKey, cs ...*c
 				}
 			}
 			c.mu.Lock()
-			c.seen = append(c.seen, request{sni: r.TLS.ServerName, host: r.Host, proto: r.Proto, method: r.Method,
-				url: r.URL.String(), ech: r.TLS.ECHAccepted, headers: r.Header.Clone()})
+			c.seen = append(c.seen, request{sni: r.TLS.ServerName, host: r.Host, proto: r.Proto, method: r.Method, url: r.URL.String(), ech: r.TLS.ECHAccepted, headers: r.Header.Clone()})
 			c.mu.Unlock()
 			if c.respond != nil {
 				c.respond(w, r)

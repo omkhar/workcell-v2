@@ -198,8 +198,7 @@ func (f *flow) get(label, name, path, header, value string) string {
 func (f *flow) replay() []string {
 	t := f.t
 	return []string{
-		f.get("other-host", t.other, "/userinfo", "Authorization", "Bearer "+f.access),
-		f.get("wrong-header", t.bound, "/v1/replay", boundHeader, f.access),
+		f.get("other-host", t.other, "/userinfo", "Authorization", "Bearer "+f.access), f.get("wrong-header", t.bound, "/v1/replay", boundHeader, f.access),
 		f.get("query", t.bound, "/v1/replay?access_token="+f.access, "Accept", "*/*"),
 		f.get("refresh-bearer", t.bound, "/v1/replay", "Authorization", "Bearer "+f.refresh),
 		f.post("wrong-host", t.bound, tokenPath, form, "grant_type=refresh_token&refresh_token="+f.refresh),

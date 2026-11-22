@@ -235,8 +235,7 @@ func helperKilled(name string, atStart bool) Judge {
 				case <-time.After(20 * time.Millisecond):
 				}
 				if over != nil || time.Now().After(deadline) {
-					return false, "", fmt.Errorf("the guest held no connection to %s before the kill, which a correct product serves (%s served %d requests; the resolver was asked [%s]; %s)",
-						allowed.name, allowed.name, len(allowed.requests()), strings.Join(ns.questions(), ", "), said())
+					return false, "", fmt.Errorf("the guest held no connection to %s before the kill, which a correct product serves (%s served %d requests; the resolver was asked [%s]; %s)", allowed.name, allowed.name, len(allowed.requests()), strings.Join(ns.questions(), ", "), said())
 				}
 			}
 		}

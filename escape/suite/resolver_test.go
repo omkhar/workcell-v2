@@ -10,9 +10,7 @@ import (
 )
 
 func TestFirstNameserver(t *testing.T) {
-	cases := []struct {
-		in, want string
-	}{
+	cases := []struct{ in, want string }{
 		{"nameserver 127.0.0.1\n", "127.0.0.1:53"},
 		{"# comment\nsearch example\n  nameserver   10.0.0.2 \nnameserver 10.0.0.3\n", "10.0.0.2:53"},
 		{"nameserver ::1\n", "[::1]:53"},

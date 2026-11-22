@@ -40,8 +40,7 @@ func (r repo) create(extra string) error {
 		}
 	}
 	config := "[core]\n\trepositoryformatversion = 0\n\tfilemode = true\n" + extra
-	return errors.Join(os.WriteFile(filepath.Join(g, "HEAD"), []byte("ref: refs/heads/main\n"), 0o644),
-		os.WriteFile(filepath.Join(g, "config"), []byte(config), 0o644))
+	return errors.Join(os.WriteFile(filepath.Join(g, "HEAD"), []byte("ref: refs/heads/main\n"), 0o644), os.WriteFile(filepath.Join(g, "config"), []byte(config), 0o644))
 }
 
 // object writes one loose object and returns its hex id.

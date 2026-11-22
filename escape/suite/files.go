@@ -102,8 +102,7 @@ func symlinkProbe(args []string) Result {
 	if err := os.Symlink(t.secret, own); err != nil {
 		return Result{Status: "error", Detail: "symlink: " + err.Error()}
 	}
-	return Result{Status: "tried", Detail: "link=" + tryRead(filepath.Join(t.guest, "link")) + " own=" + tryRead(own) +
-		" write=" + tryWrite(filepath.Join(t.guest, "updir", "written-"+t.token))}
+	return Result{Status: "tried", Detail: "link=" + tryRead(filepath.Join(t.guest, "link")) + " own=" + tryRead(own) + " write=" + tryWrite(filepath.Join(t.guest, "updir", "written-"+t.token))}
 }
 
 // moveProbe takes entries across the top of the export without a write of its own: a hard link to the secret's host path made inside the export and

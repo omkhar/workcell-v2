@@ -130,8 +130,7 @@ func mountDiskJudge(ctx context.Context, s Session) (bool, string, error) {
 		return false, fmt.Sprintf("the guest did not report its flood as tried (guest says %s: %s)", r.Status, r.Detail), nil
 	}
 	bound := int64(capped.DiskMiB+diskSlack) << 20
-	detail := fmt.Sprintf("the host lost %d MiB of free disk and a file in the export reached %d MiB while the guest, capped at %d MiB, wrote %d MiB and grew a file to %d GiB in its live export (guest says %s: %s)",
-		below>>20, size>>20, capped.DiskMiB, diskWrite, sparseGrow, r.Status, r.Detail)
+	detail := fmt.Sprintf("the host lost %d MiB of free disk and a file in the export reached %d MiB while the guest, capped at %d MiB, wrote %d MiB and grew a file to %d GiB in its live export (guest says %s: %s)", below>>20, size>>20, capped.DiskMiB, diskWrite, sparseGrow, r.Status, r.Detail)
 	return below <= bound && size <= bound, detail, nil
 }
 

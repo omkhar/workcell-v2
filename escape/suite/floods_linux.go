@@ -158,8 +158,7 @@ func emulationProbe(args []string) Result {
 		}()
 	}
 	time.Sleep(time.Until(deadline))
-	return Result{Status: "tried", Detail: fmt.Sprintf("disk=%s:%dMiB(%s) relay=%d+%d-refused console=%s:%dMiB(%s) in %ds",
-		disk, read.Load()>>20, status(derr), connects.Load(), refused.Load(), console, wrote.Load()>>20, status(cerr), v[0])}
+	return Result{Status: "tried", Detail: fmt.Sprintf("disk=%s:%dMiB(%s) relay=%d+%d-refused console=%s:%dMiB(%s) in %ds", disk, read.Load()>>20, status(derr), connects.Load(), refused.Load(), console, wrote.Load()>>20, status(cerr), v[0])}
 }
 
 // firstOpen opens the first of the paths that opens with flag, and says which; with none, the last error.

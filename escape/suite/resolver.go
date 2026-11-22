@@ -44,27 +44,9 @@ const deniedName = "denied.escape.test."
 // The lookups the rows ask. The allowed name must resolve however it is spelled; every other name, every other type for it, and the allowed name under a policy
 // that allows nothing must be refused. The allowed row asks one denied name too: a resolver that answers everything, the control sandbox's, is then no pass
 // (SPEC T2), and "only for allowed names" is shown on the one resolver that answered.
-var allowedLookups = []lookup{
-	{"a", "A:" + allowedName, "addr"},
-	{"u", "A:" + strings.ToUpper(allowedName), "addr"},
-	{"m", "A:aLlOwEd.EsCaPe.TeSt.", "addr"},
-	{"e", "A+edns:" + allowedName, "addr"},
-	{"q", "AAAA:" + allowedName, "answered"},
-	{"t", "TXT:" + allowedName, "answered"},
-	{"d", "A:" + deniedName, "refused"},
-}
-var deniedLookups = []lookup{
-	{"d", "A:" + deniedName, "refused"},
-	{"i", "A:TOKEN.invalid.", "refused"},
-	{"s", "A:sub." + allowedName, "refused"},
-	{"p", "A:evil" + allowedName, "refused"},
-	{"x", "A:" + allowedName + "TOKEN.invalid.", "refused"},
-	{"6", "AAAA:" + deniedName, "refused"},
-	{"t", "TXT:" + deniedName, "refused"},
-	{"y", "ANY:" + deniedName, "refused"},
-	{"r", "PTR:1.0.0.127.in-addr.arpa.", "refused"},
-	{"e", "A+edns:" + deniedName, "refused"},
-}
+var allowedLookups = []lookup{{"a", "A:" + allowedName, "addr"}, {"u", "A:" + strings.ToUpper(allowedName), "addr"}, {"m", "A:aLlOwEd.EsCaPe.TeSt.", "addr"}, {"e", "A+edns:" + allowedName, "addr"}, {"q", "AAAA:" + allowedName, "answered"}, {"t", "TXT:" + allowedName, "answered"}, {"d", "A:" + deniedName, "refused"}}
+var deniedLookups = []lookup{{"d", "A:" + deniedName, "refused"}, {"i", "A:TOKEN.invalid.", "refused"}, {"s", "A:sub." + allowedName, "refused"}, {"p", "A:evil" + allowedName, "refused"}, {"x", "A:" + allowedName + "TOKEN.invalid.", "refused"},
+	{"6", "AAAA:" + deniedName, "refused"}, {"t", "TXT:" + deniedName, "refused"}, {"y", "ANY:" + deniedName, "refused"}, {"r", "PTR:1.0.0.127.in-addr.arpa.", "refused"}, {"e", "A+edns:" + deniedName, "refused"}}
 var bothLookups = []lookup{allowedLookups[0], deniedLookups[0], deniedLookups[1]}
 var nothingLookups = []lookup{{"a", "A:" + allowedName, "refused"}, {"d", "A:" + deniedName, "refused"}}
 

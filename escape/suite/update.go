@@ -86,8 +86,7 @@ func sign(m manifest, key ed25519.PrivateKey) (envelope, error) {
 		return envelope{}, err
 	}
 	pub := key.Public().(ed25519.PublicKey)
-	return envelope{PayloadType: payloadType, Payload: payload,
-		Signatures: []signature{{KeyID: keyID(pub), Sig: ed25519.Sign(key, pae(payload))}}}, nil
+	return envelope{PayloadType: payloadType, Payload: payload, Signatures: []signature{{KeyID: keyID(pub), Sig: ed25519.Sign(key, pae(payload))}}}, nil
 }
 
 // pins is a manifest's pin table holding one artifact for pinName on the host's own architecture: the version, where it is, and its digest.
