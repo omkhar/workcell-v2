@@ -4068,6 +4068,30 @@ cmd/workcell/policy.go; source.go, which reads any absolute path, is ported and 
 13), and whether v1 exports a directory in the same way is the maintainer's reading.
 also in v1 main: credbroker/cli.go
 
+C54 FIXED by S-F37, commits 9de1e64 (the test moved), 6e7a6bd (the fix) and 6dd4f84 (the fix round) (PR #280). loadPolicy in
+cmd/workcell/policy.go, after bindings and only when bindings raised no error, now judges every [[secret]] row whose source is
+file: or cmd:. For file: the word judged is the path; for cmd: it is the program and every argument that is an absolute path
+(strings.Fields, as source.go splits it; the broker runs the program from /, so a relative argument never means cwd). Each word is
+judged as spelled and at each lexical ancestor (filepath.Dir up to the root), each resolved as within() resolves, and the row is
+refused when any of them is within(cwd, .), with one error `<config>:<line>: secret "<name>": source <path> lies inside the
+directory <cwd>, which the guest gets as /workspace: keep it outside`. run calls loadPolicy before loadArtifacts and session(), so
+no session directory or export exists when it refuses, and explain refuses the same row with the same line. secret-service: and
+keychain: rows, and file: and cmd: sources wholly outside cwd (cmd:/bin/sh /outside/script.sh, flag and relative arguments), load
+as before. The fix round came from the one review: (1) cmd:/bin/sh WORK/tools/get-key.sh passed the first-word check although the
+script is exported in clone mode and guest-writable under --mount; (2) a source spelled through a link inside cwd that points
+outside it (cmd:WORK/tool, file:WORK/link) passed because within() judged the target, while the broker resolves the spelling on
+each use and under --mount the guest replaces the link. So the unit line's clause that such a link stays accepted is reversed, in
+both modes, since loadPolicy does not know the mode; the auditor's refutation of that variant held for the clone export only.
+Cost: the check is 14 product lines, paid by doc comments re-wrapped with their words unchanged in policy.go (loadPolicy, binding,
+placeholderEnv, bindings, allowlist) and run_vm.go (booted), net 0: product 15000 of 15000, test 28489 of 28500. Test:
+cmd/workcell/c54_test.go TestC54SecretSourceUnderTheWorkspace, moved by git mv with its head comment folded, 66 lines, nine arms:
+the five parked ones fail on the claim tree in the redteam's run (loop/private/c54-before.log) and in the reviewer's worktree of
+main, and the four added ones (interpreter outside with the script under cwd, clone and mount; cmd: and file: through a link
+inside cwd, mount) fail on 6e7a6bd by overlay; all nine pass at 6dd4f84, plain and -race, with C19, C28, C29, C34 and C52.
+Residual, parked: a path inside an argument that is not itself an absolute word (--key=/work/x), and a program that reaches cwd by
+its own logic, are not judged; a bind mount of the source's directory beneath cwd needs host root.
+also in v1 main: credbroker/cli.go
+
 C55. ID I5 (a real token the broker holds never appears in an answer to the guest, the sign-in flow's own contract at
 the head of signin.go). ATTACKER: guest root or hostile model output, choosing the spelling of the token endpoint's
 path. Precondition the attacker does not control: the provider's router serves the token action on a spelling outside

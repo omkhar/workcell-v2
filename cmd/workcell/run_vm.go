@@ -195,8 +195,7 @@ func session(argv []string, caps limits, mount bool, a artifacts, allow *proxy.A
 // read it, after its earlier stdout writes returned. When no Exit came, the close is what ends the client.
 func end(theirs net.Conn, r result) result { theirs.Close(); return r }
 
-// booted is a guest whose init has connected. close ends the VM and removes its files; it returns only once the VMM process is gone, so the next boot may reuse
-// the CID.
+// booted is a guest whose init has connected. close ends the VM and removes its files; it returns only once the VMM process is gone, so the next boot may reuse the CID.
 type booted struct {
 	conn  net.Conn
 	dir   string        // holds the VMM's sockets and the session's attach socket; close removes it
