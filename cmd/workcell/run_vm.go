@@ -236,6 +236,15 @@ func boot(a artifacts, caps limits, sigs <-chan os.Signal, session string, log *
 	if !filepath.IsAbs(os.TempDir()) { // a relative TMPDIR would put the sockets under the directory a session may mount (I13)
 		return nil, 0, fmt.Errorf("TMPDIR %q is not an absolute path", os.TempDir())
 	}
+	l, err := list(filepath.Join(a.dir, "sessions")) // a running mount session serves its directory live: a VMM directory under it would hand that guest the sockets, to swap for a link to any host socket of the operator's (I1, I4, I7)
+	for _, s := range l {
+		if _, noImage := os.Stat(filepath.Join(a.dir, "sessions", s.id, "workspace.ext4")); s.state == "running" && noImage != nil && within(s.repo, os.TempDir()) {
+			return nil, 0, fmt.Errorf("the temp directory %s lies inside %s, which the running mount session %s serves live: set TMPDIR elsewhere or workcell stop %s first", os.TempDir(), s.repo, s.id, s.id)
+		}
+	}
+	if err != nil {
+		return nil, 0, err
+	}
 	dir, err := os.MkdirTemp("", "wc") // short names: see above
 	if err == nil && session != "" {
 		if err = recordBoot(session, dir); err != nil {

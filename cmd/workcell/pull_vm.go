@@ -262,12 +262,7 @@ func (p *pulled) end() error {
 	return p.odd(f)
 }
 
-// write puts the tree into the directory open as root, in manifest order, so that each directory is there
-// before what it holds. Every path is the guest's (R6): it is opened beneath root one component at a time,
-// through no symlink (dirBeneath, createBeneath), and no component may be its directory's .git (isGit, I8).
-// What is there already is kept when both are directories, removed first otherwise and never written
-// through. A directory that is not empty is not removed: that is refused, with the error of unlinkat. What is
-// on the host and not in the tree is left alone, and a directory with no .git before the pull has none after.
+// write puts the tree into the directory open as root, in manifest order, so that each directory is there before what it holds. Every path is the guest's (R6): it is opened beneath root one component at a time, through no symlink (dirBeneath, createBeneath), and no component may be its directory's .git (isGit, I8). What is there already is kept when both are directories, removed first otherwise and never written through. A directory that is not empty is not removed: that is refused, with the error of unlinkat. What is on the host and not in the tree is left alone, and a directory with no .git before the pull has none after.
 func write(root int, m *manifest, data source) error {
 	for _, e := range m.entries {
 		if err := put(root, e, data); err != nil {
@@ -352,10 +347,7 @@ func put(root int, e guest.Entry, data source) error {
 	return nil
 }
 
-// compare writes one line per difference between the tree and the directory open as root: A for what only
-// the guest has, M for what differs in kind, executable bit, link target or bytes, D for what only the host
-// has. The host's directory is walked by the rules the init walked the guest's. The bytes are compared
-// here, file by file as they arrive; nothing the guest says about sameness counts.
+// compare writes one line per difference between the tree and the directory open as root: A for what only the guest has, M for what differs in kind, executable bit, link target or bytes, D for what only the host has. The host's directory is walked by the rules the init walked the guest's. The bytes are compared here, file by file as they arrive; nothing the guest says about sameness counts.
 func compare(root int, m *manifest, data source, out io.Writer) (differs bool, err error) {
 	wfd, err := unix.Dup(root)
 	if err != nil {
