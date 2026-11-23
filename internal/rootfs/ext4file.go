@@ -26,6 +26,7 @@ func (t *Tree) WriteExt4File(f *os.File, mtime time.Time, free int64) error {
 	if err != nil {
 		return err
 	}
+	t.Inodes = p.ipg * p.groups
 	if err := f.Truncate(int64(p.blocks) * blockSize); err != nil {
 		return fmt.Errorf("rootfs: size the image: %w", err)
 	}

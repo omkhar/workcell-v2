@@ -4373,6 +4373,35 @@ with no shown break of I10; not C18's case, which had no bound. An honest image 
 free blocks), so the overshoot needs one of the two moves above. Not S14: v2's own code. Fix unit: S-F40, below S-1008
 in PLAN.md (S7 lists a low; it is fixed all the same, as the lows of sweep 1 were).
 
+C57 FIXED by S-F40, commits 255a945 (the test moved) and 681860d (the fix) (PR #285). manifest.add in cmd/workcell/pull.go charges every entry one block (const block = 4096) on top of
+its Size: the judge is e.Size > m.limit-m.bytes-block and the sum m.bytes += e.Size+block, no wrap, as S-F11 charges
+in mount mode; the refusal says "bytes of files and entries, a block for each". The pull's limit was the image's
+apparent size, which an honest full image overshoots under that charge, by about a block for every inode it has: the
+builder's probe (go test -overlay, not kept) exported trees with workspace.Export, read the superblock the host wrote,
+walked them as the init does and let an imagined guest spend every free inode on empty files and every free block on
+one file, which is more than an honest guest can. Against the bare image size every shape was refused, the small tree
+on the default disk at its last entry (charge 1,342,758,912 against 1,090,871,296 bytes); against the size plus a
+quarter, the unit line's fallback, the small trees passed but every dense exported tree was refused: 30,000 short
+links plus 30,000 empty files at --disk 64MiB (387,825,664 against 178,073,600), 20,000 files of 4096 bytes at 64MiB
+(247,943,168 against 194,580,480), 100,000 short links at 64MiB (807,677,952 against 511,672,320) and 300,000 files
+of 4096 bytes on the default disk (3,800,649,728 against 3,001,743,360), because an exported tree's inodes come on
+top of the quarter. So the limit is now the image's bytes plus a block for every inode the image has, which the host
+records before the guest runs: rootfs.Tree.Inodes is the image's inode count after WriteExt4File, workspace.Stats
+carries it, session in run_vm.go writes it to the session directory as inodes beside workspace.ext4 (a clone session
+only; a failure to write it is a failed start), and fetch in pull_vm.go reads it with the image's size and passes
+st.Size()+inodes*block. Nothing the guest does grows the record, and a guest that re-makes its image with more inodes
+is still held to the host's count. Every probed shape is admitted at that limit, with headroom of 6 to 99 MiB (the
+metadata blocks beyond the inode tables). Worst case of one pull now: the limit in bytes of blocks and limit/4096
+entries, so inodes, instead of 1,048,576 entries and about 4 GiB: 331,990 blocks and entries for a small repository
+on the default disk (1,359,831,040 bytes); for a 300,000-file repository on the default disk, whose image is already
+2.24 GiB, 952,038. Not covered, as before the fix: a guest tree of hard links, which the pull writes as copies and
+charges as such. Cost: 16 product lines, paid by joining the doc comments of manifest, checkPath, fold, pull, diff,
+isGit and sameBytes with their words unchanged; product 15000 of 15000, test 28495 of 28500. Tests: c57_test.go gained
+an empty-file arm on the arms' line (a Size-0 file is charged like a directory); TestManifestAdd's small limit is three
+blocks and a hundred bytes, its exact-fit and over-by-one cases hold a directory as well, a case "more entries than the
+image" was added, and FuzzPath, judged and the C44 test use limits that hold their entries. The C57 test fails on the
+tree before the fix, both arms, and passes after, plain and -race.
+
 The two tests cost 134 lines, and the test budget stood at 28498 of 28500, so the redteam paid with 145 folded lines
 under escape/ in 37 files, layout only: no row removed, renamed or given another verdict, and no assertion, judge,
 bound, timeout or message touched. Blank lines dropped between undocumented neighbours of one keyword, comment

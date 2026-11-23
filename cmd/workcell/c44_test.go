@@ -21,7 +21,7 @@ func TestPullWritesDotGitHFS(t *testing.T) {
 	for _, c := range []struct{ dir, mk, wf, de, path, target, want, exec string }{{"a", ".git/hooks", "pad", "", ".g\u200cit/hooks/pre-commit", ".git/hooks/pre-commit", "", "1"}, {"b", ".git/hooks", "pad", "", ".g\ufeffit/config", ".git/config", "", ""}, {"c", "sub/.git", "pad", "", "sub/.g\u200cit/x", "sub/.git/x", "", ""}, {"d", "", "pad", ".g\u200cit", ".g\u200cit/y", ".git/y", "", ""}, {"e", "", ".git", "", ".g\u200cit", ".git", "gitdir: x", ""}, {"f", "", "pad", "git", "readme", "readme", "xx", ""}} {
 		must(0, os.MkdirAll(mnt+"/"+c.dir+"/"+c.mk, 0o755))
 		must(0, os.WriteFile(mnt+"/"+c.dir+"/"+c.wf, []byte("gitdir: x"), 0o644))
-		m := &manifest{limit: 1000}
+		m := &manifest{limit: 1 << 20}
 		m.add(guest.Entry{Kind: guest.KindDir, Path: c.de})
 		m.add(guest.Entry{Kind: guest.KindFile, Path: c.path, Size: 2, Exec: c.exec != ""})
 		write(openDir(t, mnt+"/"+c.dir), m, from([]byte("xx")))

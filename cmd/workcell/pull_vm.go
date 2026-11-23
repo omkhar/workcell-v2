@@ -17,6 +17,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -29,9 +30,7 @@ import (
 // stallLimit is how long the host waits for the guest's next frame of a tree (I12).
 const stallLimit = time.Minute
 
-// pull is `workcell pull [dir]`: it brings the work tree of the newest session run in the
-// current directory into dir, which is the current directory by default. It exits 0 when
-// the tree is in, 1 with one line on stderr when the tree was refused or could not be read.
+// pull is `workcell pull [dir]`: it brings the work tree of the newest session run in the current directory into dir, which is the current directory by default. It exits 0 when the tree is in, 1 with one line on stderr when the tree was refused or could not be read.
 func pull(args []string, stderr io.Writer) int {
 	if len(args) > 1 || len(args) == 1 && strings.HasPrefix(args[0], "-") {
 		fmt.Fprintln(stderr, "usage: workcell pull [dir]\n  writes the work tree of the newest session run here into dir (default: here);\n  what the guest deleted stays, and workcell diff shows it")
@@ -49,9 +48,7 @@ func pull(args []string, stderr io.Writer) int {
 	return code
 }
 
-// diff is `workcell diff`: one line per difference between the work tree of the newest
-// session run in the current directory and the directory itself. It exits 0 when nothing
-// differs, 1 when something does and 2 when it could not tell, as diff(1) does.
+// diff is `workcell diff`: one line per difference between the work tree of the newest session run in the current directory and the directory itself. It exits 0 when nothing differs, 1 when something does and 2 when it could not tell, as diff(1) does.
 func diff(args []string, stderr io.Writer) int {
 	if len(args) != 0 {
 		fmt.Fprintln(stderr, "usage: workcell diff\n  lists what the newest session run here changed: A added, M modified, D deleted")
@@ -105,7 +102,9 @@ func fetch(dest string, use func(int, *manifest, source) error) (int, error) {
 	if errors.Is(err, fs.ErrNotExist) { // a mount session has no image: its work is in the directory itself (ADR-005)
 		return 0, fmt.Errorf("the newest session run in %s was a mount session (--mount): the agent wrote to the directory itself, so there is nothing to bring back", cwd)
 	}
-	if err != nil {
+	rec, rerr := os.ReadFile(filepath.Join(session, "inodes")) // how many inodes the export gave the image, before the guest ran
+	inodes, perr := strconv.ParseInt(string(rec), 10, 64)
+	if err = cmp.Or(err, rerr, perr); err != nil {
 		return 0, err
 	}
 	sigs := make(chan os.Signal, 4)
@@ -131,7 +130,7 @@ func fetch(dest string, use func(int, *manifest, source) error) (int, error) {
 		}
 	}()
 	p := &pulled{frames: frames, sigs: sigs}
-	m, err := p.manifest(st.Size())
+	m, err := p.manifest(st.Size() + inodes*block) // what the image holds: its bytes, and a block for each entry an inode could be
 	if err == nil {
 		err = use(root, m, p.data)
 	}
@@ -272,8 +271,7 @@ func write(root int, m *manifest, data source) error {
 	return nil
 }
 
-// isGit reports whether name, in the directory open as dir, is what ".git" names there, however name is
-// spelled: the same device and inode, both read now, never remembered (C44: HFS+ ignores some code points).
+// isGit reports whether name, in the directory open as dir, is what ".git" names there, however name is spelled: the same device and inode, both read now, never remembered (C44: HFS+ ignores some code points).
 func isGit(dir int, name string) bool {
 	var git, st unix.Stat_t
 	return unix.Fstatat(dir, ".git", &git, unix.AT_SYMLINK_NOFOLLOW) == nil && unix.Fstatat(dir, name, &st, unix.AT_SYMLINK_NOFOLLOW) == nil && st.Dev == git.Dev && st.Ino == git.Ino
@@ -383,8 +381,7 @@ func compare(root int, m *manifest, data source, out io.Writer) (differs bool, e
 	return differs, nil
 }
 
-// sameBytes takes e.Size bytes of the stream and, when check holds, compares them with the
-// host's file at e.Path, which is as long: it reports whether they are the same.
+// sameBytes takes e.Size bytes of the stream and, when check holds, compares them with the host's file at e.Path, which is as long: it reports whether they are the same.
 func sameBytes(root int, e guest.Entry, data source, check bool) (bool, error) {
 	var f *os.File
 	if check {
