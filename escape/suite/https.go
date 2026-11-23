@@ -43,12 +43,11 @@ type request struct {
 // writes the response once the request is recorded (else 200); leafFor is the name its certificate is for instead of its own. Canaries share one listener
 // (serveCanaries), told apart by the connection's SNI.
 type canary struct {
-	name, addr string
-	ech        []byte
-	respond    http.HandlerFunc
-	leafFor    string
-	mu         sync.Mutex
-	seen       []request
+	name, addr, leafFor string
+	ech                 []byte
+	respond             http.HandlerFunc
+	mu                  sync.Mutex
+	seen                []request
 }
 
 // serveCanaries serves the canaries on ln, which is theirs from here, under one certificate of the suite's authority for all their names. A request is the
@@ -69,21 +68,20 @@ func serveCanaries(ln net.Listener, keys []tls.EncryptedClientHelloKey, cs ...*c
 	if keys != nil {
 		cfg.EncryptedClientHelloKeys, cfg.MinVersion = keys, tls.VersionTLS13
 	}
-	srv := &http.Server{TLSConfig: cfg, ReadTimeout: 3 * time.Second, ErrorLog: log.New(io.Discard, "", 0),
-		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			c := cs[0]
-			for _, k := range cs {
-				if k.name == r.TLS.ServerName {
-					c = k
-				}
+	srv := &http.Server{TLSConfig: cfg, ReadTimeout: 3 * time.Second, ErrorLog: log.New(io.Discard, "", 0), Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		c := cs[0]
+		for _, k := range cs {
+			if k.name == r.TLS.ServerName {
+				c = k
 			}
-			c.mu.Lock()
-			c.seen = append(c.seen, request{sni: r.TLS.ServerName, host: r.Host, proto: r.Proto, method: r.Method, url: r.URL.String(), ech: r.TLS.ECHAccepted, headers: r.Header.Clone()})
-			c.mu.Unlock()
-			if c.respond != nil {
-				c.respond(w, r)
-			}
-		}),
+		}
+		c.mu.Lock()
+		c.seen = append(c.seen, request{sni: r.TLS.ServerName, host: r.Host, proto: r.Proto, method: r.Method, url: r.URL.String(), ech: r.TLS.ECHAccepted, headers: r.Header.Clone()})
+		c.mu.Unlock()
+		if c.respond != nil {
+			c.respond(w, r)
+		}
+	}),
 	}
 	var wg sync.WaitGroup
 	wg.Go(func() { srv.ServeTLS(ln, "", "") })
@@ -171,11 +169,10 @@ func echKeys(publicName string) ([]byte, []tls.EncryptedClientHelloKey, error) {
 // targets is what every HTTPS probe is given: the bound name and the other, each with the address of the judge's canary for it, the variable holding the
 // credential as the guest sees it ("-" for none), and whatever else the test adds.
 type targets struct {
-	bound, other string
-	addrs        map[string]string
-	value        string
-	header       http.Header // the credential in the header it is bound to
-	extra        []string
+	bound, other, value string
+	addrs               map[string]string
+	header              http.Header // the credential in the header it is bound to
+	extra               []string
 }
 
 func parseTargets(args []string) (targets, Result) {
@@ -205,10 +202,7 @@ func (t targets) get(name, path string) *http.Request {
 func (t targets) check() string {
 	return "check=" + report(fetch(t.get(t.bound, "/check"), t.addrs, &tls.Config{}, false)).Status
 }
-func port(addr string) string {
-	_, p, _ := net.SplitHostPort(addr)
-	return p
-}
+func port(addr string) string { _, p, _ := net.SplitHostPort(addr); return p }
 
 // fetch sends req from the guest to the name in its URL, dialled at the address the judge gave for the name when nothing else resolves it (the address of a
 // canary is chosen per run), through whatever proxy the environment names. The guest is the attacker: it verifies nothing, and it forwards every header,
@@ -260,10 +254,7 @@ func report(resp *http.Response, err error) Result {
 }
 
 // after prefixes the hostile request's result with the check's.
-func after(check string, r Result) Result {
-	r.Detail = check + "; " + r.Detail
-	return r
-}
+func after(check string, r Result) Result { r.Detail = check + "; " + r.Detail; return r }
 
 // mismatchProbe opens TLS to the bound name and asks, on that connection, for the other name in the Host header or the :authority pseudo-header.
 func mismatchProbe(h2 bool) Probe {
@@ -352,12 +343,11 @@ func redirectTo(other *canary) http.HandlerFunc {
 	}
 }
 
-// The placeholder rows have the guest send a table of requests, each carrying the credential it holds somewhere, and hold the canaries to the swap rule: the
-// credential alone, behind "Bearer ", or as the password of a Basic value, in the bound header of a request to the bound name, of the method, under the path
-// and within a repository the binding names when it names them, reaches the canary as the real value; anything else reaches no canary. An exchange is
-// "method,name,path,where": name is bound or other, and where says where the credential goes: header (x-api-key), bearer (x-api-key, "Bearer "), auth
-// (Authorization, "Bearer "), basic (Authorization, as git sends a token: Basic base64("x-access-token:" + credential)), path (a last element of the path),
-// query (?key=), or none.
+// The placeholder rows have the guest send a table of requests, each carrying the credential it holds somewhere, and hold the canaries to the swap rule: the credential
+// alone, behind "Bearer ", or as the password of a Basic value, in the bound header of a request to the bound name, of the method, under the path and within a repository
+// the binding names when it names them, reaches the canary as the real value; anything else reaches no canary. An exchange is "method,name,path,where": name is bound or
+// other, and where says where the credential goes: header (x-api-key), bearer (x-api-key, "Bearer "), auth (Authorization, "Bearer "), basic (Authorization, as git sends
+// a token: Basic base64("x-access-token:" + credential)), path (a last element of the path), query (?key=), or none.
 type exchange struct{ method, name, path, where string }
 
 // headerOf is the header each where kind puts the credential in; none for the rest.
@@ -377,9 +367,8 @@ func parseExchange(spec string) (exchange, bool) {
 	return exchange{f[0], f[1], f[2], f[3]}, true
 }
 
-// admitted says whether the binding swaps the exchange's credential: it is in the bound header, to the bound name, of the bound method, under the bound path,
-// and, when the binding names repositories, the path as sent and the path decoded and cleaned both lie within one of them (SPEC I5: a placeholder is useless
-// anywhere else).
+// admitted says whether the binding swaps the exchange's credential: it is in the bound header, to the bound name, of the bound method, under the bound path, and, when
+// the binding names repositories, the path as sent and the path decoded and cleaned both lie within one of them (SPEC I5: a placeholder is useless anywhere else).
 func (e exchange) admitted(sec sandbox.Secret) bool {
 	raw, _, _ := strings.Cut(e.path, "?")
 	decoded, _ := url.PathUnescape(raw)

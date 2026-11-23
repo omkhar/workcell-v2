@@ -120,8 +120,7 @@ func hostileTLS() *tls.Config {
 	return &tls.Config{InsecureSkipVerify: true, ServerName: "dns.invalid"} //nolint:gosec // the probe is the attacker
 }
 
-// dialFailed turns a dial error into the result dialProbe reports for it: no route, a refusal (the guest kernel's own RST under ADR-003), a reset, or a
-// timeout.
+// dialFailed turns a dial error into the result dialProbe reports for it: no route, a refusal (the guest kernel's own RST under ADR-003), a reset, or a timeout.
 func dialFailed(err error) Result {
 	var ne net.Error
 	switch {
@@ -286,19 +285,18 @@ func dnsOverHTTPS(addr string, got func(dnsQuestion)) (string, func(), error) {
 		ln.Close()
 		return "", nil, err
 	}
-	srv := &http.Server{TLSConfig: cfg, ReadTimeout: 2 * time.Second, ErrorLog: log.New(io.Discard, "", 0),
-		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			var msg []byte
-			if r.Method == http.MethodGet {
-				msg, _ = base64.RawURLEncoding.DecodeString(r.URL.Query().Get("dns"))
-			} else {
-				msg, _ = io.ReadAll(io.LimitReader(r.Body, 4096))
-			}
-			if q, ok := parseDNSQuery(msg); ok {
-				got(q)
-			}
-			w.WriteHeader(http.StatusOK)
-		}),
+	srv := &http.Server{TLSConfig: cfg, ReadTimeout: 2 * time.Second, ErrorLog: log.New(io.Discard, "", 0), Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var msg []byte
+		if r.Method == http.MethodGet {
+			msg, _ = base64.RawURLEncoding.DecodeString(r.URL.Query().Get("dns"))
+		} else {
+			msg, _ = io.ReadAll(io.LimitReader(r.Body, 4096))
+		}
+		if q, ok := parseDNSQuery(msg); ok {
+			got(q)
+		}
+		w.WriteHeader(http.StatusOK)
+	}),
 	}
 	// stop refuses new connections, waits for handlers in flight (each bounded by ReadTimeout) and only then returns, so that every query that arrived has been
 	// reported. Close is the backstop should Shutdown give up.

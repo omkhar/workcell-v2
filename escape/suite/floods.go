@@ -117,8 +117,7 @@ func mountDiskJudge(ctx context.Context, s Session) (bool, string, error) {
 	var size int64
 	var rerr error
 	below, _, err := sampledRun(hostDiskFree, func() {
-		r, _, size, rerr = sampled(s, func() (int64, error) { return exportSize(s.Workspace) },
-			s.Guest, strconv.Itoa(diskWrite), strconv.Itoa(sparseGrow))
+		r, _, size, rerr = sampled(s, func() (int64, error) { return exportSize(s.Workspace) }, s.Guest, strconv.Itoa(diskWrite), strconv.Itoa(sparseGrow))
 	})
 	if err == nil {
 		err = rerr

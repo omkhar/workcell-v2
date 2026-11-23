@@ -17,11 +17,10 @@ import (
 // fake is a sandbox whose payload prints canned bytes; nothing of Observe is called, so a nil interface stands for it.
 type fake struct {
 	sandbox.Observe
-	start      error
-	stdout     string
-	exit       int
-	workspaces []string // one per Start
-	stops      int
+	start       error
+	stdout      string
+	exit, stops int
+	workspaces  []string // one per Start
 }
 
 func (f *fake) Start(_ context.Context, cfg sandbox.Config) (string, error) {

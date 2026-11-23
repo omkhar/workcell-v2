@@ -152,7 +152,6 @@ func ParseResult(b []byte) (Result, error) {
 	}
 	return Result{Status: string(status), Detail: string(detail)}, nil
 }
-
 func isToken(c byte) bool { return c >= 'a' && c <= 'z' || c >= '0' && c <= '9' || c == '-' }
 func isPrint(c byte) bool { return c >= ' ' && c <= '~' }
 func all(b []byte, ok func(byte) bool) bool {

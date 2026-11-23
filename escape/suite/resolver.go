@@ -19,11 +19,10 @@ import (
 	"time"
 )
 
-// The resolver tests (I3) ask the resolver named in the guest's /etc/resolv.conf what it does with a name: an allowed name must come back with an address, and
-// every other name must be refused, promptly, with a DNS answer that carries no address. A resolver that answers nothing passes the leak tests above and fails
-// here: the invariant says the host resolver answers. The probe speaks the wire format itself (dns.go), so nothing in the guest's libc stands between it and
-// the resolver; a response that never came is a failure too. The control sandbox (SPEC T2) names a naive resolver that answers every name, so every row here
-// fails there.
+// The resolver tests (I3) ask the resolver named in the guest's /etc/resolv.conf what it does with a name: an allowed name must come back with an address, and every
+// other name must be refused, promptly, with a DNS answer that carries no address. A resolver that answers nothing passes the leak tests above and fails here: the
+// invariant says the host resolver answers. The probe speaks the wire format itself (dns.go), so nothing in the guest's libc stands between it and the resolver; a
+// response that never came is a failure too. The control sandbox (SPEC T2) names a naive resolver that answers every name, so every row here fails there.
 
 // A lookup is one question a judge has the guest ask, and what the invariant demands of the answer: "addr", an address; "refused", a DNS answer with no address
 // (REFUSED, NXDOMAIN, or NOERROR and no record), or "answered", any DNS answer at all. Each must come within fast.
@@ -34,9 +33,8 @@ type lookup struct{ label, spec, want string }
 const fast = 2 * time.Second                   // a refusal or an answer must come within this
 const lookupWait = fast + 500*time.Millisecond // the probe's deadline, past fast so that slow is told from silent
 const garbageWait = 500 * time.Millisecond     // how long a hostile datagram is given to get an answer
-const burstSize = 200
-const resolvConf = "resolv.conf" // the target that means the guest's own configured resolver
-const allowedName, deniedName = "allowed.escape.test.", "denied.escape.test."
+const resolvConf = "resolv.conf"               // the target that means the guest's own configured resolver
+const burstSize, allowedName, deniedName = 200, "allowed.escape.test.", "denied.escape.test."
 
 // The lookups the rows ask. The allowed name must resolve however it is spelled; every other name, every other type for it, and the allowed name under a policy
 // that allows nothing must be refused. The allowed row asks one denied name too: a resolver that answers everything, the control sandbox's, is then no pass
@@ -49,7 +47,6 @@ var nothingLookups = []lookup{{"a", "A:" + allowedName, "refused"}, {"d", "A:" +
 
 // reachable is the sandbox the resolver rows want: one allowed name and one denied, both of which the host resolver is to know of.
 var reachable = Want{Allow: []string{"allowed.escape.test"}, Deny: []string{"denied.escape.test"}}
-
 var queryTypes = map[string]uint16{"A": dnsTypeA, "AAAA": dnsTypeAAAA, "TXT": dnsTypeTXT, "PTR": dnsTypePTR, "ANY": dnsTypeANY}
 
 // resolverAddr turns the target the judge named into an address: the first nameserver of the guest's /etc/resolv.conf at port 53, or a literal.
@@ -130,7 +127,6 @@ func ask(addr string, msg []byte, id uint16, wait time.Duration) (string, time.D
 		return outcome(r), took
 	}
 }
-
 func outcome(r dnsReply) string {
 	if r.Rcode != 0 {
 		if name, ok := rcodeNames[r.Rcode]; ok {

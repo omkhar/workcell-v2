@@ -19,9 +19,7 @@ import (
 
 // The pinned arm64 guest: Firecracker's CI kernel, which boots under Virtualization.framework (measured in U-102). The product drives the framework in-process,
 // so there is no hypervisor binary to fetch, and the binary that does it must carry the virtualization entitlement.
-const guestArch = "arm64"
-const vmlinuxURL = "https://s3.amazonaws.com/spec.ccfc.min/firecracker-ci/v1.14/aarch64/vmlinux-6.1.155"
-const vmlinuxSum = "61baeae1ac6197be4fc5c71fa78df266acdc33c54570290d2f611c2b42c105be"
+const guestArch, vmlinuxURL, vmlinuxSum = "arm64", "https://s3.amazonaws.com/spec.ccfc.min/firecracker-ci/v1.14/aarch64/vmlinux-6.1.155", "61baeae1ac6197be4fc5c71fa78df266acdc33c54570290d2f611c2b42c105be"
 
 // entitlements is the one entitlement a process needs to start a VM.
 const entitlements = `<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd"><plist version="1.0"><dict><key>com.apple.security.virtualization</key><true/></dict></plist>`

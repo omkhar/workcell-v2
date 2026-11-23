@@ -9,10 +9,9 @@ import (
 	"sync"
 )
 
-// naiveResolver is the resolver the control sandbox gives its guest, the deliberately weak counterpart of the product's host resolver (SPEC T2, I3): it answers
-// every query with one record, as an open resolver that knew every name would: an A gets the test host's own address, an AAAA its loopback, anything else a
-// TXT. It stands in for the host's resolver, so that no query of the suite's reaches that one (SPEC T8, S12). The guest finds it in /etc/resolv.conf, which
-// Exec binds over the host's.
+// naiveResolver is the resolver the control sandbox gives its guest, the deliberately weak counterpart of the product's host resolver (SPEC T2, I3): it answers every
+// query with one record, as an open resolver that knew every name would: an A gets the test host's own address, an AAAA its loopback, anything else a TXT. It stands in
+// for the host's resolver, so that no query of the suite's reaches that one (SPEC T8, S12). The guest finds it in /etc/resolv.conf, which Exec binds over the host's.
 type naiveResolver struct {
 	pc   net.PacketConn
 	host net.IP
@@ -79,10 +78,7 @@ func (r *naiveResolver) answer(q []byte) []byte {
 	a = binary.BigEndian.AppendUint16(a, uint16(len(data)))
 	return append(a, data...)
 }
-func (r *naiveResolver) stop() {
-	r.pc.Close()
-	r.wg.Wait()
-}
+func (r *naiveResolver) stop() { r.pc.Close(); r.wg.Wait() }
 
 // hostIPv4 is the host's first non-loopback IPv4 address (HostAddr), where the judges' canaries listen, or loopback when it has none.
 func hostIPv4() net.IP {

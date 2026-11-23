@@ -128,13 +128,12 @@ var prepared struct {
 // workcell is one session of the product: a directory holding its policy, its secret and its cwd, the payload and the caps. A VM lives only as long as one Exec
 // or one Pull.
 type workcell struct {
-	dir     string
-	bin     string // the product with the suite's row compiled in, once Install ran; "" is prepared.bin
-	payload string
-	cfg     Config
-	mu      sync.Mutex
-	run     *exec.Cmd // the product, while one run of it is in flight
-	ns      *holder   // the session's own network namespace, when isolated
+	dir, payload string
+	bin          string // the product with the suite's row compiled in, once Install ran; "" is prepared.bin
+	cfg          Config
+	mu           sync.Mutex
+	run          *exec.Cmd // the product, while one run of it is in flight
+	ns           *holder   // the session's own network namespace, when isolated
 }
 
 // prepareWorkcell fetches, builds and assembles under dir, in parallel, what `workcell run` looks for.

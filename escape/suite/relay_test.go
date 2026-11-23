@@ -37,7 +37,6 @@ func TestRelayHeader(t *testing.T) {
 		t.Errorf("framed(300 bytes) = % x...", f[:2])
 	}
 }
-
 func TestVerdict(t *testing.T) {
 	const want = "tok"
 	cases := []struct {
@@ -102,8 +101,7 @@ func TestTCPCanaryJudge(t *testing.T) {
 		pass bool
 	}{
 		{"refused", func(...string) Result { return Result{Status: "refused", Detail: "connection refused"} }, true},
-		{"accepted then closed, nothing at the canary", func(...string) Result { return Result{Status: "connected-closed", Detail: "EOF"} }, true},
-		{"the token at the canary", deliver, false},
+		{"accepted then closed, nothing at the canary", func(...string) Result { return Result{Status: "connected-closed", Detail: "EOF"} }, true}, {"the token at the canary", deliver, false},
 		{"a connection at the canary", func(args ...string) Result {
 			c, err := net.Dial("tcp", args[0])
 			if err == nil {
@@ -119,7 +117,6 @@ func TestTCPCanaryJudge(t *testing.T) {
 		}
 	}
 }
-
 func TestRelayJudges(t *testing.T) {
 	ctx := context.Background()
 	say := func(status string) func(...string) Result {

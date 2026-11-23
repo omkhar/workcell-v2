@@ -35,7 +35,6 @@ func TestQUICDCID(t *testing.T) {
 		t.Errorf("quicInitial is %d bytes, want %d", len(good), quicInitMin)
 	}
 }
-
 func FuzzQUICDCID(f *testing.F) {
 	f.Add(quicInitial([]byte("0123456789abcdef")))
 	f.Add([]byte{0xC3, 0, 0, 0, 1, 20})

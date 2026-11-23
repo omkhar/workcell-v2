@@ -12,8 +12,7 @@ import (
 func TestFirstNameserver(t *testing.T) {
 	cases := []struct{ in, want string }{
 		{"nameserver 127.0.0.1\n", "127.0.0.1:53"}, {"# comment\nsearch example\n  nameserver   10.0.0.2 \nnameserver 10.0.0.3\n", "10.0.0.2:53"},
-		{"nameserver ::1\n", "[::1]:53"}, {"nameserver notanip\nnameserver 192.0.2.1\n", "192.0.2.1:53"},
-		{"search example\n", ""}, {"", ""},
+		{"nameserver ::1\n", "[::1]:53"}, {"nameserver notanip\nnameserver 192.0.2.1\n", "192.0.2.1:53"}, {"search example\n", ""}, {"", ""},
 	}
 	for _, c := range cases {
 		got, err := firstNameserver(strings.NewReader(c.in))
@@ -22,7 +21,6 @@ func TestFirstNameserver(t *testing.T) {
 		}
 	}
 }
-
 func TestEncodeLookup(t *testing.T) {
 	msg, id, err := encode("A+edns:TOKEN.invalid.", "tok")
 	if err != nil {
@@ -53,10 +51,8 @@ func TestLookupJudge(t *testing.T) {
 		{"addr", "addr:127.0.0.1/2ms", true}, {"addr", "nodata/2ms", false}, {"addr", "refused/2ms", false},
 		{"addr", "timeout/2500ms", false}, {"addr", "addr:127.0.0.1/2100ms", false}, {"addr", "", false},
 		{"refused", "refused/1ms", true}, {"refused", "nxdomain/1ms", true}, {"refused", "nodata/1ms", true},
-		{"refused", "servfail/1ms", false}, {"refused", "addr:192.0.2.2/1ms", false}, {"refused", "answered:1/1ms", false},
-		{"refused", "timeout/2500ms", false}, {"refused", "refused/2001ms", false},
-		{"answered", "refused/1ms", true}, {"answered", "servfail/1ms", true}, {"answered", "addr:127.0.0.1/1ms", true},
-		{"answered", "timeout/2500ms", false}, {"answered", "garbled/3ms", false},
+		{"refused", "servfail/1ms", false}, {"refused", "addr:192.0.2.2/1ms", false}, {"refused", "answered:1/1ms", false}, {"refused", "timeout/2500ms", false}, {"refused", "refused/2001ms", false},
+		{"answered", "refused/1ms", true}, {"answered", "servfail/1ms", true}, {"answered", "addr:127.0.0.1/1ms", true}, {"answered", "timeout/2500ms", false}, {"answered", "garbled/3ms", false},
 	}
 	for _, c := range cases {
 		q := lookup{"a", "A:x.", c.want}

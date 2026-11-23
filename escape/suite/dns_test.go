@@ -28,16 +28,13 @@ func TestParseDNSQuery(t *testing.T) {
 		want dnsQuestion
 		ok   bool
 	}{
-		{"A query", good, q, true},
-		{"TXT query, many labels", dnsQuery(dnsQuestion{Name: "a.bb.ccc.dddd.", Type: dnsTypeTXT}), dnsQuestion{Name: "a.bb.ccc.dddd.", Type: dnsTypeTXT}, true},
+		{"A query", good, q, true}, {"TXT query, many labels", dnsQuery(dnsQuestion{Name: "a.bb.ccc.dddd.", Type: dnsTypeTXT}), dnsQuestion{Name: "a.bb.ccc.dddd.", Type: dnsTypeTXT}, true},
 		{"longest label", dnsQuery(dnsQuestion{Name: strings.Repeat("y", maxLabel) + ".", Type: 1}), dnsQuestion{Name: strings.Repeat("y", maxLabel) + ".", Type: 1}, true},
-		{"name too long", dnsQuery(long), dnsQuestion{}, false},
-		{"label too long", dnsQuery(dnsQuestion{Name: strings.Repeat("y", maxLabel+1) + ".", Type: 1}), dnsQuestion{}, false},
+		{"name too long", dnsQuery(long), dnsQuestion{}, false}, {"label too long", dnsQuery(dnsQuestion{Name: strings.Repeat("y", maxLabel+1) + ".", Type: 1}), dnsQuestion{}, false},
 		{"trailing bytes", append(good, 1, 2, 3), q, true}, {"truncated", good[:len(good)-1], dnsQuestion{}, false}, {"truncated in name", good[:20], dnsQuestion{}, false},
 		{"response", response, dnsQuestion{}, false}, {"no question", noQuestion, dnsQuestion{}, false}, {"class CH", chaos, dnsQuestion{}, false},
 		{"compression pointer", pointer, dnsQuestion{}, false}, {"root name", dnsQuery(dnsQuestion{Name: ".", Type: 1}), dnsQuestion{}, false},
-		{"dot in label", dot, dnsQuestion{}, false}, {"space in label", space, dnsQuestion{}, false}, {"header only", good[:12], dnsQuestion{}, false},
-		{"nothing", nil, dnsQuestion{}, false},
+		{"dot in label", dot, dnsQuestion{}, false}, {"space in label", space, dnsQuestion{}, false}, {"header only", good[:12], dnsQuestion{}, false}, {"nothing", nil, dnsQuestion{}, false},
 	}
 	for _, c := range cases {
 		got, ok := parseDNSQuery(c.in)

@@ -120,11 +120,7 @@ func (h *naiveHost) exited(b []byte) {
 }
 
 // couldNotRun says whether the guest claimed, in an Exit frame, that the command could not run; a naive host takes that at its word too.
-func (h *naiveHost) couldNotRun() bool {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	return h.noExec
-}
+func (h *naiveHost) couldNotRun() bool { h.mu.Lock(); defer h.mu.Unlock(); return h.noExec }
 
 // result applies what the channel said to the command's own exit status.
 func (h *naiveHost) result(out Output) Output {
