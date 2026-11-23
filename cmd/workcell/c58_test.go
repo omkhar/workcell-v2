@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Omkhar Arasaratnam
 
-// Finding C58 of S-1009, sweep 2 (I5, I13). Fix unit S-F41 first moves this file to
-// cmd/workcell/c58_test.go, as this comment says.
+// Finding C58 of S-1009, sweep 2 (I5, I13). Fix unit S-F41 moved this file here from
+// escape/_pending/S-F41/c58_test.go, where it waited between the audit and the fix (S4).
 
 //go:build linux || (darwin && arm64 && cgo)
 
