@@ -3749,3 +3749,152 @@ shapes found are R3 notes, copied to PARKED.md: the slot a 101 at a token endpoi
 refused request, the macOS reading of SSL_CERT_FILE and SSL_CERT_DIR since go1.27, the missing fuzz target over the
 path readings, and readToken's gzip branch. In the auditor, the redteam and the verifier no model declined and no
 safeguard re-ran a request.
+
+## S-1006, sweep 2: resolver: tunnelling, rebinding, cache and case tricks (I3, I4), as built at main 80b8d9d
+
+Fresh context, the whole surface read in full as built (not a diff), after the 32 fix units of sweep 1 and S-F33 to
+S-F36 of sweep 2, at the claim commit a7456d7 on main 80b8d9d. One auditor run, finished without a stop: no model
+declined and no safeguard re-ran a request. No hypervisor in the session, and nothing on this surface needed a VM.
+Result: no candidates.
+
+Trust boundary. Guest root, and through it the malicious repository and hostile model output, owns every byte of a
+vsock stream to host port 5001 after the 20-byte relay header (cmd/workcell/relay.go stream, internal/relay Decode);
+on a version-1 UDP header to port 53 at any address it owns the 2-byte length and up to 65535 bytes of DNS message
+(relay.go exchange, internal/relay ReadFrame, internal/resolver Answer); and it owns the count, rate and timing of
+streams, within 1024 slots. The guest's resolv.conf, /etc/hosts, the init and its listeners are data only (A1):
+cmd/workcell-init/net.go shapes traffic and enforces nothing, and the host trusts nothing it says. The network
+attacker owns the host's DNS answers for allowed names (internal/proxy/proxy.go, net.DefaultResolver.LookupNetIP of
+the rooted name, the rebind position of map row 14) and every upstream byte on the vetted address. The operator, out
+of scope, chooses the allowed set: allow.Hosts(), lowercase, unrooted and dnsName-validated (internal/proxy
+allowlist.go, cmd/workcell/policy.go), reaches the resolver and the proxy as the same canonical strings. Authority:
+the supervisor, as the operator's uid, answers DNS from policy alone and forwards no query; writes one audit Note per
+refused name through proxy.Deny and one per TCP header to an unserved port; on a delivered TCP stream resolves the
+policy host itself on the host, vets every answer against blockedAddr and the host's interface prefixes, and dials
+one vetted address by literal (proxy.go connect); the terminated transport's DialContext re-enters connect for each
+upstream connection (terminate.go). The header's address is never dialled: it reaches only relayConn.LocalAddr,
+whose port, always the adapter's, sameHost reads. In the supervisor's product code the one name lookup is in
+proxy.go and the one dial is by IP literal (a grep of Lookup and Dial over cmd/ and internal/); update.go's is the
+operator's own channel URL (S-1011).
+
+Lenses (S9), with what was checked and what held; this is also the refuted list.
+
+Parsing and resources. The header is a fixed 20-byte ReadFull under an absolute 5 s deadline set once per stream and
+not lifted for a DNS stream, so a DNS stream holds its slot at most headerWait; ReadFrame allocates at most 65535
+bytes per stream, 64 MiB at the slot cap. question() wants QDCOUNT 1, plain labels of at most 63 bytes and a text of
+at most 253 bytes with the separating dot counted before the check, and reads type and class only when four bytes
+remain; any label-type byte above 63 (0x40 extended, 0xC0 pointer) is refused as a long label; reply() copies the
+question (at most 255 wire bytes) plus the 16-byte record, so maxReply 287 holds exactly; TC, AA, Z, AD and CD are
+masked, RD echoed, RA clear. Probe, package resolver by overlay, 27 inputs beyond TestAnswer: TC or Z, AD, CD set on
+the query are answered with the bits cleared; class 0 and class 254 are REFUSED with no callback; type 0 and type
+65535 on an allowed name are NOERROR with no record; a NUL byte, a dot inside a label, a 0xC9 byte, an underscore
+label and a wildcard label give the name "" and a REFUSED; a leading-hyphen label is refused as the name
+-allowed.example; 127 one-byte labels (253 text) parse and are refused with a 271-byte reply, 128 are FORMERR; a
+valid question followed by 60000 junk bytes is answered; ANCOUNT 1 on a query is overwritten; ID 0 with RD clear
+echoes RD clear. No reply over 287 bytes, no panic. FuzzAnswer 40 s (7.8 million execs), FuzzDecode 20 s and
+FuzzReadFrame 20 s: no crasher, on top of S-1014's runs. Host CPU per stream, the I10 question that tunnelling
+raises: a probe drove refused DNS queries through the real serveRelay, resolver and a real audit.Create log wired as
+boot wires them: 84.7 microseconds of host CPU per refused query before SoftLimit (164 bytes per record, SoftLimit
+after about 55,000 queries, about 4.7 CPU s in all), 29.7 after it; audit.Note alone 25.8 (the ed25519 seal per
+line), resolver.Answer alone 0.31. Over a real unix socket, which is what Firecracker's muxer hands the supervisor:
+a bare connect 22 microseconds, an allowed-name answer about 13 supervisor-side and unrecorded, a refused-name answer
+and a TCP header to an unserved port 60 to 90 supervisor-side. Bound: on the real VM the relay took 738 connects in
+3 s under the device-cpu-flood row (S-F3's run), about 250 streams a second, so recorded refusals cost the host about
+20 ms of CPU per second there, inside the C6 and C51 class and far below cpuJudge's slack; after SoftLimit a query
+costs about a bare stream. Refuted as a candidate (S6: no demonstrated break), parked as a note.
+
+Logic and state. Case: both sides fold ASCII only and the allowed set is ASCII, so no non-ASCII spelling matches; a
+policy entry spelled with the Kelvin sign lowers to k at parse time, and the resolver, the proxy and explain all use
+that one canonical string, which the operator typed. Allowed set: the resolver answers every allowlist host on any
+port with the hint 127.0.0.1, the proxy then scopes by port (the SNI set, or the port's one host); the hint is never
+dialled, connect's own rooted lookup decides (I4). An allowed name's AAAA, TXT, ANY, type 0 and 65535 are NOERROR
+with no record; REFUSED against nodata tells the guest the allowed set, which PermittedDNSDomains and workcell.ports=
+already disclose. stream(): UDP to a port other than 53 is closed without a record (C14, intended and tested); TCP to
+an unserved port is recorded, then closed; a Decode error leaves the zero header, port 0, which ParseAllowlist never
+serves; deliver has the done escape; relayConn.Close releases the slot once. Go's resolver, read in go1.27.4
+(absDomainName, nameList, the answer walk, LookupNetIP): a rooted name tries only itself; A and AAAA records are
+taken whatever their owner name, which gives the attacker who already owns the allowed name's answer nothing more
+(sweep 1's CNAME probes stand); /etc/hosts matches a rooted dotted name and is the operator's own.
+
+Concurrency, ordering and check-to-use. One lookup per connection, nets() read after it, every answer vetted before
+any dial, the dial by literal with a shared 30 s budget, no second lookup and no Happy Eyeballs
+(TestConnectVetsEveryAnswerOnEveryConnection, 12 rows, re-run green); Go's singleflight merges concurrent lookups of
+one name and each caller vets the same set; the terminated transport pools per host string and re-enters connect for
+each new upstream connection, so a pooled connection reuses the address vetted when it was dialled; p.terminate is
+written once before any Serve goroutine; the interface-list window is S-1004's microsecond note. The refused
+callback runs with no lock held and p.Deny serialises on the audit mutex; the DNS exchange runs under the stream's
+absolute deadline, so a guest that never reads its reply holds a slot at most 5 s.
+
+Cryptography and identity. None on this surface. DNSSEC is not consulted (no DO bit, AD ignored); the one identity
+check on the path is the upstream x509 of the terminated connection (S-1005); the one cryptographic operation this
+surface drives is the ed25519 seal per refused-name record, measured above.
+
+Failure modes (I11, I12). The resolver is in-process and dies with the supervisor; a ReadFrame error or a nil Answer
+(a message shorter than a header, or a response) closes the stream with nothing written, so nothing is reflected;
+the refused callback's record error is ignored and the answer is REFUSED either way; a lookup error or an empty set
+is resolve_failed, an unreadable interface list or one blocked answer is blocked_address, a dial failure is
+dial_failed; an Accept error ends serveRelay and closes every adapter (TestRelayCloseEndsAdapters,
+TestStreamAfterAdaptersClosed); pull and bench boot with a nil allowlist and a nil log, so no adapter exists, every
+name is refused and every Note returns ErrClosed. The flood probe also showed S-F16's behaviour from this side:
+after 55,000 refused queries filled SoftLimit the last record is the log_full marker and p.Deny returns "audit: the
+log is full", so handle refuses every later connection while the resolver still answers the hint for allowed names:
+a loss of the guest's network, never a gain. No error path reaches a dial or a splice.
+
+Downgrade, rollback and replay. Header version 1 only; the resolver is stateless and a replayed frame gets the same
+reply; the product caches no DNS answer and vets per connection; the OS caches (mDNSResponder on a Mac,
+systemd-resolved) hold answers for allowed names only, since the host asks for nothing else, and a stale answer can
+only change which vetted address is dialled or give resolve_failed.
+
+Interaction with other surfaces. Audit (S-1010): 164 bytes per refused-name record, SoftLimit after about 55,000,
+then fail closed. Proxy core (S-1004): a forward-port stream is dialled on delivery, one rooted lookup per stream,
+bounded by the vsock rate. Termination (S-1005): DialContext's vetting is proven on a real VM by the rebind-*-sni
+rows, and S-F8's bounds (TLSHandshakeTimeout dialTimeout, MaxConnsPerHost maxConns) are present in terminate.go. The
+init (S-1002) is data. explain agrees with the resolver. The suite: steered runs bind the session's resolv.conf over
+the product's in a private mount namespace (escape/sandbox/workcell_linux.go), so the judge's resolver, not the
+runner's, answers the product on every row with a Resolver.
+
+Parked leads checked against the code as built. PARKED line 7 (dnsName as a regexp) is style, unchanged. Lines 25
+and 62 (the forwarded Want has no Resolver) still hold in escape/suite/tests.go, so allowed-port-raw-ip-tcp4 and
+relay-header-allowed-port make the product look up allowed.escape.test. through the runner's resolv.conf: suite
+hygiene under S12 and T8, no attacker. Line 39 (a Mac's negative cache across sessions) changes suite verdicts only;
+the product vets per connection. Line 54 (C9, prefixes not routes) is S-1004's residual, unchanged. Line 61 (the C14
+relative: a malformed or refused UDP-53 frame leaves no connect record) is intended: the refused name is recorded
+and the malformed frame has no destination to record. Line 108 (rebindJudge takes any question type as proof) still
+holds in escape/suite/rebind.go. The sweep 1 fix on this surface, C13 by S-F8, is in place; C14 stays refuted.
+
+Coverage. Read in full: internal/resolver/resolver.go and resolver_test.go; internal/relay/relay.go and
+relay_test.go; cmd/workcell/relay.go, relay_test.go, run_vm.go and policy.go; internal/proxy/proxy.go, allowlist.go,
+terminate.go, signin.go and proxy_test.go; internal/policy/policy.go; internal/audit/audit.go;
+cmd/workcell-init/net.go and main.go, as data (A1); escape/suite/dns.go, dnstests.go, resolver.go, rebind.go,
+tests.go, helpers.go, relay.go, suite.go and addr_linux.go; escape/sandbox/sandbox.go, workcell_vm.go,
+workcell_linux.go and control_resolver_linux.go; docs/adr/003-network-path.md; docs/policy.md; both enforced lists;
+SPEC sections 2, 3, 4, 6, 8, 11 and 13; this file's map, its C6 and C51 records, its sweep 1 record of this surface
+and the sweep 2 records of S-1004 and S-1005; PARKED.md whole; go1.27.4 net/dnsclient.go, dnsclient_unix.go,
+lookup.go, lookup_unix.go and conf.go's mdns and localhost cases. Read in part: escape/suite/floods.go (cpuJudge and
+the load judges) and floods_linux.go (emulationProbe); escape/suite/https.go and terminate.go and
+escape/sandbox/control_linux.go, by grep; cmd/workcell/explain.go lines 118 to 142; docs/threat-model.md (the I3, I4
+and I11 lines); cmd/workcell/pull_vm.go and bench_vm.go (the boot calls). Not opened: escape/suite/dns_test.go,
+resolver_test.go, rebind_test.go, packets.go, icmp_linux.go and the suite files of other surfaces;
+escape/sandbox/workcell_darwin.go, workcell.go, control_relay_linux.go and the adapter tests; cmd/workcell/log.go
+and ocsf.go (sweep 1 read them, and the bytes they take from this surface are unchanged: lowercase [a-z0-9.-] of at
+most 253 bytes, or ""); the other tests of internal/proxy; ADR-004 and ADR-005; _legacy/. The clone is shallow, so
+nothing was compared with sweep 1's base 64eeaad: the audit is of the code as built, against this record. Ran: go
+test on internal/resolver, internal/relay, internal/proxy and cmd/workcell, green; the three fuzz targets above;
+three probes by go test -overlay from the session's scratch directory against the real packages (the refusal flood
+with a real audit log, the parser edge table, the per-stream cost over a unix socket), nothing in the tree changed,
+every target a net.Pipe, a unix socket under a temporary directory or an in-process call, no packet left the session
+(S12, T8). Not run: anything on a real VM, the escape suite. Ported files on this surface: internal/proxy/proxy.go,
+allowlist.go, terminate.go and proxy_test.go; nothing was found in them, so nothing falls under SPEC section 13.
+
+### S-1006 candidates, sweep 2
+
+None. The auditor raised no candidate: nothing at any severity names an invariant that an in-scope attacker puts at
+risk with a reproducible input (R2). So no reproducing test was written, no verifier ran, no fix unit is added and
+escape/_pending/ stays absent; the next candidate number is still C54. The shapes found are R3 notes, copied to
+PARKED.md: the host CPU of a recorded refusal on the relay and the missing row that sends refusals at rate, the
+missing row that judges the set of questions the host asked, the unrecorded refused queries after the log_full
+marker, and the reply's clear RA bit and absent OPT record. Not S14: the ported files of this surface hold nothing
+new.
+
+Sweep 2 verdict for this surface: no candidates, so it adds nothing at medium or above; sweep 2 already confirmed two
+mediums (C52 on S-1003, C53 on S-1005, both fixed), so S-1017 will still call a third sweep (S8). No model declined
+and no safeguard re-ran a request.
