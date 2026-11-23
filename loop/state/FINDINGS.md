@@ -4318,6 +4318,38 @@ pulled while it runs), arm (b) is the rarer one. Not S14: cmd/workcell, internal
 internal/vmm/firecracker are v2's own, and the VMM's connect by path is its documented design, as C28 ruled. Fix unit:
 S-F39, below S-1008 in PLAN.md.
 
+C56 FIXED by S-F39, commits a49f8ea (the test moved), 73ab2d8 (the fix) and 5f58964 (the fix round) (PR #284). holds in
+cmd/workcell/data.go, which session and fetch call before anything is made, now also walks the sessions of the data
+directory: for each one whose lock is held it reads the vmm file, and it refuses a directory that within() finds to hold
+a recorded VMM directory, in one line that names the directory, the VMM directory and the session and ends "wait for it
+or workcell stop <id> first". A stale record, of a session whose lock is free, refuses nothing. So a clone or mount
+session in, and a pull or diff into, a directory that holds a running session's sockets is refused before a session
+directory, an export or a boot record exists, whatever TMPDIR the shell has and however the path is spelled (within
+resolves links and judges by inode, as C52 made it). fetch in pull_vm.go, after holds(dest), also refuses a destination
+that holds os.TempDir(), where the sockets of a session begun during the pull would lie; diff goes through fetch. The
+unit line's second option, an unwritable VMM directory, was not taken: it cannot refuse before boot, and a mount guest
+could set the mode back and rename the directory. Fix round, from the review's one finding, the same swap in the other
+order (a mount session M runs in D from a shell whose TMPDIR is elsewhere, then a clone session anywhere, a pull or diff
+of another repository, or bench boots from a shell whose TMPDIR lies under D, so that M's guest is served the new VMM
+directory live): boot in run_vm.go, after its absolute-TMPDIR check and before MkdirTemp and recordBoot, refuses when
+the temp directory lies within the repo of a running session that has no workspace.ext4, with "the temp directory <tmp>
+lies inside <repo>, which the running mount session <id> serves live: set TMPDIR elsewhere or workcell stop <id> first".
+A clone session that is still exporting has no image yet and is judged like a mount session for that window, which
+also closes the window in which a starting session holds its lock but has recorded no VMM directory. Cost: 12 product
+lines in the fix and 9 in the fix round, paid by joined doc comments with their words unchanged (fetch, run, newSession,
+boot, write, compare, stopLadder): product 15000 of 15000, test 28494 of 28500. Test: cmd/workcell/c56_test.go
+TestC56PullRewiresALiveSessionsRelaySocket, moved by git mv with its head comment brought up to date, 97 lines. Both
+arms fail on the claim tree in the redteam's run and in the reviewer's worktree of main, plain and -race, and pass at
+73ab2d8; the arm added in the fix round (a running mount session of the directory, then a boot as a pull of another
+repository makes it) fails at 73ab2d8 and on main and passes at 5f58964. The test's two socket directories moved from
+t.TempDir() to os.MkdirTemp under the temp directory, because the hosted macOS runner refused to bind a unix socket at
+a path of 116 bytes: the test had never run on macOS while it was parked. The reviewer's probes found every other
+spelling held: a pull into ., into the VMM directory and into the temp directory while B runs, a session in the
+directory after B has ended, links and bind mounts. What an operator pays: while a session runs, no other session and no
+pull works in a directory that holds its temp directory (cd /tmp with the default TMPDIR, or TMPDIR under the
+repository), and a pull into such a directory is refused at any time. Not proved on a real VM: the test's listeners
+stand for the VMM's sockets, as in C28.
+
 C57. ID I10 (host disk and inodes) through the limit that pull puts on what a guest may bring back; the class of C18
 on the return path. ATTACKER: guest root in a clone session, forging Entry frames on the pull VM's channel, or
 re-making its read-write image as a dense ext4 so that the honest init walks the entries. SEVERITY: low (S6). WHERE:

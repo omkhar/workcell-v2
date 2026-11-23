@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Omkhar Arasaratnam
 
-// Finding C56 of S-1008 (I1, I4, I7, I8). Fix unit S-F39 first moves this file to cmd/workcell/c56_test.go, package main,
-// build tag `linux || (darwin && arm64 && cgo)`, as this comment says.
+// Finding C56 of S-1008 (I1, I4, I7, I8), moved here from escape/_pending/S-F39/ by fix unit S-F39.
 
 //go:build linux || (darwin && arm64 && cgo)
 
@@ -15,6 +14,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/omkhar/workcell/v2/internal/guest"
@@ -28,7 +28,9 @@ import (
 // operator's uid outside every export; `workcell pull` unlinks B's live listener, plants the link, and the VMM's next connect for B's
 // guest follows it. (b) A mount session run from a shell whose temp directory is elsewhere serves B's directory live, and is not refused.
 func TestC56PullRewiresALiveSessionsRelaySocket(t *testing.T) {
-	work, data, config, out := t.TempDir(), filepath.Join(t.TempDir(), "workcell"), t.TempDir(), t.TempDir() // out: outside every export
+	work, out := must(os.MkdirTemp("", "c56")), must(os.MkdirTemp("", "c56")) // out: outside every export. Both hold unix sockets, whose path has 104 bytes on macOS, and t.TempDir() carries this test's name
+	t.Cleanup(func() { os.RemoveAll(work); os.RemoveAll(out) })
+	data, config := filepath.Join(t.TempDir(), "workcell"), t.TempDir()
 	t.Setenv("XDG_DATA_HOME", filepath.Dir(data))
 	t.Setenv("XDG_CONFIG_HOME", config)
 	t.Setenv("TMPDIR", filepath.Join(work, "tmp"))
@@ -57,6 +59,11 @@ func TestC56PullRewiresALiveSessionsRelaySocket(t *testing.T) {
 	must(0, os.WriteFile(filepath.Join(dirB, "firecracker.json"), []byte(`{"vsock":{"guest_cid":3,"uds_path":"`+filepath.Join(dirB, "vsock")+`"}}`), 0o600))
 	relayPath := filepath.Join(dirB, fmt.Sprintf("vsock_%d", relay.Port))
 	serve(relayPath, "B")
+	sessM := mkSession(t, filepath.Join(data, "sessions"), idNew, work) // M, a mount session of work, runs too: no image, lock held. A boot from a shell whose TMPDIR lies under work (a clone session anywhere, a pull of another repository, bench) is refused before a VMM directory is made there, which M's guest would serve live
+	defer must(holdSession(sessM)).Close()
+	if _, _, err := boot(a, defaults(), nil, sessB, nil, filepath.Join(sessB, "workspace.ext4"), "", nil, nil); err == nil || !strings.Contains(err.Error(), work) || !strings.Contains(err.Error(), os.TempDir()) || string(must(os.ReadFile(filepath.Join(sessB, "vmm")))) != dirB+"\n" { // as a pull of B's repository boots
+		t.Errorf("boot returned %v, want a refusal naming the temp directory %s inside %s, which the running mount session serves live, before a VMM directory is recorded (I1, I4, I7)", err, os.TempDir(), work)
+	}
 	t.Chdir(work)
 	t.Setenv("TMPDIR", out) // (b): the operator runs --mount here from a shell whose temp directory is elsewhere; without a VM it ends at boot, which records itself
 	session([]string{"true"}, limits{DiskMiB: 16}, true, a, nil, nil)

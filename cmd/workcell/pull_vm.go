@@ -75,13 +75,13 @@ func diff(args []string, stderr io.Writer) int {
 // source hands out the next bytes of the files, at most n and at least one, in manifest order.
 type source func(n int) ([]byte, error)
 
-// fetch boots the newest session of the current directory, asks its init for the work tree and gives use
-// the directory dest open as root, the judged manifest and the files' bytes. A dest that holds workcell's
-// own directory is refused first (holds). The whole tree must follow, and the Exit after it, or the result
-// is an error. SIGINT and SIGTERM end the VM, as in run, and give a code of 128 plus the signal.
+// fetch boots the newest session of the current directory, asks its init for the work tree and gives use the directory dest open as root, the judged manifest and the files' bytes. A dest that holds workcell's own directory is refused first (holds). The whole tree must follow, and the Exit after it, or the result is an error. SIGINT and SIGTERM end the VM, as in run, and give a code of 128 plus the signal.
 func fetch(dest string, use func(int, *manifest, source) error) (int, error) {
 	if err := holds(dest); err != nil {
 		return 0, err
+	}
+	if within(dest, os.TempDir()) { // the VMM's sockets, of a session running now or of one begun during the pull, would lie under it, for the guest's tree to swap for a link to any host socket of the operator's (I1, I4, I7)
+		return 0, fmt.Errorf("%s holds the temp directory %s, where the VMM's sockets lie, which no pull may write over: set TMPDIR elsewhere", dest, os.TempDir())
 	}
 	root, err := unix.Open(dest, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_CLOEXEC, 0)
 	if err != nil {
@@ -262,12 +262,7 @@ func (p *pulled) end() error {
 	return p.odd(f)
 }
 
-// write puts the tree into the directory open as root, in manifest order, so that each directory is there
-// before what it holds. Every path is the guest's (R6): it is opened beneath root one component at a time,
-// through no symlink (dirBeneath, createBeneath), and no component may be its directory's .git (isGit, I8).
-// What is there already is kept when both are directories, removed first otherwise and never written
-// through. A directory that is not empty is not removed: that is refused, with the error of unlinkat. What is
-// on the host and not in the tree is left alone, and a directory with no .git before the pull has none after.
+// write puts the tree into the directory open as root, in manifest order, so that each directory is there before what it holds. Every path is the guest's (R6): it is opened beneath root one component at a time, through no symlink (dirBeneath, createBeneath), and no component may be its directory's .git (isGit, I8). What is there already is kept when both are directories, removed first otherwise and never written through. A directory that is not empty is not removed: that is refused, with the error of unlinkat. What is on the host and not in the tree is left alone, and a directory with no .git before the pull has none after.
 func write(root int, m *manifest, data source) error {
 	for _, e := range m.entries {
 		if err := put(root, e, data); err != nil {
@@ -352,10 +347,7 @@ func put(root int, e guest.Entry, data source) error {
 	return nil
 }
 
-// compare writes one line per difference between the tree and the directory open as root: A for what only
-// the guest has, M for what differs in kind, executable bit, link target or bytes, D for what only the host
-// has. The host's directory is walked by the rules the init walked the guest's. The bytes are compared
-// here, file by file as they arrive; nothing the guest says about sameness counts.
+// compare writes one line per difference between the tree and the directory open as root: A for what only the guest has, M for what differs in kind, executable bit, link target or bytes, D for what only the host has. The host's directory is walked by the rules the init walked the guest's. The bytes are compared here, file by file as they arrive; nothing the guest says about sameness counts.
 func compare(root int, m *manifest, data source, out io.Writer) (differs bool, err error) {
 	wfd, err := unix.Dup(root)
 	if err != nil {

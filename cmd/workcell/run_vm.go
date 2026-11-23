@@ -39,10 +39,7 @@ import (
 const bootLimit, frameLimit = 20 * time.Second, 5 * time.Second // from Start to the guest's connection; one frame, once it has begun
 const paceFrames, paceEvery = 1 << 16, 64 * time.Millisecond    // about a million frames a second: 64 KiB frames at that rate are far past any vsock, so only a flood of small ones waits
 
-// run is `workcell run [--mount] [--cpus N] [--memory SIZE] [--disk SIZE] [--allow HOST]... [--cache NAME[:rw]]... [--] <cmd> [args...]`: it boots a guest with
-// a copy of the current directory in it, or with the directory itself served live (`--mount`, A5), runs the command there and exits as the command did. This
-// process is the session's supervisor (A9): it owns the VM, the channel and the proxy, and the VM dies with it. The policy (SPEC section 5) is read first: a
-// file it cannot take is refused like a bad argument, before anything boots.
+// run is `workcell run [--mount] [--cpus N] [--memory SIZE] [--disk SIZE] [--allow HOST]... [--cache NAME[:rw]]... [--] <cmd> [args...]`: it boots a guest with a copy of the current directory in it, or with the directory itself served live (`--mount`, A5), runs the command there and exits as the command did. This process is the session's supervisor (A9): it owns the VM, the channel and the proxy, and the VM dies with it. The policy (SPEC section 5) is read first: a file it cannot take is refused like a bad argument, before anything boots.
 func run(args []string, stderr io.Writer) int {
 	caps, mount, extra, caches, args, ok := parseRun(args, stderr)
 	if !ok {
@@ -204,10 +201,7 @@ type booted struct {
 	close func()
 }
 
-// newSession records a session of the directory repo: <data>/sessions/<id>/ holding a file repo that names the directory, so that diff and pull find the newest
-// session of a directory later, and the session's audit record, signed with the host's key in the data directory, with its first line written: a session that
-// cannot be recorded does not start (I9). A mount session leaves this record alone, so that pull and diff know the work went into the directory itself; a
-// clone session adds its image. rm removes it (I7). The returned file holds the session's lock until it is closed, which ls and stop read as "running".
+// newSession records a session of the directory repo: <data>/sessions/<id>/ holding a file repo that names the directory, so that diff and pull find the newest session of a directory later, and the session's audit record, signed with the host's key in the data directory, with its first line written: a session that cannot be recorded does not start (I9). A mount session leaves this record alone, so that pull and diff know the work went into the directory itself; a clone session adds its image. rm removes it (I7). The returned file holds the session's lock until it is closed, which ls and stop read as "running".
 func newSession(a artifacts, repo string) (dir string, lock *os.File, log *audit.Log, err error) {
 	var r [4]byte
 	_, _ = rand.Read(r[:]) // crypto/rand never fails
@@ -237,16 +231,19 @@ func newSession(a artifacts, repo string) (dir string, lock *os.File, log *audit
 	return dir, lock, log, err
 }
 
-// boot starts a guest and waits for its init to dial in. The guest's /workspace is the ext4 image at image (clone mode), or the directory mount itself, served
-// live over vsock (mount mode, ADR-005), or empty when both are "". The guest's network is the proxy for allow, or none when allow is nil (A3); every name
-// allowed on port 443 is terminated with a CA made here, for this session alone (I6, A9), and each secret binding is swapped in there (bind). close ends the VM
-// and removes its files; the image stays, and the mounted directory is never anything but the user's own tree. A nil result means the session goes no further:
-// code and err say how it ended (see accept). The VMM's sockets and config live in a directory under TMPDIR, since a unix socket path has 108 bytes and the
-// data directory may be deep. The path is recorded in session, a session directory ("" for none), so that rm removes it even after the supervisor was killed
-// (I7).
+// boot starts a guest and waits for its init to dial in. The guest's /workspace is the ext4 image at image (clone mode), or the directory mount itself, served live over vsock (mount mode, ADR-005), or empty when both are "". The guest's network is the proxy for allow, or none when allow is nil (A3); every name allowed on port 443 is terminated with a CA made here, for this session alone (I6, A9), and each secret binding is swapped in there (bind). close ends the VM and removes its files; the image stays, and the mounted directory is never anything but the user's own tree. A nil result means the session goes no further: code and err say how it ended (see accept). The VMM's sockets and config live in a directory under TMPDIR, since a unix socket path has 108 bytes and the data directory may be deep. The path is recorded in session, a session directory ("" for none), so that rm removes it even after the supervisor was killed (I7).
 func boot(a artifacts, caps limits, sigs <-chan os.Signal, session string, log *audit.Log, image, mount string, allow *proxy.Allowlist, secrets []binding) (*booted, int, error) {
 	if !filepath.IsAbs(os.TempDir()) { // a relative TMPDIR would put the sockets under the directory a session may mount (I13)
 		return nil, 0, fmt.Errorf("TMPDIR %q is not an absolute path", os.TempDir())
+	}
+	l, err := list(filepath.Join(a.dir, "sessions")) // a running mount session serves its directory live: a VMM directory under it would hand that guest the sockets, to swap for a link to any host socket of the operator's (I1, I4, I7)
+	for _, s := range l {
+		if _, noImage := os.Stat(filepath.Join(a.dir, "sessions", s.id, "workspace.ext4")); s.state == "running" && noImage != nil && within(s.repo, os.TempDir()) {
+			return nil, 0, fmt.Errorf("the temp directory %s lies inside %s, which the running mount session %s serves live: set TMPDIR elsewhere or workcell stop %s first", os.TempDir(), s.repo, s.id, s.id)
+		}
+	}
+	if err != nil {
+		return nil, 0, err
 	}
 	dir, err := os.MkdirTemp("", "wc") // short names: see above
 	if err == nil && session != "" {

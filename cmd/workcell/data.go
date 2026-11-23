@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/omkhar/workcell/v2/internal/vmm"
 )
@@ -29,6 +30,8 @@ func xdgDir(env string, home ...string) (string, error) {
 
 // holds is the error for a directory that holds, or lies inside, workcell's data or config directory, named: a session there would carry the
 // audit key, other sessions, their records and the images into the guest, and pull would write the guest's versions back (I7, I9, I13).
+// So is a directory that holds the VMM directory of a running session (vmm, under its TMPDIR): the sockets there would lie in the guest's
+// view, or under a pull, for the guest to swap for a link to any host socket of the operator's (I1, I4, I7). A stale record refuses nothing.
 func holds(dir string) error {
 	data, err := dataDir()
 	if err != nil {
@@ -40,7 +43,16 @@ func holds(dir string) error {
 			return fmt.Errorf("%s lies inside or holds workcell's own directory %s, which no session may see: use another directory", dir, held)
 		}
 	}
-	return nil
+	l, err := list(filepath.Join(data, "sessions"))
+	for _, s := range l {
+		b, _ := os.ReadFile(filepath.Join(data, "sessions", s.id, "vmm")) // none before boot
+		for _, tmp := range strings.Split(string(b), "\n") {
+			if s.state == "running" && tmp != "" && within(dir, tmp) {
+				return fmt.Errorf("%s holds %s, the VMM directory of the running session %s, whose sockets no guest may see and no pull may write over: wait for it or workcell stop %s first", dir, tmp, s.id, s.id)
+			}
+		}
+	}
+	return err
 }
 
 // within says whether p is dir itself or lies under it, both resolved: the relation holds and session's temp-directory check share. The kernel judges by

@@ -172,8 +172,7 @@ func removeSession(sessions, id string) error {
 }
 
 // stopLadder is how stop asks: SIGTERM, which the supervisor passes on to the command in the
-// guest, then SIGTERM again, which makes it give up waiting and tear the VM down, then SIGKILL.
-// The VMM dies with the supervisor.
+// guest, then SIGTERM again, which makes it give up waiting and tear the VM down, then SIGKILL. The VMM dies with the supervisor.
 var stopLadder = []struct {
 	sig  syscall.Signal
 	wait time.Duration
