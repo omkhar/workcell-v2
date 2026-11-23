@@ -4139,6 +4139,29 @@ comments inside signin.go. That fix also covers the other parked spellings (a do
 letter) and the redteam's unexpressed variants (/oauth/token.json;jsessionid=x, /oauth/token.json/, a double suffix),
 which a fix on the path side could miss. Not S14: signin.go is v2's own, not ported, so there is no v1 line.
 
+C55 FIXED by S-F38, commits 72c601e (the test moved) and 6426077 (the fix) (PR #281). tokenResponse in
+internal/proxy/signin.go no longer returns at once for a request that tokenEndpoint did not claim: when the answer is a 2xx, the
+rewritten request's host (resp.Request.Host, the SNI host, spelled as p.signin is keyed, so no Host spelling of the guest's
+reaches the look-up) has a sign-in rule, and mime.ParseMediaType gives application/json or the form type (parameters and capitals
+fold away), the answer is read whole by readToken, as a claimed one is (256 KiB, gzip and x-gzip undone, any other encoding
+refused), and the new helper tokenAnswer judges it: a form with an access_token or refresh_token field, a JSON object with either
+key, or a body that does not parse as its type says. Such an answer, and one that cannot be read under the bound, is answered 502
+with an empty body and the deny record token_answer_refused for that host. A 2xx JSON value that is no object, a 2xx with neither
+field, a non-2xx, any other media type and every host with no sign-in rule pass as before, the last unread. No router is
+modelled, so the double-encoded letter, the NUL, the trailing space and the suffix spellings are closed alike; a doubled leading
+slash is claimed by tokenEndpoint's fold and answered with placeholders. Cost: the fix is paid inside signin.go by joined doc
+comments (the package paragraph, tokenEndpoint, tokenRequest, swapRefresh, tokenResponse, tokenCtx and learn; tokenEndpoint's and
+tokenResponse's reworded to match), and the form type is one constant beside maxTokenBody: signin.go stays at 296 lines, product
+15000 of 15000, test 28498 of 28500. Test: internal/proxy/c55_test.go TestC55TokenEndpointFormatSuffix, moved by git mv with its
+head comment brought up to date, 71 lines: both arms fail on all three suffixes on the claim tree in the redteam's run and in the
+reviewer's worktree of main (the guest reads sk-acc-N and sk-ref-N), and pass at 6426077, plain and -race; the nine added lines
+assert that each suffix is an empty 502, that exactly three token_answer_refused records name the sign-in host, and that a device
+flow's {"error":"authorization_pending"} on a path that was not claimed reaches the guest as 200. The reviewer's 47-row overlay
+probe found no break of the unit line. What an operator pays: on a sign-in host every JSON or form 2xx is held whole before its
+first byte reaches the guest, one over 256 KiB or in br or zstd is a 502, and so are a HEAD or a 204 that carries a JSON content
+type and JSON Lines labelled application/json. Residual, parked: a token in any other media type (XML, JSONP, text/json, none), in
+a nested object, an array or a 206 of a byte range still passes unread; the provider chooses those, not the guest.
+
 The two tests cost 125 lines, and the test budget stood at 28500 of 28500, so the redteam paid with 139 folded lines
 under escape/ in 24 files, no row removed, renamed or given another verdict and no assertion, judge or timeout
 touched: table rows packed two to four to a line in eleven test files, same-type fields and single-field structs
