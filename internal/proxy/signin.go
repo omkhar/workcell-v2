@@ -19,21 +19,17 @@ import (
 	"strings"
 )
 
-// A sign-in flow (I5): a [[secret]] row whose source is "signin:HOST/PATH" has no value of its own. Its token endpoint, PATH on HOST, an allowed name
-// terminated like every other, issues the row's tokens in a JSON body: access_token, which the rule swaps in its header as it would a static secret, and
-// refresh_token, which the guest presents back at the endpoint for new ones. The proxy reads each answer of the endpoint whole before the guest sees a
-// byte, hands the tokens to the broker, which holds them in place of the ones before, and sends the guest the row's placeholder for the access token and
-// a second one for the refresh token: the same two whatever the endpoint issues, so a client that keeps them across a refresh keeps something that still
-// works. A real token the broker holds never appears in an answer, whatever its status, and a placeholder sent anywhere but its own place is refused as
-// a static secret's would be.
+// A sign-in flow (I5): a [[secret]] row whose source is "signin:HOST/PATH" has no value of its own. Its token endpoint, PATH on HOST, an allowed name terminated like every other, issues the row's tokens in a JSON body: access_token, which the rule swaps in its header as it would a static secret, and refresh_token, which the guest presents back at the endpoint for new ones.
+// The proxy reads each answer of the endpoint whole before the guest sees a byte, hands the tokens to the broker, which holds them in place of the ones before, and sends the guest the row's placeholder for the access token and a second one for the refresh token: the same two whatever the endpoint issues, so a client that keeps them across a refresh keeps something that still works. A real token the broker holds never appears in an answer, whatever its status, and a placeholder sent anywhere but its own place is refused as a static secret's would be.
 
 // SignIn is the sign-in flow of a rule: the token endpoint and the refresh placeholder, as NewSignIn mints it.
 type SignIn struct {
 	Host, Path, Refresh string
 }
 
-// maxTokenBody bounds a request to or an answer from a token endpoint, which the proxy reads whole (I10, I12). A token body is a few hundred bytes.
-const maxTokenBody = 256 << 10
+// maxTokenBody bounds a request to or an answer from a token endpoint, which the proxy reads whole (I10, I12). A token body is a few hundred bytes. formType
+// is the media type of a form: a token request's, and a token answer's at a provider that answers as GitHub does.
+const maxTokenBody, formType = 256 << 10, "application/x-www-form-urlencoded"
 
 // NewSignIn parses the source "signin:HOST/PATH" of a [[secret]] row: HOST a bare DNS name, with no port or scheme, which comes back canonical, and PATH an
 // absolute one as NewTerminateRule takes it. The refresh placeholder is fresh.
@@ -58,9 +54,7 @@ func validPath(p string) bool {
 	return p != "" && p[0] == '/' && !strings.ContainsAny(p, "?#") && strings.IndexFunc(p, func(c rune) bool { return c < '!' || c > '~' }) < 0
 }
 
-// tokenEndpoint returns the rule whose token endpoint a request to u on host goes to: one whose path a common router would read as u's, taken as sent or
-// under either fold, in any case. The match is wide because an answer taken for another path would reach the guest unread (I5), while a request taken for
-// the endpoint is only read whole and rewritten.
+// tokenEndpoint returns the rule whose token endpoint a request to u on host goes to: one whose path a common router would read as u's, taken as sent or under either fold, in any case. The match is wide because a request taken for the endpoint is only read whole and rewritten, while an answer to a request not taken for it passes unread unless tokenResponse can tell it for a token answer (I5).
 func (p *Proxy) tokenEndpoint(host string, u *url.URL) (TerminateRule, bool) {
 	sent := u.EscapedPath()
 	for _, r := range p.signin[host] {
@@ -84,10 +78,8 @@ func fold(escaped string) string {
 // opaque doubly encodes each encoded separator of a path as sent, so that fold reads it as a router that resolves dot segments before it decodes does (C33).
 func opaque(escaped string) string { return sep.ReplaceAllString(escaped, "%25$1") }
 
-// tokenRequest reads the body of a request to rule's token endpoint and swaps the refresh placeholder in its refresh_token field for the refresh token the
-// broker releases. It returns the body the request now carries and a copy of that refresh token, both for the caller to wipe once the request has gone, and
-// a reason to refuse the request: a body over the bound, a broker that withholds the token, or a placeholder the body still carries anywhere else (I5).
-// Accept-Encoding is dropped so that the answer comes back plain, or gzipped by a server that insists, which tokenResponse undoes.
+// tokenRequest reads the body of a request to rule's token endpoint and swaps the refresh placeholder in its refresh_token field for the refresh token the broker releases. It returns the body the request now carries and a copy of that refresh token, both for the caller to wipe once the request has gone,
+// and a reason to refuse the request: a body over the bound, a broker that withholds the token, or a placeholder the body still carries anywhere else (I5). Accept-Encoding is dropped so that the answer comes back plain, or gzipped by a server that insists, which tokenResponse undoes.
 func (p *Proxy) tokenRequest(r *http.Request, rule TerminateRule) (body, refresh []byte, reason string) {
 	body, err := io.ReadAll(io.LimitReader(r.Body, maxTokenBody+1))
 	if err != nil || len(body) > maxTokenBody {
@@ -111,12 +103,10 @@ func (p *Proxy) tokenRequest(r *http.Request, rule TerminateRule) (body, refresh
 	return body, refresh, ""
 }
 
-// swapRefresh swaps the refresh placeholder in the body of a request to the token endpoint for the refresh token that real releases: the value of the
-// refresh_token field of a form, or of the top-level "refresh_token" string of a JSON object, as mediaType says. Anywhere else the placeholder stays, real is
-// not asked, and the caller refuses the request.
+// swapRefresh swaps the refresh placeholder in the body of a request to the token endpoint for the refresh token that real releases: the value of the refresh_token field of a form, or of the top-level "refresh_token" string of a JSON object, as mediaType says. Anywhere else the placeholder stays, real is not asked, and the caller refuses the request.
 func swapRefresh(mediaType string, body []byte, placeholder string, real func() ([]byte, error)) ([]byte, error) {
 	switch mediaType {
-	case "application/x-www-form-urlencoded":
+	case formType:
 		fields := bytes.Split(body, []byte("&"))
 		for i, f := range fields {
 			if k, v, _ := bytes.Cut(f, []byte("=")); string(k) != "refresh_token" || string(v) != placeholder {
@@ -149,28 +139,28 @@ func swapRefresh(mediaType string, body []byte, placeholder string, real func() 
 // tokenKey marks, in a request's context, a tokenCtx for tokenResponse.
 type tokenKey struct{}
 
-// tokenCtx is the rule whose token endpoint a request goes to and the real refresh token tokenRequest put in its body, hidden in the answer even once another
-// request has rotated it, when the broker no longer holds it (I5).
+// tokenCtx is the rule whose token endpoint a request goes to and the real refresh token tokenRequest put in its body, hidden in the answer even once another request has rotated it, when the broker no longer holds it (I5).
 type tokenCtx struct {
 	rule    TerminateRule
 	refresh []byte
 }
 
-// tokenResponse rewrites the answer of a token endpoint before the guest reads a byte of it. The whole body is read, gunzipped when the server insisted on
-// gzip, and on a 2xx JSON object the access_token and refresh_token strings go to the broker, which holds them from then on. Then every real token the broker
-// holds for the row, old and new, is hidden behind its placeholder. An answer that cannot be read whole, decoded or recorded is refused: the guest gets a 502
-// and none of its bytes.
+// tokenResponse rewrites the answer of a token endpoint before the guest reads a byte of it. The whole body is read, gunzipped when the server insisted on gzip, and on a 2xx JSON object the access_token and refresh_token strings go to the broker, which holds them from then on. Then every real token the broker holds for the row, old and new, is hidden behind its placeholder.
+// An answer that cannot be read whole, decoded or recorded is refused: the guest gets a 502 and none of its bytes. A 2xx JSON or form answer of a sign-in host to a request tokenEndpoint did not claim is read whole the same way, since the provider's router may serve the token action under a spelling the match does not read (C55), and refused when it is a token answer; any other answer passes unread.
 func (p *Proxy) tokenResponse(resp *http.Response) error {
 	tok, ok := resp.Request.Context().Value(tokenKey{}).(tokenCtx)
-	if !ok {
-		return nil
+	mediaType, _, _ := mime.ParseMediaType(resp.Header.Get("Content-Type"))
+	if !ok && (resp.StatusCode/100 != 2 || p.signin[resp.Request.Host] == nil || mediaType != "application/json" && mediaType != formType) {
+		return nil // resp.Request is the rewritten request, whose Host is the SNI host, canonical, as p.signin is keyed: no spelling of the guest's reaches it
 	}
 	body, err := readToken(resp)
-	if err == nil {
+	if err == nil && ok {
 		body, err = p.learn(tok.rule, tok.refresh, resp.StatusCode, body)
+	} else if err == nil && tokenAnswer(mediaType, body) {
+		err = errors.New("token answer to a request the endpoint's match did not claim")
 	}
 	if err != nil {
-		p.Deny(tok.rule.SignIn.Host, tlsPort, "token_answer_refused")
+		p.Deny(resp.Request.Host, tlsPort, "token_answer_refused")
 		return err
 	}
 	resp.Body = io.NopCloser(bytes.NewReader(body))
@@ -179,6 +169,18 @@ func (p *Proxy) tokenResponse(resp *http.Response) error {
 	resp.Header.Del("Content-Encoding")
 	resp.Header.Set("Content-Length", strconv.Itoa(len(body)))
 	return nil
+}
+
+// tokenAnswer reports whether body, in mediaType, issues a token: a form with an access_token or refresh_token field, a JSON object with either key, or a body that does not read as its type says, which a lenient client could take for one (I5). A JSON value that is not an object, an API host's array, is none.
+func tokenAnswer(mediaType string, body []byte) bool {
+	if mediaType == formType {
+		v, err := url.ParseQuery(string(body))
+		return err != nil || v.Has("access_token") || v.Has("refresh_token")
+	}
+	var v any
+	err := json.Unmarshal(body, &v)
+	m, _ := v.(map[string]any)
+	return err != nil || m["access_token"] != nil || m["refresh_token"] != nil
 }
 
 // readToken reads the whole answer, at most maxTokenBody bytes, undoing gzip; another encoding cannot be read, so it is refused.
@@ -203,9 +205,7 @@ func readToken(resp *http.Response) ([]byte, error) {
 	return body, err
 }
 
-// learn hands the tokens a 2xx JSON object issues to the broker and returns body with every real token the broker holds for the row, old and new, and the
-// refresh token the request carried, hidden behind its placeholder. A 2xx that is not a JSON object (RFC 6749 section 5.1) is refused: read leniently, past a
-// BOM or trailing comma, it could leak (I5).
+// learn hands the tokens a 2xx JSON object issues to the broker and returns body with every real token the broker holds for the row, old and new, and the refresh token the request carried, hidden behind its placeholder. A 2xx that is not a JSON object (RFC 6749 section 5.1) is refused: read leniently, past a BOM or trailing comma, it could leak (I5).
 func (p *Proxy) learn(rule TerminateRule, carried []byte, status int, body []byte) ([]byte, error) {
 	access, refresh := p.broker.Tokens(rule.Host, rule.Header)
 	swaps := []swap{{access, rule.Placeholder}, {refresh, rule.SignIn.Refresh}, {carried, rule.SignIn.Refresh}}

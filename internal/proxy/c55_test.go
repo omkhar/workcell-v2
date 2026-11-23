@@ -27,11 +27,13 @@ import (
 func TestC55TokenEndpointFormatSuffix(t *testing.T) {
 	for _, form := range []bool{false, true} {
 		t.Run(map[bool]string{false: "json answer", true: "form answer"}[form], func(t *testing.T) {
+			const login, grant, ctype, pending = "https://login.example.com", "grant_type=authorization_code&code=c0de", "application/x-www-form-urlencoded", `{"error":"authorization_pending"}`
 			var issued atomic.Int32
 			up := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				body, _ := io.ReadAll(r.Body)
 				if r.Host != "login.example.com" || r.Method != http.MethodPost || strings.TrimSuffix(r.URL.Path, path.Ext(r.URL.Path)) != tokenEndpointPath || !strings.Contains(string(body), "grant_type=authorization_code") {
-					http.NotFound(w, r)
+					w.Header().Set("Content-Type", "application/json")
+					fmt.Fprint(w, pending) // every other request is answered as a device flow's poll is: a 2xx JSON object with no token in it
 				} else if n := issued.Add(1); form {
 					w.Header().Set("Content-Type", "application/x-www-form-urlencoded")
 					fmt.Fprintf(w, "access_token=sk-acc-%d&scope=&token_type=bearer", n)
@@ -43,19 +45,26 @@ func TestC55TokenEndpointFormatSuffix(t *testing.T) {
 			t.Cleanup(up.Close)
 			roots := x509.NewCertPool()
 			roots.AddCert(up.Certificate())
-			px, _, _ := testProxy(t, "api.example.com:443 login.example.com:443", []netip.Addr{netip.MustParseAddr("8.8.8.8")}, up.Listener.Addr().String())
+			px, log, _ := testProxy(t, "api.example.com:443 login.example.com:443", []netip.Addr{netip.MustParseAddr("8.8.8.8")}, up.Listener.Addr().String())
 			px.upstreamRoots = roots
 			ca := must(NewSessionCA([]string{"api.example.com", "login.example.com"}, time.Now().Add(time.Hour)))
 			must(0, px.Terminate(ca, &tokenBroker{}, []TerminateRule{{Host: "api.example.com", Header: "authorization", Placeholder: testPlaceholder, SignIn: &SignIn{Host: "login.example.com", Path: tokenEndpointPath, Refresh: testRefreshPlaceholder}}}))
 			c := clientVia(listen(t, px, 443), caPool(t, ca))
-			const login, grant, ctype = "https://login.example.com", "grant_type=authorization_code&code=c0de", "application/x-www-form-urlencoded"
 			code, body := send(t, c, "POST", login+tokenEndpointPath, ctype, grant) // send fails the test on a real token in any answer (I5)
 			if !form && (code != 200 || !strings.Contains(body, testPlaceholder) || !strings.Contains(body, testRefreshPlaceholder)) {
 				t.Errorf("the honest spelling: got (%d, %q), want 200 with the two placeholders", code, body)
 			}
+			before := len(denies(t, px, log)) // the form arm's honest answer is refused too: a 2xx that is not a JSON object
 			for _, ext := range []string{".json", ".xml", ".JSON"} {
-				code, body := send(t, c, "POST", login+tokenEndpointPath+ext, ctype, grant)
-				t.Logf("POST %s%s: %d %q", tokenEndpointPath, ext, code, body)
+				if code, body := send(t, c, "POST", login+tokenEndpointPath+ext, ctype, grant); code != 502 || body != "" {
+					t.Errorf("POST %s%s: got (%d, %q), want an empty 502", tokenEndpointPath, ext, code, body)
+				}
+			}
+			if code, body := send(t, c, "POST", login+"/device/token", ctype, "grant_type=urn:ietf:params:oauth:grant-type:device_code&device_code=d0de"); code != 200 || body != pending {
+				t.Errorf("a 2xx with no token field on a path not claimed: got (%d, %q), want it through as (200, %q)", code, body, pending)
+			}
+			if d := denies(t, px, log)[before:]; len(d) != 3 || d[2].Reason != "token_answer_refused" || d[2].Host != "login.example.com" {
+				t.Errorf("deny lines since the honest spelling = %+v, want three token_answer_refused for login.example.com and no more", d)
 			}
 		})
 	}
