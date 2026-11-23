@@ -4662,3 +4662,140 @@ the next candidate number is C60. The other shapes found are R3 notes, copied to
 the observations, the variants the two tests do not express, and what this audit did not run. In the auditor,
 the two redteam runs that wrote the tests, the redteam run that folded and the two verifiers no model declined
 and no safeguard re-ran a request.
+
+## S-1010, sweep 2: audit log, seal, key storage, `verify` (I9), as built at main 78ffa16
+
+Fresh context, the whole surface read in full as built (not a diff), after the 32 fix units of sweep 1 and S-F33
+to S-F42 of sweep 2, at the claim commit 8aa5f99 on main 78ffa16. One auditor run, finished without a stop:
+no model declined and no safeguard re-ran a request. No hypervisor in the session, and nothing on this surface
+needed a VM. Result: no candidates. Seven leads were worked to a probe or a full trace and each was refuted;
+the nine parked lines about this surface were each ruled on; no redteam and no verifier ran, since there was
+no claim to test.
+
+Trust boundary. The guest's bytes reach a record as: the raw SNI of a refused 443 connection (crypto/tls admits
+any bytes but a trailing dot, within a 16 KiB hello), the name of a refused DNS query (lower-case letters, digits,
+dot and hyphen, or empty), the relay header's port (a uint16, 0 admitted), the exit status in session_end ("exit N"
+from one byte, or "failed"), and the rate and timing of attempts. Every other field is a constant, a config string
+that the TOML scanner has already stripped of control characters, or an allowlist key. They enter through
+audit.Log.append (clip to 253 bytes, json.Marshal, one mutex, one write(2) per line, a seal per line signed with
+a key that lives only in the supervisor's memory) and leave through Verify, ParseLine, eachLine (ported), the log
+verb's feed, denyMessage and ocsfLine, the last three passing the one free-form field through SafeHost. The
+authority is the supervisor as the operator's uid, owning sessions/<id>/audit.log and audit.seal (0600) and
+<data>/audit.key (0600); log and verify read as the same uid; the escape adapter reads the files and runs the verb.
+
+Parsing and resources. Hostile fields were driven through the real audit.Create and the real log verb in text and
+in --format ocsf, then verify (probe TestProbeHostileFieldsRoundTrip, package main, by go test -overlay): SNIs
+holding an embedded newline followed by a forged session_end object, OSC and C1 CSI sequences, U+202E, U+2028,
+NUL, 300 bytes of 0xFF, 200 e-acute (clipped inside a rune), the Kelvin sign, a quote, and 16 KiB of x, each as
+sni_not_allowed and as host_mismatch. 24 records; no raw byte below 0x20 in the file and no line over 16 KiB; the
+text output (2851 bytes) and the OCSF output (7560 bytes) hold no control, C1 or bidi rune; verify says intact;
+the cut rune is written as U+FFFD. Bounds: the writer's most (HardLimit, the marker and session_end) is under
+the reader's MaxBytes (HardLimit plus two maxLine); a record is five clipped fields at most, so under maxLine;
+the seal has one fixed length of 194 bytes, so WriteAt(0) leaves no stale tail; the signing cost of a refusal
+flood ends at SoftLimit (about 69,000 signatures, about 2 CPU-seconds in all, after which ErrFull costs a marshal
+and a size check); durable records are at most 300 a minute through the broker's window, plus Issues bounded by
+the real provider. FuzzEachLine exists; the seal reader's Sscanf is bounded by the 32-byte and 64-byte checks
+that follow it.
+
+Logic and state. The full, failed and closed states of append were traced with TestVolumeIsBounded and
+TestLifecycleRecordsIgnoreTheLimit; the lifecycle bypass of the limit is host-only. Rollback of a (log, seal)
+pair taken mid-session, the residual S-F17 named: probe TestProbeRollbackPairs made a six-record session, kept
+the pair after Create and after each record, restored each pair under the same id once the session had closed,
+and ran the verify verb on each: pairs 0 to 5 exit 1 with "incomplete: the session's end was not recorded", pair
+6 exits 0 intact. audit.Verify alone accepts the empty log with its first seal (TestProbeEmptyLogInitialSeal:
+no last event, nil error), and the verb refuses it. A running session shows its live state, which is right.
+
+Concurrency and check-to-use gaps. One mutex for every writer. A record that lands after session_end (a Deny
+of an allowed connection whose upstream dial fails late, timed by guest root with the network attacker) would
+make verify call a complete log incomplete: probe TestProbeLateNoteAfterSessionEnd (package audit) held the
+mutex for 3 ms over the session_end write, longer than sync.Mutex's starvation threshold, with a Note parked on
+the lock, then Unlock and Close as session() does: the late Note landed in 0 of 50 runs, got ErrClosed every
+time, Verify intact every time, green under -race. Had it landed, the effect would be a false alarm, nothing
+suppressed, forged or altered. LoadKey's first-use race fails closed. verify reads the log before it probes the
+lock, so at most one passing "incomplete" for a session that ends between the two (PARKED line 77).
+
+Cryptography and identity. The seal is ed25519 over the prefix, the session id and the chain head, with a
+domain-separated message and an id that holds no space; the chain is SHA-256 over digest-prefixed lines with
+no split ambiguity. A copied or renamed session and another host's key are refused
+(TestVerifyRefusesAnotherHostOrSession). Who can reach audit.key: host-level access only. holds() refuses a cwd
+or a pull destination that holds or lies inside the data or config directory (the C19, C29 and C52 tests are
+green, C52's by inode, with its check that the key was not minted inside the exported tree); workspace.Export
+copies a symlink as a symlink and hard-links only inodes it met inside the tree; the file service has no LINK
+operation and resolves nothing on the host; pull writes files and symlinks and follows none; the key is read
+into memory by LoadKey and written nowhere else: not to the kernel command line, the Exec environment, the CA
+or a secret program's environment. LoadKey fails closed on an empty, torn, wrong-mode or non-regular key, and
+on a symlink planted at its path.
+
+Failure modes. Every error path fails closed. A failed write ends the log and withholds secrets; session_end's
+failure is printed; a crash gives "changed", "cut inside a record" or "incomplete" and never a false intact.
+After S-F16 every Deny caller was traced: handle's route refusal, handle's Allowed before the terminate check
+and before connect, connect's refusal after an Allowed record, the transport's DialContext and the six handler
+refusals in terminate.go, token_answer_refused in signin.go, the relay's port_not_allowed and the resolver's
+name_not_allowed through the one closure in boot, and the broker's record, which acts on nil. Issue stores
+tokens before its record, and after ErrFull or a failed write those tokens can never be released, because the
+record of every later release fails too. A kept-alive terminated connection accepted before SoftLimit goes on
+serving after the fill, by design: the connection is recorded, each secret use is recorded durably up to
+HardLimit, and a refusal on it is refused whether or not its Note fits. Nothing is served without its record.
+A typed-nil *audit.Log as Recorder (the pull and bench boots) returns ErrClosed from Note with no panic, and
+those boots have no listeners.
+
+Downgrade, rollback and replay. No older seal format is accepted; rollback pairs are refused as above; copied
+and renamed sessions are refused. updates.log is outside the chain by design and has carried no in-scope
+attacker's bytes since S-F1.
+
+Interaction between surfaces. I5: no value, placeholder or guest Host header reaches a record; the secret
+record's host and header come from the rule. I6: Deny hosts are canonical. I7: rm removes the record, by
+design. I10: the bounds above. I12: the channel never carries records. I13: the deny line's remedy cannot
+widen. SafeHost admits a leading hyphen, so a refused SNI "-mount" or "--allow" prints as the remedy
+"workcell run --allow -mount", and the Kelvin sign folds to an ASCII k; Go's flag package takes the next
+argument as the value, and dnsName in internal/proxy/allowlist.go refuses a label that starts or ends with a
+hyphen, so neither the flag nor a config entry gains a host. Wording only.
+
+The fixes since sweep 1, asked for their second order. S-F16 holds as built (unrecorded_test.go green, every
+caller traced). S-F17 holds as built, and the rollback probe extends its test to every pair. S-F12, S-F21 and
+S-F35: the key cannot be minted in or exported into a workspace through cwd, pull, a symlink or a bind-mount
+alias; the bench and cache boots touch no cwd. S-F33 and S-F2: session_end is written on a stopped or closed
+stdout reader, a closed stderr reader takes the same EPIPE path in client(), and a SIGKILL still leaves no end
+record, which verify now reports as incomplete and not intact.
+
+The parked lines, each ruled on, none with an in-scope break behind it. Line 34 (the seal rewritten per append,
+pull's nil log, updates.log outside the chain): a crash between append and seal fails closed; the pull boot
+has no listeners, no network and no command; updates.log holds no connection, secret use or lifecycle event.
+Line 73 (times out of order, port 0, bytes after the seal's two tokens, no record for the attach, pull and diff
+boots, wording): the remedy "host:0" is refused by ParseAllowlist, and the only author of a refused relay header
+in a pull boot is guest root during a boot that runs no command, the C14 shape. Line 74 (no VM row floods
+audit.log): a gap in the suite and not a break; S-F16's Go test is the evidence, and R5 forbids asking for a row.
+Line 76: wording. Line 77: one passing "incomplete" at most. Line 96 (two first uses race to an empty key; the
+bind-mounted data directory): the race fails closed, and the alias was C52, fixed by S-F35. Line 155 (a granted
+ledger line before carriesPlaceholder refuses): a record too many, not one suppressed or forged, and the value
+never left the host. Line 160 (CPU per recorded refusal): bounded by SoftLimit. Line 162 (allowed names still
+resolve after log_full): since S-F16 every connection after the marker is refused, and the answer tells the
+guest nothing that the CA's name constraints and workcell.ports= do not.
+
+Coverage. Read in full: internal/audit (audit.go, key.go, the ported lines.go, audit_test.go); in cmd/workcell
+log.go, ocsf.go, data.go, run_vm.go, session.go, main.go, relay.go, pull.go, policy.go, update.go, bench_vm.go,
+cache_vm.go, verify_test.go, log_test.go and the C19, C29 and C52 tests; in internal/proxy the ported proxy.go,
+terminate.go and allowlist.go, signin.go and unrecorded_test.go; the ported internal/secret/broker.go;
+internal/relay/relay.go; internal/resolver/resolver.go; internal/workspace/workspace.go; escape/suite/audit.go
+and lifecycle.go; the map and sweep 1's record of this surface above, with C8, C14 and the ledger passages of
+S-1005 and S-1006 of sweep 2. Skimmed or by grep: pull_vm.go (fetch, newest), the head of explain.go, Start,
+Wait, Kill and Close in internal/vmm/firecracker, the Exit encoding in internal/guest, the control-character
+refusal in internal/policy, the operation list of internal/fileserve, the I9 rows of escape/suite/tests.go,
+escape/sandbox/workcell_vm.go lines 425 to 535, the I9 block of docs/threat-model.md. Not opened:
+internal/secret/source.go, internal/vmm/vz, the control adapters, internal/rootfs, the rest of
+internal/fileserve, the remaining test files, and _legacy/. Run: go test and go test -race with overlays only,
+on go1.27.4; the existing internal/audit and cmd/workcell tests are green on this tree; no VM row, no fuzz run
+and no macOS path. Every probe's target was a file or a process the probe itself made (S12). Not S14: nothing
+concerns another project; the four ported files read hold nothing new, so no v1 line is owed.
+
+### S-1010 candidates, sweep 2
+
+None. The auditor reported no candidate at any severity: nothing found names an invariant that an in-scope
+attacker puts at risk with an input that can be reproduced (R2). So no test was written, nothing is parked
+under escape/_pending/, no fix unit was added, and the next candidate number stays C60. Product 15000 of
+15000 and test 28499 of 28500, both unchanged.
+
+Sweep 2 verdict for this surface: no candidates. Sweep 2 has confirmed six mediums on other surfaces (C52 on
+S-1003, C53 on S-1005, C54 and C55 on S-1007, C56 on S-1008, C58 on S-1009, all fixed) and two lows (C57 and
+C59, fixed), so S-1017 will call a third sweep (S8) whatever this surface says. The shapes seen are R3 notes,
+copied to PARKED.md in two lines: the observations, and what this audit did not run.
