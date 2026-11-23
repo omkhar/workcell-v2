@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Omkhar Arasaratnam
 
-// Finding C60 of S-1011, sweep 2 (I12). It waits here between the audit and the fix (S4); the fix unit S-F43 moves it to cmd/workcell/c60_test.go by git mv.
+// Finding C60 of S-1011, sweep 2 (I12), fixed by S-F43. It stays here as the regression test of C60 (S4).
 
 package main
 

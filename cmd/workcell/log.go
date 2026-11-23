@@ -142,10 +142,7 @@ func (r *denyReader) feed(data []byte, out io.Writer) {
 // denyMessage is one deny line in a sentence: what was refused, and the one thing to do about it.
 // The host is guest-chosen bytes for a TLS name, so it is shown only in a form safe to copy.
 func denyMessage(d audit.Record, cfg string) string {
-	host := audit.SafeHost(d.Host)
-	if host == "" { // as printed when it is no remedy
-		host = "(invalid)"
-	}
+	host := cmp.Or(audit.SafeHost(d.Host), "(invalid)") // as printed when it is no remedy
 	allow := func(entry string) string {
 		return fmt.Sprintf("allow it with  workcell run --allow %s  or add %q to [network] allow in %s", entry, entry, cfg)
 	}

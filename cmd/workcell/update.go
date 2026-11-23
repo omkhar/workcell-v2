@@ -286,6 +286,9 @@ func (in installer) apply(provs []provider.Provider, stderr io.Writer) (fresh []
 // layer by itself, nothing fetched and no manifest read; with no previous, the next session boots without the layer. One record line, "failed", names the layer set
 // aside. For a layer an earlier start installed, or one the operator chose since (B10), nothing: the guest's word alone changes nothing on the host (I12).
 func (in installer) fail(binary string, stderr io.Writer) {
+	if len(in.fresh) == 0 { // this start installed nothing, so there is nothing to set aside: no marker is read, and none against the working directory when startup had no data directory to give (C60)
+		return
+	}
 	provs, _ := provider.All() // startup reported an error here already
 	for _, p := range provs {
 		dir := filepath.Join(in.dir, "layers", p.Name)

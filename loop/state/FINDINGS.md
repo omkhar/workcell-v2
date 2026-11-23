@@ -4958,6 +4958,21 @@ change that returns from fail when this start installed nothing: the probe passe
 TestUpdate, TestChannel and TestFindLayers. Not S14: update.go and run_vm.go are v2's own, nothing ported, no
 v1 line. Fix unit: S-F43, below S-1011 in PLAN.md.
 
+C60 FIXED by S-F43, commits fcbbbd0 (the test moved) and 985846b (the fix) (PR #291). fail in
+cmd/workcell/update.go returns at once when this start installed nothing (fresh is empty), before provider.All
+and before any marker is read, so the zero installer that startup returns after a failed newInstaller reads
+nothing, and nothing against the working directory; a start that installed something behaves as before, since
+fresh is set only by apply after newInstaller succeeded, and dataDir gives an absolute directory or an error.
+Three product lines for the guard, paid by one fold in denyMessage of cmd/workcell/log.go (the empty-host default
+as cmp.Or, the form verify already uses), no behaviour changed: product 15000 of 15000, test 28500 of 28500, no
+test line. The test moved by git mv with its head comment changed, 44 lines; escape/_pending/ is gone. Before: the
+test fails after 3.01 s on main, plain and -race (the redteam, and the reviewer in a worktree of main). After: it
+passes at 985846b, plain and -race, with TestFail, TestFailSpares, TestUpdate, TestChannel and TestFindLayers.
+The review answered the questions of PARKED line 192: every cause of a failed newInstaller gives the zero
+installer, whose fresh is nil; the update verb returns 2 before it uses a failed installer, so --rollback and --to
+never hold an empty directory; bench start calls daily only on success. Sweep 2 now stands at seven mediums (C52
+to C56, C58 and C60) and two lows (C57 and C59), all fixed.
+
 The 44 test lines were paid by 43 comment re-flows under escape/suite (tests.go 35, https.go 8), no token
 outside a comment changed, the control list of 145 rows identical before and after: product 15000 of 15000,
 test 28500 of 28500.
