@@ -20,8 +20,7 @@ import (
 	"time"
 )
 
-// The pinned guest artifacts by host architecture: the Firecracker release and a kernel, x86_64's the one the product's own hosted test uses, aarch64's the
-// Firecracker CI Image the Mac pins too.
+// The pinned guest artifacts by host architecture: the Firecracker release and a kernel, x86_64's the one the product's own hosted test uses, aarch64's the Firecracker CI Image the Mac pins too.
 var pinned = map[string]struct{ firecrackerURL, firecrackerSum, firecrackerBin, vmlinuxURL, vmlinuxSum string }{
 	"amd64": {"https://github.com/firecracker-microvm/firecracker/releases/download/v1.17.0/firecracker-v1.17.0-x86_64.tgz", "06094a1108ae9e82aa4c23a775aa92758f53f1175d422270d9d6162cb9ade558", "release-v1.17.0-x86_64/firecracker-v1.17.0-x86_64", "https://github.com/cloud-hypervisor/linux/releases/download/ch-release-v7.2.8-20261009/vmlinux-x86_64", "edfeb8a8a6c04ff2979e9f1c700feaa29b8f564f952261834ef0b7d2e673a853"},
 	"arm64": {"https://github.com/firecracker-microvm/firecracker/releases/download/v1.17.0/firecracker-v1.17.0-aarch64.tgz", "e351ebe4f7a16b5873bbd51005d2e6767103cff4d5ebc829df2d3f95a93e2256", "release-v1.17.0-aarch64/firecracker-v1.17.0-aarch64", "https://s3.amazonaws.com/spec.ccfc.min/firecracker-ci/v1.14/aarch64/vmlinux-6.1.155", "61baeae1ac6197be4fc5c71fa78df266acdc33c54570290d2f611c2b42c105be"},
@@ -95,17 +94,15 @@ func sign(context.Context, string, string) error { return nil }
 // steersResolver: on Linux the product can be run under a /etc/resolv.conf of the session's own, so a session may name a resolver.
 const steersResolver = true
 
-// holder is a session's own network namespace, whose loopback device holds IsolatedNet and a route to CanaryAddr and nothing else, so that no other address has
-// a route: the payload that made it and holds it, as root, and the connection whose closing lets it go. The product starts inside it (steered); the judge's
-// canaries listen in it (bind).
+// holder is a session's own network namespace, whose loopback device holds IsolatedNet and a route to CanaryAddr and nothing else, so that no other address has a route: the payload that made it and
+// holds it, as root, and the connection whose closing lets it go. The product starts inside it (steered); the judge's canaries listen in it (bind).
 type holder struct {
 	pid     int
 	payload string
 	conn    *net.UnixConn
 }
 
-// isolate starts the holder: the payload under `unshare -n`, as root (sudo when the suite is not), which sets its loopback device up (suite.Hold), dials back
-// at a socket under dir and says its pid.
+// isolate starts the holder: the payload under `unshare -n`, as root (sudo when the suite is not), which sets its loopback device up (suite.Hold), dials back at a socket under dir and says its pid.
 func isolate(dir, payload string) (*holder, error) {
 	path := filepath.Join(dir, "netns")
 	ln, err := net.ListenUnix("unix", &net.UnixAddr{Name: path, Net: "unix"})
@@ -189,9 +186,8 @@ func EachProcess(f func(pid, ppid, pgid int)) error {
 	return nil
 }
 
-// productProcess finds the product's own process under root, the process the adapter started for a run: root itself, or the deepest of its descendants, whose
-// executable is bin (under steering root is sudo; a product that forked a supervisor of its own is found below itself). A process between fork and exec still
-// shows its parent's executable, so a caller that finds nothing asks again.
+// productProcess finds the product's own process under root, the process the adapter started for a run: root itself, or the deepest of its descendants, whose executable is bin (under steering root is
+// sudo; a product that forked a supervisor of its own is found below itself). A process between fork and exec still shows its parent's executable, so a caller that finds nothing asks again.
 func productProcess(root int, bin string) (int, bool) {
 	children := map[int][]int{}
 	if EachProcess(func(pid, ppid, _ int) { children[ppid] = append(children[ppid], pid) }) != nil {
@@ -219,9 +215,8 @@ func productProcess(root int, bin string) (int, bool) {
 // environment the suite gives it (the K=V words after the ids, then the command), which then resolves every name with that file's resolver.
 const resolverLoader = `mount --make-rprivate / && mount --bind "$1" /etc/resolv.conf || { echo "workcell adapter: cannot bind the session's resolv.conf over /etc/resolv.conf" >&2; exit 125; }; u=$2 g=$3; shift 3; exec setpriv --reuid="$u" --regid="$g" --init-groups -- env -i "$@"`
 
-// steered returns the argv that runs argv under a /etc/resolv.conf naming resolver, with env as its whole environment: the loader above in a new mount
-// namespace, through sudo when the suite is not root, as a hosted runner grants without a password, and inside the network namespace that the process ns holds
-// when ns is set. The resolv.conf is written under dir.
+// steered returns the argv that runs argv under a /etc/resolv.conf naming resolver, with env as its whole environment: the loader above in a new mount namespace, through sudo when the suite is not
+// root, as a hosted runner grants without a password, and inside the network namespace that the process ns holds when ns is set. The resolv.conf is written under dir.
 func steered(dir, resolver string, env, argv []string, ns int) ([]string, error) {
 	file := filepath.Join(dir, "resolv.conf")
 	if err := os.WriteFile(file, []byte("nameserver "+resolver+"\n"), 0o644); err != nil {

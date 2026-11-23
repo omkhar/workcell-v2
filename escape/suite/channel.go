@@ -15,10 +15,9 @@ import (
 	"time"
 )
 
-// SPEC I12. Root in the guest reaches the host end of the channel as a duplicate of the init's connection (pidfd_getfd on pid 1), where a forged frame is
-// indistinguishable from the init's own, and as fresh connections to the same port. The evidence is the host's: what `workcell run` returned for the hostile
-// run and whether a plain run after still works. I12 holds only if the run ends within hangBound without a crash or control bytes on stderr, reporting the
-// command's own status or a clean refusal, never one the frame named.
+// SPEC I12. Root in the guest reaches the host end of the channel as a duplicate of the init's connection (pidfd_getfd on pid 1), where a forged frame is indistinguishable from the init's own, and as
+// fresh connections to the same port. The evidence is the host's: what `workcell run` returned for the hostile run and whether a plain run after still works. I12 holds only if the run ends within
+// hangBound without a crash or control bytes on stderr, reporting the command's own status or a clean refusal, never one the frame named.
 //
 // Frames: a 6-byte header of version 1, a type and a big-endian length of at most 65536, then the payload. Guest-to-host types are Stdout 5, Stderr 6, Exit 7
 // and Ack 8. An Exit payload is a tag byte and a value: 0 then one byte of status, 1 then one byte of signal, 2 then up to 256 bytes of text.
@@ -215,12 +214,10 @@ func flood(addr string) Result {
 var allowed = map[string][]int{
 	"exit-empty": {0, rawCleanExit}, "ack-short": {0, rawCleanExit}, "unknown-type": {0, rawCleanExit}, "version-2": {0, rawCleanExit},
 	"exit-text": {rawCleanExit, rawNoStart}, "giant-header": {rawCleanExit}, "slow-drip": {rawCleanExit}, "storm": {0, rawCleanExit},
-	"storm-flood": {0, rawCleanExit}, "after-exit": {0, rawCleanExit}, "half-close": {rawCleanExit}, "full-shutdown": {rawCleanExit},
-	"reboot": {rawCleanExit},
+	"storm-flood": {0, rawCleanExit}, "after-exit": {0, rawCleanExit}, "half-close": {rawCleanExit}, "full-shutdown": {rawCleanExit}, "reboot": {rawCleanExit},
 }
 
-// channelRun runs kind against the session's channel and holds the host end to what every kind demands. It returns the run's exit status, or the reason the
-// host end fell short, "" when it did not.
+// channelRun runs kind against the session's channel and holds the host end to what every kind demands. It returns the run's exit status, or the reason the host end fell short, "" when it did not.
 func channelRun(ctx context.Context, s Session, addr, kind string) (int, string, error) {
 	rctx, cancel := context.WithTimeout(ctx, hangBound)
 	defer cancel()
@@ -322,10 +319,9 @@ func floodJudge(ctx context.Context, s Session) (bool, string, error) {
 	return true, say + "; a plain run after still works", nil
 }
 
-// rebootJudge has root restart the guest's kernel while the run stands (reboot -f, after one line of output) and holds the host to I12 and I7 after: the
-// run ends within hangBound with a clean refusal of the session, exit 125, not a hang at the vCPU cap on a kernel booted again with no host end to
-// talk to; no process of the session, the VMM first, outlives the run; and a plain run after still works. The session's processes are listed while the
-// run stands, below its supervisor. Off the product's VM the probe refuses to restart anything (S12), and the run's exit 0 is the honest failure.
+// rebootJudge has root restart the guest's kernel while the run stands (reboot -f, after one line of output) and holds the host to I12 and I7 after: the run ends within hangBound with a clean refusal
+// of the session, exit 125, not a hang at the vCPU cap on a kernel booted again with no host end to talk to; no process of the session, the VMM first, outlives the run; and a plain run after still
+// works. The session's processes are listed while the run stands, below its supervisor. Off the product's VM the probe refuses to restart anything (S12), and the run's exit 0 is the honest failure.
 func rebootJudge(ctx context.Context, s Session) (bool, string, error) {
 	ch, err := s.Channel(ctx)
 	if err != nil {

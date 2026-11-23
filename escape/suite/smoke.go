@@ -25,11 +25,10 @@ import (
 	"time"
 )
 
-// The pin smoke rows (B6), one per provider that installs a binary. The judge serves a fake Messages API under the provider's first host (SPEC T8) and has the
-// host install a fixture agent from its own loopback: it prints its version, and the probe makes the session's call itself, the guest having no curl. The host
-// must refuse bytes whose digest is not the row's, which a naive sandbox does not. Then, if the provider's row under pins/ differs from the base branch's
-// (GATE_BASE, else origin/main), the host installs that artifact from upstream by URL and digest (B8) and the real agent runs in the guest: --version, then the
-// smoke command below with the placeholder in the provider's variable. Only the real key makes the fake answer. A provider with no command is smoked by
+// The pin smoke rows (B6), one per provider that installs a binary. The judge serves a fake Messages API under the provider's first host (SPEC T8) and has the host install a fixture agent from its
+// own loopback: it prints its version, and the probe makes the session's call itself, the guest having no curl. The host must refuse bytes whose digest is not the row's, which a naive sandbox does
+// not. Then, if the provider's row under pins/ differs from the base branch's (GATE_BASE, else origin/main), the host installs that artifact from upstream by URL and digest (B8) and the real agent
+// runs in the guest: --version, then the smoke command below with the placeholder in the provider's variable. Only the real key makes the fake answer. A provider with no command is smoked by
 // --version and the probe's own call, as the fixture is.
 var smokeCommands = map[string][]string{"claude": {"-p", "hi", "--output-format", "text"}}
 
@@ -41,8 +40,7 @@ var events = []string{
 	"content_block_stop", `{"type":"content_block_stop","index":0}`, "message_delta", `{"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"output_tokens":1}}`, "message_stop", `{"type":"message_stop"}`,
 }
 
-// messages is the fake API: a POST to /v1/messages carrying want in header gets a 200 stream, the only form claude -p asks for; any other credential 401; any
-// other path 404.
+// messages is the fake API: a POST to /v1/messages carrying want in header gets a 200 stream, the only form claude -p asks for; any other credential 401; any other path 404.
 func messages(header, want string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		switch {
@@ -151,9 +149,8 @@ func smokeJudge(p providers.Provider) Judge {
 	}
 }
 
-// smokeProbe runs the agent. args: its binary and version, the fake API's name and address, the header and prefix the credential goes in, the variable holding
-// the placeholder and the one the agent reads it from, then its smoke command; with none the probe makes the call itself. "ok" means --version printed the
-// version and exited 0, and the session exited 0.
+// smokeProbe runs the agent. args: its binary and version, the fake API's name and address, the header and prefix the credential goes in, the variable holding the placeholder and the one the agent
+// reads it from, then its smoke command; with none the probe makes the call itself. "ok" means --version printed the version and exited 0, and the session exited 0.
 func smokeProbe(args []string) Result {
 	if len(args) < 8 {
 		return Result{Status: "error", Detail: "want binary, version, name, address, header, prefix, two variables and a command"}

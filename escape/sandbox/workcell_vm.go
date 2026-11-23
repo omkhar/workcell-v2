@@ -125,8 +125,7 @@ var prepared struct {
 	repo string // the module's directory, for a build the product's rows are swapped in (Install)
 }
 
-// workcell is one session of the product: a directory holding its policy, its secret and its cwd, the payload and the caps. A VM lives only as long as one Exec
-// or one Pull.
+// workcell is one session of the product: a directory holding its policy, its secret and its cwd, the payload and the caps. A VM lives only as long as one Exec or one Pull.
 type workcell struct {
 	dir, payload string
 	bin          string // the product with the suite's row compiled in, once Install ran; "" is prepared.bin
@@ -310,9 +309,8 @@ func (w *workcell) Start(_ context.Context, cfg Config) (string, error) {
 	return "", nil
 }
 
-// Exec is one `workcell run`: a fresh VM boots, the guest's shell takes the payload from stdin and runs it, and the VM goes away. Every exit status is a
-// result, 125 and 126 included. With a Command, the product runs that name from the layer the test installed, on a stdin nothing writes, held open: no Stdin
-// frame, nothing for the guest to acknowledge before the command speaks.
+// Exec is one `workcell run`: a fresh VM boots, the guest's shell takes the payload from stdin and runs it, and the VM goes away. Every exit status is a result, 125 and 126 included. With a Command,
+// the product runs that name from the layer the test installed, on a stdin nothing writes, held open: no Stdin frame, nothing for the guest to acknowledge before the command speaks.
 func (w *workcell) Exec(ctx context.Context, args ...string) (Output, error) {
 	if w.dir == "" {
 		return Output{}, errors.New("workcell: Exec before Start")
@@ -612,8 +610,7 @@ func updateTable(dir string, u UpdateConfig) ([]byte, error) {
 	return table, os.WriteFile(ca, u.CA, 0o644)
 }
 
-// Update runs the plain product once as a user with an [update] table would, under a configuration of its own holding the table alone; what it installed is the
-// answer (Installed).
+// Update runs the plain product once as a user with an [update] table would, under a configuration of its own holding the table alone; what it installed is the answer (Installed).
 func (w *workcell) Update(ctx context.Context, u UpdateConfig) ([]byte, error) {
 	agent := agentOf(u.Name)
 	if w.dir == "" || agent == "" {

@@ -43,8 +43,7 @@ type Config struct {
 	Allow, Deny []string
 	// Resolver is the IPv4 address of a DNS server on the test host, port 53, the host side resolves every name with; "" leaves the adapter's own.
 	Resolver string
-	// Isolated, on Linux, runs the host side in a network namespace of its own with one address and no way out, so nothing leaves the test host (T8, S12). It
-	// needs Resolver.
+	// Isolated, on Linux, runs the host side in a network namespace of its own with one address and no way out, so nothing leaves the test host (T8, S12). It needs Resolver.
 	Isolated bool
 	// Roots is a PEM bundle the host side trusts upstream, as SSL_CERT_FILE: the suite's own authority.
 	Roots string
@@ -76,9 +75,8 @@ type UpdateConfig struct {
 	Name, Version string
 }
 
-// Layer is one provider layer installed as `workcell update <agent>` does: the artifact the row's digest names, in a shape a real upstream serves (a bare
-// executable, or a tar with the binary at its root or under bin/), at a URL the judge serves (T8). With no Artifact, URL is a real pin's and Digest its hex
-// SHA-256, fetched by the host's own network and trust (B8).
+// Layer is one provider layer installed as `workcell update <agent>` does: the artifact the row's digest names, in a shape a real upstream serves (a bare executable, or a tar with the binary at its
+// root or under bin/), at a URL the judge serves (T8). With no Artifact, URL is a real pin's and Digest its hex SHA-256, fetched by the host's own network and trust (B8).
 type Layer struct {
 	Agent, Version, URL, Digest string
 	Artifact                    []byte
@@ -103,8 +101,7 @@ type Observe interface {
 	Audit(ctx context.Context) (path string, records []string, err error)
 	// Verify runs the product's verify verb on the record; nil only if intact.
 	Verify(ctx context.Context) error
-	// Helper returns the host pid of the session's "proxy", "resolver", "broker" or "supervisor", which may share one process (A9), during an Exec. One the
-	// product lacks is ErrNotImplemented.
+	// Helper returns the host pid of the session's "proxy", "resolver", "broker" or "supervisor", which may share one process (A9), during an Exec. One the product lacks is ErrNotImplemented.
 	Helper(ctx context.Context, name string) (pid int, err error)
 	// Channel describes the host-guest channel as the guest reaches it.
 	Channel(ctx context.Context) (Channel, error)

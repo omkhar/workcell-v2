@@ -13,10 +13,9 @@ import (
 	"strconv"
 )
 
-// The workcell adapter drives the product through its CLI alone: one `workcell run` per Exec, each a fresh microVM carrying the payload in through stdin (SPEC
-// T1, A8), with the test's export as its working directory, and one `workcell pull` per Pull. It runs on Linux and macOS; elsewhere every operation reports
-// ErrNotImplemented. The session policy goes in as the product's own config.toml under a directory of the session's own (XDG_CONFIG_HOME), a secret's value in
-// a file beside it. What the CLI cannot honour yet is refused at Start with ErrNotImplemented, never a false pass.
+// The workcell adapter drives the product through its CLI alone: one `workcell run` per Exec, each a fresh microVM carrying the payload in through stdin (SPEC T1, A8), with the test's export as its
+// working directory, and one `workcell pull` per Pull. It runs on Linux and macOS; elsewhere every operation reports ErrNotImplemented. The session policy goes in as the product's own config.toml
+// under a directory of the session's own (XDG_CONFIG_HOME), a secret's value in a file beside it. What the CLI cannot honour yet is refused at Start with ErrNotImplemented, never a false pass.
 
 // Prepare does the one-time setup the named adapter needs, under dir, which the caller removes when the process ends. For workcell that is the four artifacts
 // `workcell run` wants and the binary itself, which takes longer than one test may, so it runs once, outside any test's context.
@@ -46,11 +45,10 @@ func unsupported(cfg Config) string {
 // policyFile is where, under the session's config directory, the product reads its policy: `$XDG_CONFIG_HOME/workcell/config.toml`.
 const policyFile = "workcell/config.toml"
 
-// policyTOML is the session policy of SPEC section 5 for cfg: a [network] table whose allow array holds each of cfg.Allow (a bare name is port 443 by SNI;
-// `name:port` a forward entry), and, for cfg.Secret, one [[secret]] table binding it to its host and header, with its value in the file source (or the source
-// the entry names, such as a sign-in flow), the guest's placeholder in its variable, and any method, path prefix and repositories. A quote, a backslash or a
-// byte outside printable ASCII would change what the file says, so such an entry is refused. It is written even with no entry, so that nothing under the
-// runner's ~/.config reaches a session. cfg.Deny writes nothing; a name in both lists is a mistake, and refused.
+// policyTOML is the session policy of SPEC section 5 for cfg: a [network] table whose allow array holds each of cfg.Allow (a bare name is port 443 by SNI; `name:port` a forward entry), and, for
+// cfg.Secret, one [[secret]] table binding it to its host and header, with its value in the file source (or the source the entry names, such as a sign-in flow), the guest's placeholder in its
+// variable, and any method, path prefix and repositories. A quote, a backslash or a byte outside printable ASCII would change what the file says, so such an entry is refused. It is written even with
+// no entry, so that nothing under the runner's ~/.config reaches a session. cfg.Deny writes nothing; a name in both lists is a mistake, and refused.
 func policyTOML(cfg Config, source string) ([]byte, error) {
 	for _, name := range cfg.Allow {
 		if slices.Contains(cfg.Deny, name) {
@@ -159,8 +157,7 @@ func pad4(b []byte) []byte {
 	return b
 }
 
-// Channel is where the guest's init dialled the host: AF_VSOCK, the host's CID 2, port 5000. A probe finds the init's connection by that peer and may dial the
-// same port afresh.
+// Channel is where the guest's init dialled the host: AF_VSOCK, the host's CID 2, port 5000. A probe finds the init's connection by that peer and may dial the same port afresh.
 func (*workcell) Channel(context.Context) (Channel, error) { return Channel{Addr: "vsock:2:5000"}, nil }
 
 // Relay is where the guest's init opens one vsock stream per relayed connection (ADR-003): the host's CID 2, port 5001.

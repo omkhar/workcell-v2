@@ -4420,3 +4420,211 @@ exports a repository can make fail, the refuted reason of line 97, the C56 varia
 entry kinds and depths that C57's charge must also count, and what this audit did not run. In the auditor, the two
 redteam runs that wrote the tests, the redteam run that folded and the two verifiers no model declined and no
 safeguard re-ran a request.
+
+## S-1009, sweep 2: policy loading and merge, CLI parsing, `--allow`, adapter data files (I13), as built at main 8986114
+
+Fresh context, the whole surface read in full as built (not a diff), after the 32 fix units of sweep 1 and S-F33
+to S-F40 of sweep 2, at the claim commit 0b3a1a9 on main 8986114. One auditor run, finished without a stop:
+no model declined and no safeguard re-ran a request. No hypervisor in the session, and nothing on this surface
+needed a VM. Result: two candidates, C58 (I5 through I13, medium) and C59 (I14 hardening, low), each given to
+a redteam run as a claim only, run by the orchestrator, and ruled on by its own verifier; the records are below.
+
+Trust boundary. The malicious repository (map row 17) owns every byte of <cwd>/workcell.toml and, in a clone
+export or under --mount, everything else under cwd. It enters at loadPolicy in cmd/workcell/policy.go, through
+ReadRepo in internal/policy/policy.go (O_NOFOLLOW and O_NONBLOCK, a regular-file check on the opened descriptor,
+a 1 MiB cap, [update] refused), Parse (the project's own TOML subset) and Narrow. The code that handles it is
+the supervisor, as the operator's uid, before any VM exists: it decides the proxy's allowlist, the resolver's
+name set, the session CA's name constraints, the forward ports on the kernel command line, which [[secret]] rows
+become broker grants and terminate rules, and whether a session is refused for exporting a secret source (the C54
+check). Of a repository row only the allow entry's text and the secret's name are ever compared; its host, header,
+source, env, method, path and repos reach nothing. But through narrowing the repository also decides which of the
+user's rows survive, and one host-side check was keyed on that set (C58). Hostile model or tool output turned
+into argv (row 39) enters at parseRun in caps.go: --allow is kept verbatim and judged in allowlist() (empty,
+any unicode.IsSpace rune or # refused, then ParseAllowlist and dnsName), --cache by its regexp, --cpus, --memory
+and --disk by bounds, session ids by validID, and the command goes verbatim into guest.Exec; --allow entries are
+appended after Narrow and are the designed host approval. The environment (row 40: XDG_CONFIG_HOME, XDG_DATA_HOME
+and HOME at xdgDir with the IsAbs guard of S-F14, TMPDIR at boot, session and fetch, TERM, SSL_CERT_FILE and
+SSL_CERT_DIR, and the three variables passed to a cmd: program) is the operator's; no in-scope attacker sets
+it. The user's config.toml and the embedded provider TOML (row 41) pass the same parser; FindSecret fills host,
+header and env into a user row only after Narrow; [update] is the user's alone and feeds newInstaller (key, ca,
+channel URL, cooloff).
+
+Parsing and resources. The scanner and parser read again in full: tokens are constant-size, arrays and tables
+are bounded by the 1 MiB cap, a carriage return is accepted only before a newline, control bytes and non-ASCII
+outside strings refuse, and \u escapes are checked as scalar values; a \u0000 or \u000a inside a string survives
+Parse and is then refused by allowlist() or lands quoted in the asked note. Narrow is O(user entries x repository
+entries), fine at 1 MiB. FuzzParse ran 45 s, 1,319,748 executions, no crasher. allowlist() still re-parses the
+joined list per entry (quadratic, operator argv only, PARKED line 70). ParseAllowlist (ported): SplitHostPort,
+refusal of IP literals (bracketed, zoned, mapped), canonicalHost, dnsName, port 1 to 65535, one host per non-443
+port. The only non-ASCII folds that reach ASCII are U+212A to k and U+0130 to i, typed by the operator and matching
+what the glyph shows. The resource flags are as sweep 1 left them. Nothing at medium or above from this lens.
+
+Logic and state. Narrow's three rules re-derived: allow keeps only user entries that a repository entry equals
+textually; [[secret]] keeps only user rows that a repository row names; a user row whose host was in the user's
+allow and is not in the kept allow goes too. --allow is added after narrowing; the asked note is computed before
+that. The C34 check walks p.Secret, the user's rows, so a dropped sign-in row whose token host is still terminated
+is refused, also when the host comes back through --allow (probed). The C54 check walks narrowed.Secret, the
+rows the repository left, so the repository switches it off by dropping the row: C58. AllowSet semantics,
+duplicate tables, provider-filled rows (fail closed in every narrowing tried), a repository [update] table
+(refused) and flags after the command (they belong to it) are as recorded in sweep 1.
+
+Concurrency, ordering and check-to-use. ReadRepo judges the descriptor it opened, and the policy is fixed before
+boot. The second-session question of S-1008: a mount guest on repository R can rewrite R/workcell.toml between
+the operator's sessions, or make it a link or a directory (a FIFO it cannot make: MKNOD is ENOSYS); a later
+loadPolicy there sees a narrowing, or ignores the file and applies the user's grants, which are the ceiling,
+so nothing widens. A mount guest on an ancestor that swaps cwd between loadPolicy and Export (the C39 class,
+PARKED line 123) exchanges one attacker tree for another under the same grants. The order of refusals is policy
+(the C54 check included), then holds(), then newSession, then Export, then boot. openCaches runs before holds()
+(PARKED line 100, cache locks only). Nothing new beyond C58.
+
+Cryptography and identity. On this surface: the [update] key (64 hex digits, an ed25519 public key that replaces
+channel.Keys) and ca (a PEM pool that replaces the system roots for the installer's client), both the user's;
+placeholders from crypto/rand; the session CA's permitted names are the canonical terminated hosts. The ca path
+is read as written, so a relative value resolves against cwd: C59, the class of C21, C30 and C53 with a weaker
+consequence, since the manifest signature, serial, expiry and the artifact digest still stand.
+
+Failure modes. Every error path fails closed: an unreadable user config, EACCES or ENXIO on workcell.toml,
+a socket, a file over 1 MiB, a bad line, a repository [update] table, a [[secret]] row without name or source,
+provider.All failing, HOME unset or relative, and a secret row with no allow list. Two shapes are open by design:
+a workcell.toml that is a link, FIFO or directory is ignored and a missing one grants the user's policy, the ceiling
+in both cases. C58 is the one place where a host-side refusal is skipped because its input set is the attacker's.
+
+Downgrade, rollback and replay. The policy has no version; cooloff refuses negative values and only lengthens;
+channel must be stable, hold or an https URL; a repository cannot carry [update]. --to chooses from the manifest's
+current and previous only. update --rollback re-points current at the previous marker without asking the manifest's
+Withdrawn list (an observation for S-1011; B10 names the verb as the user's control). Nothing on this surface.
+
+Interaction with other surfaces. C58 is an interaction: I13's narrowing (internal/policy) turns off the I5 check
+of S-F37 (cmd/workcell) that the secrets surface relies on. A user row with env = "PATH" or a trust variable's
+name makes the placeholder the last such entry, which the init's lookPath takes, so the command cannot run or
+the guest's own trust breaks: fail closed, the user's own row (PARKED line 66). The host's channel and artifact
+fetches honour the operator's proxy variables, while the guest's terminated transport has its own DialContext
+and no Proxy, so such a variable never redirects guest traffic. holds() is not called by explain or update:
+explain starts nothing and update reads the user's config at its real place since S-F14. Many --allow forward
+ports can truncate the kernel command line (PARKED line 48: the operator's flags, fewer ports relayed).
+
+Parked leads of this surface, checked against the code as built. Line 29 (U-402, provider.go) stands, R3:
+bareHost still passes a host with one leading newline, two rows of one name still load, file and field are
+still accepted dead keys, TestEmbeddedProviders still names four files; build-time data, and a newline host
+would fail the terminated-host check. Line 33 (U-503) stands, R3: the ErrNotRegular ignore branch is still in
+loadPolicy, and ignoring leaves the ceiling. Line 66 (S-1007) stands, R3, as above. Line 70 (S-1009, sweep 1):
+the relative-TMPDIR clause is settled (IsAbs before MkdirTemp in boot, the within() compares of S-F20 and S-F39
+in session and fetch); the rest stands, R3. Line 72 (S-F15) stands, R3: policy.go still imports unicode for the
+guard. Line 141 (S-F27) stands, R3, residual for S-1018: with a repository that drops the sign-in row and narrows
+the host off 443, --allow login.p.test:8443 leaves that host reachable raw on 8443 with no rule and no refusal,
+because the C34 check reads the terminated hosts; the flag is the operator's and the row's token endpoint is on 443.
+
+Coverage. Read in full: cmd/workcell policy.go, caps.go, data.go, main.go, explain.go, session.go, cache.go,
+layer.go, log.go, update.go, run_vm.go, pull.go, pull_vm.go, bench.go, bench_vm.go, cache_vm.go, backend_linux.go,
+backend_darwin.go, run_other.go, mount_linux.go, term_vm.go, relay.go, and the tests policy_test.go, caps_test.go,
+data_test.go, explain_test.go, c19_test.go, c21_test.go, c22_test.go, c34_test.go and c54_test.go; internal/policy
+policy.go and policy_test.go; internal/provider provider.go, provider_test.go and the four TOML files (no
+stray bytes); internal/proxy allowlist.go, signin.go, terminate.go and proxy.go; internal/secret broker.go and
+source.go; internal/pins pins.go; pins/pins.go; internal/channel channel.go; internal/guest guest.go and trust.go;
+internal/vmm vmm.go and firecracker/firecracker.go; internal/resolver resolver.go; internal/artifact verify.go;
+docs/policy.md and docs/providers.md; escape/suite/repo.go; escape/sandbox/workcell.go; SPEC.md; PARKED.md;
+the sweep-1 section of this surface and the C34 and C54 records. Read in part: session_test.go, update_test.go,
+the init's exec.go (lookPath), internal/pins sources.go, escape/sandbox/workcell_vm.go, the ten I13 rows of
+escape/suite/tests.go, the budget lines of gate.sh, and the git log of the surface since 2026-11-19. Ran, all by
+go test -overlay against files and processes of the session, with temporary HOME, XDG and TMPDIR values and the
+tree unchanged: an eight-arm probe of the C54 check (clone and mount, file: and cmd:, both repository files),
+all eight failing plain and under -race with loadPolicy returning no error and no binding; the same eight
+passing, and cmd/workcell, internal/policy, internal/proxy and internal/provider green under -race, with line
+78 of a scratch copy of policy.go walking p.Secret; the baseline tests of C54, C34, C21, C22, the repository
+policy and the provider policy; a probe of newInstaller with a relative ca; FuzzParse for 45 s. Not examined:
+internal/fileserve, internal/workspace, internal/audit, internal/wire, the vz backend, the rest of the init,
+ocsf.go, the tests of other surfaces, internal/sigstore, internal/bump, internal/advisory, and _legacy/, which
+is not compiled. No VM, no macOS path, no end-to-end run of the real binary, no network.
+
+### S-1009 candidates, sweep 2
+
+C58. ID I5 (real credential bytes never exist in guest disk or memory), reached through I13: the repository's
+file switches off a host-side refusal, the one S-F37 added for C54. ATTACKER: the malicious repository, through
+its workcell.toml, with guest root reading /workspace and, under --mount, rewriting the cmd: program that the
+host later runs as the operator. Precondition the attacker does not control, the same as C54's: the operator's
+[[secret]] row has a file: or cmd: source whose path lies under the directory the session is run in. SEVERITY:
+medium (S6). WHERE: cmd/workcell/policy.go loadPolicy, the C54 loop, which walks narrowed.Secret; narrowed comes
+from policy.Narrow, whose [[secret]] and allow rules (internal/policy/policy.go) let the repository drop any user
+row. INPUT: config.toml with [network] allow = ["api.anthropic.com"] and a [[secret]] row name "anthropic", host
+"api.anthropic.com", header "x-api-key", source file:<cwd>/.secrets/anthropic.key (or cmd:<cwd>/tools/get-key.sh);
+the repository at <cwd> carries a workcell.toml holding either a [[secret]] row with name = "nothing" and source =
+"x", which drops every user row and keeps the network, or [network] with allow = [], which drops the host and
+the row with it; the operator runs workcell run, or workcell run --mount, there. EFFECT: loadPolicy returns
+no error and no binding, since the row is gone from the set the C54 loop judges, and the session goes on to
+holds(), newSession, Export and boot: in clone mode the key file, or the key-printing program, lies in the
+session's workspace.ext4, which the guest gets as /workspace; under --mount the directory is served live, and
+the guest may rewrite the cmd: program, which the broker runs on the host at the first use by a later session
+that keeps the row. With the [[secret]] form the user's whole allow list stays, so the guest can carry the key
+out through any allowed host that takes an upload. explain in that directory says that the repository's secret
+"nothing" is not granted and "secrets: none", and nothing about the key. Reproducing test, by the redteam, who
+was given the claim and not the auditor's probe: TestC58RepositoryCannotSwitchOffTheSourceCheck, package main of
+cmd/workcell, 47 lines, parked at escape/_pending/S-F41/c58_test.go. Six arms: three repository files (a comment
+that changes nothing, the [[secret]] form, the allow form), each in clone and mount mode, with the file: source;
+it drives loadPolicy and then session() with temporary XDG directories and the dummy artifacts of the C19 and
+C54 tests, and fails on any session directory made, saying whether the key's bytes lie in the export. Run by
+the orchestrator by go test -overlay on the claim tree, plain and -race, log saved: the two control arms pass
+(refused by the C54 check), and the four others fail with "I5: session <id> was made with <cwd> as /workspace
+(mount: false; the key lies in its export: true)" in clone mode and "(mount: true; the key lies in its export:
+false)" under --mount, each after the dummy VMM's "start firecracker: invalid argument", so the session directory
+and the export existed before boot. Outcome: CONFIRMED at medium by the verifier, who repeated the run plain and
+under -race with TestC54 beside it (green, so the C54 fix is present and this is a distinct gap), found that the
+test calls loadPolicy and session() as run does, that only the dummy VMM stops a boot on that export, that the
+workcell.toml is the attacker's and the key under cwd is the operator's precondition already accepted for C54,
+and that the behaviour is not intended: the dropped row grants nothing, but the check's purpose is the key's
+bytes and not the grant, the C34 check two lines above walks the user's rows for that very reason, and without
+the repository's file the same setup is refused, so workspace content turns a refusal into a session that holds
+the real key. Severity by S6: a shown break whose precondition the operator chooses, so medium and not high. The
+auditor ran the one-token change (walk p.Secret) by overlay: its eight probe arms, cmd: included, were refused
+with the existing C54 message, and cmd/workcell, internal/policy, internal/proxy and internal/provider were
+green under -race. Not S14: cmd/workcell/policy.go is v2's own, nothing ported, no v1 line. Fix unit: S-F41,
+below S-1009 in PLAN.md.
+
+C59. ID I14, as hardening of the trust root the host uses to fetch channel.json and the pinned artifacts;
+the class of C21, C30 and C53, a relative path resolved against the repository. ATTACKER: the malicious
+repository, which supplies the file at the relative path, completed by a network attacker on the path of the
+host's fetch. Precondition the attacker does not control: the user wrote a relative ca in the [update] table,
+for example ca = "ca.pem". SEVERITY: low (S6: hardening, no invariant shown broken). WHERE: cmd/workcell/update.go
+newInstaller, which reads u.CA with os.ReadFile as written and makes that pool the only roots of the installer's
+client, the one both the manifest fetch and the artifact fetch use; internal/policy/policy.go updateTable,
+which accepts any string for ca. INPUT: config.toml with [update] holding a channel, a key and ca = "ca.pem";
+the repository holds ca.pem with the attacker's CA; the operator runs workcell run, update or bench start in the
+repository. EFFECT: the host's channel and artifact fetches trust only the repository's CA for that invocation,
+so a network attacker on the path can present its own certificate for the channel host and the pin URLs; with no
+such file in cwd the same config is refused. Not claimed and not shown: a pass of channel.Verify or of the digest
+check. Reproducing test, by the redteam, from the claim alone: TestC59UpdateCAIsNotReadFromTheWorkingDirectory,
+package main of cmd/workcell, 40 lines, parked at escape/_pending/S-F42/c59_test.go. It writes the user's
+config with a loopback httptest TLS server as channel, puts that server's self-signed certificate as ca.pem in
+a separate directory, makes that the working directory, and calls newInstaller: a refusal passes; otherwise
+it fetches from the server through the installer's client and fails, reporting the fetch's error. Run by the
+orchestrator by go test -overlay on the claim tree, plain and -race, log saved: it fails with "newInstaller
+accepted ca = "ca.pem" from the working directory; a fetch through its transport from the attacker's upstream
+gave <nil>; want the relative path refused". Outcome: CONFIRMED at low by the verifier, who repeated both runs
+and found the effect to be the claimed one, the test's only powers to be the stated precondition and cwd being
+the repository, as run and update have it, and the behaviour not intended: nothing documents ca as relative
+to cwd, and the project refuses every comparable input (XDG in C21, SSL_CERT_FILE in C30, SSL_CERT_DIR in C53,
+TMPDIR). Severity by S6: I14 is untouched, since channel.Verify still demands the key, a serial no lower than
+the last seen and an unexpired manifest, and the fetch still refuses a digest mismatch, so the attacker who owns
+the TLS root gains what an on-path attacker has anyway (blocking, or freezing at the last serial until expiry)
+and no artifact installs past the checks: not medium. It is not nothing either: ADR-004 names TLS as the second
+factor that keeps a leaked key harmless, and this hands that factor to the repository; unlike C30, where the
+trust store was the only guard. PARKED line 78 and the S-1011 and S-1013 records of sweep 1 held this value
+as an R3 observation; with a test that an independent verifier failed to refute it is a finding now. Not S14:
+update.go and internal/policy are v2's own, nothing ported, no v1 line. Fix unit: S-F42, below S-F41 in PLAN.md.
+
+The two tests cost 87 lines, and the test budget stood at 28495 of 28500, so the redteam paid with 83 folded lines
+under escape/ in 35 files, layout only: no row removed, renamed or given another verdict, and no assertion, judge,
+bound, timeout or message touched. Comment paragraphs re-flowed with their words unchanged up to about 200 columns
+(79 lines), one closure body put on one line where gofmt leaves that alone (2 lines) and two map literals packed
+(2 lines); no blank line, constant or struct field was left to join, and gofmt re-expands every remaining short
+function. For every edited file the token stream without comments and the ordered words of its comments equal
+the parent's; gofmt -l prints nothing, go build and go vet pass for Linux and go vet for darwin arm64, go test
+./escape/... is the same before and after, and the list of the control sandbox's 145 rows is identical. Test
+code is now 28499 of 28500, product 15000 of 15000.
+
+Sweep 2 verdict for this surface: two candidates, C58 confirmed at medium and C59 confirmed at low. Sweep 2 had
+already confirmed five mediums (C52 on S-1003, C53 on S-1005, C54 and C55 on S-1007, C56 on S-1008, all fixed),
+so with C58 it stands at six and S-1017 will call a third sweep (S8). The fix units are S-F41 and S-F42;
+the next candidate number is C60. The other shapes found are R3 notes, copied to PARKED.md in three lines:
+the observations, the variants the two tests do not express, and what this audit did not run. In the auditor,
+the two redteam runs that wrote the tests, the redteam run that folded and the two verifiers no model declined
+and no safeguard re-ran a request.

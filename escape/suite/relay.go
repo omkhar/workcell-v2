@@ -184,8 +184,7 @@ func relayCanary(network, listen string, kinds ...string) Judge {
 	}
 }
 
-// relayHeld has the guest offer the host end a header that never completes, of the kind, and holds the host to dropping the stream within headerWait. A host
-// end that is not there cannot hold anything.
+// relayHeld has the guest offer the host end a header that never completes, of the kind, and holds the host to dropping the stream within headerWait. A host end that is not there cannot hold anything.
 func relayHeld(kind string) Judge {
 	return func(ctx context.Context, s Session) (bool, string, error) {
 		relay, err := s.Relay(ctx)
