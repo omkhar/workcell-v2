@@ -27,6 +27,7 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"os"
+	"path/filepath"
 	"regexp"
 	"slices"
 	"strings"
@@ -298,10 +299,11 @@ func (p *Proxy) Terminate(ca *SessionCA, broker Broker, rules []TerminateRule) e
 	return nil
 }
 
-// upstreamRoots is one explicit pool, the system roots plus SSL_CERT_FILE (certFile), so macOS honours it as Linux does; an unreadable or relative one refuses.
+// upstreamRoots is one explicit pool, the system roots plus SSL_CERT_FILE (certFile), so macOS honours it as Linux does; an unreadable or relative one refuses, as does a relative entry of SSL_CERT_DIR.
 func upstreamRoots(certFile string) (*x509.CertPool, error) {
-	if certFile != "" && !strings.HasPrefix(certFile, "/") { // or SystemCertPool reads it against the working directory, a repository's own ca.pem (I6)
-		return nil, fmt.Errorf("SSL_CERT_FILE %q is relative: set an absolute path", certFile)
+	relative := func(p string) bool { return p != "" && !strings.HasPrefix(p, "/") } // or SystemCertPool reads it against the working directory, a repository's own ca.pem or certs/ (I6)
+	if certDir := os.Getenv("SSL_CERT_DIR"); relative(certFile) || slices.ContainsFunc(filepath.SplitList(certDir), relative) {
+		return nil, fmt.Errorf("SSL_CERT_FILE %q or SSL_CERT_DIR %q holds a relative path: set absolute paths", certFile, certDir)
 	}
 	pool, err := x509.SystemCertPool()
 	if err != nil || certFile == "" {
@@ -347,9 +349,8 @@ type closeNotifyConn struct {
 }
 
 func (c *closeNotifyConn) Close() error {
-	err := c.Conn.Close()
-	_ = c.ln.Close()
-	return err
+	defer c.ln.Close()
+	return c.Conn.Close()
 }
 
 // sameHost reports whether an HTTP Host or :authority names sni, which is canonical: the same name in any letter case, with or without a trailing dot and the

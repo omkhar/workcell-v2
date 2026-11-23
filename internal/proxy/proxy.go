@@ -69,7 +69,7 @@ type Proxy struct {
 	dial   func(ctx context.Context, addr netip.AddrPort) (net.Conn, error)
 	nets   func() ([]netip.Prefix, error) // the networks of the host's own interfaces, read at each connect (I4)
 
-	// TLS termination; set by Terminate, upstreamRoots from the system roots and SSL_CERT_FILE.
+	// TLS termination; set by Terminate, upstreamRoots from the system roots and SSL_CERT_FILE, after SSL_CERT_DIR passed the same check.
 	terminate     map[string][]TerminateRule
 	signin        map[string][]TerminateRule // by token host: the rules whose endpoint it serves
 	ca            *SessionCA
@@ -109,8 +109,7 @@ func New(allow *Allowlist, rec Recorder) *Proxy {
 	}
 }
 
-// Serve handles connections from ln, which receives traffic for port, until
-// ln is closed.
+// Serve handles connections from ln, which receives traffic for port, until ln is closed.
 func (p *Proxy) Serve(ln net.Listener, port uint16) error {
 	for {
 		conn, err := ln.Accept()
