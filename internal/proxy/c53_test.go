@@ -3,8 +3,8 @@
 
 // Finding C53 of S-1005 (I6, through it I5; medium), the sibling of C30: upstreamRoots refuses a relative SSL_CERT_FILE, yet x509.SystemCertPool also reads each entry of
 // SSL_CERT_DIR (certs, ".", or one of a list; a precondition the attacker does not control) against the working directory, so the repository ships certs/ca.pem and a leaf
-// that CA signed, from the network attacker as DNS for an allowed name, verifies, and the real secret is sent to it. Fix unit S-F36 first moves this file to
-// internal/proxy/c53_test.go, package proxy, no build tag. While it waits: go test -overlay o.json -run RelativeSSLCertDir ./internal/proxy, o.json mapping that path to this file.
+// that CA signed, from the network attacker as DNS for an allowed name, verifies, and the real secret is sent to it. This file waited under escape/_pending/S-F36/
+// until fix unit S-F36 moved it here (SPEC S4): it failed before the fix, passes after, and stays in the suite.
 
 package proxy
 
