@@ -37,11 +37,8 @@ func TestControlBytes(t *testing.T) {
 		in   string
 		want int
 	}{
-		{"", 0},
-		{"workcell: channel: frame too large (4294967295 bytes)\n", 0},
-		{"a\tb\n", 0},
-		{"\x1b[2J", 1},
-		{"\x1b]0;x\x07\r\x00\x7f", 5},
+		{"", 0}, {"workcell: channel: frame too large (4294967295 bytes)\n", 0}, {"a\tb\n", 0},
+		{"\x1b[2J", 1}, {"\x1b]0;x\x07\r\x00\x7f", 5},
 		{"caf\xc3\xa9\n", 0},           // UTF-8 shows; only C0 controls and DEL steer
 		{string(hostileText(256)), 71}, // what the control run reports, raw
 	}

@@ -13,15 +13,9 @@ func TestUnsupported(t *testing.T) {
 		cfg  Config
 		want bool // refused
 	}{
-		{Config{}, false},
-		{Config{CPUs: 2, MemoryMiB: 1024}, false},
-		{Config{CPUs: 32}, false},
-		{Config{MemoryMiB: 128}, false},
-		{Config{DiskMiB: 100}, false},
-		{Config{CPUs: 1, MemoryMiB: 256, DiskMiB: 64}, false},
-		{Config{Workspace: "/w", Allow: []string{"a"}, Deny: []string{"b"}, Secret: &Secret{}}, false},
-		{Config{Isolated: true}, true},
-		{Config{Isolated: true, Resolver: "127.0.0.1"}, !steersResolver},
+		{Config{}, false}, {Config{CPUs: 2, MemoryMiB: 1024}, false}, {Config{CPUs: 32}, false}, {Config{MemoryMiB: 128}, false}, {Config{DiskMiB: 100}, false},
+		{Config{CPUs: 1, MemoryMiB: 256, DiskMiB: 64}, false}, {Config{Workspace: "/w", Allow: []string{"a"}, Deny: []string{"b"}, Secret: &Secret{}}, false},
+		{Config{Isolated: true}, true}, {Config{Isolated: true, Resolver: "127.0.0.1"}, !steersResolver},
 	}
 	for _, c := range cases {
 		if got := unsupported(c.cfg) != ""; got != c.want {
@@ -52,12 +46,8 @@ func TestPolicyTOML(t *testing.T) {
 		{Config{Allow: []string{"b.escape.test"}, Secret: bound}, ""},
 		{Config{Allow: []string{"a.escape.test"}, Secret: &Secret{Name: "a\"b", Host: "a.escape.test", Header: "x"}}, ""},
 		{Config{Allow: []string{"a.escape.test"}, Secret: &Secret{Name: "a", Host: "a.escape.test", Header: "x", Path: "/v1/\n"}}, ""},
-		{Config{Allow: []string{"a.escape.test"}, Deny: []string{"a.escape.test"}}, ""},
-		{Config{Allow: []string{`a"b`}}, ""},
-		{Config{Allow: []string{`a\b`}}, ""},
-		{Config{Allow: []string{"a\nb"}}, ""},
-		{Config{Allow: []string{"a\x7fb"}}, ""},
-		{Config{Allow: []string{"ok", "a\tb"}}, ""},
+		{Config{Allow: []string{"a.escape.test"}, Deny: []string{"a.escape.test"}}, ""}, {Config{Allow: []string{`a"b`}}, ""}, {Config{Allow: []string{`a\b`}}, ""},
+		{Config{Allow: []string{"a\nb"}}, ""}, {Config{Allow: []string{"a\x7fb"}}, ""}, {Config{Allow: []string{"ok", "a\tb"}}, ""},
 	}
 	for _, c := range cases {
 		got, err := policyTOML(c.cfg, "/s/secret")
@@ -72,12 +62,9 @@ func TestRunArgs(t *testing.T) {
 		cfg  Config
 		caps []string
 	}{
-		{Config{}, nil},
-		{Config{CPUs: 2, MemoryMiB: 1024}, []string{"--cpus", "2", "--memory", "1024MiB"}},
-		{Config{DiskMiB: 64}, []string{"--disk", "64MiB"}},
+		{Config{}, nil}, {Config{CPUs: 2, MemoryMiB: 1024}, []string{"--cpus", "2", "--memory", "1024MiB"}}, {Config{DiskMiB: 64}, []string{"--disk", "64MiB"}},
 		{Config{CPUs: 1, MemoryMiB: 256, DiskMiB: 64}, []string{"--cpus", "1", "--memory", "256MiB", "--disk", "64MiB"}},
-		{Config{Mount: true}, []string{"--mount"}},
-		{Config{Mount: true, CPUs: 2}, []string{"--mount", "--cpus", "2"}},
+		{Config{Mount: true}, []string{"--mount"}}, {Config{Mount: true, CPUs: 2}, []string{"--mount", "--cpus", "2"}},
 	}
 	for _, c := range cases {
 		want := append(append([]string{"run"}, c.caps...), tail...)

@@ -15,14 +15,9 @@ import (
 )
 
 // Result is what a probe reports: a short token such as "connected" and one line of printable ASCII, both bounded and sanitised by Format.
-type Result struct {
-	Status string
-	Detail string
-}
+type Result struct{ Status, Detail string }
 
-const maxStatus = 32
-const maxDetail = 256
-const prefix = "escape-result "
+const maxStatus, maxDetail, prefix = 32, 256, "escape-result "
 
 // MaxLine bounds one formatted result, newline included.
 const MaxLine = len(prefix) + maxStatus + 1 + maxDetail + 1
@@ -63,22 +58,17 @@ type Judge func(ctx context.Context, s Session) (pass bool, detail string, err e
 // names it does not, the resolver the host side uses, whether a fresh secret is bound to the first allowed name (NewSecret), and the repo-local policy the
 // hostile repository brings (PlantPolicy).
 type Want struct {
-	Workspace bool
-	Mount     bool
-	CPUs      int
-	MemoryMiB int
-	DiskMiB   int
-	Allow     []string
-	Deny      []string
-	Resolver  string
-	Isolated  bool // the host side in a network of its own (sandbox.Config.Isolated)
-	Secret    bool
-	Header    string // the header the secret is bound to, when not x-api-key (NewSecret)
-	Narrow    bool
-	Source    string   // the secret's source in the product's words, such as a sign-in flow (sandbox.Secret.Source)
-	Repos     []string // the repositories a git token is scoped to (sandbox.Secret.Repos)
-	Policy    string
-	Shape     string
+	Workspace, Mount         bool
+	CPUs, MemoryMiB, DiskMiB int
+	Allow, Deny              []string
+	Resolver                 string
+	Isolated                 bool // the host side in a network of its own (sandbox.Config.Isolated)
+	Secret                   bool
+	Header                   string // the header the secret is bound to, when not x-api-key (NewSecret)
+	Narrow                   bool
+	Source                   string   // the secret's source in the product's words, such as a sign-in flow (sandbox.Secret.Source)
+	Repos                    []string // the repositories a git token is scoped to (sandbox.Secret.Repos)
+	Policy, Shape            string
 	// Command is a provider the session runs by name (sandbox.Config.Command).
 	Command string
 	Head    bool // the operator's stdout reader goes away after its first read (sandbox.Config.Head)

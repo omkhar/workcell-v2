@@ -91,8 +91,7 @@ func dohProbe(method string) Probe {
 }
 
 // The tunnel carries the token out in pieces, each the data label of a TXT query under one apex, the way DNS tunnels move data: seq.data.tunnel.invalid.
-const tunnelApex = "tunnel.invalid."
-const tunnelChunk = 8
+const tunnelApex, tunnelChunk = "tunnel.invalid.", 8
 
 // tunnelProbe sends the token to args[0] as a series of TXT queries.
 func tunnelProbe(args []string) Result {

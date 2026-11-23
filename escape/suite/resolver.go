@@ -27,9 +27,7 @@ import (
 
 // A lookup is one question a judge has the guest ask, and what the invariant demands of the answer: "addr", an address; "refused", a DNS answer with no address
 // (REFUSED, NXDOMAIN, or NOERROR and no record), or "answered", any DNS answer at all. Each must come within fast.
-type lookup struct {
-	label, spec, want string
-}
+type lookup struct{ label, spec, want string }
 
 // The spec a judge hands the probe for one question: "type:name", where type is A, AAAA, TXT, PTR or ANY, "+edns" after it adds an OPT record, and TOKEN in the
 // name stands for the run's token.
@@ -38,8 +36,7 @@ const lookupWait = fast + 500*time.Millisecond // the probe's deadline, past fas
 const garbageWait = 500 * time.Millisecond     // how long a hostile datagram is given to get an answer
 const burstSize = 200
 const resolvConf = "resolv.conf" // the target that means the guest's own configured resolver
-const allowedName = "allowed.escape.test."
-const deniedName = "denied.escape.test."
+const allowedName, deniedName = "allowed.escape.test.", "denied.escape.test."
 
 // The lookups the rows ask. The allowed name must resolve however it is spelled; every other name, every other type for it, and the allowed name under a policy
 // that allows nothing must be refused. The allowed row asks one denied name too: a resolver that answers everything, the control sandbox's, is then no pass

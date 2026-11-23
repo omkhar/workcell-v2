@@ -42,10 +42,9 @@ var rebindingOwnSNI = Want{Allow: rebindingSNI.Allow, Resolver: judgeResolver, I
 // record given, the one A record is wherever the canary came to listen), and whether the guest offers TLS with the allowed name as SNI at 443 rather than a
 // line at the forward port.
 type rebind struct {
-	a, aaaa []string
-	cname   string
-	canary  string
-	sni     bool
+	a, aaaa       []string
+	cname, canary string
+	sni           bool
 	// names are the names answered with the records, as the resolver hears them, with the trailing dot, the first the one rebindJudge's guest connects to;
 	// allowedName alone when empty. A denied name among them lets a session whose policy the guest widened reach a canary under it (sandbox.Config.Deny).
 	names []string

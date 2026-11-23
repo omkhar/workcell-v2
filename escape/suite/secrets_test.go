@@ -11,17 +11,13 @@ import (
 func TestFindSecrets(t *testing.T) {
 	a, b := secretPrefix+strings.Repeat("a", secretHex), secretPrefix+strings.Repeat("b", secretHex)
 	cases := []struct {
-		in   string
-		want string
+		in, want string
 	}{
-		{"", ""},
-		{secretPrefix, ""},
-		{a, a},
-		{"KEY=" + a + "\x00PATH=/bin", a},
-		{a + "0", ""},                        // one hex digit too many: not the secret's shape
-		{a[:secretLen-1], ""},                // one too few
-		{a[:secretLen-1] + "G", ""},          // not hex
-		{a + "-" + b + " " + a, a + " " + b}, // each once, in order
+		{"", ""}, {secretPrefix, ""}, {a, a}, {"KEY=" + a + "\x00PATH=/bin", a},
+		{a + "0", ""},                                            // one hex digit too many: not the secret's shape
+		{a[:secretLen-1], ""},                                    // one too few
+		{a[:secretLen-1] + "G", ""},                              // not hex
+		{a + "-" + b + " " + a, a + " " + b},                     // each once, in order
 		{secretPrefix + secretPrefix + a[len(secretPrefix):], a}, // a prefix inside a prefix
 		{strings.ToUpper(a), ""},                                 // upper-case hex is not what the runner makes
 	}

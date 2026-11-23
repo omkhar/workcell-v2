@@ -43,9 +43,7 @@ func hostReady() error {
 // socket at such an address a host route keeps it on lo0, where pf hands it to landing; /etc/resolver/<judgeDomain> sends every question for a name under it
 // to the judge's resolver, as `scutil --dns` shows, the product resolving through the system as any program would; and bindHelper, root-owned, which sudo runs
 // for the suite's user without a password, binds a port below 1024 at an alias of lo0 and hands the descriptor over as suite.Bind does. No other sudo exists.
-const steersResolver = true
-const judgeDomain = "escape.test"
-const bindHelper = "/usr/local/libexec/workcell-escape/workcell-bind"
+const steersResolver, judgeDomain, bindHelper = true, "escape.test", "/usr/local/libexec/workcell-escape/workcell-bind"
 const landing = "192.175.48.1" // the host's address in IsolatedNet
 
 // steered checks that every question for judgeDomain reaches resolver and nowhere else (T8).
