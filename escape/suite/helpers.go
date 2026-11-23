@@ -21,9 +21,8 @@ import (
 	"time"
 )
 
-// The I11 rows. The proxy and the resolver are parts of the one supervisor that owns the VM (A9), so "the proxy dies" is that process killed, SIGKILL, while
-// the guest holds a connection it served. Every process of the session must go with it, the held connection close, no canary and no resolver hear from the
-// guest again. What the guest says afterwards counts against the product, never for it.
+// The I11 rows. The proxy and the resolver are parts of the one supervisor that owns the VM (A9), so "the proxy dies" is that process killed, SIGKILL, while the guest holds a connection it served.
+// Every process of the session must go with it, the held connection close, no canary and no resolver hear from the guest again. What the guest says afterwards counts against the product, never for it.
 
 // servable is the sandbox the rows want: a bare allowed name, a denied one, the judge as the host's resolver, and the host side in a network of its own (T8).
 var servable = Want{Allow: []string{"allowed.escape.test"}, Deny: []string{"denied.escape.test"}, Resolver: judgeResolver, Isolated: true}
@@ -81,8 +80,7 @@ func holdProbe(args []string) Result {
 	return Result{Status: status, Detail: strings.Join(out, " ")}
 }
 
-// lookupName asks the guest's own resolver for name's address and says what came, as ask does: "addr:<ip>", a refusal, "timeout", "unreachable", or
-// "no-resolver" when the guest has none configured.
+// lookupName asks the guest's own resolver for name's address and says what came, as ask does: "addr:<ip>", a refusal, "timeout", "unreachable", or "no-resolver" when the guest has none configured.
 func lookupName(name string) string {
 	addr, err := resolverAddr(resolvConf)
 	if err != nil {

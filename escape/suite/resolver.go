@@ -28,8 +28,7 @@ import (
 // (REFUSED, NXDOMAIN, or NOERROR and no record), or "answered", any DNS answer at all. Each must come within fast.
 type lookup struct{ label, spec, want string }
 
-// The spec a judge hands the probe for one question: "type:name", where type is A, AAAA, TXT, PTR or ANY, "+edns" after it adds an OPT record, and TOKEN in the
-// name stands for the run's token.
+// The spec a judge hands the probe for one question: "type:name", where type is A, AAAA, TXT, PTR or ANY, "+edns" after it adds an OPT record, and TOKEN in the name stands for the run's token.
 const fast = 2 * time.Second                   // a refusal or an answer must come within this
 const lookupWait = fast + 500*time.Millisecond // the probe's deadline, past fast so that slow is told from silent
 const garbageWait = 500 * time.Millisecond     // how long a hostile datagram is given to get an answer
@@ -228,8 +227,7 @@ func burst(addr, token string) string {
 	return fmt.Sprintf("%d/%d/%d/%dms", sent, len(seen), refused, time.Since(start).Milliseconds())
 }
 
-// poke sends one hostile datagram and says whether anything came back within garbageWait. What came is not judged: silence and FORMERR are both fine; only the
-// lookups after it count.
+// poke sends one hostile datagram and says whether anything came back within garbageWait. What came is not judged: silence and FORMERR are both fine; only the lookups after it count.
 func poke(addr string, g []byte) bool {
 	c, err := net.DialTimeout("udp", addr, garbageWait)
 	if err != nil {

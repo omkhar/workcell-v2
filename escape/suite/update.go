@@ -245,9 +245,8 @@ func (c *channel) hostile(variant string) ([]byte, error) {
 	return bad, err
 }
 
-// updateJudge serves a valid channel and has the client install from it; then it serves the hostile variant named, and after that a valid successor. The
-// invariant holds only if nothing from the variant was installed, neither the artifact it pins nor any bytes but the honest one, and the successor is: a client
-// that installs once and never fetches again proves nothing.
+// updateJudge serves a valid channel and has the client install from it; then it serves the hostile variant named, and after that a valid successor. The invariant holds only if nothing from the
+// variant was installed, neither the artifact it pins nor any bytes but the honest one, and the successor is: a client that installs once and never fetches again proves nothing.
 func updateJudge(variant string) Judge {
 	return func(ctx context.Context, s Session) (bool, string, error) {
 		ch, err := openChannel()

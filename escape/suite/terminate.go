@@ -28,10 +28,9 @@ import (
 	"time"
 )
 
-// The I6 rows. A bare allowed name is one the product terminates: the guest is to meet a leaf for the name from a per-session authority whose key is the host's
-// alone, and the host is to carry the request on to the name the SNI gave, verifying the upstream's certificate as itself. Both canaries share one listener at
-// port 443, told apart by SNI; their certificate chains to the suite's own authority, the host side's trust store (sandbox.Config.Roots). A guest that
-// validates a canary's leaf was spliced through, not terminated.
+// The I6 rows. A bare allowed name is one the product terminates: the guest is to meet a leaf for the name from a per-session authority whose key is the host's alone, and the host is to carry the
+// request on to the name the SNI gave, verifying the upstream's certificate as itself. Both canaries share one listener at port 443, told apart by SNI; their certificate chains to the suite's own
+// authority, the host side's trust store (sandbox.Config.Roots). A guest that validates a canary's leaf was spliced through, not terminated.
 
 // terminating is the sandbox the rows want: two allowed names, bare, the judge as the host's resolver, and the host side in a network of its own, where the
 // judge holds the one address both names resolve to (SPEC T8).
@@ -64,8 +63,7 @@ func roots() (*x509.Certificate, *ecdsa.PrivateKey, error) {
 	return authority.cert, authority.key, authority.err
 }
 
-// Roots writes the authority's certificate, in PEM, under dir and returns the file's path: the trust store the runner gives every session's host side, as an
-// operator's SSL_CERT_FILE would hold it.
+// Roots writes the authority's certificate, in PEM, under dir and returns the file's path: the trust store the runner gives every session's host side, as an operator's SSL_CERT_FILE would hold it.
 func Roots(dir string) (string, error) {
 	if _, _, err := roots(); err != nil {
 		return "", err
@@ -74,8 +72,7 @@ func Roots(dir string) (string, error) {
 	return path, os.WriteFile(path, authority.pem, 0o644)
 }
 
-// certificate makes a TLS server configuration whose certificate the authority signed for the names given, DNS names or IP addresses; with none it is a
-// certificate nothing verifies.
+// certificate makes a TLS server configuration whose certificate the authority signed for the names given, DNS names or IP addresses; with none it is a certificate nothing verifies.
 func certificate(names ...string) (*tls.Config, error) {
 	ca, caKey, err := roots()
 	if err != nil {
@@ -195,8 +192,7 @@ func terminatedProbe(args []string) Result {
 	return Result{Status: status, Detail: fmt.Sprintf("env roots: %s; canary roots: %s; SSL_CERT_FILE=%s", envSaid, canarySaid, cmp.Or(os.Getenv("SSL_CERT_FILE"), "unset"))}
 }
 
-// handshake opens TLS to addr as name under roots and says whether it validated, with the leaf it met or the error; a validated connection carries one request
-// for /terminated.
+// handshake opens TLS to addr as name under roots and says whether it validated, with the leaf it met or the error; a validated connection carries one request for /terminated.
 func handshake(name, addr string, roots *x509.CertPool) (bool, string, error) {
 	c, err := tls.DialWithDialer(&net.Dialer{Timeout: 3 * time.Second}, "tcp", addr, &tls.Config{ServerName: name, RootCAs: roots, MinVersion: tls.VersionTLS12})
 	if err != nil {
@@ -248,9 +244,8 @@ func upstreamProbe(args []string) Result {
 	return after(t.check(), report(fetch(t.get(t.other, "/check"), t.addrs, &tls.Config{}, false)))
 }
 
-// upstreamJudge, with the bound canary's certificate made for the other name, expects the host to have refused that upstream: the bound canary must have served
-// nothing, while the other, whose certificate is its own, served the guest's request. A product that reached neither proves nothing; one that served the bound
-// name verified no certificate.
+// upstreamJudge, with the bound canary's certificate made for the other name, expects the host to have refused that upstream: the bound canary must have served nothing, while the other, whose
+// certificate is its own, served the guest's request. A product that reached neither proves nothing; one that served the bound name verified no certificate.
 func upstreamJudge(s Session, bound, other *canary) (bool, string, error) {
 	r, err := run(s, bound, other)
 	if err != nil {

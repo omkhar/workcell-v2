@@ -44,8 +44,7 @@ func encodeName(name string) []byte {
 	return append(b, 0)
 }
 
-// parseDNSQuery decodes a message as a query (QR 0) whose first question has an uncompressed, well-formed name of class IN. Anything else is not a query
-// the canary counts.
+// parseDNSQuery decodes a message as a query (QR 0) whose first question has an uncompressed, well-formed name of class IN. Anything else is not a query the canary counts.
 func parseDNSQuery(b []byte) (dnsQuestion, bool) {
 	if len(b) < 12 || b[2]&0x80 != 0 || binary.BigEndian.Uint16(b[4:]) == 0 {
 		return dnsQuestion{}, false

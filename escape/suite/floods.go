@@ -46,8 +46,7 @@ const (
 	ms          = time.Millisecond
 )
 
-// sampled runs the probe while read samples the host every 50 ms. It returns the result with how far below and above the sample taken just before the run the
-// host went meanwhile.
+// sampled runs the probe while read samples the host every 50 ms. It returns the result with how far below and above the sample taken just before the run the host went meanwhile.
 func sampled(s Session, read func() (int64, error), args ...string) (r Result, below, above int64, err error) {
 	var rerr error
 	below, above, err = sampledRun(read, func() { r, rerr = s.Run(args...) })
@@ -133,8 +132,7 @@ func mountDiskJudge(ctx context.Context, s Session) (bool, string, error) {
 	return below <= bound && size <= bound, detail, nil
 }
 
-// exportSize is the largest apparent size of a file directly in the export, as the host sees it: what a sparse growth costs the host in a quota or a later
-// copy, though not in free disk.
+// exportSize is the largest apparent size of a file directly in the export, as the host sees it: what a sparse growth costs the host in a quota or a later copy, though not in free disk.
 func exportSize(dir string) (int64, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -299,9 +297,8 @@ func fill(f *os.File, mib int) string {
 	return detail
 }
 
-// mountDiskProbe is diskProbe for a live export: in the export at args[0] it grows a file to args[2] GiB without writing it, by ftruncate and then by a byte at
-// the end, then writes args[1] MiB to a second file, syncs, holds both for the judge's samples, and removes them. The growth comes first so that it is judged
-// on its own, not as what a byte count of the writes left.
+// mountDiskProbe is diskProbe for a live export: in the export at args[0] it grows a file to args[2] GiB without writing it, by ftruncate and then by a byte at the end, then writes args[1] MiB to a
+// second file, syncs, holds both for the judge's samples, and removes them. The growth comes first so that it is judged on its own, not as what a byte count of the writes left.
 func mountDiskProbe(args []string) Result {
 	if len(args) != 3 {
 		return Result{Status: "error", Detail: "want export, MiB and GiB"}
@@ -336,8 +333,7 @@ func mountDiskProbe(args []string) Result {
 	return Result{Status: "tried", Detail: detail}
 }
 
-// fileProbe raises its own descriptor limit as far as it goes, past the hard limit when it may as root, and opens up to args[0] descriptors, as pipe ends, then
-// holds them.
+// fileProbe raises its own descriptor limit as far as it goes, past the hard limit when it may as root, and opens up to args[0] descriptors, as pipe ends, then holds them.
 func fileProbe(args []string) Result {
 	v, r := ints(args, 1, "count")
 	if r.Status != "" {

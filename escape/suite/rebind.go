@@ -16,16 +16,14 @@ import (
 	"time"
 )
 
-// The rebinding rows (I4). The policy allows one name, and the judge is the resolver the host side of the session asks about it (sandbox.Config.Resolver, at
-// judgeResolver port 53): it answers the allowed name with an address the host must never dial, the host's own loopback, a LAN address, the metadata address,
-// in one spelling or another, or, in a network of the session's own, an address on a network the host itself holds (sandbox.Neighbour), with TTL 0, and
-// refuses every other name. The guest connects to the allowed name as a program would, by the forward port or by SNI at 443, twice. A canary listens at the
-// answer. The host must resolve the name itself (a host that never asked vetted nothing: an error, never a pass) and the canary must see nothing. On control
-// the guest resolves and dials for itself, so the canary sees it on every row.
+// The rebinding rows (I4). The policy allows one name, and the judge is the resolver the host side of the session asks about it (sandbox.Config.Resolver, at judgeResolver port 53): it answers the
+// allowed name with an address the host must never dial, the host's own loopback, a LAN address, the metadata address, in one spelling or another, or, in a network of the session's own, an address on
+// a network the host itself holds (sandbox.Neighbour), with TTL 0, and refuses every other name. The guest connects to the allowed name as a program would, by the forward port or by SNI at 443,
+// twice. A canary listens at the answer. The host must resolve the name itself (a host that never asked vetted nothing: an error, never a pass) and the canary must see nothing. On control the guest
+// resolves and dials for itself, so the canary sees it on every row.
 //
-// Missing, and said so in the report: the row where the first answer is an address the host may dial and the second is not, and the row where one answer set
-// holds both. Each needs a global unicast address the test host owns, and every range set aside for that (RFC 5737, 2001:db8::/32, 3fff::/20) is one the host
-// refuses; every other address is someone's.
+// Missing, and said so in the report: the row where the first answer is an address the host may dial and the second is not, and the row where one answer set holds both. Each needs a global unicast
+// address the test host owns, and every range set aside for that (RFC 5737, 2001:db8::/32, 3fff::/20) is one the host refuses; every other address is someone's.
 
 // judgeResolver is where the judge's resolver listens, at port 53.
 const judgeResolver = "127.5.3.53"
@@ -64,10 +62,9 @@ func (r rebind) answers() string {
 	return strings.Join(out, ", ")
 }
 
-// rebindProbe connects to the allowed name args[0] (name:port) as a program would, through the guest's own resolver, and sends the token args[1] on one line;
-// with args[2] "sni" it offers a TLS ClientHello naming the host instead and, if the handshake completes, sends the token inside TLS as the path of a request
-// for the host, since a host that terminates the connection resolves the name only to forward a request, and waits for the answer, since a host need not
-// forward for a client that has gone. It tries twice, the second time after a pause, and reports both.
+// rebindProbe connects to the allowed name args[0] (name:port) as a program would, through the guest's own resolver, and sends the token args[1] on one line; with args[2] "sni" it offers a TLS
+// ClientHello naming the host instead and, if the handshake completes, sends the token inside TLS as the path of a request for the host, since a host that terminates the connection resolves the name
+// only to forward a request, and waits for the answer, since a host need not forward for a client that has gone. It tries twice, the second time after a pause, and reports both.
 func rebindProbe(args []string) Result {
 	if len(args) != 3 {
 		return Result{Status: "error", Detail: "want name:port, token and line|sni"}

@@ -17,9 +17,8 @@ import (
 	"syscall"
 )
 
-// The I8 probes are a hostile repository. Root in the guest shapes its workspace so that a pull which runs git in it, trusts its configuration, or writes its
-// tree by name acts on the host: every shape aims an effect at a file beside the export (written-*) or at a listener the judge started. The judge pulls, then
-// looks. Nothing the guest says counts.
+// The I8 probes are a hostile repository. Root in the guest shapes its workspace so that a pull which runs git in it, trusts its configuration, or writes its tree by name acts on the host: every
+// shape aims an effect at a file beside the export (written-*) or at a listener the judge started. The judge pulls, then looks. Nothing the guest says counts.
 //
 // The guest has no git, so each shape writes .git itself (gitdir.go), from a fresh .git, as each run starts from a fresh copy of the export. A shape is given
 // where the guest sees its export, the host directory beside the export (an attacker knows the host's layout), a token, and for the submodule shape its URL.
@@ -40,8 +39,7 @@ func repoProbe(args []string) Result {
 	// The values are relative to the work tree, so that they hold wherever a pull brings it.
 	err := r.create(map[string]string{
 		"dotdot": "\tbare = true\n", // so that a snapshot of the work tree cannot replace HEAD
-		"dotgit": "\tbare = true\n",
-		"config": "\tfsmonitor = .git/fsmonitor\n\thooksPath = .hooks\n[filter \"escape\"]\n\tclean = ./.git/filter\n\trequired = true\n",
+		"dotgit": "\tbare = true\n", "config": "\tfsmonitor = .git/fsmonitor\n\thooksPath = .hooks\n[filter \"escape\"]\n\tclean = ./.git/filter\n\trequired = true\n",
 	}[shape])
 	if err == nil {
 		err = os.WriteFile(filepath.Join(guest, "work"), []byte(token+"\n"), 0o644)
@@ -111,8 +109,7 @@ func committed(r repo, more func(blob string) ([]entry, error)) error {
 	return r.commit(top)
 }
 
-// bring has the guest make the shape and pulls the workspace into the directory pulled, beside the export. A refusal is reported, not returned; an adapter that
-// cannot pull at all is an error.
+// bring has the guest make the shape and pulls the workspace into the directory pulled, beside the export. A refusal is reported, not returned; an adapter that cannot pull at all is an error.
 func bring(s Session, shape, token, extra string) (refused string, err error) {
 	beside := filepath.Dir(s.Workspace)
 	r, err := s.Run(shape, s.Guest, beside, token, extra)
@@ -221,8 +218,7 @@ func fetched(ctx context.Context, s Session) (bool, string, error) {
 	return true, "nothing connected to " + url + "; " + refused, nil
 }
 
-// collided fails unless the pull refuses a tree with two names that differ only in case: a launch host (SPEC P6) folds case, and there the second name's
-// content lands on the first.
+// collided fails unless the pull refuses a tree with two names that differ only in case: a launch host (SPEC P6) folds case, and there the second name's content lands on the first.
 func collided(ctx context.Context, s Session) (bool, string, error) {
 	if err := pulls(s); err != nil {
 		return false, "", err
@@ -295,9 +291,8 @@ var (
 // repoPolicy is w with the repository's policy in the shape.
 func repoPolicy(w Want, shape, policy string) Want { w.Shape, w.Policy = shape, policy; return w }
 
-// PlantPolicy puts the repository's policy in the export ws before the session starts, in the shape w.Shape names: "" a plain file, "link" a symbolic link to a
-// file beside the export (where the host, not the guest, can follow it), "fifo" a named pipe no one writes. The host must start, or refuse, within the test's
-// time whatever the shape (SPEC I13, I10).
+// PlantPolicy puts the repository's policy in the export ws before the session starts, in the shape w.Shape names: "" a plain file, "link" a symbolic link to a file beside the export (where the host,
+// not the guest, can follow it), "fifo" a named pipe no one writes. The host must start, or refuse, within the test's time whatever the shape (SPEC I13, I10).
 func PlantPolicy(ws string, w Want) error {
 	path := filepath.Join(ws, "workcell.toml")
 	switch w.Shape {

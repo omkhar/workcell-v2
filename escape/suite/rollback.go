@@ -20,8 +20,7 @@ import (
 // still be current for the next session, seen through a second `workcell run claude` and, on the host, where the image lies.
 const rollbackVersion, noExecText = "5.5.5", "nope"
 
-// rollbackProbe is the layer's claude: "forge" writes the Exit of error text on the init's channel at args[1] before anything else, then lingers;
-// "check" says whether a claude is on PATH at all.
+// rollbackProbe is the layer's claude: "forge" writes the Exit of error text on the init's channel at args[1] before anything else, then lingers; "check" says whether a claude is on PATH at all.
 func rollbackProbe(args []string) Result {
 	switch {
 	case len(args) == 1 && args[0] == "check":

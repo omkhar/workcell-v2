@@ -29,8 +29,7 @@ func chatterProbe([]string) Result {
 	return Result{Status: "ended", Detail: "wrote 4 lines and ended"}
 }
 
-// chatterJudge runs the command once with the operator's reader gone after its first line (Want.Head), and expects the run to end as the command did
-// and to add its start and its end to the record.
+// chatterJudge runs the command once with the operator's reader gone after its first line (Want.Head), and expects the run to end as the command did and to add its start and its end to the record.
 func chatterJudge(ctx context.Context, s Session) (bool, string, error) {
 	_, before, err := s.Audit(ctx)
 	if err != nil {

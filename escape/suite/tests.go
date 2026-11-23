@@ -51,9 +51,8 @@ var All = append([]Test{
 	// The relay header names the host's own loopback and the metadata address.
 	{ID: "I4", Name: "relay-header-host-loopback", Probe: relayProbe, Host: relayCanary("tcp4", "127.0.0.1:0", "tcp")},
 	{ID: "I4", Name: "relay-header-metadata", Probe: relayProbe, Host: onLoopback("169.254.169.254", relayCanary("tcp4", "169.254.169.254:0", "tcp"))},
-	// Rebinding: the guest connects to an allowed name, by its forward port or by SNI at 443, and the judge, as the host's resolver, answers it with the host's
-	// loopback, a LAN address, the metadata address, loopback as an IPv4-mapped IPv6 address, the unspecified address, or a CNAME to a denied name that is
-	// loopback. The canary at the answer must see nothing.
+	// Rebinding: the guest connects to an allowed name, by its forward port or by SNI at 443, and the judge, as the host's resolver, answers it with the host's loopback, a LAN address, the
+	// metadata address, loopback as an IPv4-mapped IPv6 address, the unspecified address, or a CNAME to a denied name that is loopback. The canary at the answer must see nothing.
 	{ID: "I4", Name: "rebind-loopback-forward", Probe: rebindProbe, Host: rebindJudge(rebind{a: []string{"127.0.0.1"}, canary: "127.0.0.1"}), Want: rebinding},
 	{ID: "I4", Name: "rebind-loopback-sni", Probe: rebindProbe, Host: rebindJudge(rebind{a: []string{"127.0.0.1"}, canary: "127.0.0.1", sni: true}), Want: rebindingSNI},
 	{ID: "I4", Name: "rebind-lan-forward", Probe: rebindProbe, Host: onLoopback("10.255.255.254", rebindJudge(rebind{a: []string{"10.255.255.254"}, canary: "10.255.255.254"})), Want: rebinding},
@@ -74,9 +73,8 @@ var All = append([]Test{
 	{ID: "I3", Name: "doh-post-tcp4", Probe: dohProbe(http.MethodPost), Host: dnsCanary(dnsOverHTTPS, queried)},
 	{ID: "I3", Name: "doh-get-tcp4", Probe: dohProbe(http.MethodGet), Host: dnsCanary(dnsOverHTTPS, queried)},
 	{ID: "I3", Name: "tunnel-txt-udp4", Probe: tunnelProbe, Host: dnsCanary(dnsOverUDP, tunnelled)},
-	// The guest's configured resolver must answer the allowed name, in any case and with EDNS0, and refuse every other name (one no policy names, a subdomain,
-	// a name that merely ends or starts in it, other types) promptly, with a DNS answer carrying no address. The same at any address on port 53, under a policy
-	// allowing nothing, after hostile datagrams (I12) and after a burst (I10).
+	// The guest's configured resolver must answer the allowed name, in any case and with EDNS0, and refuse every other name (one no policy names, a subdomain, a name that merely ends or starts in
+	// it, other types) promptly, with a DNS answer carrying no address. The same at any address on port 53, under a policy allowing nothing, after hostile datagrams (I12) and after a burst (I10).
 	{ID: "I3", Name: "resolver-answers-allowed", Probe: lookupProbe, Host: resolverJudge(resolvConf, "plain", allowedLookups), Want: reachable},
 	{ID: "I3", Name: "resolver-refuses-others", Probe: lookupProbe, Host: resolverJudge(resolvConf, "plain", deniedLookups), Want: reachable},
 	{ID: "I3", Name: "resolver-at-host-address", Probe: lookupProbe, Host: resolverJudge(hostAddr+":53", "plain", bothLookups), Want: reachable},
@@ -106,13 +104,11 @@ var All = append([]Test{
 	{ID: "I10", Name: "device-cpu-flood", Probe: emulationProbe, Host: cpuJudge(Session.Relay), Want: capped},
 	// And the supervisor's own decoder: root writes the smallest valid frames on the init's channel as fast as the host takes them, each read in several calls.
 	{ID: "I10", Name: "channel-cpu-flood", Probe: frameFlood, Host: cpuJudge(Session.Channel), Want: capped},
-	// The same disk flood in mount mode: the export is the host's own tree, served
-	// live, so a byte the guest writes under it, or a size it sets without writing, is the host's at once.
+	// The same disk flood in mount mode: the export is the host's own tree, served live, so a byte the guest writes under it, or a size it sets without writing, is the host's at once.
 	{ID: "I10", Name: "mount-disk-flood", Probe: mountDiskProbe, Host: mountDiskJudge, Want: cappedLive},
-	// A secret is bound to one allowed name, both terminated on the host. The guest hunts for the real value in every process, on disk and in memory; sends its
-	// credential, alone and as a bearer token, in the bound header to the bound name, which must reach the canary real; replays it at the other name, in
-	// another header, in the path and in the query, none of which may reach a canary. Under a binding narrowed to one method and path, only that is swapped. A
-	// redirect from the bound host carries it on to the other.
+	// A secret is bound to one allowed name, both terminated on the host. The guest hunts for the real value in every process, on disk and in memory; sends its credential, alone and as a bearer
+	// token, in the bound header to the bound name, which must reach the canary real; replays it at the other name, in another header, in the path and in the query, none of which may reach a
+	// canary. Under a binding narrowed to one method and path, only that is swapped. A redirect from the bound host carries it on to the other.
 	{ID: "I5", Name: "secret-in-guest", Probe: secretProbe, Host: secretJudge, Want: withSecret},
 	{ID: "I5", Name: "placeholder-swapped", Probe: exchangeProbe, Host: twoNames(canaries{}, swapJudge("GET,bound,/check,header", "GET,bound,/bearer,bearer")), Want: withSecret},
 	{ID: "I5", Name: "placeholder-replay", Probe: exchangeProbe, Host: twoNames(canaries{}, swapJudge("GET,bound,/check,header", "GET,other,/replay,header")), Want: withSecret},
@@ -193,9 +189,8 @@ var All = append([]Test{
 	// Root restarts the guest's kernel while the run stands: the host must end the session itself, leave no process of it behind, and run again after (I7).
 	{ID: "I12", Name: "guest-reboot", Probe: channelProbe, Host: rebootJudge, Bound: channelBound},
 	{ID: "I12", Name: "channel-first-frame-rollback", Probe: rollbackProbe, Host: rollbackJudge, Want: Want{Command: layerAgent}},
-	// The update client on the host, after one honest install from a channel the judge signs and serves, meets a manifest signed by another key or with a
-	// corrupted signature, past its expiry, below the last serial or a day ahead, and an artifact whose bytes do not match, stop short, come by a redirect, or
-	// come without TLS. None may install, and a valid successor must.
+	// The update client on the host, after one honest install from a channel the judge signs and serves, meets a manifest signed by another key or with a corrupted signature, past its expiry,
+	// below the last serial or a day ahead, and an artifact whose bytes do not match, stop short, come by a redirect, or come without TLS. None may install, and a valid successor must.
 	{ID: "I14", Name: "update-wrong-key", Probe: idleProbe, Host: updateJudge("wrong-key")}, {ID: "I14", Name: "update-corrupt-signature", Probe: idleProbe, Host: updateJudge("corrupt-signature")},
 	{ID: "I14", Name: "update-expired-manifest", Probe: idleProbe, Host: updateJudge("expired")}, {ID: "I14", Name: "update-lower-serial", Probe: idleProbe, Host: updateJudge("lower-serial")},
 	{ID: "I14", Name: "update-serial-ahead", Probe: idleProbe, Host: updateJudge("serial-ahead")}, {ID: "I14", Name: "update-digest-mismatch", Probe: idleProbe, Host: updateJudge("digest-mismatch")},
@@ -285,8 +280,7 @@ func resolve(addr string) (string, error) {
 	return strings.ReplaceAll(addr, hostAddr, host), nil
 }
 
-// trap is a canary: a listener on the host that keeps what every connection (its first line) or every datagram delivered. What arrived is the proof of reach;
-// the guest's word is not.
+// trap is a canary: a listener on the host that keeps what every connection (its first line) or every datagram delivered. What arrived is the proof of reach; the guest's word is not.
 type trap struct {
 	ln   net.Listener
 	pc   net.PacketConn
@@ -374,9 +368,8 @@ func verdict(got [][]byte, carries func([]byte, string) bool, want, target strin
 // says is a guest's result as a judge quotes it.
 func says(r Result) string { return fmt.Sprintf("guest says %s: %s", r.Status, r.Detail) }
 
-// tcpCanary listens on addr and has the guest dial it, as dialHost when that is set (another address or spelling that reaches the same listener), else as the
-// listener's own address. udpCanary listens for datagrams at addr and has the guest send the token there. The invariant holds only if nothing arrives: a
-// connection or a datagram is proof of reach; the guest's word is not.
+// tcpCanary listens on addr and has the guest dial it, as dialHost when that is set (another address or spelling that reaches the same listener), else as the listener's own address. udpCanary listens
+// for datagrams at addr and has the guest send the token there. The invariant holds only if nothing arrives: a connection or a datagram is proof of reach; the guest's word is not.
 func tcpCanary(network, addr, dialHost string) Judge {
 	return trapJudge(network, addr, dialHost, lineToken, true)
 }

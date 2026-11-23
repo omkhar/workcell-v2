@@ -43,9 +43,7 @@ func TestJudgesOnFakeCanaries(t *testing.T) {
 		{"swap", []request{swapped, {method: "GET", url: "/octo/other", headers: http.Header{"X-Api-Key": {sec.Value}}}}, nil, "sent", false, false}, // a request no admitted exchange sent
 	}
 	for i, c := range cases {
-		s := Session{Allow: withSecret.Allow, Secret: sec, Run: func(...string) (Result, error) {
-			return Result{Status: c.status, Detail: "fake"}, nil
-		}}
+		s := Session{Allow: withSecret.Allow, Secret: sec, Run: func(...string) (Result, error) { return Result{Status: c.status, Detail: "fake"}, nil }}
 		bound, other := &canary{name: "bound.escape.test", addr: "127.0.0.1:1", seen: c.bound}, &canary{name: "other.escape.test", addr: "127.0.0.1:2", seen: c.other}
 		done := make(chan struct{})
 		var pass bool
