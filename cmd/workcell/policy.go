@@ -75,7 +75,7 @@ func loadPolicy(extra []string, stderr io.Writer) (allow *proxy.Allowlist, secre
 		}
 	}
 	secrets, err = bindings(narrowed, allow, file)
-	for _, s := range narrowed.Secret { // a file: or cmd: source under cwd would be exported into, or served live as, the guest's /workspace (I5)
+	for _, s := range p.Secret { // a file: or cmd: source under cwd would be exported into, or served live as, the guest's /workspace, whether or not the repository kept the row (I5)
 		scheme, rest, _ := strings.Cut(s.Source, ":")
 		words := []string{rest} // file: the path; the other schemes name no path
 		if scheme == "cmd" {

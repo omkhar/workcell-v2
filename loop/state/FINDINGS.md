@@ -4579,6 +4579,22 @@ with the existing C54 message, and cmd/workcell, internal/policy, internal/proxy
 green under -race. Not S14: cmd/workcell/policy.go is v2's own, nothing ported, no v1 line. Fix unit: S-F41,
 below S-1009 in PLAN.md.
 
+C58 FIXED by S-F41, commits e8b3f36 (the test moved) and e0d67ee (the fix) (PR #287). The source check in loadPolicy in
+cmd/workcell/policy.go walks p.Secret, the rows of the user's own config.toml, as the C34 check two lines above does,
+and no longer narrowed.Secret: one token and the comment beside it, net 0 product lines, no test line. policy.Narrow
+copies a kept row unchanged, so a row the repository keeps is judged as before and the message still names the user's
+file, line and secret; nothing the repository's workcell.toml holds reaches the loop. loadPolicy is called by run,
+before loadArtifacts, the caches and session, and by explain, so the refusal is one line (exit 2) before a session
+directory or an export exists. The test is cmd/workcell/c58_test.go, the parked file with its head comment changed,
+47 lines; escape/_pending/S-F41/ is gone. Shown: the redteam ran the moved test on the claim tree, plain and -race,
+four attack arms failing and two control arms passing; the reviewer repeated the fail in a worktree of main and the
+pass at e0d67ee, and ran 15 arms by overlay (8 refused at e0d67ee that started on main, 7 unchanged on both): a cmd:
+program under cwd with the row dropped, a cmd: argument under cwd with allow = [], a repository allow that names
+another host, --allow giving the dropped host back, a source through a symlinked directory, a trailing slash, a
+.. spelling and cwd itself as an argument are refused; a kept row under cwd is refused as before; a source outside
+cwd starts as before, with or without the row; a relative file: source is not judged here and the broker refuses
+to read it. One review round, no findings, no fix round. Not S14: v2's own code, no v1 line.
+
 C59. ID I14, as hardening of the trust root the host uses to fetch channel.json and the pinned artifacts;
 the class of C21, C30 and C53, a relative path resolved against the repository. ATTACKER: the malicious
 repository, which supplies the file at the relative path, completed by a network attacker on the path of the
