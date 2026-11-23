@@ -27,9 +27,7 @@ import (
 	"time"
 )
 
-// The I6 probes and the placeholder replay drive HTTPS requests from the guest to canaries the judge runs under the session's two allowed names: the bound one (the one a secret is bound to, when
-// there is one) and another. A request names a host three ways, in the TLS SNI, in the HTTP Host or :authority, and in the URL; the probes make them disagree, hide the SNI with ECH, or let a redirect
-// carry the credential from the bound name to the other. What a canary received is the evidence; the guest's word is not.
+// The I6 probes and the placeholder replay drive HTTPS requests from the guest to canaries the judge runs under the session's two allowed names: the bound one (the one a secret is bound to, when there is one) and another. A request names a host three ways, in the TLS SNI, in the HTTP Host or :authority, and in the URL; the probes make them disagree, hide the SNI with ECH, or let a redirect carry the credential from the bound name to the other. What a canary received is the evidence; the guest's word is not.
 
 // request is one HTTP request a canary received.
 type request struct {
@@ -38,8 +36,7 @@ type request struct {
 	headers                       http.Header
 }
 
-// canary is one HTTPS server the judge runs for one allowed name, and what it received. ech is the config list under which it accepts a hidden name; respond writes the response once the request is
-// recorded (else 200); leafFor is the name its certificate is for instead of its own. Canaries share one listener (serveCanaries), told apart by the connection's SNI.
+// canary is one HTTPS server the judge runs for one allowed name, and what it received. ech is the config list under which it accepts a hidden name; respond writes the response once the request is recorded (else 200); leafFor is the name its certificate is for instead of its own. Canaries share one listener (serveCanaries), told apart by the connection's SNI.
 type canary struct {
 	name, addr, leafFor string
 	ech                 []byte
@@ -48,8 +45,7 @@ type canary struct {
 	seen                []request
 }
 
-// serveCanaries serves the canaries on ln, which is theirs from here, under one certificate of the suite's authority for all their names. A request is the
-// canary's whose name the SNI gave, the first's when none did.
+// serveCanaries serves the canaries on ln, which is theirs from here, under one certificate of the suite's authority for all their names. A request is the canary's whose name the SNI gave, the first's when none did.
 func serveCanaries(ln net.Listener, keys []tls.EncryptedClientHelloKey, cs ...*canary) (func(), error) {
 	var names []string
 	for _, c := range cs {
@@ -164,8 +160,7 @@ func echKeys(publicName string) ([]byte, []tls.EncryptedClientHelloKey, error) {
 	return list, []tls.EncryptedClientHelloKey{{Config: cfg, PrivateKey: key.Bytes(), SendAsRetry: true}}, nil
 }
 
-// targets is what every HTTPS probe is given: the bound name and the other, each with the address of the judge's canary for it, the variable holding the
-// credential as the guest sees it ("-" for none), and whatever else the test adds.
+// targets is what every HTTPS probe is given: the bound name and the other, each with the address of the judge's canary for it, the variable holding the credential as the guest sees it ("-" for none), and whatever else the test adds.
 type targets struct {
 	bound, other, value string
 	addrs               map[string]string
@@ -195,15 +190,13 @@ func (t targets) get(name, path string) *http.Request {
 	return req
 }
 
-// check sends the bound name the request a well-behaved client would: SNI, Host and URL all name it, in the open. A correct product serves it, so the judge can
-// tell "refused the attack" from "reached nothing".
+// check sends the bound name the request a well-behaved client would: SNI, Host and URL all name it, in the open. A correct product serves it, so the judge can tell "refused the attack" from "reached nothing".
 func (t targets) check() string {
 	return "check=" + report(fetch(t.get(t.bound, "/check"), t.addrs, &tls.Config{}, false)).Status
 }
 func port(addr string) string { _, p, _ := net.SplitHostPort(addr); return p }
 
-// fetch sends req from the guest to the name in its URL, dialled at the address the judge gave for the name when nothing else resolves it (the address of a canary is chosen per run), through whatever
-// proxy the environment names. The guest is the attacker: it verifies nothing, and it forwards every header, credential included, wherever a redirect points.
+// fetch sends req from the guest to the name in its URL, dialled at the address the judge gave for the name when nothing else resolves it (the address of a canary is chosen per run), through whatever proxy the environment names. The guest is the attacker: it verifies nothing, and it forwards every header, credential included, wherever a redirect points.
 func fetch(req *http.Request, addrs map[string]string, cfg *tls.Config, h2 bool) (*http.Response, error) {
 	return fetchWithin(req, addrs, cfg, h2, 4*time.Second)
 }
@@ -307,8 +300,7 @@ func run(s Session, bound, other *canary, extra ...string) (Result, error) {
 	return s.Run(append(args, extra...)...)
 }
 
-// strictJudge expects every request at the bound name to name it in the open, in the SNI and the Host alike, and the other name to see nothing. A request that named another host, hid its name, or
-// reached the other name was a mismatch served; one the product rewrote to the name it terminated for is as a client's own. No request at all means the product reached nothing, which proves nothing.
+// strictJudge expects every request at the bound name to name it in the open, in the SNI and the Host alike, and the other name to see nothing. A request that named another host, hid its name, or reached the other name was a mismatch served; one the product rewrote to the name it terminated for is as a client's own. No request at all means the product reached nothing, which proves nothing.
 func strictJudge(s Session, bound, other *canary) (bool, string, error) {
 	r, err := run(s, bound, other)
 	if err != nil {
