@@ -54,10 +54,9 @@ func bindFile(network, addr string) (*os.File, error) {
 	return ln.(*net.TCPListener).File()
 }
 
-// Hold is the payload as the holder of a session's own network namespace, started in a fresh one (`unshare -n`) as root: it brings the loopback device up
-// holding sandbox.IsolatedNet, routes sandbox.CanaryAddr to it as a local address on no network of the host's, dials the judge at path, says its pid, and
-// stays until the judge hangs up. The product runs in /proc/<pid>/ns/net meanwhile, and the judge's canaries are bound there through the same payload
-// (sandbox.RootBind).
+// Hold is the payload as the holder of a session's own network namespace, started in a fresh one (`unshare -n`) as root: it brings the loopback device up holding
+// sandbox.IsolatedNet, routes sandbox.CanaryAddr to it as a local address on no network of the host's, dials the judge at path, says its pid, and stays until the judge
+// hangs up. The product runs in /proc/<pid>/ns/net meanwhile, and the judge's canaries are bound there through the same payload (sandbox.RootBind).
 func Hold(path string) int {
 	ip, ipnet, err := net.ParseCIDR(sandbox.IsolatedNet)
 	var lo *net.Interface

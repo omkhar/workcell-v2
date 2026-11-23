@@ -37,8 +37,7 @@ func TestCLICancel(t *testing.T) {
 		name, script string
 		within       time.Duration
 	}{
-		{"exits on SIGTERM", "echo $$ >pid; exec sleep 20", 5 * time.Second},
-		{"ignores SIGTERM", "echo $$ >pid; trap '' TERM; exec sleep 20", 10 * time.Second},
+		{"exits on SIGTERM", "echo $$ >pid; exec sleep 20", 5 * time.Second}, {"ignores SIGTERM", "echo $$ >pid; trap '' TERM; exec sleep 20", 10 * time.Second},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			w := &workcell{dir: t.TempDir(), cfg: Config{Resolver: "127.9.8.7"}}

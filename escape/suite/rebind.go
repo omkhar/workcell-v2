@@ -37,10 +37,9 @@ var rebindingCNAME = Want{Allow: []string{"allowed.escape.test:" + forwardPort},
 var rebindingOwn = Want{Allow: rebinding.Allow, Resolver: judgeResolver, Isolated: true}
 var rebindingOwnSNI = Want{Allow: rebindingSNI.Allow, Resolver: judgeResolver, Isolated: true}
 
-// rebind is one row's answer and canary: the A and AAAA records the allowed name gets, owned by cname when that is set (the allowed name is then an alias of
-// it), the address the canary listens at ("neighbour" standing for an address on a network of the test host's own, as the session's Bind places it; with no
-// record given, the one A record is wherever the canary came to listen), and whether the guest offers TLS with the allowed name as SNI at 443 rather than a
-// line at the forward port.
+// rebind is one row's answer and canary: the A and AAAA records the allowed name gets, owned by cname when that is set (the allowed name is then an alias of it), the
+// address the canary listens at ("neighbour" standing for an address on a network of the test host's own, as the session's Bind places it; with no record given, the one
+// A record is wherever the canary came to listen), and whether the guest offers TLS with the allowed name as SNI at 443 rather than a line at the forward port.
 type rebind struct {
 	a, aaaa       []string
 	cname, canary string
@@ -79,7 +78,6 @@ func rebindProbe(args []string) Result {
 	again.Detail = fmt.Sprintf("first %s: %s; then %s", first.Status, first.Detail, again.Detail)
 	return again
 }
-
 func connectName(addr, token string, sni bool) Result {
 	host, _, err := net.SplitHostPort(addr)
 	if err != nil {
@@ -165,7 +163,6 @@ func serveNamesOn(pc net.PacketConn, r rebind) *nameServer {
 	ns.wg.Go(ns.serve)
 	return ns
 }
-
 func (ns *nameServer) serve() {
 	buf := make([]byte, 65535)
 	for {

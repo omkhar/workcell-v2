@@ -80,9 +80,8 @@ type UpdateConfig struct {
 // executable, or a tar with the binary at its root or under bin/), at a URL the judge serves (T8). With no Artifact, URL is a real pin's and Digest its hex
 // SHA-256, fetched by the host's own network and trust (B8).
 type Layer struct {
-	Agent, Version, URL string
-	Artifact            []byte
-	Digest              string
+	Agent, Version, URL, Digest string
+	Artifact                    []byte
 }
 
 // Sandbox is one sandbox holding the payload. A test gets a fresh one.
@@ -193,10 +192,9 @@ func LoopbackHolds(ip string) error {
 	return fmt.Errorf("%s is not an address of the host's loopback interface, which its setup must hold", ip)
 }
 
-// A session's own network (Config.Isolated) is AS112 space (RFC 7534): global unicast that the product's vetting accepts and no operator's, and nothing sent
-// to it leaves the host (T8, S12). There the test host holds IsolatedNet on its loopback device, so Neighbour lies on a network of the host's own, and the
-// judge's canaries listen at CanaryAddr, outside that prefix, which a local route alone makes the host's: a product that dials only off the host's networks
-// reaches them still.
+// A session's own network (Config.Isolated) is AS112 space (RFC 7534): global unicast that the product's vetting accepts and no operator's, and nothing sent to it leaves
+// the host (T8, S12). There the test host holds IsolatedNet on its loopback device, so Neighbour lies on a network of the host's own, and the judge's canaries listen at
+// CanaryAddr, outside that prefix, which a local route alone makes the host's: a product that dials only off the host's networks reaches them still.
 const IsolatedNet, Neighbour, CanaryAddr = "192.175.48.1/25", "192.175.48.2", "192.175.48.129"
 
 // placed is addr with "host" or "neighbour" replaced: where the judge's canaries listen, or an address on a network the test host holds, in the network the
@@ -265,8 +263,4 @@ func (b *bounded) Write(p []byte) (int, error) {
 	b.buf = append(b.buf, p[:min(len(p), b.limit-len(b.buf))]...)
 	return len(p), nil
 }
-func (b *bounded) bytes() []byte {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	return b.buf
-}
+func (b *bounded) bytes() []byte { b.mu.Lock(); defer b.mu.Unlock(); return b.buf }

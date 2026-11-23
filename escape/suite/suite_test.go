@@ -38,7 +38,6 @@ func TestSelect(t *testing.T) {
 		}
 	}
 }
-
 func TestParseResult(t *testing.T) {
 	long := strings.Repeat("x", maxDetail)
 	cases := []struct {
@@ -51,8 +50,7 @@ func TestParseResult(t *testing.T) {
 		{"escape-result " + strings.Repeat("s", maxStatus+1) + " \n", Result{}, false}, {"", Result{}, false},
 		{"escape-result connected", Result{}, false}, {"escape-result connected\n", Result{}, false}, {"escape-result  x\n", Result{}, false},
 		{"escape-result Connected x\n", Result{}, false}, {"escape-result ok \x00\n", Result{}, false}, {"escape-result ok \xff\n", Result{}, false},
-		{"escape-result ok a\nb\n", Result{}, false}, {"noise\nescape-result ok a\n", Result{}, false}, {"escape-result ok a\n\n", Result{}, false},
-		{strings.Repeat("a", MaxLine+1), Result{}, false},
+		{"escape-result ok a\nb\n", Result{}, false}, {"noise\nescape-result ok a\n", Result{}, false}, {"escape-result ok a\n\n", Result{}, false}, {strings.Repeat("a", MaxLine+1), Result{}, false},
 	}
 	for _, c := range cases {
 		got, err := ParseResult([]byte(c.in))
@@ -61,7 +59,6 @@ func TestParseResult(t *testing.T) {
 		}
 	}
 }
-
 func FuzzParseResult(f *testing.F) {
 	f.Add([]byte("escape-result connected to x\n"))
 	f.Add([]byte("escape-result \n"))
@@ -76,7 +73,6 @@ func FuzzParseResult(f *testing.F) {
 		}
 	})
 }
-
 func FuzzFormat(f *testing.F) {
 	f.Add("connected", "to x")
 	f.Add("", "")
@@ -91,7 +87,6 @@ func FuzzFormat(f *testing.F) {
 		}
 	})
 }
-
 func TestPrinted(t *testing.T) {
 	for _, tt := range [][]string{{"1.0.105_(Claude_Code)", "v1.0.105", "yes"}, {"1.0.105_(Claude_Code)", "1.0.10", ""}, {"v1.0.10.", "1.0.10", "yes"}, {"11.0.10", "1.0.10", ""}} {
 		if printed(tt[0], tt[1]) != (tt[2] == "yes") {

@@ -132,8 +132,7 @@ func bring(s Session, shape, token, extra string) (refused string, err error) {
 	return "", nil
 }
 
-// pulls has the guest make the plain shape, pulls it, and errors unless the pull brought its work file: a refusal proves nothing about a product that cannot
-// pull at all.
+// pulls has the guest make the plain shape, pulls it, and errors unless the pull brought its work file: a refusal proves nothing about a product that cannot pull at all.
 func pulls(s Session) error {
 	token := newToken()
 	refused, err := bring(s, "plain", token, "")
@@ -323,8 +322,7 @@ func liveProbe(args []string) Result {
 	return Result{Status: "tried", Detail: "write=" + tryWrite(filepath.Join(args[0], "written-"+args[1]))}
 }
 
-// liveJudge fails if the guest's write is in the host's tree at once: the repository's policy made the workspace a mount, or the default is not a clone (SPEC
-// A5).
+// liveJudge fails if the guest's write is in the host's tree at once: the repository's policy made the workspace a mount, or the default is not a clone (SPEC A5).
 func liveJudge(ctx context.Context, s Session) (bool, string, error) {
 	token := newToken()
 	r, err := s.Run(s.Guest, token)

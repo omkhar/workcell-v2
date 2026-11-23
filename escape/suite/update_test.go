@@ -29,7 +29,6 @@ type careful struct {
 	serial    int64
 	installed []byte
 }
-
 type idle struct{ sandbox.Observe }
 
 func (idle) Update(context.Context, sandbox.UpdateConfig) ([]byte, error) { return nil, nil }
@@ -42,7 +41,6 @@ func (c *sticky) Update(ctx context.Context, u sandbox.UpdateConfig) ([]byte, er
 	}
 	return c.careful.Update(ctx, u)
 }
-
 func (c *careful) Update(ctx context.Context, u sandbox.UpdateConfig) ([]byte, error) {
 	pool := x509.NewCertPool()
 	pool.AppendCertsFromPEM(u.CA)
@@ -96,7 +94,6 @@ func (c *careful) Update(ctx context.Context, u sandbox.UpdateConfig) ([]byte, e
 	}
 	return c.installed, nil
 }
-
 func TestUpdateJudgesOnClients(t *testing.T) {
 	variants := []string{"wrong-key", "corrupt-signature", "expired", "lower-serial", "serial-ahead", "digest-mismatch", "truncated", "redirected", "plain-http"}
 	for _, v := range variants {

@@ -4176,3 +4176,186 @@ on every JSON or form answer of a sign-in host, the pull-borne chain of C54's cm
 directory beneath cwd, the 2xx device-flow answer that must keep passing, a non-string token field, and the two
 source tools absent from the session. In the auditor, the redteam and the two verifiers no model declined and no
 safeguard re-ran a request.
+
+## S-1008, sweep 2: workspace export in both modes, and the return path (I1, I8), as built at main 7f292b6
+
+Fresh context, the whole surface read in full as built (not a diff), after the 32 fix units of sweep 1 and S-F33 to
+S-F38 of sweep 2, at the claim commit 8ed723a on main 7f292b6. The unit line still carries its sweep-1 text (copy four
+parked tests for C17 to C20); those tests are in place and S-F10 to S-F13 are done, so this run took the other branch
+of the line's accept and did the audit again as S-1002 says, because S8 wants every sweep to pass over every surface.
+One auditor run, finished without a stop: no model declined and no safeguard re-ran a request. No hypervisor in the
+session, and nothing on this surface needed a VM for its Go-level evidence. Result: two candidates, C56 and C57.
+
+Trust boundary. Guest root, driven by hostile model output, owns every Entry, Data and Exit frame on vsock 5000 of the
+pull VM, which boots the guest-written workspace.ext4 with no network; they enter at pulled.frame in
+cmd/workcell/pull_vm.go and pass guest.DecodeEntry, manifest.add, checkPath and fold (pull.go) to write and put, or to
+compare and sameBytes. Under --mount the same attacker owns every FUSE frame on the one 5002 connection, raw frames on
+a stolen init socket included; they enter at Serve in internal/fileserve/serve_linux.go and pass parse and checkName
+(codec.go) to the operations of ops_linux.go. The malicious repository owns the shape of the working directory that
+Export reads (internal/workspace/workspace.go: a descriptor walk, AT_SYMLINK_NOFOLLOW, Readlinkat, hard links by
+device and inode, sockets, FIFOs and devices skipped) and that openSource re-opens (internal/rootfs/ext4file.go:
+absolute path, O_NOFOLLOW, device, inode, size and file-type re-check), and under --mount whatever lies beneath the
+directory that fileserve.Open serves. Authority: the CLI and the supervisor run as the operator's uid. pull holds the
+destination open O_DIRECTORY, unlinks what is not a directory and directories that are empty, makes directories 0755,
+symlinks with any target and files 0644 or 0755 of guest bytes, each path opened one component at a time with openat2
+RESOLVE_BENEATH and RESOLVE_NO_SYMLINKS (Linux) or O_NOFOLLOW_ANY (macOS), and refuses a component that is its
+directory's .git by device and inode (isGit, the C44 fix). Mount mode holds the export descriptor and one descriptor
+per directory node (4096 at most, 128K nodes), works by the *at calls with O_NOFOLLOW, charges growth and one 4 KiB
+block per created entry against --disk (the C17 and C18 fixes), and refuses a write through a file with two names (the
+C41 fix). Clone mode writes sessions/<id>/workspace.ext4 0600 and attaches it read-write. Nothing from the guest is
+relied on (A1). Judged by no code: the relation of a pull's destination to anything but the data and config
+directories (holds), and in clone mode the relation of the working directory to the temp directory, where the VMM
+sockets of every running session lie (C56).
+
+Lenses (S9), each worked. Parsing and resources: DecodeEntry, manifest.add (1,048,576 entries, 64 MiB of names, file
+bytes at most the image's apparent size, a sum that cannot wrap, fold collisions), checkPath and FuzzPath were read
+again; the FUSE parser was walked per opcode against the 7.37 sizes; Export answers ErrTooLarge above 32 GiB, 8M
+inodes or 65000 links, and bounds a target at 4095 bytes and a name at 255; a symlink target of 4096 bytes or more
+cannot be checked out by git, so an export that a repository makes fail is an R3 note; a mount tree cannot go deeper
+than about 4096 nodes, because a dentry pins its ancestors and each directory node holds one host descriptor
+(reasoned). The gap: the pull charges file bytes only, never entries (C57, measured). Logic and state: put was traced
+for every ordering trick: a symlink and then a path through it is ELOOP; a directory replaced by a file is ENOTEMPTY
+unless it is empty; a host symlink where a directory is wanted is unlinked and never followed; the same path twice
+meets the fold map; .git as any component or alias meets isGit before and after the create. The FUSE service answers
+EIO before INIT and after DESTROY and EPROTO for a major other than 7, on a listener that accepts once; a failed FUSE
+dial by the init leaves 5002 open to a later connection of guest root, which holds no authority beyond the init's. The
+missing check: fetch compares the destination with the data and config directories only, and session compares the
+working directory with the temp directory only under --mount and only with this process's TMPDIR (C56). Concurrency
+and check-to-use: fileserve's life and mu, the chain re-check of at(), the RENAME cycle check, FORGET and RELEASE
+under the write lock, and node ids and file handles that are never reused all stand (the package tests are green). A
+pull against a concurrent mount guest in the same tree meets O_EXCL, EEXIST, ENOTEMPTY and RESOLVE_NO_SYMLINKS, which
+leave that guest able only to redirect the pull's writes and unlinks within its own export, where it can write anyway:
+refuted. The window of C39 is unchanged (low, parked). Cryptography and identity: none by design; identity is (device,
+inode) at use (isGit, openSource, at, the SameFile walk of within), and the 5002 stream is the init's by boot order.
+Failure modes: the error paths of pull write nothing or the partial tree the docs describe, and every message that
+carries guest bytes quotes them (shown, %q, the os.NewFile names of S-F13, Walk and openSource); Export's failure
+removes the image and the session directory; fileserve closes every descriptor on any stream error. No error path
+fails open; the one opening is a check that no code makes (C56). Downgrade, rollback and replay: wire version 1 only;
+the FUSE minor is negotiated down on fixed layouts; a pull is one shot and a replayed frame is a stream error; the
+teardown of a session whose socket path C56 replaced removes only the planted link, since UnixListener.Close unlinks
+the path and RemoveAll does not follow (measured). Interaction between surfaces: C56 is the clone export times the
+pull's judge times the VMM socket placement of C28 times a concurrent session (I7). diff with the same manifest is
+inert (probe: A lines, the socket's inode and mode unchanged); rm's RemoveAll follows no link; policy.ReadRepo opens
+O_NOFOLLOW and O_NONBLOCK and takes regular files only; S-F37's within(cwd, source) is not moved by guest links;
+holds() covers the data and config directories. The S-F35 residual (the data directory bind-mounted beneath cwd,
+PARKED line 150) belongs to the next S-1003 audit, needs host root and was not probed again.
+
+Parked leads of this surface, tried again. Line 17: a symlinked cwd under --mount is still ELOOP (TestOpen), the mount
+record precedes boot and fails closed, and the dotdot rows never reach fileserve. Line 18: fallocate, LINK and MKNOD
+answer ENOSYS (adversarial rows 17 and 19), and a tmpfs rename is EXDEV: unchanged. Lines 20 and 21: os.Root, and NFC
+against NFD on APFS: no Mac ran, fold does not normalise, the reading of S-F32 stands. Line 24: pull and diff without
+the lock are the operator's own races. Lines 68, 69, 88, 89, 102 to 104, 124 to 128, 131 and 133: unchanged. Line 123
+(C39): unchanged, low. Line 97, the S-F20 note that fetch needs no temp-directory compare because the VMM directory's
+random name cannot be seen: no longer true, the name is in a concurrent clone export and the mount twin exists for a
+differing TMPDIR; that is C56.
+
+Coverage. Read in full: internal/workspace workspace.go with workspace_test.go and clone_test.go; internal/rootfs
+ext4file.go, ext4.go, tree.go and ext4file_test.go; internal/fileserve codec.go, serve_linux.go, ops_linux.go and its
+harness, adversarial, bounds and c41 tests; internal/guest guest.go and walk.go; internal/wire wire.go; internal/vmm
+vmm.go and firecracker/firecracker.go; cmd/workcell pull.go, pull_vm.go, pull_linux.go, pull_darwin.go, run_vm.go,
+data.go, session.go, mount_linux.go, mount_darwin.go, main.go, caps.go, explain.go, bench_vm.go, term_vm.go, policy.go
+and the pull, pull_vm, c19, c28, c44 and c52 tests; cmd/workcell-init pull.go, mount.go, root.go and main.go;
+escape/suite files.go, files_linux.go, repo.go, gitdir.go, floods.go, tests.go and suite.go; escape/sandbox
+workcell_vm.go, sandbox.go, workcell_linux.go and control_linux.go; ADR-002, ADR-005, docs/policy.md and the workspace
+part of docs/threat-model.md; this file's map, the sweep-1 record of this surface, S-1013, S-1016c and S-1016d;
+PARKED.md whole. Skimmed by grep: policy.ReadRepo, logSession, the session test helpers. Not opened:
+internal/fileserve codec_test.go, c17_test.go and c18_test.go; internal/rootfs build.go, layer.go, oci.go and the
+other tests; internal/guest trust.go; internal/workspace c31_test.go and c38_test.go; cmd/workcell update.go,
+layer.go, the cache files, log.go, ocsf.go and relay.go; cmd/workcell-init exec.go and net.go; internal/vmm/vz; the
+other suite and sandbox files; _legacy/. Ran: go test on internal/fileserve, internal/workspace, internal/rootfs,
+internal/guest and cmd/workcell (all pass); nine go test -overlay probes and one go run from the session's scratch
+directory, the tree untouched. Not run: anything on a VM, the escape suite, the fuzz targets, the macOS paths, the
+root-only shapes of C52 and S-F35. Every listener and file a probe touched lay under the probe's own temp directories
+(T8, S12). No file of this surface is ported from v1, so no record here says also in v1 main; nothing is someone
+else's weakness, and no NEEDS-YOU (S14).
+
+### S-1008 candidates, sweep 2
+
+C56. ID I1 and I4 (the guest's bytes reach a host unix socket of the operator's uid by path), and I7 when that socket
+is another session's; the chain of C28 through the pull destination in clone mode and through a running session's
+directory beneath a mount cwd. ATTACKER: guest root, by hostile model output or a malicious repository, in two
+sessions of one operator: session A shapes its tree, the guest of session B uses the rewired relay socket.
+Preconditions the attacker does not control: os.TempDir() lies under the directory A is run in (cd /tmp, or TMPDIR
+under the repository through an allowed .envrc, the precondition of C28), and B runs while A's export is taken and
+still runs while A's tree is pulled; for the mount arm, two shells with different TMPDIR values. SEVERITY: medium
+(S6). WHERE: cmd/workcell/pull_vm.go fetch, which calls holds(dest) and opens the destination with no compare against
+the temp directory, and put, which unlinks what lies at a guest path and makes a symlink with any target;
+cmd/workcell/run_vm.go session, whose --mount check compares cwd with this process's os.TempDir() only, and boot,
+whose MkdirTemp("", "wc") makes the VMM socket directory; internal/workspace/workspace.go entry, which exports a
+directory whatever it holds, skips sockets and copies regular files such as firecracker.json;
+internal/vmm/firecracker/firecracker.go Listen (vsock_<port> in the directory) and Start (firecracker.json with
+uds_path). INPUT: (a) TMPDIR=$PWD/tmp or cwd /tmp; session B runs, so tmp/wcBBBB holds firecracker.json and the
+listening vsock_5000, vsock_5001 and vsock_5002; the operator runs a clone session A in that directory, whose image
+carries tmp/wcBBBB with firecracker.json, so A's guest reads the random name; A's guest leaves tmp/wcBBBB/vsock_5001
+as a symlink to a unix socket of the operator's uid (an agent socket, a container socket, another session's socket);
+the operator runs workcell pull there while B runs. (b) B ran with TMPDIR=D/tmp, and the operator runs workcell run
+--mount in D from a shell whose TMPDIR is elsewhere. EFFECT: in (a) the pull keeps tmp and tmp/wcBBBB as directories,
+unlinks B's live listener and plants the link; the next relayed connection of B's guest makes the VMM connect to that
+path, the kernel follows the link, and B's guest speaks to the operator's socket, outside every export (I1, I4) or
+inside another session (I7). In (b) the session is not refused, D/tmp/wcBBBB is served live and A's guest replaces the
+socket itself. The link lasts as long as B, and B's teardown removes only the link. Reproducing test, by the redteam,
+who was given the claim and not the auditor's probe: TestC56PullRewiresALiveSessionsRelaySocket, package main of
+cmd/workcell, 90 lines, parked at escape/_pending/S-F39/c56_test.go. It sets TMPDIR to <repo>/tmp, stands B up as boot
+and the Firecracker backend leave it (MkdirTemp under the temp directory, the session's boot record and held lock,
+firecracker.json naming uds_path, a listening vsock_5001) and starts a victim unix listener in a temp directory of its
+own. Arm (b) wants a mount session run in the repository with TMPDIR elsewhere refused before boot. Arm (a) passes if
+the product's own clone export does not carry B's directory name, or if fetch refuses before boot; otherwise it runs
+the product's manifest.add and write on the guest's three entries and dials B's relay socket path, which must not
+reach the victim. Run by the orchestrator by go test -overlay on 8ed723a, plain and -race, log saved: both arms fail,
+with "a mount session of <repo> reached boot with the running session's VMM directory <repo>/tmp/wcNNN in its live
+export" and "pull into <repo> replaced the running session's relay socket <repo>/tmp/wcNNN/vsock_5001 with the guest's
+link: the VMM's connect for B's guest reached <victim>/agent.sock, a host socket outside every export". The redteam
+showed by overlays of product copies that three shapes of fix each make it pass. Outcome: CONFIRMED at medium by the
+verifier, who repeated both runs, found B's state on disk to be what run_vm.go and firecracker.go leave until Close,
+the dial by path to stand for the VMM's connect as in C28, the name learnt through the real export (the test checks
+the real session() image), the pull step to be the real put, and no power taken from outside the guest but the
+operator's steps. Not intended and not refused elsewhere: holds() sees the data and config directories only, and both
+the C28 record ("Clone, pull and bench are unchanged: their guests see no host directory where the sockets lie") and
+PARKED line 97 reasoned from one session; a second running session's directory under cwd at export time hands the
+guest the name. Severity by S6: a shown break whose preconditions the operator chooses, so medium and not low; rarer
+than C28, as C52 was; arm (a) has the plausible workflow (an interactive session in the repository, a batch session
+pulled while it runs), arm (b) is the rarer one. Not S14: cmd/workcell, internal/workspace and
+internal/vmm/firecracker are v2's own, and the VMM's connect by path is its documented design, as C28 ruled. Fix unit:
+S-F39, below S-1008 in PLAN.md.
+
+C57. ID I10 (host disk and inodes) through the limit that pull puts on what a guest may bring back; the class of C18
+on the return path. ATTACKER: guest root in a clone session, forging Entry frames on the pull VM's channel, or
+re-making its read-write image as a dense ext4 so that the honest init walks the entries. SEVERITY: low (S6). WHERE:
+cmd/workcell/pull.go manifest.add, which judges only an entry's Size against the limit; cmd/workcell/pull_vm.go put,
+where Mkdirat, Symlinkat and the file create are charged nothing; mount mode charges one 4096-byte block per created
+entry (internal/fileserve/serve_linux.go, S-F11). INPUT: a manifest of up to 1,048,576 directories, or symlinks with
+short targets, under 64 MiB of names and with zero file bytes. EFFECT: every entry is accepted and written to the
+operator's tree: on ext4 or xfs about 4 GiB of blocks and a million inodes in one pull, against a default --disk of 1
+GiB whose honest image gives the guest 65,652 free inodes (measured by the auditor), so about sixteen times the
+image's own entry budget; bounded by guest.MaxEntries and MaxNames, once per pull, into the directory the operator
+named. Reproducing test, by the redteam from the claim alone: TestPullGrowthCapEntries, package main of cmd/workcell,
+44 lines, parked at escape/_pending/S-F40/c57_test.go: arms dir and link feed a manifest with a limit of 100,000 bytes
+200 entries and write them into a fresh directory; an arm passes when at most limit/4096 plus 2 entries are accepted
+and written, the bound of c18_test.go. Run by the orchestrator by go test -overlay on 8ed723a, plain and -race, log
+saved: both arms fail with "200 accepted, 200 written against a limit of 100000 bytes, want at most 26 (24 blocks of
+4096 plus 2)". Outcome: CONFIRMED at low by the verifier, who repeated the run, found the test to drive manifest.add
+and write as fetch does with no power borrowed, the attacker in scope (the init enforces nothing, and guest root can
+also rewrite its image), and the host's cost hard-bounded: about 4 GiB of directory blocks and a million inodes, four
+times the default --disk and sixteen to thirty-two times a small cap, a fixed ceiling and no exhaustion, so hardening
+with no shown break of I10; not C18's case, which had no bound. An honest image keeps rough parity (one inode per four
+free blocks), so the overshoot needs one of the two moves above. Not S14: v2's own code. Fix unit: S-F40, below S-1008
+in PLAN.md (S7 lists a low; it is fixed all the same, as the lows of sweep 1 were).
+
+The two tests cost 134 lines, and the test budget stood at 28498 of 28500, so the redteam paid with 145 folded lines
+under escape/ in 37 files, layout only: no row removed, renamed or given another verdict, and no assertion, judge,
+bound, timeout or message touched. Blank lines dropped between undocumented neighbours of one keyword, comment
+paragraphs re-flowed with their words unchanged, table rows packed up to 200 columns, eight short function bodies put
+on one line where gofmt leaves that alone, same-type struct fields joined (six joins move a field next to its
+type-mates; every literal of those structs is keyed and none is encoded or printed whole), and adjacent uncommented
+constants joined. gofmt -l prints nothing, go build and go vet pass for Linux and for darwin arm64, go test
+./escape/... is the same before and after, and the list of the control sandbox's 145 rows is identical. Test code is
+now 28487 of 28500, product 15000 of 15000.
+
+Sweep 2 verdict for this surface: two candidates, C56 confirmed at medium and C57 confirmed at low. Sweep 2 had
+already confirmed four mediums (C52 on S-1003, C53 on S-1005, C54 and C55 on S-1007, all fixed), so with C56 it stands
+at five and S-1017 will call a third sweep (S8). The fix units are S-F39 and S-F40; the next candidate number is C58.
+The other shapes found are R3 notes, copied to PARKED.md: the 5002 port left open after a failed FUSE dial, the
+exports a repository can make fail, the refuted reason of line 97, the C56 variants the test does not express, the
+entry kinds and depths that C57's charge must also count, and what this audit did not run. In the auditor, the two
+redteam runs that wrote the tests, the redteam run that folded and the two verifiers no model declined and no
+safeguard re-ran a request.

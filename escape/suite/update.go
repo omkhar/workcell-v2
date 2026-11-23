@@ -36,7 +36,6 @@ const payloadType = "application/vnd.workcell.channel+json"
 
 // pinName is the pin every manifest carries: claude's row, which the adapter maps to its agent.
 const pinName = "claude-code"
-
 const day = 24 * 60 * 60
 
 // pin is one artifact in a manifest.
@@ -62,7 +61,6 @@ type envelope struct {
 	Payload     []byte      `json:"payload"`
 	Signatures  []signature `json:"signatures"`
 }
-
 type signature struct {
 	KeyID string `json:"keyid"`
 	Sig   []byte `json:"sig"`
@@ -113,20 +111,17 @@ func serve(cfg *tls.Config) (*upstream, error) {
 		return nil, fmt.Errorf("upstream listener: %w", err)
 	}
 	u := &upstream{paths: map[string]http.HandlerFunc{}, url: "http://" + ln.Addr().String()}
-	srv := &http.Server{
-		ReadTimeout: 3 * time.Second,
-		ErrorLog:    log.New(io.Discard, "", 0),
-		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			u.mu.Lock()
-			u.seen = append(u.seen, r.URL.Path)
-			h := u.paths[r.URL.Path]
-			u.mu.Unlock()
-			if h == nil {
-				http.NotFound(w, r)
-				return
-			}
-			h(w, r)
-		}),
+	srv := &http.Server{ReadTimeout: 3 * time.Second, ErrorLog: log.New(io.Discard, "", 0), Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		u.mu.Lock()
+		u.seen = append(u.seen, r.URL.Path)
+		h := u.paths[r.URL.Path]
+		u.mu.Unlock()
+		if h == nil {
+			http.NotFound(w, r)
+			return
+		}
+		h(w, r)
+	}),
 	}
 	u.stop = func() { srv.Close() }
 	if cfg == nil {
@@ -152,7 +147,6 @@ func (u *upstream) requests() []string {
 func whole(b []byte) http.HandlerFunc {
 	return func(w http.ResponseWriter, _ *http.Request) { w.Write(b) }
 }
-
 func cut(b []byte) http.HandlerFunc {
 	return func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Length", strconv.Itoa(len(b)))
@@ -161,7 +155,6 @@ func cut(b []byte) http.HandlerFunc {
 		panic(http.ErrAbortHandler)
 	}
 }
-
 func moved(url string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) { http.Redirect(w, r, url, http.StatusFound) }
 }
@@ -203,11 +196,7 @@ func openChannel() (*channel, error) {
 	src.set("/honest", whole(c.good))
 	return c, publish(src, c.m, key, nil)
 }
-
-func (c *channel) stop() {
-	c.src.stop()
-	c.plain.stop()
-}
+func (c *channel) stop() { c.src.stop(); c.plain.stop() }
 
 // manifest is a manifest of the serial given, valid for 13 days, pinning version at url as the artifact art, with the honest pins as previous.
 func (c *channel) manifest(serial int64, version, url string, art []byte) manifest {
@@ -219,8 +208,7 @@ func (c *channel) config(version string) sandbox.UpdateConfig {
 	return sandbox.UpdateConfig{Channel: c.src.url + "/channel.json", CA: authority.pem, Key: c.key.Public().(ed25519.PublicKey), Name: pinName, Version: version}
 }
 
-// hostile publishes the variant named in place of the honest manifest: a later one pinning 1.0.1 as a new artifact, which it returns, that the client must
-// refuse.
+// hostile publishes the variant named in place of the honest manifest: a later one pinning 1.0.1 as a new artifact, which it returns, that the client must refuse.
 func (c *channel) hostile(variant string) ([]byte, error) {
 	bad := artifact(variant)
 	h := c.manifest(c.now-60, "1.0.1", c.src.url+"/"+variant, bad)
@@ -306,11 +294,10 @@ func updateJudge(variant string) Judge {
 	}
 }
 
-// dailyJudge is I14 at the installer's second entry: the channel check a session start makes by itself, once a day, and the install the next start makes from
-// what it kept, in a session of its own carrying the [update] table. Under a hostile variant the channel serves only that manifest, pinning 1.0.1: the first
-// start must ask for channel.json (a client that never checks proves nothing), and after a second nothing may be installed nor the pinned artifact fetched.
-// Under "once" it serves the honest manifest: after three starts the layer must hold the honest artifact, exactly the digest pinned, and channel.json was asked
-// for once.
+// dailyJudge is I14 at the installer's second entry: the channel check a session start makes by itself, once a day, and the install the next start makes from what it
+// kept, in a session of its own carrying the [update] table. Under a hostile variant the channel serves only that manifest, pinning 1.0.1: the first start must ask for
+// channel.json (a client that never checks proves nothing), and after a second nothing may be installed nor the pinned artifact fetched. Under "once" it serves the
+// honest manifest: after three starts the layer must hold the honest artifact, exactly the digest pinned, and channel.json was asked for once.
 func dailyJudge(variant string) Judge {
 	return func(ctx context.Context, s Session) (bool, string, error) {
 		ch, err := openChannel()

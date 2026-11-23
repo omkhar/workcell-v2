@@ -57,10 +57,9 @@ func NewSecret(w Want) sandbox.Secret {
 
 const boundHeader, narrowMethod, narrowPath = "x-api-key", "POST", "/v1/"
 
-// withSecret is the sandbox the I5 tests want: a workspace, two allowed names, bare, a secret bound to the first, the judge as the host's resolver and the host
-// side in a network of its own, where the judge holds the one address both names resolve to and serves a canary for each at port 443 (twoNames). The guest's
-// view of the names is given to each probe as a literal address beside the name. narrowed binds the secret to one method and path as well; scoped, as a git
-// token, to one repository.
+// withSecret is the sandbox the I5 tests want: a workspace, two allowed names, bare, a secret bound to the first, the judge as the host's resolver and the host side in a
+// network of its own, where the judge holds the one address both names resolve to and serves a canary for each at port 443 (twoNames). The guest's view of the names is
+// given to each probe as a literal address beside the name. narrowed binds the secret to one method and path as well; scoped, as a git token, to one repository.
 var withSecret = Want{Workspace: true, Allow: []string{"bound.escape.test", "other.escape.test"}, Resolver: judgeResolver, Isolated: true, Secret: true}
 var narrowed = Want{Workspace: true, Allow: withSecret.Allow, Resolver: judgeResolver, Isolated: true, Secret: true, Narrow: true}
 var scoped = Want{Workspace: true, Allow: withSecret.Allow, Resolver: judgeResolver, Isolated: true, Secret: true, Repos: []string{"octo/allowed"}}
@@ -83,7 +82,6 @@ func findSecrets(b []byte) []string {
 		b = b[len(secretPrefix):]
 	}
 }
-
 func isHex(b []byte) bool   { return all(b, isHexByte) }
 func isHexByte(c byte) bool { return c >= '0' && c <= '9' || c >= 'a' && c <= 'f' }
 
@@ -165,7 +163,6 @@ func secretProbe(args []string) Result {
 	}
 	return Result{Status: "scanned", Detail: detail}
 }
-
 func listPids() []int {
 	es, err := os.ReadDir("/proc")
 	if err != nil {
@@ -245,7 +242,6 @@ func (s *scan) memory(pids []int) {
 		pid = parent(pid)
 	}
 }
-
 func parent(pid int) int {
 	b, err := os.ReadFile(fmt.Sprintf("/proc/%d/status", pid))
 	if err != nil {

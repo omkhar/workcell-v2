@@ -79,8 +79,7 @@ func TestExchange(t *testing.T) {
 		ok         bool
 		wide, narr bool // admitted
 	}{
-		{"GET,bound,/check,header", true, true, false}, {"GET,bound,/check,bearer", true, true, false},
-		{"POST,bound,/v1/ok,header", true, true, true}, {"POST,bound,/v1/ok,bearer", true, true, true},
+		{"GET,bound,/check,header", true, true, false}, {"GET,bound,/check,bearer", true, true, false}, {"POST,bound,/v1/ok,header", true, true, true}, {"POST,bound,/v1/ok,bearer", true, true, true},
 		{"GET,bound,/v1/ok,header", true, true, false}, {"POST,bound,/v2/no,header", true, true, false},
 		{"POST,bound,/v1,header", true, true, false}, // not under the prefix
 		{"GET,other,/replay,header", true, false, false}, {"GET,bound,/auth,auth", true, false, false}, {"GET,bound,/path,path", true, false, false},

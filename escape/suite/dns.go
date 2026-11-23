@@ -20,9 +20,8 @@ var rcodeNames = map[uint16]string{0: "noerror", 1: "formerr", 2: "servfail", 3:
 
 // dnsQuestion is the one question of a query.
 type dnsQuestion struct {
-	ID   uint16
-	Name string
-	Type uint16
+	ID, Type uint16
+	Name     string
 }
 
 // dnsQuery encodes a standard recursive query with one question. A name the rules above forbid still encodes, so that a probe can send what it likes.
