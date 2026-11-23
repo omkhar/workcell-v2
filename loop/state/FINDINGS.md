@@ -4799,3 +4799,170 @@ Sweep 2 verdict for this surface: no candidates. Sweep 2 has confirmed six mediu
 S-1003, C53 on S-1005, C54 and C55 on S-1007, C56 on S-1008, C58 on S-1009, all fixed) and two lows (C57 and
 C59, fixed), so S-1017 will call a third sweep (S8) whatever this surface says. The shapes seen are R3 notes,
 copied to PARKED.md in two lines: the observations, and what this audit did not run.
+
+## S-1011, sweep 2: pins, selector, verification, bump tool, channel manifest, update client (I14, section 10), as built at main 2ad2766
+
+Fresh context, the whole surface read in full as built (not a diff), after the 32 fix units of sweep 1 and S-F33
+to S-F42 of sweep 2, at the claim commit 87ca5f1 on main 2ad2766. One auditor run, finished without a stop:
+no model declined and no safeguard re-ran a request. No hypervisor in the session, and nothing was run on a VM.
+Result: one candidate, C60, recorded below with its test and its verifier's answer. Ten leads were worked to a
+probe or a full trace and each was refuted; the parked lines about this surface were each ruled on.
+
+Trust boundary. The network attacker's bytes are channel.json and the artifact bodies: they enter artifact.Fetch
+(the manifest and fetch paths of update.go, and cmd/bump through pins.Candidates and artifact.Verify) over TLS to
+the pinned host, under the system roots or the operator's own [update] ca, and no byte is used without the
+manifest's signature or the pin's digest, so that attacker holds availability alone (apply's install at a start
+is bounded by channelBound, 10 minutes, and the daily fetch is never awaited). Guest root reaches this surface
+only through its first channel frame: an Exit with an error as the guest's first frame makes run call
+installer.fail, which since S-F1 and S-F31 acts only on the exact current and previous pair that this start's
+apply installed; in mount mode the guest also writes the working directory live. The repository controls the
+working directory and workcell.toml: ReadRepo refuses an [update] table, and after S-F42 no [update] value is
+read against the working directory. One relative read survives, in fail of the zero installer (C60). Upstream
+bytes (npm packuments, GitHub release listings, vendor manifests, OCI tags and manifests, Sigstore bundles, npm
+attestations, OSV answers) enter cmd/bump on the runner, a dry run until H-905; the provider's own service is
+out of scope (the S-1012 ruling), so these are robustness only. The channel key holder and the operator's own
+table are out of scope except where they mix with an attacker's bytes. The authority: update, start-up (apply,
+daily) and fail run as the operator and write <data>/layers/<agent>/ (the images, current, previous, failed),
+<data>/channel.serial, channel.day and channel.next, and updates.log; findLayers turns current into a read-only
+drive that the next guest mounts read-only.
+
+Parsing and resources. The envelope is parsed strictly and the payload leniently under one signature; the
+64 KiB cap is the same in Fetch and Verify; an artifact is at most 512 MiB on disk, a tar 1 GiB in memory, and
+the ext4 writer returns ErrTooLarge; the digest is checked before the unpack, so no in-scope attacker reaches
+the tar or ext4 parsers. FuzzVerify (17,000 executions) and FuzzTarMember (287,000 executions) ran 12 s each
+with no crasher. marker reads with os.ReadFile, unbounded and following symlinks: harmless under the data
+directory, not under the working directory (C60).
+
+Logic and state. Install, --to, --rollback, the re-install of a failed image, apply's skip of a failed digest
+and fail were traced through every marker transition; choose applies the user's cooloff to Released only;
+Select drops a withdrawn digest from pins and from previous; an image is reused from disk only when it is the
+failed one.
+
+Concurrency and check-to-use gaps. verify reads the serial floor, verifies and writes the floor with no lock:
+two verifies at once on one data directory ended at the lower serial in 1,144 of 3,000 rounds (an observation,
+below). Two applies at one instant both read channel.next (PARKED line 45). The markers are written by a
+temporary file and a rename. The zero installer's fail is C60.
+
+Cryptography and identity. The DSSE pre-authentication encoding is the specification's; the key id is the
+SHA-256 of the public key; the 32-byte guard stands before ed25519.Verify; NotAfter is checked; the serial and
+expiry window is [now - 14 days, now + 1 day]; the Sigstore check binds the leaf, the signed entry timestamp
+and the body, and compares the identity byte for byte with versionRE; redirects are https only, and
+Authorization is dropped across hosts.
+
+Failure modes. Every refusal leaves the markers and the serial untouched; a failed verification in cmd/bump is
+a token, an issue and exit 1 (B5). A failed newInstaller makes run go on with the zero installer, B9's best
+effort: the one path that does not stop, and the doorway of C60.
+
+Downgrade, rollback and replay. An equal serial passes by design; --rollback reads no manifest (PARKED line
+184, for S-1018); the replay window is 14 days and 24 hours per data directory; the concurrent regression of
+the floor needs two honest manifests at once and a replay that nobody in scope can serve.
+
+Interaction between surfaces. fail runs in the supervisor after the VM is closed and session_end is recorded;
+layers attach read-only; the names on the kernel command line are held by the provider's pattern; the
+operator's proxy variables are honoured only for the host's own fetches.
+
+Leads refuted. A guest or a repository writing a layer marker or an image: no path since S-F12 (holds in
+session and pull); a symlink as marker is parked and has no writer. Relative reads in update.go, layer.go and
+data.go: every path lies under the installer's or the data directory, absolute or an error, except fail with an
+empty directory (C60). A redirect of the artifact to another https host: checked by digest, an information leak
+at most, by design (B8); a redirected channel.json is refused (TestChannel). choose with a pin whose Released
+lies in the future, or whose previous has Released 0: falls to previous or refuses, and both fields are signed.
+Verify on serial 0, a negative serial and an Expires that overflows: refused, by the order of the switch. apply
+after the operator's own update advanced the serial: the stale channel.next is refused as a rollback and
+removed. fresh under two providers, two sessions, and --rollback followed by a forged frame: the pair check
+holds (TestFailSpares and TestFail, plain and -race). The zero installer acting: fresh is nil, so fail never
+points a marker or writes a record; only the read happens, and the read is C60. cmd/bump: Load refuses a row
+that is not a regular file; plan prints only tokens and fixed phrases; merge needs base main, a same-repository
+branch with the bump prefix, a 40-hex head, the changed-paths check and a green run named gate; the equal
+serial, hold and the empty key list before H-905 are the residuals already recorded for S-1018. The I14 judges
+under escape/: the careful, idle and sticky clients pass or fail as meant, and the control adapter installs
+whatever the manifest names (T2 holds).
+
+The fixes since sweep 1, asked for their second order. S-F18 (C26) holds: the bare-name check covers current
+and, through point, the rollback path; Verify refuses a slash or a backslash in Pins and Previous; a version
+with a newline or a leading space gives an odd but contained file name or a missing-image refusal before boot;
+a bump row cannot carry a slash. S-F42 (C59) holds: the ca is judged before it is opened and read from the
+user's file alone, and no other path key exists; its refusal is the precondition that C60 rides, since a
+relative ca now makes every run print one line and go on with the zero installer, as a missing ca.pem already
+did. S-F1 and S-F31 (C1, C43) hold in both orders; two sessions that applied the same pair at one instant can
+both set it aside on a forged frame, which is C2's accepted residual.
+
+The parked lines, each ruled on. Lines 10, 22, 23, 29, 34, 37, 38, 41, 42 and 79 stand as written (for the
+maintainer, H-905 or the report). Line 40: every variant was tried in sweep 1, and it stands. Line 45: a short
+test of two applies on one channel.next would show a double fresh, with a consequence of C2's shape; it stands
+as R3. Line 78: its ca clause became C59; the clauses on apply delaying a start, the growth of refused
+records, the download residue and two verbs crossing stand as R3. Lines 142 and 143 stand (C2's residual, the
+operator's timing). Line 184 stands for S-1018. Lines 185, 186 and 188 are settled by S-F42, and line 188's
+"run prints one line and goes on" is C60's doorway.
+
+Coverage. Read in full: pins/pins.go, its four rows and its test; internal/pins (pins.go, sources.go,
+pins_test.go); internal/channel (channel.go and its test); internal/artifact/verify.go; internal/bump
+(bump.go, github.go, bump_test.go); cmd/bump (main.go, channel_test.go); internal/advisory/advisory.go;
+internal/sigstore (verify.go, root.go); internal/provider/provider.go and its four TOML files; internal/rootfs
+(layer.go, tree.go, ext4file.go); internal/policy/policy.go lines 1 to 300; in cmd/workcell update.go,
+layer.go, cache.go, cache_vm.go, data.go, main.go, policy.go, run_vm.go, bench.go, bench_vm.go and the update,
+layer, C59 and C43 tests; cmd/workcell-init root.go and part of main.go; escape/suite update.go, update_test.go,
+layer.go, rollback.go and the I14 rows of tests.go; escape/sandbox sandbox.go, workcell.go, workcell_vm.go,
+workcell_linux.go, control_channel_linux.go and the update parts of control_linux.go; the bump and nightly
+workflows; docs/adr/004-channel.md and the update passages of docs/providers.md and docs/policy.md; sweep 1's
+record of this surface and S-1016d above, and the plan lines of S-F1, S-F12, S-F18, S-F31 and S-F42. Listed by
+function only: cmd/bump/main_test.go and the tests of internal/pins sources, internal/artifact,
+internal/advisory, internal/sigstore and internal/rootfs. By grep only: internal/vmm/firecracker (the read-only
+layer drive) and the size limit of internal/rootfs/ext4.go. Not opened: internal/rootfs oci.go, build.go and
+the body of ext4.go, internal/sigstore/trusted-root.json, escape/suite/smoke.go (B6, S-1012's),
+escape/sandbox/workcell_darwin.go, internal/vmm/vz, and _legacy/. Not done: any VM run, any macOS path, cmd/bump
+against live upstreams (S12, T8), long fuzzing (S10's job). Every probe's target was a file or a process the
+probe itself made, on loopback (S12). Not S14: no file of this surface is ported from v1 and nothing concerns
+another project, so no v1 line is owed.
+
+### S-1011 candidates, sweep 2
+
+C60. ID I12 (hostile traffic on the host-guest channel cannot hang the host process), on B9's self-rollback
+path; the class of C59, a path read against the repository. ATTACKER: the malicious repository, which holds a
+symlink at layers/<agent>/current in the tree the operator runs in, with guest root, which sends an Exit frame
+with an error as the guest's first frame; no forged frame is needed, since a repository script whose
+interpreter the image lacks makes the init's own Exit with an error the first frame, and under --mount the
+guest alone can plant the link for the next session. Precondition the attacker does not control: the `ca` of
+the operator's [update] table is relative, missing, unreadable or holds no certificate, so start-up printed one
+line and went on. SEVERITY: medium (S6). WHERE: cmd/workcell/update.go: startup returns the zero installer,
+whose directory is empty, when newInstaller fails; fail joins that directory with layers/<agent> and reads
+current for every provider before it asks whether this start installed anything; marker is a bare os.ReadFile,
+which follows links and has no bound. cmd/workcell/run_vm.go: run keeps what startup returned and calls its
+fail with the command's base name when the first frame was an Exit with an error. INPUT: config.toml with
+[update] ca = "ca.pem"; the working directory holds layers/claude/current as a symlink to a FIFO (or to a
+terminal or a pipe on stdin); the operator runs workcell run there and the first frame is an Exit with an error.
+EFFECT: after the VM is closed and session_end is recorded, workcell run blocks in a read of a file the
+repository chose, against the working directory, until Ctrl-C; unattended, for good. No marker is written and
+nothing is set aside, since the zero installer's fresh is empty. A link to an endless device would grow the
+supervisor's memory instead (I10): reasoned only and not run (S12). Reproducing test, by the redteam, who was
+given the claim and not the auditor's probe: TestC60ZeroInstallerFailReadsTheRepository, package main of
+cmd/workcell, 44 lines, parked at escape/_pending/S-F43/c60_test.go. It writes the user's config with the
+relative ca, makes a FIFO under a temporary repository with layers/<first provider>/current linked to it,
+changes into the repository, takes the installer from the product's own startup, and calls its fail with the
+provider's binary name as run does, with a bound of 3 s; on the timeout it opens the FIFO's write end to free
+the read and fails. With a config that has no ca line, a healthy installer, the same body passes in 0.009 s.
+Run by the orchestrator by go test -overlay on the claim tree, plain and -race, log saved: both fail after
+3.01 s with "fail with the installer startup returned under ca = "ca.pem" has read layers/claude/current
+against the working directory for 3s". Outcome: CONFIRMED at medium by the verifier, who repeated both runs
+and traced the path: run keeps startup's installer and calls fail on the first-frame Exit error; newInstaller
+fails for a relative, missing, unreadable or certificate-less ca; fail reads the marker of every provider
+before any check of the binary's name; session never changes the working directory; the deferred close of the
+VM and the session_end record run before fail, and the signal handler is already stopped, so Ctrl-C ends it.
+The test's one power beyond a repository's, a FIFO that git cannot carry, is not needed: a committed link to
+/dev/tty or a pipe on stdin holds the same read, and a mount guest can plant a link with an absolute target.
+Not intended behaviour: the check S-F42 put before the read of ca exists to keep reads off the working
+directory, and the zero installer undoes it one call later. Severity by S6: the harm is small (after
+session_end, Ctrl-C recovers), but S6 grades by the precondition, which is the operator's own config, so medium
+and not low. The auditor ran its own probe of the same shape (blocked for 3 s on main) and, by overlay, the
+change that returns from fail when this start installed nothing: the probe passed with TestFail, TestFailSpares,
+TestUpdate, TestChannel and TestFindLayers. Not S14: update.go and run_vm.go are v2's own, nothing ported, no
+v1 line. Fix unit: S-F43, below S-1011 in PLAN.md.
+
+The 44 test lines were paid by 43 comment re-flows under escape/suite (tests.go 35, https.go 8), no token
+outside a comment changed, the control list of 145 rows identical before and after: product 15000 of 15000,
+test 28500 of 28500.
+
+Sweep 2 verdict for this surface: one medium confirmed, C60, open until S-F43. Sweep 2 now stands at seven
+mediums (C52 to C56 and C58 fixed, C60 open) and two lows (C57 and C59, fixed), so S-1017 will call a third
+sweep (S8). The next candidate number is C61. The observations that are not candidates are R3 notes, copied to
+PARKED.md in three lines.
