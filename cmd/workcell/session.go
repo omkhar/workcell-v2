@@ -24,17 +24,14 @@ import (
 // session's image), vmm (the temporary directories of the VMM's sockets and config, one path
 // per line) and lock. The supervisor holds an advisory lock on lock for as long as it lives;
 // the kernel drops it when the process ends, however it ends, so the lock says whether a
-// session is running where a pid file would lie after a crash. No daemon and no registry:
-// everything the verbs below know is in the session directory (A9).
+// session is running where a pid file would lie after a crash. No daemon and no registry: everything the verbs below know is in the session directory (A9).
 
-// sessionTime names a session directory by when it began, so that the names sort by time;
-// a random suffix keeps two that began in the same instant apart.
+// sessionTime names a session directory by when it began, so that the names sort by time; a random suffix keeps two that began in the same instant apart.
 const sessionTime = "20060102T150405.000000000Z"
 
 var sessionID = regexp.MustCompile(`^[0-9]{8}T[0-9]{6}\.[0-9]{9}Z-[0-9a-f]{8}$`)
 
-// validID is true for what newSession makes and for nothing else, so that an id taken from
-// the command line can name no path but a session directory.
+// validID is true for what newSession makes and for nothing else, so that an id taken from the command line can name no path but a session directory.
 func validID(id string) bool { return sessionID.MatchString(id) }
 
 // holdSession creates the lock file of the session directory dir, locks it for the life of
@@ -55,8 +52,7 @@ func holdSession(dir string) (*os.File, error) {
 	return f, nil
 }
 
-// running says whether a supervisor holds the lock of the session directory dir. A directory
-// with no lock file has no supervisor.
+// running says whether a supervisor holds the lock of the session directory dir. A directory with no lock file has no supervisor.
 func running(dir string) (bool, error) {
 	f, err := os.Open(filepath.Join(dir, "lock"))
 	if errors.Is(err, fs.ErrNotExist) {
@@ -131,8 +127,7 @@ func list(sessions string) ([]listing, error) {
 
 // removeSession removes the session id and everything it left on the host: its directory,
 // the image in it, and the VMM's directories that vmm names. It refuses while a supervisor
-// holds the session, and keeps the lock until nothing is left, so none can start meanwhile.
-// RemoveAll unlinks a symlink and never follows one.
+// holds the session, and keeps the lock until nothing is left, so none can start meanwhile. RemoveAll unlinks a symlink and never follows one.
 func removeSession(sessions, id string) error {
 	if !validID(id) {
 		return fmt.Errorf("%q is not a session id: workcell ls lists them", id)

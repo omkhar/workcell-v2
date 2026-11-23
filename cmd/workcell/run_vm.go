@@ -37,6 +37,7 @@ import (
 )
 
 const bootLimit, frameLimit = 20 * time.Second, 5 * time.Second // from Start to the guest's connection; one frame, once it has begun
+const paceFrames, paceEvery = 1 << 16, 64 * time.Millisecond    // about a million frames a second: 64 KiB frames at that rate are far past any vsock, so only a flood of small ones waits
 
 // run is `workcell run [--mount] [--cpus N] [--memory SIZE] [--disk SIZE] [--allow HOST]... [--cache NAME[:rw]]... [--] <cmd> [args...]`: it boots a guest with
 // a copy of the current directory in it, or with the directory itself served live (`--mount`, A5), runs the command there and exits as the command did. This
@@ -430,7 +431,11 @@ func output(c *wire.Conn, s *seat, done chan<- result) {
 			held.Payload = held.Payload[:0] // WriteFrame copied it
 		}
 	}
-	for {
+	for n, mark := 1, time.Now(); ; n++ {
+		if n%paceFrames == 0 { // a guest is served no faster than paceFrames a paceEvery: past that a faster host only takes a bigger flood (I10)
+			time.Sleep(paceEvery - time.Since(mark))
+			mark = time.Now()
+		}
 		f, err := c.ReadFrame()
 		flush(err != nil || f.Type != held.Type || len(held.Payload)+len(f.Payload) > wire.MaxPayload) // output comes before whatever follows it: an Exit's order holds
 		if err != nil {
