@@ -3722,6 +3722,27 @@ and no v1 release holds it (SPEC section 13); the Go behaviour is Go's documente
 defect of that project.
 also in v1 main: egressproxy/terminate.go
 
+C53 FIXED by S-F36, commits e508702 (the test moved) and 67c52ba (the fix) (PR #277). upstreamRoots in
+internal/proxy/terminate.go now reads SSL_CERT_DIR itself, splits it with filepath.SplitList as go1.27.4's loadOnDiskRoots does,
+and refuses, in the one check that refuses a relative certFile and before x509.SystemCertPool runs, any entry that is non-empty and
+does not start with /, with one error `SSL_CERT_FILE "<file>" or SSL_CERT_DIR "<list>" holds a relative path: set absolute paths`;
+so Terminate returns it before p.ca or p.transport are set, bind in cmd/workcell/run_vm.go returns it through fail(0, err) before
+any VM boots, and no terminated connection is served. An empty entry (/etc/ssl/certs:), an empty or unset variable and absolute
+entries behave as before; an absolute SSL_CERT_FILE is read as before. Reading an operator variable inside upstreamRoots is no test
+hook (A11) and leaves the signature c30_test.go calls. Cost: the check grew by one line and path/filepath by one; paid by
+closeNotifyConn.Close (defer the listener's Close, two body lines for three) and the Serve doc comment joined, net 0, since a net
+negative product count lowers the test limit below the 28500 test lines: product 15000 of 15000, test 28500 of 28500. Test:
+internal/proxy/c53_test.go TestRelativeSSLCertDirIsRefused, moved by git mv, head comment only; its three children fail on e508702 (log in
+loop/private/c53-before.log: "through a relative SSL_CERT_DIR the attacker's upstream answered (200, "real-secret")") and pass at
+the fix, plain and under -race, with the rest of internal/proxy (c30_test.go included) and cmd/workcell under -race, go vet ./...
+and gofmt clean. A throwaway overlay probe, not kept, showed Terminate refusing with an error naming SSL_CERT_DIR under certs, "."
+and /etc/ssl/certs:certs, and accepting /etc/ssl/certs, /etc/ssl/certs:, an empty and an unset variable. Not done: naming only the
+offending variable in the error, which costs lines the budget has not got; both values are printed, so the relative one is seen.
+Review: one round, no findings; the reviewer repeated the fail on main and the pass at 67c52ba, plain and under -race, refused
+certs:, :certs, ./certs, ~/certs and /etc/ssl/certs::certs as well, accepted :, :: and /nonexistent:/etc/ssl/certs, and read
+go1.27.4 root.go: SSL_CERT_FILE and SSL_CERT_DIR are the only environment sources of the pool, on Linux and on macOS.
+also in v1 main: egressproxy/terminate.go
+
 Sweep 2 verdict for this surface: one candidate, C53, confirmed at medium; sweep 2 already confirmed a medium on S-1003
 (C52), so S-1017 will call a third sweep (S8). The fix unit is S-F36; the next candidate number is C54. The other
 shapes found are R3 notes, copied to PARKED.md: the slot a 101 at a token endpoint holds, the granted record of a
