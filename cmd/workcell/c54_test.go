@@ -21,6 +21,7 @@ import (
 // compares a source path with cwd, so the session starts and the guest gets the file as part of /workspace: in the clone image, or live under --mount, where it
 // can also rewrite the program the host runs for every later lookup. The session must be refused before a session directory or an export exists, as a cwd that
 // holds the data directory is (C19), or at least the key bytes must not reach the image. The VMM is a dummy: a session not refused fails at boot, after both.
+// The same holds when only an argument of a cmd: source lies under cwd (the program runs it), and when the spelling does but the target does not: under --mount the guest owns every link in cwd.
 func TestC54SecretSourceUnderTheWorkspace(t *testing.T) {
 	const key = "sk-ant-c54-real-key-0123456789"
 	for _, tc := range []struct {
@@ -30,6 +31,8 @@ func TestC54SecretSourceUnderTheWorkspace(t *testing.T) {
 		{"clone, file: under cwd", "file:WORK/.secrets/anthropic.key", false}, {"mount, file: under cwd", "file:WORK/.secrets/anthropic.key", true},
 		{"clone, file: through ..", "file:WORK/../BASE/.secrets/anthropic.key", false},
 		{"mount, cmd: under cwd", "cmd:WORK/tools/get-key.sh", true}, {"clone, cmd: under cwd", "cmd:WORK/tools/get-key.sh", false},
+		{"clone, cmd: interpreter outside, script under cwd", "cmd:/bin/sh WORK/tools/get-key.sh", false}, {"mount, cmd: interpreter outside, script under cwd", "cmd:/bin/sh WORK/tools/get-key.sh", true},
+		{"mount, cmd: through a link inside cwd", "cmd:WORK/tool", true}, {"mount, file: through a link inside cwd", "file:WORK/link", true}, // the targets lie outside: the guest may replace the links
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			work, data, config := must(filepath.EvalSymlinks(t.TempDir())), filepath.Join(t.TempDir(), "workcell"), filepath.Join(t.TempDir(), "workcell") // macOS: /var is /private/var
@@ -39,7 +42,8 @@ func TestC54SecretSourceUnderTheWorkspace(t *testing.T) {
 			source := strings.NewReplacer("WORK", work, "BASE", filepath.Base(work)).Replace(tc.source)
 			must(0, cmp.Or(os.MkdirAll(filepath.Join(work, ".secrets"), 0o700), os.MkdirAll(filepath.Join(work, "tools"), 0o700), os.MkdirAll(config, 0o700),
 				os.WriteFile(filepath.Join(work, ".secrets", "anthropic.key"), []byte(key+"\n"), 0o600), os.WriteFile(filepath.Join(work, "tools", "get-key.sh"), []byte("#!/bin/sh\necho "+key+"\n"), 0o700),
-				os.WriteFile(filepath.Join(config, "config.toml"), []byte("[network]\nallow = [\"api.anthropic.com\"]\n\n[[secret]]\nname = \"anthropic\"\nsource = \""+source+"\"\n"), 0o600)))
+				os.WriteFile(filepath.Join(config, "config.toml"), []byte("[network]\nallow = [\"api.anthropic.com\"]\n\n[[secret]]\nname = \"anthropic\"\nsource = \""+source+"\"\n"), 0o600),
+				os.WriteFile(filepath.Join(filepath.Dir(config), "anthropic.key"), []byte(key+"\n"), 0o600), os.Symlink(filepath.Join(filepath.Dir(config), "anthropic.key"), filepath.Join(work, "link")), os.Symlink("/bin/sh", filepath.Join(work, "tool"))))
 			a := c19Data(t, data, "/elsewhere")
 			t.Chdir(work)
 			if allow, secrets, _, _, err := loadPolicy(nil, io.Discard); err == nil { // a refusal here holds the invariant as well

@@ -76,19 +76,23 @@ func loadPolicy(extra []string, stderr io.Writer) (allow *proxy.Allowlist, secre
 	}
 	secrets, err = bindings(narrowed, allow, file)
 	for _, s := range narrowed.Secret { // a file: or cmd: source under cwd would be exported into, or served live as, the guest's /workspace (I5)
-		scheme, path, _ := strings.Cut(s.Source, ":")
+		scheme, rest, _ := strings.Cut(s.Source, ":")
+		words := []string{rest} // file: the path; the other schemes name no path
 		if scheme == "cmd" {
-			path = append(strings.Fields(path), "")[0] // the program, its first word
+			words = strings.Fields(rest) // the program and each argument: the broker runs it from /, so a relative one never means cwd
 		}
-		if err == nil && (scheme == "file" || scheme == "cmd") && within(cwd, path) {
-			return nil, nil, "", "", fmt.Errorf("%s:%d: secret %q: source %s lies inside the directory %s, which the guest gets as /workspace: keep it outside", file, s.Line, s.Name, path, cwd)
+		for _, w := range words {
+			for q, up := w, ""; err == nil && (scheme == "file" || scheme == "cmd") && filepath.IsAbs(w) && q != up; q, up = filepath.Dir(q), q { // the spelling and each lexical ancestor, resolved: under --mount the guest may replace any of them
+				if within(cwd, q) {
+					return nil, nil, "", "", fmt.Errorf("%s:%d: secret %q: source %s lies inside the directory %s, which the guest gets as /workspace: keep it outside", file, s.Line, s.Name, w, cwd)
+				}
+			}
 		}
 	}
 	return allow, secrets, note, file, err
 }
 
-// binding is one [[secret]] row ready for a session: the grant the broker releases, the rule the proxy swaps by, holding the placeholder minted here,
-// and the guest variable that carries the placeholder, "" for none. The value itself is read by the broker, per use, on the host (I5).
+// binding is one [[secret]] row ready for a session: the grant the broker releases, the rule the proxy swaps by, holding the placeholder minted here, and the guest variable that carries the placeholder, "" for none. The value itself is read by the broker, per use, on the host (I5).
 type binding struct {
 	grant secret.Grant
 	rule  proxy.TerminateRule
@@ -108,10 +112,8 @@ func placeholderEnv(secrets []binding) (env []string) {
 // envName is a variable name as the guest's environment takes it.
 var envName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
-// bindings turns the policy's [[secret]] rows into the session's bindings, one fresh placeholder each. The proxy judges host, header, method, path and repos (A3); the host
-// must then be a bare name of the allow list, so that the proxy terminates it and swaps there (I6), as must the host of a sign-in source, and env must be a variable name. Two
-// rows on one header of one host, or on one token endpoint, are refused by the proxy. A row with a name and source but no host and no header takes them, and env unless it gives
-// one, from the provider secret of that name: a convenience that grants nothing, since the host must still be in the allow list (I13); the provider's prefix needs no rule, as the proxy keeps a "Bearer " the guest sends before the placeholder. A fault is reported with its line.
+// bindings turns the policy's [[secret]] rows into the session's bindings, one fresh placeholder each. The proxy judges host, header, method, path and repos (A3); the host must then be a bare name of the allow list, so that the proxy terminates it and swaps there (I6), as must the host of a sign-in source, and env must be a variable name. Two
+// rows on one header of one host, or on one token endpoint, are refused by the proxy. A row with a name and source but no host and no header takes them, and env unless it gives one, from the provider secret of that name: a convenience that grants nothing, since the host must still be in the allow list (I13); the provider's prefix needs no rule, as the proxy keeps a "Bearer " the guest sends before the placeholder. A fault is reported with its line.
 func bindings(p policy.Policy, allow *proxy.Allowlist, file string) ([]binding, error) {
 	var out []binding
 	for _, s := range p.Secret {
@@ -150,8 +152,7 @@ func bindings(p policy.Policy, allow *proxy.Allowlist, file string) ([]binding, 
 	return out, nil
 }
 
-// allowlist turns the policy's allow entries into the proxy's allowlist, nil for none. A bare name is port 443 by SNI; "name:port" forwards that port.
-// The proxy's parser judges the entries as each joins (A3): one it refuses is reported with its line (or as --allow), a claimed port with the second's.
+// allowlist turns the policy's allow entries into the proxy's allowlist, nil for none. A bare name is port 443 by SNI; "name:port" forwards that port. The proxy's parser judges the entries as each joins (A3): one it refuses is reported with its line (or as --allow), a claimed port with the second's.
 func allowlist(p policy.Policy, file string) (*proxy.Allowlist, error) {
 	if len(p.Allow) == 0 {
 		return nil, nil
