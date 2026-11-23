@@ -14,12 +14,8 @@ import (
 	"github.com/omkhar/workcell/v2/internal/guest"
 )
 
-// manifest is what the guest says its work tree holds, judged entry by entry before any of it is written
-// or compared (I8). The guest chose every path, so each is refused unless it is a plain relative path of
-// sound components, and two paths that are the same under case folding are refused together: a launch host
-// folds case (P6), and there the second would land on the first. Nothing the guest says beyond this is
-// trusted; the bytes come later. The entries and their names are bounded by guest.MaxEntries and
-// guest.MaxNames, the bytes of the files by limit: they can be no more than the session's image holds.
+// manifest is what the guest says its work tree holds, judged entry by entry before any of it is written or compared (I8). The guest chose every path, so each is refused unless it is a plain relative path of sound components, and two paths that are the same under case folding are refused together: a launch host folds case (P6), and there the second would land on the first.
+// Nothing the guest says beyond this is trusted; the bytes come later. The entries and their names are bounded by guest.MaxEntries and guest.MaxNames, the bytes of the files plus a block for every entry by limit: they can be no more than the session's image holds, its bytes plus a block for every inode it has (fetch).
 type manifest struct {
 	limit   int64
 	entries []guest.Entry
@@ -27,6 +23,9 @@ type manifest struct {
 	names   int
 	bytes   int64
 }
+
+// block is what one entry costs the host however little it holds, a block and an inode, as mount mode charges (I10).
+const block = 4096
 
 // add judges one entry and keeps it.
 func (m *manifest) add(e guest.Entry) error {
@@ -42,10 +41,10 @@ func (m *manifest) add(e guest.Entry) error {
 	if m.names += len(e.Path) + len(e.Target); m.names > guest.MaxNames {
 		return fmt.Errorf("more than %d bytes of names", guest.MaxNames)
 	}
-	if e.Size > m.limit-m.bytes { // never a sum: with sizes up to MaxInt64 one would wrap
-		return fmt.Errorf("more than %d bytes of files, which the session's image cannot hold", m.limit)
+	if e.Size > m.limit-m.bytes-block { // never a sum: with sizes up to MaxInt64 one would wrap
+		return fmt.Errorf("more than %d bytes of files and entries, a block for each, which the session's image cannot hold", m.limit)
 	}
-	m.bytes += e.Size
+	m.bytes += e.Size + block
 	key := fold(e.Path)
 	if m.folded[key] {
 		return fmt.Errorf("path %s: another path is the same under case folding", shown(e.Path))
@@ -58,8 +57,7 @@ func (m *manifest) add(e guest.Entry) error {
 	return nil
 }
 
-// checkPath refuses a path that could name anything but one entry beneath the directory the tree goes into:
-// absolute, empty, holding NUL, not UTF-8, or with a component that is empty, ".", ".." or ".git" in any case.
+// checkPath refuses a path that could name anything but one entry beneath the directory the tree goes into: absolute, empty, holding NUL, not UTF-8, or with a component that is empty, ".", ".." or ".git" in any case.
 func checkPath(p string) error {
 	switch {
 	case p == "":
@@ -86,8 +84,7 @@ func checkPath(p string) error {
 	return nil
 }
 
-// fold maps s so that two strings are equal under strings.EqualFold exactly when their
-// folds are equal: each rune goes to the smallest in its simple-fold orbit.
+// fold maps s so that two strings are equal under strings.EqualFold exactly when their folds are equal: each rune goes to the smallest in its simple-fold orbit.
 func fold(s string) string {
 	return strings.Map(func(r rune) rune {
 		least := r

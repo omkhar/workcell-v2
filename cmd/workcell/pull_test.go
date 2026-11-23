@@ -15,7 +15,7 @@ func TestManifestAdd(t *testing.T) {
 	dir := func(p string) guest.Entry { return guest.Entry{Kind: guest.KindDir, Path: p} }
 	file := func(p string, size int64) guest.Entry { return guest.Entry{Kind: guest.KindFile, Path: p, Size: size} }
 	link := func(p, target string) guest.Entry { return guest.Entry{Kind: guest.KindLink, Path: p, Target: target} }
-	small := int64(100)
+	small := int64(100 + 3*block) // three entries and a hundred bytes of files
 	tests := []struct {
 		name  string
 		limit int64
@@ -43,9 +43,10 @@ func TestManifestAdd(t *testing.T) {
 		{"link target may be absolute or dotdot", small, []guest.Entry{link("l", "/../x")}, ""},
 		{"too many bytes of names", small, []guest.Entry{link("l", strings.Repeat("t", guest.MaxNames))}, "bytes of names"},
 		{"path over MaxPath", small, []guest.Entry{dir(strings.Repeat("p", guest.MaxPath+1))}, "longer than"},
-		{"more bytes than the image", small, []guest.Entry{file("a", 60), file("b", 41)}, "image cannot hold"},
+		{"more bytes than the image", small, []guest.Entry{dir("a"), file("a/b", 60), file("c", 41)}, "image cannot hold"},
+		{"more entries than the image", small, []guest.Entry{dir("a"), file("a/b", 0), link("l", "x"), dir("d")}, "image cannot hold"},
 		{"a size that would wrap the sum", small, []guest.Entry{file("a", 1), file("b", math.MaxInt64)}, "image cannot hold"},
-		{"exactly the image", small, []guest.Entry{file("a", 60), file("b", 40)}, ""},
+		{"exactly the image", small, []guest.Entry{dir("a"), file("a/b", 60), file("c", 40)}, ""},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -124,7 +125,7 @@ func FuzzPath(f *testing.F) {
 		if fp := fold(p); fold(fp) != fp || !strings.EqualFold(p, fp) {
 			t.Errorf("fold(%q) = %q: fold(fold) = %q", p, fp, fold(fp))
 		}
-		m := &manifest{limit: 1}
+		m := &manifest{limit: 2 * block}
 		err := m.add(guest.Entry{Kind: guest.KindFile, Path: p})
 		if (err == nil) != (checkPath(p) == nil) || (err == nil) != (len(m.entries) == 1) {
 			t.Errorf("add(%q) = %v, checkPath = %v, kept %d", p, err, checkPath(p), len(m.entries))

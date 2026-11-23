@@ -16,15 +16,15 @@ import (
 	"github.com/omkhar/workcell/v2/internal/guest"
 )
 
-// TestPullGrowthCapEntries is I10 on the pull path: a directory or symlink entry carries no file bytes but costs the
-// host a block and an inode, so against limit bytes at most limit/4096 plus slack of them may land, as in mount mode (C18).
+// TestPullGrowthCapEntries is I10 on the pull path: a directory, symlink or empty-file entry carries no file bytes but costs
+// the host a block and an inode, so against limit bytes at most limit/4096 plus slack of them may land, as in mount mode (C18).
 func TestPullGrowthCapEntries(t *testing.T) {
 	const limit, tries, slack = 100_000, 200, 2
 	most := limit/4096 + slack
 	for _, arm := range []struct {
 		name  string
 		entry func(i int) guest.Entry
-	}{{"dir", func(i int) guest.Entry { return dirEntry(fmt.Sprintf("d%03d", i)) }}, {"link", func(i int) guest.Entry { return linkEntry(fmt.Sprintf("l%03d", i), "x") }}} {
+	}{{"dir", func(i int) guest.Entry { return dirEntry(fmt.Sprintf("d%03d", i)) }}, {"link", func(i int) guest.Entry { return linkEntry(fmt.Sprintf("l%03d", i), "x") }}, {"empty", func(i int) guest.Entry { return fileEntry(fmt.Sprintf("f%03d", i), 0, false) }}} {
 		t.Run(arm.name, func(t *testing.T) {
 			m := &manifest{limit: limit}
 			for i := range tries {

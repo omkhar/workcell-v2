@@ -25,8 +25,9 @@ import (
 
 // Stats is what an export did.
 type Stats struct {
-	Files int   // regular files, each name of a hard link counted
-	Bytes int64 // their data, a hard-linked file once
+	Files  int    // regular files, each name of a hard link counted
+	Bytes  int64  // their data, a hard-linked file once
+	Inodes uint32 // the image's inodes, used and free alike: the most entries it can ever hold
 }
 
 // Export writes the directory dir to a new file at imagePath as an ext4 image with free
@@ -69,7 +70,7 @@ func Export(ctx context.Context, dir, imagePath string, free int64) (st Stats, e
 	if err := w.tree.WriteExt4File(img, time.Now(), free); err != nil {
 		return st, err
 	}
-	return Stats{w.files, w.bytes}, nil
+	return Stats{w.files, w.bytes, w.tree.Inodes}, nil
 }
 
 type walker struct {

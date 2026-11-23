@@ -76,7 +76,8 @@ type Node struct {
 // Tree is an in-memory file tree. The zero value is not usable; call NewTree.
 // A Tree is not safe for concurrent use.
 type Tree struct {
-	root *Node
+	root   *Node
+	Inodes uint32 // after WriteExt4File: how many inodes the image has, used and free alike, so the most entries that can ever be in it
 }
 
 // NewTree returns a tree holding only the root directory: mode 0755, owner 0:0.
