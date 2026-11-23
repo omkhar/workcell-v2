@@ -2,7 +2,7 @@
 // Copyright 2026 Omkhar Arasaratnam
 
 // Finding C55 of S-1007 (I5): the token endpoint is claimed by the spelling of its path, so a spelling the provider's router also serves is relayed unread.
-// Fix unit S-F38 moves this file to internal/proxy/c55_test.go.
+// Fix unit S-F38 moved this file here from escape/_pending/S-F38/ and closes it on the response side.
 
 package proxy
 
