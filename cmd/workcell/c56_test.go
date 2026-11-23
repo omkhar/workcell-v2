@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Omkhar Arasaratnam
 
-// Finding C56 of S-1008 (I1, I4, I7, I8). Fix unit S-F39 first moves this file to cmd/workcell/c56_test.go, package main,
-// build tag `linux || (darwin && arm64 && cgo)`, as this comment says.
+// Finding C56 of S-1008 (I1, I4, I7, I8), moved here from escape/_pending/S-F39/ by fix unit S-F39.
 
 //go:build linux || (darwin && arm64 && cgo)
 
