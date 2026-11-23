@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Omkhar Arasaratnam
 
-// Finding C59 of S-1009, sweep 2 (I14). Fix unit S-F42 first moves this file to
-// cmd/workcell/c59_test.go, as this comment says.
+// Finding C59 of S-1009, sweep 2 (I14). Fix unit S-F42 moved this file here from
+// escape/_pending/S-F42/c59_test.go, where it waited between the audit and the fix (S4).
 
 package main
 

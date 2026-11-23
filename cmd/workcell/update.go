@@ -98,7 +98,7 @@ type installer struct {
 }
 
 // newInstaller reads the user's [update] table (B10): the channel is fetched unless it is "hold" or no key is trusted, the table's alone when it gives one,
-// else the built-in ones; ca's certificates alone are the roots.
+// else the built-in ones; ca's certificates alone are the roots, and ca is read as written, so it must be absolute.
 func newInstaller() (in installer, err error) {
 	in = installer{client: &http.Client{}, keys: channel.Keys}
 	file, err := configFile()
@@ -127,10 +127,12 @@ func newInstaller() (in installer, err error) {
 	default:
 		in.channel = u.Channel
 	}
+	if u.CA != "" && !filepath.IsAbs(u.CA) { // a relative one would be read against the working directory: a repository's own ca.pem as the only root (I13, I14)
+		return in, fmt.Errorf("%s: [update] ca %s is not absolute: set an absolute path", file, u.CA)
+	}
 	if u.CA != "" {
-		pem, err := os.ReadFile(u.CA)
 		pool := x509.NewCertPool()
-		if err != nil || !pool.AppendCertsFromPEM(pem) {
+		if pem, err := os.ReadFile(u.CA); err != nil || !pool.AppendCertsFromPEM(pem) {
 			return in, fmt.Errorf("%s: [update] ca %s: %w", file, u.CA, cmp.Or(err, errors.New("no certificate in it")))
 		}
 		t := http.DefaultTransport.(*http.Transport).Clone()
@@ -356,11 +358,9 @@ func (in installer) fetch(ctx context.Context, dir, name, binary string, pin cha
 	if got := hex.EncodeToString(h.Sum(nil)); got != pin.SHA256 {
 		return fmt.Errorf("the download's sha256 %s is not the pin's %s", got, pin.SHA256)
 	}
-	t, err := unpack(tmp, binary)
-	if err != nil {
+	if t, err := unpack(tmp, binary); err != nil {
 		return err
-	}
-	if err := errors.Join(tmp.Truncate(0), t.WriteExt4File(tmp, time.Time{}, 0), tmp.Sync()); err != nil {
+	} else if err := errors.Join(tmp.Truncate(0), t.WriteExt4File(tmp, time.Time{}, 0), tmp.Sync()); err != nil {
 		return err
 	}
 	return os.Rename(tmp.Name(), filepath.Join(dir, name))

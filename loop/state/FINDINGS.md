@@ -4627,6 +4627,24 @@ trust store was the only guard. PARKED line 78 and the S-1011 and S-1013 records
 as an R3 observation; with a test that an independent verifier failed to refute it is a finding now. Not S14:
 update.go and internal/policy are v2's own, nothing ported, no v1 line. Fix unit: S-F42, below S-F41 in PLAN.md.
 
+C59 FIXED by S-F42, commits 3f11d4c (the test moved) and 52c5999 (the fix) (PR #288). newInstaller in
+cmd/workcell/update.go refuses a ca that filepath.IsAbs does not accept, before the file is opened, with one line,
+"<config.toml>: [update] ca <value> is not absolute: set an absolute path", and resolves it against no other
+directory; an absolute ca and no ca behave as before. Two product lines for the check, paid by two folded in the
+same function and in fetch (the read into its if, unpack's error into an else if, the form unpack itself uses), no
+behaviour changed: product 15000 of 15000, no test line, test 28499 of 28500. update prints the line and exits 2;
+startup, which run uses, prints "workcell: channel: " and the line and goes on with an empty installer, as a held
+channel does; bench drops the error as it drops any other and skips the daily check; nothing is fetched in any of
+the three. The test is cmd/workcell/c59_test.go, the parked file with its head comment changed, 40 lines;
+escape/_pending/ is gone. Shown: the redteam ran the moved test on the claim tree, plain and -race, failing with the
+message of the record above; the builder showed it passing on the fix with cmd/workcell, internal/policy and
+internal/channel green under -race; the reviewer repeated the fail in a worktree of main and the pass at 52c5999,
+and ran the variants by overlay: ca.pem, ./ca.pem, ../x/ca.pem, ~/ca.pem, a dot, a relative directory and a value
+with a leading space are refused at 52c5999, where main took the first three and fetched from the attacker's server
+through the installer's client; with a FIFO as ca.pem in the working directory the fix returns at once and main
+blocks on the open, so the file is not opened; channel = "hold" with a relative ca is refused too. One review round,
+no findings, no fix round. Not S14: v2's own code, no v1 line.
+
 The two tests cost 87 lines, and the test budget stood at 28495 of 28500, so the redteam paid with 83 folded lines
 under escape/ in 35 files, layout only: no row removed, renamed or given another verdict, and no assertion, judge,
 bound, timeout or message touched. Comment paragraphs re-flowed with their words unchanged up to about 200 columns
