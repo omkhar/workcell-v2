@@ -252,8 +252,7 @@ func asChild(args ...string) Result {
 	return r
 }
 
-// diskProbe writes args[0] MiB to an unlinked file in the guest's first temp
-// directory on a disk (one in memory would load memory, not disk), syncs it, and holds it.
+// diskProbe writes args[0] MiB to an unlinked file in the guest's first temp directory on a disk (one in memory would load memory, not disk), syncs it, and holds it.
 func diskProbe(args []string) Result {
 	v, r := ints(args, 1, "MiB")
 	if r.Status != "" {

@@ -85,8 +85,7 @@ var All = append([]Test{
 	{ID: "I3", Name: "resolver-empty-policy", Probe: lookupProbe, Host: resolverJudge(resolvConf, "plain", nothingLookups)},
 	{ID: "I3", Name: "resolver-after-garbage", Probe: lookupProbe, Host: resolverJudge(resolvConf, "garbage", bothLookups), Want: reachable},
 	{ID: "I3", Name: "resolver-after-burst", Probe: lookupProbe, Host: resolverJudge(resolvConf, "burst", bothLookups), Want: reachable},
-	// A secret lies beside the export on the host. The guest goes for it and its
-	// directory by path, link, mount and file handle, and for the host's disks by device node.
+	// A secret lies beside the export on the host. The guest goes for it and its directory by path, link, mount and file handle, and for the host's disks by device node.
 	{ID: "I1", Name: "dotdot-traversal", Probe: traversalProbe, Host: outside(nil), Want: exported},
 	{ID: "I1", Name: "planted-symlink", Probe: symlinkProbe, Host: outside(plantLinks), Want: exported},
 	{ID: "I1", Name: "bind-mount", Probe: mountProbe, Host: outside(nil), Want: exported},

@@ -55,9 +55,7 @@ func NewSecret(w Want) sandbox.Secret {
 	return sec
 }
 
-const boundHeader = "x-api-key"
-const narrowMethod = "POST"
-const narrowPath = "/v1/"
+const boundHeader, narrowMethod, narrowPath = "x-api-key", "POST", "/v1/"
 
 // withSecret is the sandbox the I5 tests want: a workspace, two allowed names, bare, a secret bound to the first, the judge as the host's resolver and the host
 // side in a network of its own, where the judge holds the one address both names resolve to and serves a canary for each at port 443 (twoNames). The guest's

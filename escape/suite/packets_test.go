@@ -17,20 +17,13 @@ func TestQUICDCID(t *testing.T) {
 	long := quicInitial(cid)
 	long[5] = maxCID + 1
 	cases := []struct {
-		name string
-		in   []byte
-		want []byte
-		ok   bool
+		name     string
+		in, want []byte
+		ok       bool
 	}{
-		{"initial", good, cid, true},
-		{"empty cid", quicInitial(nil), []byte{}, true},
-		{"max cid", quicInitial(make([]byte, maxCID)), make([]byte, maxCID), true},
-		{"unpadded", short, nil, false},
-		{"version 2", v2, nil, false},
-		{"short header", shortHeader, nil, false},
-		{"cid too long", long, nil, false},
-		{"nothing", nil, nil, false},
-		{"hello", []byte("hello\n"), nil, false},
+		{"initial", good, cid, true}, {"empty cid", quicInitial(nil), []byte{}, true}, {"max cid", quicInitial(make([]byte, maxCID)), make([]byte, maxCID), true},
+		{"unpadded", short, nil, false}, {"version 2", v2, nil, false}, {"short header", shortHeader, nil, false}, {"cid too long", long, nil, false},
+		{"nothing", nil, nil, false}, {"hello", []byte("hello\n"), nil, false},
 	}
 	for _, c := range cases {
 		got, ok := quicDCID(c.in)

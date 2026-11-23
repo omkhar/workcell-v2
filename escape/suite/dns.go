@@ -89,9 +89,8 @@ func withEDNS0(msg []byte) []byte {
 
 // dnsReply is what a resolver's response says, as far as a probe judges it: the id it answers, its rcode, and the type and data of each answer record.
 type dnsReply struct {
-	ID      uint16
-	Rcode   uint16
-	Answers []dnsRR
+	ID, Rcode uint16
+	Answers   []dnsRR
 }
 type dnsRR struct {
 	Type uint16

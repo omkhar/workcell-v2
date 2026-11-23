@@ -29,17 +29,15 @@ import (
 // control is the plain container of SPEC T2: new mount, pid, uts and ipc namespaces, the host's network and root shared, no cap on what it logs. Its channel is
 // a unix socket served by naiveHost for each run; the command, pid 1 of its namespace, holds the guest end as descriptor 3. Every escape test must fail here.
 type control struct {
-	dir       string
-	payload   string
-	workspace string
-	env       []string // what a naive sandbox exports to the guest: the real secret
-	command   string   // the provider a run starts by name, instead of the payload (Config.Command)
-	head      bool     // the operator's stdout goes away after its first read (Config.Head)
-	helpers   map[string]*exec.Cmd
-	ln        *net.UnixListener // the host end of the channel
-	relay     *naiveRelay       // the host end of the relay
-	resolver  *naiveResolver    // the resolver the guest's resolv.conf names
-	update    *UpdateConfig     // the channel a naive start installs from, every start
+	dir, payload, workspace string
+	env                     []string // what a naive sandbox exports to the guest: the real secret
+	command                 string   // the provider a run starts by name, instead of the payload (Config.Command)
+	head                    bool     // the operator's stdout goes away after its first read (Config.Head)
+	helpers                 map[string]*exec.Cmd
+	ln                      *net.UnixListener // the host end of the channel
+	relay                   *naiveRelay       // the host end of the relay
+	resolver                *naiveResolver    // the resolver the guest's resolv.conf names
+	update                  *UpdateConfig     // the channel a naive start installs from, every start
 }
 
 // controlLoader runs as pid 1 of the run's namespaces: $0 the session's resolv.conf, $1 the command, then its arguments.

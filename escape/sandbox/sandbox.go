@@ -23,14 +23,12 @@ import (
 var ErrNotImplemented = errors.New("not implemented")
 
 // Limits on what the runner keeps of the payload's output; the rest is dropped (I12).
-const MaxStdout = 4096
-const MaxStderr = 1024
+const MaxStdout, MaxStderr = 4096, 1024
 
 // Output is what one payload run produced, as far as the runner keeps it.
 type Output struct {
-	Stdout []byte
-	Stderr []byte
-	Exit   int
+	Stdout, Stderr []byte
+	Exit           int
 }
 
 // Config is the sandbox a test wants. The caps are the product's [resources]; zero leaves the adapter's default. Control applies no cap.
@@ -38,14 +36,11 @@ type Config struct {
 	Payload   string // host path of the static payload binary
 	Workspace string // host directory exported into the guest as its workspace; "" exports nothing
 	// Mount serves Workspace live (`--mount`, SPEC A5) instead of a clone; control shows it live either way.
-	Mount     bool
-	CPUs      int
-	MemoryMiB int
-	DiskMiB   int
+	Mount                    bool
+	CPUs, MemoryMiB, DiskMiB int
 	// Allow names the hosts the session policy allows, each resolving to the test host's own address, where the judge's canaries listen (SPEC T8); Deny names
 	// hosts it does not, resolved the same way. Control has no policy.
-	Allow []string
-	Deny  []string
+	Allow, Deny []string
 	// Resolver is the IPv4 address of a DNS server on the test host, port 53, the host side resolves every name with; "" leaves the adapter's own.
 	Resolver string
 	// Isolated, on Linux, runs the host side in a network namespace of its own with one address and no way out, so nothing leaves the test host (T8, S12). It
@@ -133,9 +128,7 @@ type Observe interface {
 
 // Channel is the host end of the host-guest channel, or of the relay, as the init is connected to it: "unix:<path>" or "vsock:<cid>:<port>". The host answers
 // no guest frame; what a hostile one did shows in the run (I12).
-type Channel struct {
-	Addr string
-}
+type Channel struct{ Addr string }
 
 // Names lists the adapters, in the order shown to a user.
 var Names = []string{"control", "workcell"}
@@ -204,9 +197,7 @@ func LoopbackHolds(ip string) error {
 // to it leaves the host (T8, S12). There the test host holds IsolatedNet on its loopback device, so Neighbour lies on a network of the host's own, and the
 // judge's canaries listen at CanaryAddr, outside that prefix, which a local route alone makes the host's: a product that dials only off the host's networks
 // reaches them still.
-const IsolatedNet = "192.175.48.1/25"
-const Neighbour = "192.175.48.2"
-const CanaryAddr = "192.175.48.129"
+const IsolatedNet, Neighbour, CanaryAddr = "192.175.48.1/25", "192.175.48.2", "192.175.48.129"
 
 // placed is addr with "host" or "neighbour" replaced: where the judge's canaries listen, or an address on a network the test host holds, in the network the
 // product reaches the test host in. In a session's own network (isolated) those are CanaryAddr and Neighbour; in the host's own, both are HostAddr.

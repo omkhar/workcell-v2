@@ -3898,3 +3898,234 @@ new.
 Sweep 2 verdict for this surface: no candidates, so it adds nothing at medium or above; sweep 2 already confirmed two
 mediums (C52 on S-1003, C53 on S-1005, both fixed), so S-1017 will still call a third sweep (S8). No model declined
 and no safeguard re-ran a request.
+
+## S-1007, sweep 2: secrets: sources, placeholders, sign-in token swap, git credentials, logs, crash output (I5), as built at main ad99986
+
+Fresh context, the whole surface read in full as built (not a diff), after the 32 fix units of sweep 1 and S-F33 to
+S-F36 of sweep 2, at the claim commit 6177141 on main ad99986. One auditor run, finished without a stop: no model
+declined and no safeguard re-ran a request. No hypervisor in the session, and nothing on this surface needed a VM for
+its Go-level evidence. Result: two candidates, C54 and C55.
+
+Trust boundary. Guest root and hostile model output own every byte of a terminated HTTP/1.1 request after S-1005's
+parser: the header names and values that placeholderForm judges (internal/proxy/terminate.go), the method and path
+that admits and tokenEndpoint judge (terminate.go, internal/proxy/signin.go), the token-endpoint body that
+tokenRequest reads whole under 256 KiB, and the count, rate and timing of requests. They own the guest's environment,
+disk and memory, where only placeholders arrive (wcph- plus 32 hex, 16 bytes of crypto/rand per rule and per sign-in
+row, minted per session by bindings in cmd/workcell/policy.go; placeholderEnv is the only form that enters the guest,
+through guest.Exec.Env in run_vm.go). Through a clone export they also own every byte of whatever lay under the
+session's working directory when it started (workspace.Export copies .git, ignored files, all of it), and under
+--mount they write that directory live. The malicious repository owns the working directory the supervisor runs in
+(run_vm.go Getwd; nothing changes directory) and workcell.toml, which only narrows (I13). The network attacker owns
+no byte here: a token host's answer is x509-verified upstream of the swap (S-1005), and an allowed provider's own
+behaviour (its router, its echo, its framing) is a provider trait, not an attack; it is the precondition of C55. The
+operator, out of scope, owns the [[secret]] rows: source, host, header, env, method, path, repos. Authority: the
+supervisor, as the operator's uid, reads a value per use (a file open, or a child at a fixed path with a scrubbed
+environment plus HOME, DBUS_SESSION_BUS_ADDRESS and XDG_RUNTIME_DIR, no shell, cwd /), writes it into one outgoing
+header or token body, records every release and denial in the fsynced session ledger before the value leaves
+(broker.go), holds sign-in tokens for the session in broker memory (one generation, replaced tokens zeroed), rewrites
+claimed token-endpoint answers before the guest reads a byte (signin.go tokenResponse), and exports or serves the
+working directory to the guest (run_vm.go).
+
+Lenses (S9), each worked. Parsing and resources: file: needs an absolute path, Stat then a regular-file check, one 64
+KiB+1 buffer, one line, CR refused; cmd: is Fields of operator text, an absolute program, no shell; secret-tool and
+security at fixed paths; the child's environment is PATH, LC_ALL and the three names; Output keeps stderr in
+ExitError.Stderr, which %v never prints; a timeout gives signal: killed. Placeholders are an exact regex over 128
+bits. Bounds: token body and answer 256 KiB+1 before and after gzip, header block 64 KiB, Basic value 4 KiB of strict
+base64, ledger line 4 KiB. The broker's rate limiter is a fixed window, 300 grants and 300 recorded denials a minute
+(C16 stays low). hide and learn decode with UseNumber under encoding/json's depth cap and fall to the plain-bytes
+pass on any decode error. Nothing new. Logic and state: the handler's order is opaque target 400, TRACE and CONNECT
+405, Host 421, the per-rule swap gated by admits 403, the token endpoint read whole 502, carriesPlaceholder 502, then
+ReverseProxy with Rewrite to the SNI host. A placeholder of another rule, of another session or in any other place is
+refused; the Basic form swaps the password only and re-encodes; a real value that is placeholder-shaped fails closed.
+Repository scope is within on the path as sent and on both folds, twelve spellings refused, a real git clone and push
+through the proxy. Sign-in: claimed by EqualFold on three readings of the path; the refresh placeholder is swapped
+only in its own field of a form or of top-level JSON; a second placeholder anywhere in the body is refused; a 2xx
+must be one JSON object; a non-2xx is hidden and passed; Issue runs before hide with the carried token (C15, S-F9).
+What no code does became the two candidates: nothing reads an answer of the token host from a path tokenEndpoint did
+not claim (C55), and nothing compares a file: or cmd: source path with the directory the session exports, although
+holds() in cmd/workcell/data.go does exactly that for the product's own key and config (C54). Concurrency, ordering
+and check-to-use: the grants and tokens maps are immutable after NewBroker; held and Issue run under mu and hand out
+clones; a lookup's value goes into the header in the same goroutine; record follows Resolve and a failed record
+zeroes and withholds the value; concurrent refreshes are covered by the carried token (c15_test.go green). C54's
+windows are real but are not races: under --mount the guest rewrites a cmd: program at leisure and then sends the
+placeholder. Cryptography and identity: placeholder entropy; the session CA and leaves are S-1005's and the ledger
+seal is S-1010's; the secret record's Host is the lowered, allowlisted SNI and its Header the lowered rule header,
+and the guest chooses neither. Failure modes: every error path answers 403, 405, 421 or 502, or closes; a missing
+tool, a bad scheme or an unreadable file is a per-use broker_denied whose text the proxy drops; a closed, failing or
+nil ledger withholds every value; a ModifyResponse error is an empty 502; handler panics are recovered per connection
+by net/http into the discarded ErrorLog; a supervisor traceback prints pointer and length words, never string bytes.
+Only C54 (the export) and C55 (the unclaimed answer) fail open. Downgrade, rollback and replay: placeholders are
+fresh per session, so one a CLI persisted in the workspace is refused next session; a replayed code grant replaces
+the held tokens with those of the attacker's own account and gains nothing the guest could not do by sending its own
+key raw; the broker keeps one generation and zeroes the replaced one; the window uses monotonic time. Interaction
+with other surfaces: audit records carry Event, Host, Header, Name and Result only; workcell log prints the raw
+secret line and --format ocsf maps the same fields with SafeHost; explain prints name, header, host, narrowing,
+sign-in endpoint and $ENV, never a source; start-up errors name file, line, host and name, and NewSignIn's %q holds
+no value; the guest Exec environment is PATH, HOME, LANG, the trust variables, the cache variables, placeholders and
+TERM. I13: loadPolicy's C34 check holds as built; a row whose own host is narrowed away goes with it, and a sign-in
+row whose token host is narrowed away refuses the session.
+
+Refuted or re-checked before anything was raised. A form-encoded 2xx token answer at the claimed path
+(access_token=...&scope=...): learn refuses a 2xx that is not a JSON object; by probe 502, an empty body, one
+token_answer_refused record, the guest reads nothing: fail closed. The refresh placeholder spelt wcph%2D... in a
+grant is neither swapped nor refused and goes upstream as the useless string it is. A Basic value holding the
+placeholder as user and as password: the password is swapped, the user still carries the placeholder,
+carriesPlaceholder refuses 502 before the upstream hears of it. A refresh through C55's side spelling: not claimed,
+the placeholder crosses raw and the provider rejects it; the side spelling yields real tokens only for a grant the
+guest already holds (a code or a device code), which is the initial sign-in. A file: source that is a symlink from
+inside cwd to a file outside: the export copies the link as a link, dangling in the guest, so no leak; a hard link
+inside the repository to the operator's secret needs the operator to make it. A file: or cmd: source under the data
+or config directory: holds() already refuses such a cwd. Two rules on one host: each swaps its own header, a
+placeholder in the other rule's header is refused, and the same header twice is refused at Terminate. The refresh
+placeholder in a header, a query, a cookie-shaped value, another JSON field, a nested field, an array, a second
+refresh_token field or a ;-separated form: refused placeholder_unswapped or passed useless. tokenEndpoint claiming an
+unrelated resource (/oauth/token/../echo, /oauth/token%2F..%2Fecho, /oauth/echo/../token): the first two are not
+claimed, the third is claimed and only read whole and rewritten, which is harmless. id_token, nested or non-string
+tokens in a 2xx answer pass as issued: a provider shape with no attacker (U-403, parked), unchanged. An allowed host
+that echoes the bound header: residual by design (parked), unchanged. env naming PATH, HOME or a trust variable fails
+closed (parked). Crash output: Go tracebacks print argument words, not string bytes; product code has no log sink,
+recover, GOTRACEBACK or SetTraceback, and the ReverseProxy and http.Server ErrorLogs are io.Discard. The rate limiter
+as a host-resource break: bounded per window (C16, low, unchanged). Every fix recorded for this surface holds as
+built: the c15, c32, c33 and c53 tests of internal/proxy, c35 of internal/secret and c34 of cmd/workcell are green in
+the unchanged package runs.
+
+Coverage. Read in full: internal/secret (source.go, broker.go and their tests, c35_test.go, keychain_darwin_test.go);
+internal/proxy (terminate.go, signin.go, proxy.go, allowlist.go, the sign-in, terminate, proxy, git and providers
+tests, c10, c12 and c15); internal/provider/provider.go and the four provider data files; internal/policy/policy.go;
+internal/audit (audit.go, key.go, lines.go); internal/guest (guest.go, trust.go); cmd/workcell (policy.go, run_vm.go,
+explain.go, log.go, ocsf.go, main.go, session.go, data.go, caps.go, relay.go, run_other.go, c34_test.go and the
+bindings tests of policy_test.go); cmd/workcell-init (main.go, exec.go); escape/suite (secrets.go, signin.go,
+https.go, terminate.go, helpers.go, audit.go, tests.go, suite.go, repo.go); escape/sandbox (sandbox.go, workcell.go,
+workcell_vm.go); docs/policy.md, docs/providers.md and the secrets part of docs/threat-model.md; the head of
+internal/workspace/workspace.go; SPEC; the map, the sweep-1 record of this surface, S-1016b and the S-1005 sweep-2
+record in this file; PARKED.md whole. Skimmed by search: the control adapter's secret staging, the workcell adapter's
+environment handling, the escape command's flags, the other c-numbered proxy tests and the log, verify, explain and
+provider tests by name, the two boot calls with nil secrets, and the gate's budget count. Not opened:
+internal/proxy/allowlist_test.go, internal/resolver, internal/fileserve, internal/rootfs beyond the export's call,
+internal/vmm, cmd/workcell update.go and pull.go, docs/adr, _legacy/, and Go's net/http and httputil sources (taken
+as sweep 1 and S-1005 sweep 2 recorded them, and confirmed by probe where a claim rested on them). Ran: go test on
+internal/secret, internal/proxy, internal/provider, internal/audit, internal/policy and cmd/workcell, green; three
+probes by go test -overlay from the session's scratch directory against the real packages (C54, C55 and a refutation
+table), nothing in the tree changed, every target a loopback listener the probe itself started (S12, T8). Not run:
+anything on a real VM, the escape suite, the fuzz targets, a real provider, and the macOS keychain path (secret-tool
+and security are absent in the session, so those two sources ran only their fail-closed arms). Ported files on this
+surface: internal/secret/source.go and broker.go, internal/proxy/terminate.go, proxy.go and allowlist.go; C54 touches
+source.go's reading of any absolute path, so its record carries the v1 line (SPEC section 13).
+
+### S-1007 candidates, sweep 2
+
+C54. ID I5 (real credential bytes never exist in guest disk or memory), reached through the clone export and the live
+mount; the sibling of C19, C28 and C29, which refuse a working directory that would export the product's own
+sensitive state. ATTACKER: guest root or hostile model output, reading /workspace and under --mount writing it.
+Precondition the attacker does not control: the operator's [[secret]] row has a file: or cmd: source whose path lies
+under the directory the session is run in (a .secrets/key or a tools/get-key.sh in the project), the class of C35,
+C21, C30 and C53. SEVERITY: medium (S6). WHERE: cmd/workcell/policy.go loadPolicy, which holds cwd and takes the
+bindings without comparing a source path with it, and bindings, which never sees cwd; internal/secret/source.go
+readFile and run, which read any absolute path wherever it lies; cmd/workcell/run_vm.go, where the clone arm exports
+cwd with workspace.Export (.git, ignored files, all of it) and the mount arm serves cwd live. holds() in
+cmd/workcell/data.go refuses the same placement for the data and config directories, so the check exists for one tree
+and not for the other. INPUT: config.toml holds [[secret]] name="k"
+source="file:/home/me/proj/.secrets/anthropic.key" host="api.anthropic.com" header="x-api-key"
+env="ANTHROPIC_API_KEY", and the operator runs a session in /home/me/proj; the same with
+source="cmd:/home/me/proj/tools/get-key.sh", and with a path spelt through "..". EFFECT: the session starts and the
+product mints a placeholder for a secret whose real bytes the guest already has: in clone mode the key file is in the
+workspace image as /workspace/.secrets/anthropic.key, and under --mount it is readable live, so I5 is broken
+outright. With the cmd: form under --mount the guest rewrites tools/get-key.sh and sends the placeholder once, and
+the host runs the guest's bytes as the operator (scrubbed environment, cwd /), since the broker resolves a source on
+every use; in clone mode the same lands after the operator's own workcell pull and fires at the next session's first
+use. Reproducing test, by the redteam, who was given the claim and not the auditor's probe:
+TestC54SecretSourceUnderTheWorkspace, package main of cmd/workcell, 63 lines, parked at
+escape/_pending/S-F37/c54_test.go. Five arms (clone and mount with file:, clone with the ".." spelling, mount and
+clone with cmd:), each with a fresh working directory, data, config and temporary directory, dummy artifacts from
+c19Data, then loadPolicy and, if that accepts the row, session() with a VMM that cannot start; an arm passes when
+loadPolicy refuses, and fails when a session directory exists under --mount or when the clone's workspace.ext4 holds
+the key bytes (bytes.Contains on the image, no debugfs, no root, no VM). Run by the orchestrator by go test -overlay
+on 6177141, plain and -race, log saved: all five arms fail, with "I5: the key of file:<cwd>/.secrets/anthropic.key
+lies in the export <data>/sessions/<id>/workspace.ext4, which the guest gets as /workspace" in the three clone arms
+(in the cmd: arm the key bytes are those of the script's own text, which is the claim: the program reaches the
+export) and "I5: the session <id> started with <cwd> served live as /workspace, where the guest reads <source>" in
+the two mount arms; every session ends with "start firecracker: invalid argument", after the export exists. Outcome:
+CONFIRMED at medium by the verifier, who ran the test (five failures, plain and -race, as in the saved log), found
+that it takes only the operator's step (a config.toml row and cwd) in the session()-with-dummy-artifacts pattern of
+the C19, C28 and C29 tests and gives the attacker no power, and judged the effect direct for clone (the produced
+image is read and holds the real key while the product mints a placeholder for it; I5, A4) and by mechanism for mount
+(cwd is the live export, and the workspace and file service exclude nothing but sockets, FIFOs and devices). The cmd:
+consequence under --mount, the host running a program the guest rewrote, is real but reasoned, not shown by the test:
+the broker calls Resolve on every Lookup, and docs/policy.md says a source is read on each use, never at start. Not
+intended behaviour: the product is told by the row exactly which path is a credential and still exports or serves it,
+where holds() refuses the like for its own key; docs/policy.md warns about the cmd: working directory and says
+nothing about keeping a source outside the exported directory. Severity by S6: a shown break with an operator-chosen
+precondition the attacker does not control, as C19, C28, C29 and C35 are recorded; not high, because the ordinary
+set-up (keychain, secret-service, or a file under the user's config directory) is unaffected; not low, because the
+break is direct in the clone arms. Fix unit: S-F37, below S-1007 in PLAN.md: in loadPolicy, after bindings, refuse a
+row whose file: path or cmd: program lies within cwd, by within(), before any session directory is made, about five
+product lines; the auditor ran such a change by overlay (its own probe's three arms pass with a refusal naming the
+file, the secret, the path and the directory, and cmd/workcell stays green) and paid for it by folding the doc
+comments of bindings and loadPolicy. Variants not expressed (redteam): a symlink inside cwd to a key file outside it,
+which the auditor refuted (the export copies the link as a link, dangling in the guest); a source under the parent of
+cwd; secret-service: and keychain: are not path sources. Not S14: the missing comparison is v2's own, in
+cmd/workcell/policy.go; source.go, which reads any absolute path, is ported and no v1 release holds it (SPEC section
+13), and whether v1 exports a directory in the same way is the maintainer's reading.
+also in v1 main: credbroker/cli.go
+
+C55. ID I5 (a real token the broker holds never appears in an answer to the guest, the sign-in flow's own contract at
+the head of signin.go). ATTACKER: guest root or hostile model output, choosing the spelling of the token endpoint's
+path. Precondition the attacker does not control: the provider's router serves the token action on a spelling outside
+the matcher's three readings; a route with an optional format, which Rails generates by default as
+/oauth/token(.:format), and the suffix patterns Spring MVC matched before 5.3 are such routers, and a
+double-decoding, NUL-truncating or space-stripping one is the same hole (the parked S-1016b router note). No real
+provider was probed (T8): the claim is about the proxy, and these are documented routing defaults, not defects of
+those projects. SEVERITY: medium (S6), the class of C10 and C33. WHERE: internal/proxy/signin.go tokenEndpoint, which
+claims an endpoint by the path's spelling, and tokenResponse, which returns at once when the request was not claimed,
+so the answer is relayed unread; internal/proxy/terminate.go, whose handler sets the claim and whose ReverseProxy
+relays everything else raw. The check no code performs: nothing reads a 2xx answer of a sign-in host that carries
+access_token or refresh_token when the request was not claimed. INPUT: with the operator's row
+source="signin:login.example.com/oauth/token", the guest, holding the code or device code of the sign-in it is
+performing, sends POST /oauth/token.json (or .xml, or .JSON) with grant_type=authorization_code&code=... to the token
+host. EFFECT: the provider issues the pair for that spelling and the proxy hands the guest
+{"access_token":"sk-acc-2",...,"refresh_token":"sk-ref-2"} verbatim, or in a form framing
+access_token=sk-acc-2&scope=&token_type=bearer: both real tokens are in guest memory, usable and refreshable outside
+the session, where the same grant at /oauth/token returns placeholders. A refresh through the same spelling gains
+nothing (the placeholder crosses raw and is rejected), so the exposure is the sign-in completed in that session, as
+C32 arm a and C34. Reproducing test, by the redteam, who was given the claim and not the auditor's probe:
+TestC55TokenEndpointFormatSuffix, package proxy, 62 lines, parked at escape/_pending/S-F38/c55_test.go. A loopback
+TLS provider whose router cuts a format suffix, the real Proxy with Terminate, a sign-in rule on
+login.example.com/oauth/token and the fixtures of the C10, C32 and C33 tests; the honest spelling must return the two
+placeholders, then a code grant goes to /oauth/token.json, .xml and .JSON, and any real token in an answer fails the
+arm; two arms, a JSON answer and a form answer. Run by the orchestrator by go test -overlay on 6177141, plain and
+-race, log saved: both arms fail on all three suffixes with "POST https://login.example.com/oauth/token.json: the
+guest read a real token: 200" and the body holding sk-acc-2 and sk-ref-2, or the form holding sk-acc-2, while the
+honest spelling returns placeholders. Outcome: CONFIRMED at medium by the verifier, who ran the test (the failures of
+the saved log, plain and -race), read the mechanism in the source (tokenEndpoint claims only spellings equal to the
+rule's path on its readings, the handler sets the claim only then, and tokenResponse returns nil for any other
+answer), and found the omission against the file's own comments, which promise that no real token appears in an
+answer and say the match is wide because an answer taken for another path would reach the guest unread. The fixture
+is that of C10, C32 and C33; its one modelled element, the suffix-cutting router, is the stated precondition and is
+standard router behaviour, not a compromise of a provider. Gain: the guest holds the code, but it reaches the token
+host only through the proxy (I2) and through the honest spelling gets placeholders; here it keeps real tokens that
+work without the broker. Severity by S6: medium, not high as C32 arm a, because the precondition is specific to a
+router and not required by the RFC; not low, since I5 is shown broken; that sign-in is unsupported for the shipped
+providers narrows the reach and, as C34's record says, does not make it low. It is the parked S-1016b note now
+reproduced, not a new class. Fix unit: S-F38, below S-1007 in PLAN.md: close it on the response side with no model of
+a router: in tokenResponse, for a request that was not claimed, read a 2xx JSON or form answer of a sign-in host
+whole under the token bound and refuse it (502, token_answer_refused) when it carries access_token or refresh_token,
+about twelve product lines; the auditor ran such a change by overlay (every side spelling answers 502 with one
+record, the honest path still returns placeholders, internal/proxy green under -race) and paid for it by folding
+comments inside signin.go. That fix also covers the other parked spellings (a doubled leading slash, a double-encoded
+letter) and the redteam's unexpressed variants (/oauth/token.json;jsessionid=x, /oauth/token.json/, a double suffix),
+which a fix on the path side could miss. Not S14: signin.go is v2's own, not ported, so there is no v1 line.
+
+The two tests cost 125 lines, and the test budget stood at 28500 of 28500, so the redteam paid with 139 folded lines
+under escape/ in 24 files, no row removed, renamed or given another verdict and no assertion, judge or timeout
+touched: table rows packed two to four to a line in eleven test files, same-type fields and single-field structs
+joined, adjacent uncommented constants joined into one declaration, and two wrapped comments folded. Test code is now
+28486 of 28500, product 15000 of 15000.
+
+Sweep 2 verdict for this surface: two candidates, C54 and C55, both confirmed at medium; sweep 2 had already
+confirmed two mediums (C52 on S-1003, C53 on S-1005, both fixed), so S-1017 will call a third sweep (S8). The fix
+units are S-F37 and S-F38; the next candidate number is C56. The other shapes found are R3 notes, copied to
+PARKED.md: the form-framed token answer that is refused at the claimed path, the 256 KiB bound that the C55 fix puts
+on every JSON or form answer of a sign-in host, the pull-borne chain of C54's cmd: arm, a bind mount of the source's
+directory beneath cwd, the 2xx device-flow answer that must keep passing, a non-string token field, and the two
+source tools absent from the session. In the auditor, the redteam and the two verifiers no model declined and no
+safeguard re-ran a request.
