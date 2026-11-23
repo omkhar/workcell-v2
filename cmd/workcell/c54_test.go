@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Omkhar Arasaratnam
 
-// Finding C54 of S-1007 (I5): a [[secret]] row whose file: or cmd: source lies under the directory the session runs in. Fix unit S-F37 moves this file to
-// cmd/workcell/c54_test.go.
+// Finding C54 of S-1007 (I5): a [[secret]] row whose file: or cmd: source lies under the directory the session runs in. Fixed by unit S-F37.
 
 //go:build linux || (darwin && arm64 && cgo)
 
