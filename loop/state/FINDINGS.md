@@ -3218,6 +3218,22 @@ Residual: the hosted margin is a few tenths of a second, since the guest's push 
 still costs the host per frame is the bufio and ReadFull call chain (about 20 ns) and one vsock read per 4 KiB fill.
 Variants not expressed (redteam): 1-byte frames, Stdout and Stderr alternating, the flood on a fresh connection to the
 port, a flood cut mid-header at its deadline. Not S14: no file involved is ported.
+C51 margin (Mac, after the halt main-red of issue 274). The residual above was the cause of the halt: in nine hosted
+gate runs after PR #263 the row passed eight times with 0.0 to 0.2 CPU s of room (4.2 of 4.4, 4.3 of 4.4, 4.2 of 4.4,
+4.3 of 4.4, 4.3 of 4.3, 4.4 of 4.5, 4.4 of 4.4, 4.1 of 4.3) and failed once, on the claim commit of S-F36, which
+changes no code (4.6 of 4.6 as printed, 50525172 frames); cpu-flood and device-cpu-flood beside it kept 0.7 to 1.0 of
+room in all nine. First try, refused by the hosted gate and not on main (PR #275, commit a4b517f): a decoder path that
+takes a whole buffered frame from one Peek, and a 64 KiB buffer. On the Mac it halved the cost a frame (decoder 22 to
+8.3 ns, output() behind a unix socket 36.5 to 17.8 ns of process CPU). On the real VM the row failed harder: 5.2 CPU s
+in 3.4 s, allowed 4.4, with 123964700 frames (709 MiB), more than twice the frames of any run before. So the residual
+line above was right and its remedy was not: a cheaper host takes a bigger flood, and the cost follows what the guest
+is allowed to push, not what a frame costs. Second try, this record: output() in cmd/workcell/run_vm.go takes at most
+paceFrames (65536) frames per paceEvery (64 ms), about a million frames a second, and sleeps the rest of the 64 ms
+when a block came faster, so the channel fills and the guest waits. A stream of 64 KiB frames at that rate would be
+64 GiB/s, so only a flood of small frames ever waits, and it loses time, never a frame. wire.go is as on main. On the
+Mac (no VM) a 3 s flood over a unix socket gets 3082079 frames through, against 100285804 before. Paid by joining
+five wrapped comment lines in cmd/workcell/session.go. The hosted number is the row's line in the gate of the pull
+request that lands this record.
 
 Sweep 2 verdict for this surface: two candidates, both confirmed at low (C50, C51), nothing at medium or above. Both
 get fix units (S-F33, S-F34), as sweep 1 did with its lows (S7 lists them; the fix units are hardening the loop can
