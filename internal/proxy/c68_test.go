@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Omkhar Arasaratnam
 
-// Finding C68 of S-1005, sweep 3 (I5). This file waits here until fix unit S-F51, which moves it to internal/proxy/c68_test.go unchanged. A placeholder bound
+// Finding C68 of S-1005, sweep 3 (I5). Fix unit S-F51 moved this file here from escape/_pending/S-F51/ unchanged (SPEC S4) and closes it. A placeholder bound
 // to POST /v1/ or to one repository is swapped for the real secret on a request whose line sits inside the rule while a routing-override header moves it outside:
 // the method from X-HTTP-Method-Override on a POST (Rack::MethodOverride, ASP.NET MVC, Google's API front end), the path from X-Original-URL or X-Rewrite-URL (IIS
 // URL Rewrite, Symfony HttpFoundation). That the operator's host sits behind such a framework is a precondition the attacker does not control; the fake upstream below honours those headers as they do.
