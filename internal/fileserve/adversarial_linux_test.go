@@ -17,8 +17,7 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-// step is one row: a host-side action, one request, the errno it must get, and a check of
-// the body. Rows are numbered after the redteam's adversarial list.
+// step is one row: a host-side action, one request, the errno it must get, and a check of the body. Rows are numbered after the redteam's adversarial list.
 type step struct {
 	name  string
 	pre   func()
@@ -27,10 +26,7 @@ type step struct {
 	after func(t *testing.T, body []byte)
 }
 
-// TestAdversarial plays the redteam's list against one export, in order, over a pipe. The
-// secret beside the export must be unchanged at the end, and nothing new may lie beside it.
-// A directory the host moved away answers ENOENT for its own entry (row 23, direct) and
-// ESTALE when an ancestor moved or the entry was replaced (rows 23 deep and 14).
+// TestAdversarial plays the redteam's list against one export, in order, over a pipe. The secret beside the export must be unchanged at the end, and nothing new may lie beside it. A directory the host moved away answers ENOENT for its own entry (row 23, direct) and ESTALE when an ancestor moved or the entry was replaced (rows 23 deep and 14).
 func TestAdversarial(t *testing.T) {
 	fx := newFixture(t)
 	k, stop := start(t, fx.export)

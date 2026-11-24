@@ -29,6 +29,13 @@ const (
 	maxNodes = 1 << 17
 	// frameLimit is how long one frame may take once it has begun (I12), as on the channel.
 	frameLimit = 5 * time.Second
+	// paceFrames and paceEvery: Serve reads at most paceFrames requests a paceEvery, 16 thousand a second, a BATCH_FORGET counting perForget entries as one
+	// (I10). A replied request costs the host about 10 us, so that is a sixth of a core, within the one vCPU plus a second of slack the gate allows a guest.
+	// Honest traffic stays far below: ADR-005 measured 2 to 6 thousand requests a second, and at 60 KiB a READ or WRITE the transport caps a stream lower.
+	paceFrames, paceEvery = 1 << 10, 64 * time.Millisecond
+	// perForget: an entry the host does not know costs it about a 250th of a request, and one it knows was paid for by the LOOKUP that made the node; at 64 an
+	// honest guest shedding the whole table of maxNodes waits an eighth of a second.
+	perForget = 64
 	// validity is the entry and attribute timeout the guest kernel caches, as ADR-005 measured.
 	validity = time.Second
 )
@@ -156,8 +163,7 @@ func (s *Server) Close() {
 	s.nodes, s.index, s.fhs, s.fds = map[uint64]*node{}, map[key]*node{}, map[uint64]*handle{}, 0
 }
 
-// Serve answers requests on st until it ends: nil at a clean end of stream, else the stream's error. Whatever happens, every descriptor is closed before it
-// returns.
+// Serve answers requests on st until it ends: nil at a clean end of stream, else the stream's error. Whatever happens, every descriptor is closed before it returns.
 func (s *Server) Serve(st wire.Stream) error {
 	defer s.Close()
 	c := wire.New(st, frameLimit)
@@ -174,7 +180,11 @@ func (s *Server) Serve(st wire.Stream) error {
 	}
 	sem := make(chan struct{}, workers)
 	var inited, destroyed bool
-	for {
+	for n, mark := 0, time.Now(); ; n++ {
+		if n >= paceFrames { // past the pace a faster host only takes a bigger flood (I10)
+			time.Sleep(paceEvery - time.Since(mark))
+			mark, n = time.Now(), 0
+		}
 		f, err := c.ReadFrame()
 		if err != nil {
 			if errors.Is(err, io.EOF) {
@@ -211,8 +221,12 @@ func (s *Server) Serve(st wire.Stream) error {
 			continue
 		case r.Opcode == opDestroy:
 			destroyed = true
+		case r.Opcode == opInterrupt: // answered with nothing, so settled here, before a slot and a goroutine are taken: a flood of them costs the reader alone (I10)
+		case quiet: // FORGET and BATCH_FORGET: the same, once the lookups are dropped
+			s.forget(r.Forgets)
+			n += len(r.Forgets) / perForget
 		}
-		if e != 0 || r.Opcode == opDestroy {
+		if e != 0 || quiet || r.Opcode == opDestroy {
 			if !quiet {
 				send(Out(r.Unique, e))
 			}
@@ -221,21 +235,14 @@ func (s *Server) Serve(st wire.Stream) error {
 		sem <- struct{}{}
 		wg.Go(func() {
 			defer func() { <-sem }()
-			if b := s.handle(r); b != nil {
-				send(b)
-			}
+			send(s.handle(r))
 		})
 	}
 }
 
-// handle serves one request; nil means no reply.
+// handle serves one request and returns its reply.
 func (s *Server) handle(r request) []byte {
 	switch r.Opcode {
-	case opForget, opBatchForget:
-		s.forget(r.Forgets)
-		return nil
-	case opInterrupt:
-		return nil
 	case opRelease, opReleasedir:
 		return Out(r.Unique, s.release(r.NodeID, r.Fh))
 	case opRename:
@@ -447,11 +454,7 @@ func (s *Server) openFile(dirfd int, name string, flags int, mode uint32) (int, 
 	return fd, st, 0
 }
 
-func (s *Server) closeFD(fd int) {
-	s.mu.Lock()
-	s.closeFDLocked(fd)
-	s.mu.Unlock()
-}
+func (s *Server) closeFD(fd int) { s.mu.Lock(); s.closeFDLocked(fd); s.mu.Unlock() }
 
 func (s *Server) closeFDLocked(fd int) {
 	if fd >= 0 {
@@ -462,10 +465,7 @@ func (s *Server) closeFDLocked(fd int) {
 
 func errno(err error) syscall.Errno {
 	var e syscall.Errno
-	switch {
-	case err == nil:
-		return 0
-	case errors.As(err, &e):
+	if err == nil || errors.As(err, &e) {
 		return e
 	}
 	return syscall.EIO

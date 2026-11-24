@@ -14,8 +14,7 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-// TestC41MountDoesNotWriteThroughHardLink (I1): export file "hl" shares its inode with dir/other, which no path in the export names.
-// Whatever errno the guest gets, dir/other keeps its bytes, mode and mtime; "hl" stays readable and one-name file "victim" writable.
+// TestC41MountDoesNotWriteThroughHardLink (I1): export file "hl" shares its inode with dir/other, which no path in the export names. Whatever errno the guest gets, dir/other keeps its bytes, mode and mtime; "hl" stays readable and one-name file "victim" writable.
 func TestC41MountDoesNotWriteThroughHardLink(t *testing.T) {
 	open := func(k *kern, n uint64, flags uint32) uint64 { // 0, which no request takes, when the open is refused
 		_, b := k.call(reqOpen(n, flags))
