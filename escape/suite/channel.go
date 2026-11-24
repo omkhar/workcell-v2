@@ -15,8 +15,7 @@ import (
 	"time"
 )
 
-// SPEC I12. Root in the guest reaches the host end of the channel as a duplicate of the init's connection (pidfd_getfd on pid 1), where a forged frame is indistinguishable from the init's own, and as fresh connections to the same port. The evidence is the host's: what `workcell run` returned for the hostile run and whether a plain run after still works. I12 holds only if the run ends within
-// hangBound without a crash or control bytes on stderr, reporting the command's own status or a clean refusal, never one the frame named.
+// SPEC I12. Root in the guest reaches the host end of the channel as a duplicate of the init's connection (pidfd_getfd on pid 1), where a forged frame is indistinguishable from the init's own, and as fresh connections to the same port. The evidence is the host's: what `workcell run` returned for the hostile run and whether a plain run after still works. I12 holds only if the run ends within hangBound without a crash or control bytes on stderr, reporting the command's own status or a clean refusal, never one the frame named.
 //
 // Frames: a 6-byte header of version 1, a type and a big-endian length of at most 65536, then the payload. Guest-to-host types are Stdout 5, Stderr 6, Exit 7 and Ack 8. An Exit payload is a tag byte and a value: 0 then one byte of status, 1 then one byte of signal, 2 then up to 256 bytes of text.
 const (

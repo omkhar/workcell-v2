@@ -21,8 +21,7 @@ import (
 	"time"
 )
 
-// The I3 probes send a DNS query for a name no policy can allow straight to a listener the judge started on the host, bypassing whatever resolver the guest was
-// given: over plain UDP and TCP, inside TLS (DoT, RFC 7858) and inside HTTPS (DoH, RFC 8484), and as a tunnel that carries data out in the labels. A query that arrives is the proof; the guest's word is not. Every probe is given a literal address and never looks a name up.
+// The I3 probes send a DNS query for a name no policy can allow straight to a listener the judge started on the host, bypassing whatever resolver the guest was given: over plain UDP and TCP, inside TLS (DoT, RFC 7858) and inside HTTPS (DoH, RFC 8484), and as a tunnel that carries data out in the labels. A query that arrives is the proof; the guest's word is not. Every probe is given a literal address and never looks a name up.
 
 // dnsName is the name the guest asks for: unique per run, never allowed.
 func dnsName(token string) string { return token + ".invalid." }
