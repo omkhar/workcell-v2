@@ -21,13 +21,8 @@ import (
 	"github.com/omkhar/workcell/v2/internal/pins"
 )
 
-const (
-	// OSV is the query endpoint of the OSV database, the one production uses.
-	OSV      = "https://api.osv.dev/v1/query"
-	maxBody  = 4 << 20
-	maxPages = 8
-	timeout  = 30 * time.Second
-)
+// OSV is the query endpoint of the OSV database, the one production uses.
+const OSV, maxBody, maxPages, timeout = "https://api.osv.dev/v1/query", 4 << 20, 8, 30 * time.Second
 
 type answer struct {
 	Vulns []vuln `json:"vulns"`

@@ -31,18 +31,11 @@ import (
 	"github.com/omkhar/workcell/v2/internal/sigstore"
 )
 
-const (
-	// MaxArtifact bounds one download and one tarball's decompressed bytes. A provider CLI is at most a few hundred MiB; an OCI manifest is a few KiB.
-	MaxArtifact     = 512 << 20
-	maxBundle       = 64 << 10
-	maxAttestations = 1 << 20
-	inTotoType      = "application/vnd.in-toto+json"
-)
+// MaxArtifact bounds one download and one tarball's decompressed bytes. A provider CLI is at most a few hundred MiB; an OCI manifest is a few KiB.
+const MaxArtifact, maxBundle, maxAttestations, inTotoType = 512 << 20, 64 << 10, 1 << 20, "application/vnd.in-toto+json"
 
-var (
-	slsaTypes      = map[string]bool{"https://slsa.dev/provenance/v1": true, "https://slsa.dev/provenance/v0.2": true}
-	statementTypes = map[string]bool{"https://in-toto.io/Statement/v1": true, "https://in-toto.io/Statement/v0.1": true}
-)
+var slsaTypes = map[string]bool{"https://slsa.dev/provenance/v1": true, "https://slsa.dev/provenance/v0.2": true}
+var statementTypes = map[string]bool{"https://in-toto.io/Statement/v1": true, "https://in-toto.io/Statement/v0.1": true}
 
 // Verifier downloads with Client and checks Sigstore bundles against Root. A nil Client means http.DefaultClient; a nil Root means the embedded public Sigstore
 // root.
@@ -363,7 +356,4 @@ func (b *body) Read(p []byte) (int, error) {
 }
 
 // versionRE and nameRE are non-empty ASCII letters and digits plus ".-+" and ".-_".
-var (
-	versionRE = regexp.MustCompile(`^[A-Za-z0-9.+-]+$`)
-	nameRE    = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
-)
+var versionRE, nameRE = regexp.MustCompile(`^[A-Za-z0-9.+-]+$`), regexp.MustCompile(`^[A-Za-z0-9._-]+$`)

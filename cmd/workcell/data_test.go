@@ -36,6 +36,20 @@ func TestDataDir(t *testing.T) {
 	}
 }
 
+// TestMounts: the kernel's mount table parsed, its octal escapes undone, and the mount beneath a directory found that names the data directory, an ancestor of it or a tree inside it, by device and root (C65).
+func TestMounts(t *testing.T) {
+	rows := mounts("22 27 0:21 / /proc rw - proc proc rw\n27 1 8:1 / / rw - ext4 /dev/sda1 rw\n30 27 0:30 / /tmp rw - tmpfs tmpfs rw\n31 27 8:1 /home/u/.local/share/workcell /repo/data rw - ext4 /dev/sda1 rw\n" +
+		"32 27 8:1 /home/u/.local/share/workcell/sessions /repo/s rw - ext4 /dev/sda1 rw\n33 27 8:1 /home /repo/h rw - ext4 /dev/sda1 rw\n34 27 0:31 / /repo/node_modules rw - tmpfs tmpfs rw\n35 27 8:1 /srv /repo/x\\040y rw - ext4 /dev/sda1 rw\nshort row\n")
+	if len(rows) != 8 || rows[7] != (mount{"8:1", "/srv", "/repo/x y"}) {
+		t.Fatalf("mounts = %+v, want 8 rows, the last {8:1 /srv /repo/x y}", rows)
+	}
+	for dir, want := range map[string]string{"/repo": "/repo/data", "/repo/s": "/repo/s", "/repo/h": "/repo/h", "/repo/node_modules": "", "/repo/x y": "", "/tmp": "", "/home/u/.local/share/workcell": ""} {
+		if got := aliased(rows, dir, "/home/u/.local/share/workcell"); got != want {
+			t.Errorf("aliased(%q) = %q, want %q", dir, got, want)
+		}
+	}
+}
+
 func TestFindArtifacts(t *testing.T) {
 	names := required()
 	without := func(n string) []string {

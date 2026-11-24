@@ -306,7 +306,7 @@ func put(root int, e guest.Entry, data source) error {
 		unix.Close(up)
 	}
 	if err != nil {
-		return fmt.Errorf("open its directory: %w", err)
+		return fmt.Errorf("open its directory, beneath the destination and on its filesystem: %w", err)
 	}
 	defer unix.Close(pfd)
 	if isGit(pfd, name) { // the last name, or the directory at which the walk stopped

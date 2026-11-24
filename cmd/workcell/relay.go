@@ -26,14 +26,9 @@ import (
 // whatever its address, carries one framed query, which the host resolver answers from the
 // policy alone with one framed reply (I3): no query leaves the host. Any other header closes the
 // stream with nothing dialled.
-const (
-	maxStreams = 1024            // streams held at once; the next one is closed at once
-	headerWait = 5 * time.Second // from accept to the last header byte, or to the end of a DNS exchange
-	dnsPort    = 53
-)
+const maxStreams, headerWait, dnsPort = 1024, 5 * time.Second, 53 // streams held at once, the next one is closed at once; from accept to the last header byte, or to the end of a DNS exchange
 
-// portsArg is the workcell.ports= argument of the guest's kernel command line: the TCP ports
-// the init relays. The guest listens on them (ADR-003); the host admits only them regardless (A1).
+// portsArg is the workcell.ports= argument of the guest's kernel command line: the TCP ports the init relays. The guest listens on them (ADR-003); the host admits only them regardless (A1).
 func portsArg(ports []uint16) string {
 	s := make([]string, len(ports))
 	for i, p := range ports {
@@ -59,8 +54,7 @@ func (a adapters) closeAll() {
 	}
 }
 
-// adapter is the net.Listener of one served port: Accept takes the streams the demultiplexer
-// delivers, and returns net.ErrClosed once the adapter is closed, which ends the proxy's Serve.
+// adapter is the net.Listener of one served port: Accept takes the streams the demultiplexer delivers, and returns net.ErrClosed once the adapter is closed, which ends the proxy's Serve.
 type adapter struct {
 	port  uint16
 	conns chan net.Conn
@@ -166,8 +160,7 @@ func stream(c *relayConn, served adapters, dns *resolver.Resolver, deny denyFunc
 	l.deliver(c)
 }
 
-// exchange reads the one framed query of a DNS stream and writes the one framed reply, if the
-// resolver has one. The frame reader bounds the query; the resolver bounds the reply (I12).
+// exchange reads the one framed query of a DNS stream and writes the one framed reply, if the resolver has one. The frame reader bounds the query; the resolver bounds the reply (I12).
 func exchange(c net.Conn, dns *resolver.Resolver) {
 	q, err := relay.ReadFrame(c)
 	if err != nil {

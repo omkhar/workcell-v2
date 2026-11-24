@@ -7,20 +7,21 @@ package main
 
 import "golang.org/x/sys/unix"
 
-// The three opens of a path the guest chose, beneath a directory the host holds open (R6):
-// openat2 resolves it under the descriptor alone and through no symlink at all.
+// The three opens of a path the guest chose, beneath a directory the host holds open (R6): openat2 resolves it under the descriptor alone, through no symlink at
+// all and across no mount point, so a tree mounted beneath the destination after holds() judged it, workcell's own directory among them, is never written (C65).
+const beneath = unix.RESOLVE_BENEATH | unix.RESOLVE_NO_SYMLINKS | unix.RESOLVE_NO_XDEV
 
 // dirBeneath opens the directory rel beneath root, or root itself for ".".
 func dirBeneath(root int, rel string) (int, error) {
-	return unix.Openat2(root, rel, &unix.OpenHow{Flags: unix.O_RDONLY | unix.O_DIRECTORY | unix.O_CLOEXEC, Resolve: unix.RESOLVE_BENEATH | unix.RESOLVE_NO_SYMLINKS})
+	return unix.Openat2(root, rel, &unix.OpenHow{Flags: unix.O_RDONLY | unix.O_DIRECTORY | unix.O_CLOEXEC, Resolve: beneath})
 }
 
 // createBeneath makes the file name in the directory open as dir, which must not exist yet.
 func createBeneath(dir int, name string, mode uint32) (int, error) {
-	return unix.Openat2(dir, name, &unix.OpenHow{Flags: unix.O_WRONLY | unix.O_CREAT | unix.O_EXCL | unix.O_NOFOLLOW | unix.O_CLOEXEC, Mode: uint64(mode), Resolve: unix.RESOLVE_BENEATH | unix.RESOLVE_NO_SYMLINKS})
+	return unix.Openat2(dir, name, &unix.OpenHow{Flags: unix.O_WRONLY | unix.O_CREAT | unix.O_EXCL | unix.O_NOFOLLOW | unix.O_CLOEXEC, Mode: uint64(mode), Resolve: beneath})
 }
 
 // fileBeneath opens the file rel beneath root for reading.
 func fileBeneath(root int, rel string) (int, error) {
-	return unix.Openat2(root, rel, &unix.OpenHow{Flags: unix.O_RDONLY | unix.O_NOFOLLOW | unix.O_CLOEXEC, Resolve: unix.RESOLVE_BENEATH | unix.RESOLVE_NO_SYMLINKS})
+	return unix.Openat2(root, rel, &unix.OpenHow{Flags: unix.O_RDONLY | unix.O_NOFOLLOW | unix.O_CLOEXEC, Resolve: beneath})
 }

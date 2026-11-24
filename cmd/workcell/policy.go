@@ -21,8 +21,7 @@ import (
 	"github.com/omkhar/workcell/v2/internal/secret"
 )
 
-// configFile is the policy file, $XDG_CONFIG_HOME/workcell/config.toml or ~/.config/workcell/config.toml,
-// which may not exist.
+// configFile is the policy file, $XDG_CONFIG_HOME/workcell/config.toml or ~/.config/workcell/config.toml, which may not exist.
 func configFile() (string, error) {
 	dir, err := xdgDir("XDG_CONFIG_HOME", ".config")
 	return filepath.Join(dir, "config.toml"), err

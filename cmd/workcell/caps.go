@@ -18,16 +18,12 @@ import (
 // Smallest and largest guest this build will start. 128 MiB is what the kernel, the
 // initramfs the init runs from and a Go init need to come up with a little room to spare; the
 // 32 vCPUs are Firecracker's own limit, said here so that the denial is ours and clear (I10).
-const (
-	minMemoryMiB = 128
-	maxCPUs      = 32
-)
+const minMemoryMiB, maxCPUs = 128, 32
 
 // limits are the resource caps of one session. DiskMiB 0 means the default, 1 GiB.
 type limits struct{ CPUs, MemoryMiB, DiskMiB int }
 
-// parseSize reads a size such as "256MiB" or "4GiB" (the spelling of SPEC section 5) into
-// whole MiB. Digits alone count as MiB. It never returns zero without an error.
+// parseSize reads a size such as "256MiB" or "4GiB" (the spelling of SPEC section 5) into whole MiB. Digits alone count as MiB. It never returns zero without an error.
 func parseSize(s string) (int, error) {
 	digits, unit := s, "MiB"
 	for _, u := range []string{"MiB", "GiB"} {
@@ -48,12 +44,10 @@ func parseSize(s string) (int, error) {
 	return int(n), nil
 }
 
-// disk is how many bytes the guest may write in all: --disk, or 1 GiB (I10). In clone mode
-// it sizes the image's free room; in mount mode it is the export's cap on growth.
+// disk is how many bytes the guest may write in all: --disk, or 1 GiB (I10). In clone mode it sizes the image's free room; in mount mode it is the export's cap on growth.
 func (l limits) disk() int64 { return int64(cmp.Or(l.DiskMiB, 1024)) << 20 }
 
-// cmdline is what the init is told on the kernel command line. The disk size is a courtesy to
-// the guest, so that it sees ENOSPC at the cap; the memory cap above is what holds on the host (A1).
+// cmdline is what the init is told on the kernel command line. The disk size is a courtesy to the guest, so that it sees ENOSPC at the cap; the memory cap above is what holds on the host (A1).
 func (l limits) cmdline() string {
 	if l.DiskMiB == 0 {
 		return "root=/dev/vda ro"
@@ -118,8 +112,7 @@ func parseRun(args []string, stderr io.Writer) (l limits, mount bool, allow []st
 	return l, *live, allow, caches, fs.Args(), true
 }
 
-// allowFlag adds the repeatable --allow to fs: one more host, widening this session only, in the
-// spelling of a [network] allow entry. The values are judged where the policy is (loadAllowlist).
+// allowFlag adds the repeatable --allow to fs: one more host, widening this session only, in the spelling of a [network] allow entry. The values are judged where the policy is (loadAllowlist).
 func allowFlag(fs *flag.FlagSet, into *[]string) {
 	fs.Func("allow", "also allow HOST, or HOST:PORT, in this session only; repeatable", func(s string) error {
 		*into = append(*into, s)

@@ -8,7 +8,4 @@ package main
 import "golang.org/x/sys/unix"
 
 // The ioctls that read and write a terminal's settings here.
-const (
-	termiosGet = unix.TIOCGETA
-	termiosSet = unix.TIOCSETA
-)
+const termiosGet, termiosSet = unix.TIOCGETA, unix.TIOCSETA

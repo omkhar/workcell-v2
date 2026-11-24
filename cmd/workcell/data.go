@@ -4,6 +4,7 @@
 package main
 
 import (
+	"cmp"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -33,13 +34,18 @@ func xdgDir(env string, home ...string) (string, error) {
 // directory of a running session (vmm, under its TMPDIR): the sockets there would lie in the guest's view, or under a pull, for the guest to swap for a link to any host socket of the operator's (I1, I4, I7). A stale record refuses nothing.
 func holds(dir string) error {
 	data, err := dataDir()
-	if err != nil {
+	table, terr := mountTable() // the kernel's own list of mounts: unreadable, the layout cannot be judged, so the error refuses (C65)
+	if err = cmp.Or(err, terr); err != nil {
 		return err
 	}
 	config, _ := xdgDir("XDG_CONFIG_HOME", ".config") // fails only as dataDir does
+	rows := mounts(string(table))
 	for _, held := range []string{data, config} {
 		if within(dir, held) || within(held, dir) { // neither need exist yet
 			return fmt.Errorf("%q lies inside or holds workcell's own directory %s, which no session may see: use another directory", dir, held)
+		}
+		if m := aliased(rows, resolved(dir), resolved(held)); m != "" {
+			return fmt.Errorf("%q holds the mount point %s, a second name of workcell's own directory %s, of a directory above it or of one inside it, which no session may see: unmount it or use another directory", dir, m, held)
 		}
 	}
 	l, err := list(filepath.Join(data, "sessions"))
@@ -54,8 +60,7 @@ func holds(dir string) error {
 	return err
 }
 
-// within says whether p is dir itself or lies under it, both resolved: the relation holds and session's temp-directory check share. The kernel judges by
-// identity, not spelling: a bind mount (a firmlink on macOS) gives dir a second name that Rel never relates, so p's ancestors are also compared by inode.
+// within says whether p is dir itself or lies under it, both resolved: the relation holds and session's temp-directory check share. The kernel judges by identity, not spelling: a bind mount (a firmlink on macOS) gives dir a second name that Rel never relates, so p's ancestors are also compared by inode.
 func within(dir, p string) bool {
 	if rel, err := filepath.Rel(resolved(dir), resolved(p)); err == nil && filepath.IsLocal(rel) { // "." or below
 		return true
@@ -78,6 +83,40 @@ func resolved(p string) string {
 		return filepath.Join(resolved(d), filepath.Base(p))
 	}
 	return p
+}
+
+// mount is one row of the kernel's mount table: the filesystem's device (major:minor), the path of the mount's root within that filesystem, and the mount point.
+type mount struct{ dev, root, point string }
+
+// mounts parses the kernel's mount table, /proc/self/mountinfo: a row per mount, holding the mount ID, its parent, the device, the root, the mount point and more, each a field, with a space, tab, newline or backslash in a path written as octal (\040).
+func mounts(table string) (rows []mount) {
+	esc := strings.NewReplacer(`\040`, " ", `\011`, "\t", `\012`, "\n", `\134`, `\`)
+	for _, line := range strings.Split(table, "\n") {
+		if f := strings.Fields(line); len(f) > 4 {
+			rows = append(rows, mount{f[2], esc.Replace(f[3]), esc.Replace(f[4])})
+		}
+	}
+	return rows
+}
+
+// under says whether p is dir or lies beneath it, by spelling alone: for the kernel's own paths, which are clean already.
+func under(dir, p string) bool { return strings.HasPrefix(p+"/", strings.TrimSuffix(dir, "/")+"/") }
+
+// aliased is the mount point at or beneath dir, if any, that is a second name of held, of a directory above it or of one inside it, both resolved. within() cannot relate the two names, since a bind mount is neither a symlink nor an ancestor; the kernel knows a mount by its filesystem's device and its root within it (C65).
+func aliased(rows []mount, dir, held string) string {
+	var on mount // the mount held lies on: the one with the longest mount point above it, the last of them where one covers another
+	for _, m := range rows {
+		if under(m.point, held) && len(m.point) >= len(on.point) {
+			on = m
+		}
+	}
+	held = filepath.Join(on.root, strings.TrimPrefix(held, on.point)) // held as a path within its filesystem
+	for _, m := range rows {
+		if under(dir, m.point) && m.dev == on.dev && (under(m.root, held) || under(held, m.root)) {
+			return m.point
+		}
+	}
+	return ""
 }
 
 // artifacts are the files a session boots from, and the directory they are in: the kernel,

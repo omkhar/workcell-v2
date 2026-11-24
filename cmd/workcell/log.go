@@ -69,8 +69,7 @@ func logSession(id string) (string, error) {
 	return dir, nil
 }
 
-// showDenies prints what the session's audit.log holds and, with follow, what is added to it until
-// the session is not running and the file has no more bytes. A session with no audit.log has none yet.
+// showDenies prints what the session's audit.log holds and, with follow, what is added to it until the session is not running and the file has no more bytes. A session with no audit.log has none yet.
 func showDenies(dir, cfg string, follow, ocsf bool, out, errs io.Writer) error {
 	var off int64
 	r := denyReader{cfg: cfg, ocsf: ocsf}
@@ -139,8 +138,7 @@ func (r *denyReader) feed(data []byte, out io.Writer) {
 	}
 }
 
-// denyMessage is one deny line in a sentence: what was refused, and the one thing to do about it.
-// The host is guest-chosen bytes for a TLS name, so it is shown only in a form safe to copy.
+// denyMessage is one deny line in a sentence: what was refused, and the one thing to do about it. The host is guest-chosen bytes for a TLS name, so it is shown only in a form safe to copy.
 func denyMessage(d audit.Record, cfg string) string {
 	host := cmp.Or(audit.SafeHost(d.Host), "(invalid)") // as printed when it is no remedy
 	allow := func(entry string) string {

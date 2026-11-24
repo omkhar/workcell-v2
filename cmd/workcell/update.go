@@ -37,10 +37,7 @@ import (
 
 // maxLayer bounds the bytes of tar stream, and of file data, that one provider CLI's artifact may unpack to in memory; channelBound is how long a fetch at a
 // session start may take: the day's check, and the install of what it kept.
-const (
-	maxLayer     = 1 << 30
-	channelBound = 10 * time.Minute
-)
+const maxLayer, channelBound = 1 << 30, 10 * time.Minute
 
 // update is `workcell update [--to VERSION | --rollback] [AGENT]`: the host side of a provider CLI's install (A10). What may be installed is a pin of the
 // signed channel manifest (I14), or of the row under pins/ when the channel is held or no key is trusted: fetched on the host by its URL, refused unless its

@@ -114,8 +114,7 @@ func explanation(mount bool, dir string) string {
 		"  the work back, and workcell diff lists it first.\n"
 }
 
-// reach is the network part: where the policy came from (file, which exists or not; flags, for
-// --allow), then each name the guest can reach and how, in ascending order, or that it has no network.
+// reach is the network part: where the policy came from (file, which exists or not; flags, for --allow), then each name the guest can reach and how, in ascending order, or that it has no network.
 func reach(file string, exists, flags bool, allow *proxy.Allowlist) string {
 	from := "no config file at " + file
 	if exists {

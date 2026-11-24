@@ -10,8 +10,10 @@ import (
 	"io"
 )
 
-// vmmBinary is empty: there is no backend here (ADR-001 names Linux and macOS arm64).
+// vmmBinary is empty: there is no backend here (ADR-001 names Linux and macOS arm64), and mountTable has no mounts to list.
 const vmmBinary = ""
+
+func mountTable() ([]byte, error) { return nil, nil }
 
 // run has no backend here.
 func run(_ []string, stderr io.Writer) int {

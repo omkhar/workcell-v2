@@ -86,8 +86,7 @@ func supervisor(dir string) (int, error) {
 	return pid, nil
 }
 
-// recordBoot notes tmp, a directory the VMM of the session uses, in the session directory so
-// that rm finds it even when the supervisor was killed before it could remove it.
+// recordBoot notes tmp, a directory the VMM of the session uses, in the session directory so that rm finds it even when the supervisor was killed before it could remove it.
 func recordBoot(dir, tmp string) error {
 	f, err := os.OpenFile(filepath.Join(dir, "vmm"), os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0o600)
 	if err != nil {
@@ -172,8 +171,7 @@ var stopLadder = []struct {
 	wait time.Duration
 }{{syscall.SIGTERM, 5 * time.Second}, {syscall.SIGTERM, 5 * time.Second}, {syscall.SIGKILL, 2 * time.Second}}
 
-// stopSession ends the supervisor of the session id. The lock is checked before every signal,
-// so the pid is signalled only while the lock says the process that wrote it still lives.
+// stopSession ends the supervisor of the session id. The lock is checked before every signal, so the pid is signalled only while the lock says the process that wrote it still lives.
 func stopSession(sessions, id string) error {
 	if !validID(id) {
 		return fmt.Errorf("%q is not a session id: workcell ls lists them", id)
@@ -209,8 +207,7 @@ func stopSession(sessions, id string) error {
 	return fmt.Errorf("session %s did not stop", id)
 }
 
-// ls is `workcell ls`: one line per session, oldest first: its id, running or exited, and the
-// directory it was run in.
+// ls is `workcell ls`: one line per session, oldest first: its id, running or exited, and the directory it was run in.
 func ls(args []string, stdout, stderr io.Writer) int {
 	if len(args) != 0 {
 		fmt.Fprintln(stderr, "usage: workcell ls")

@@ -50,8 +50,7 @@ func openCaches(data string, want []vmm.Cache, free int64) (got []vmm.Cache, rel
 	return got, release, nil
 }
 
-// lockCache takes the lock of c in dir without waiting: shared for a reader, exclusive for a
-// writer. Closing the file releases it. A lock that is taken is a refusal that says which.
+// lockCache takes the lock of c in dir without waiting: shared for a reader, exclusive for a writer. Closing the file releases it. A lock that is taken is a refusal that says which.
 func lockCache(dir string, c vmm.Cache) (*os.File, error) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, err
@@ -74,8 +73,7 @@ func lockCache(dir string, c vmm.Cache) (*os.File, error) {
 	return f, nil
 }
 
-// createCache makes an empty image at image with the writer the workspace uses, under a
-// temporary name in its directory, so that a half-written image is never attached.
+// createCache makes an empty image at image with the writer the workspace uses, under a temporary name in its directory, so that a half-written image is never attached.
 func createCache(image string, free int64) error {
 	tmp, err := os.MkdirTemp(filepath.Dir(image), "new")
 	if err != nil {
