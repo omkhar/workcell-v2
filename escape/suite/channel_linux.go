@@ -13,8 +13,7 @@ import (
 	"time"
 )
 
-// rawConn is one end of the channel as a raw descriptor. The duplicate of the init's connection shares its file description, so nothing here changes a flag on
-// it; every write polls first and gives up after a wait.
+// rawConn is one end of the channel as a raw descriptor. The duplicate of the init's connection shares its file description, so nothing here changes a flag on it; every write polls first and gives up after a wait.
 type rawConn struct{ fd int }
 
 func (c *rawConn) close() { unix.Close(c.fd) }
@@ -119,8 +118,7 @@ func (p channelPeer) matches(sa unix.Sockaddr) bool {
 	return false
 }
 
-// stealChannel takes a duplicate of the channel connection that pid 1 holds, as root with CAP_SYS_PTRACE may (pidfd_getfd), found among its descriptors by the
-// peer it is connected to. What is written on it is indistinguishable from what the init writes.
+// stealChannel takes a duplicate of the channel connection that pid 1 holds, as root with CAP_SYS_PTRACE may (pidfd_getfd), found among its descriptors by the peer it is connected to. What is written on it is indistinguishable from what the init writes.
 func stealChannel(addr string) (*rawConn, error) {
 	peer, err := parsePeer(addr)
 	if err != nil {

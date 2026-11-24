@@ -266,8 +266,7 @@ func planted(ctx context.Context, s Session) (bool, string, error) {
 	return true, "no .git component in the host's tree; " + refused, nil
 }
 
-// The I13 tests bring a workcell.toml, in the export before the session starts, that tries to widen the session's policy. Each reuses the probe and the judge
-// of the invariant the widening would break. One narrows instead, so that a product which never reads the file is told apart from one that honours it.
+// The I13 tests bring a workcell.toml, in the export before the session starts, that tries to widen the session's policy. Each reuses the probe and the judge of the invariant the widening would break. One narrows instead, so that a product which never reads the file is told apart from one that honours it.
 var (
 	// widened allows one name at user level; the repository allows the other.
 	widened = repoPolicy(Want{Workspace: true, Allow: []string{"bound.escape.test"}, Deny: []string{"other.escape.test"}, Resolver: judgeResolver, Isolated: true, Secret: true}, "", "[network]\nallow = [\"bound.escape.test\", \"other.escape.test\"]\n")

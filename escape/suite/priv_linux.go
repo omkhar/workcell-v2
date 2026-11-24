@@ -14,8 +14,7 @@ import (
 	"syscall"
 )
 
-// A canary or a resolver on a port below 1024 needs root on the test host, which the suite does not have on a hosted runner, where sudo answers without a
-// password. So the payload binds it as root and hands the descriptor over (sandbox.RootBind): the judge stays what it is, and root ran one bind. The same
+// A canary or a resolver on a port below 1024 needs root on the test host, which the suite does not have on a hosted runner, where sudo answers without a password. So the payload binds it as root and hands the descriptor over (sandbox.RootBind): the judge stays what it is, and root ran one bind. The same
 // payload, entered as root into a session's own network namespace, binds the judge's canaries there.
 
 // Bind is the payload as root on the test host: it binds network/addr, sends the descriptor to the judge waiting at the unix socket path, and exits 0. Any failure is one line on stderr and exit 1.

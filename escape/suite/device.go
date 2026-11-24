@@ -17,8 +17,7 @@ import (
 	"syscall"
 )
 
-// deviceJudge binds a host block device (a loop device) to an image holding the token, tells the guest its numbers, and fails if the guest reads the
-// token through a device node it makes. The attacker knows the host's device numbers; the invariant must hold anyway.
+// deviceJudge binds a host block device (a loop device) to an image holding the token, tells the guest its numbers, and fails if the guest reads the token through a device node it makes. The attacker knows the host's device numbers; the invariant must hold anyway.
 func deviceJudge(ctx context.Context, s Session) (bool, string, error) {
 	token := newToken()
 	img := filepath.Join(filepath.Dir(s.Workspace), "disk.img")

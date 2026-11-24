@@ -23,8 +23,7 @@ var live = Want{Workspace: true, Mount: true}
 // residueDirs are the places a guest writes that another guest must not see.
 var residueDirs = []string{"/tmp", "/var/tmp", "/dev/shm", "/root", "/run"}
 
-// target is what an I1 probe gets: where the guest sees its export, and the host path, inode and content of a secret the judge planted beside it. An
-// attacker knows the host's layout; the invariant must hold anyway.
+// target is what an I1 probe gets: where the guest sees its export, and the host path, inode and content of a secret the judge planted beside it. An attacker knows the host's layout; the invariant must hold anyway.
 type target struct {
 	guest, secret, token string
 	ino                  uint64
@@ -41,8 +40,7 @@ func outsideArgs(args []string) (target, error) {
 	return target{guest: args[0], secret: args[1], token: args[2], ino: ino}, nil
 }
 
-// outside judges an I1 probe. It plants a secret beside the export on the host, lets plant (if any) add hostile content to the export itself, and fails if
-// the probe reports the secret's token or a file appears beside the export.
+// outside judges an I1 probe. It plants a secret beside the export on the host, lets plant (if any) add hostile content to the export itself, and fails if the probe reports the secret's token or a file appears beside the export.
 func outside(plant func(workspace string) error) Judge {
 	return func(ctx context.Context, s Session) (bool, string, error) {
 		root, token := filepath.Dir(s.Workspace), newToken()
@@ -105,8 +103,7 @@ func symlinkProbe(args []string) Result {
 	return Result{Status: "tried", Detail: "link=" + tryRead(filepath.Join(t.guest, "link")) + " own=" + tryRead(own) + " write=" + tryWrite(filepath.Join(t.guest, "updir", "written-"+t.token))}
 }
 
-// moveProbe takes entries across the top of the export without a write of its own: a hard link to the secret's host path made inside the export and
-// read, a directory renamed out through "..", and a file hard-linked out, the last two to names beside the export.
+// moveProbe takes entries across the top of the export without a write of its own: a hard link to the secret's host path made inside the export and read, a directory renamed out through "..", and a file hard-linked out, the last two to names beside the export.
 func moveProbe(args []string) Result {
 	t, err := outsideArgs(args)
 	if err != nil {
@@ -158,8 +155,7 @@ func short(err error) string {
 	return strings.ReplaceAll(s, " ", "_")
 }
 
-// residueJudge has the guest leave a token in every place a session writes, starts a second session, and fails if that one can read any of them. The
-// second session also looks where the first saw its export: in a real guest that path is its own, empty export.
+// residueJudge has the guest leave a token in every place a session writes, starts a second session, and fails if that one can read any of them. The second session also looks where the first saw its export: in a real guest that path is its own, empty export.
 func residueJudge(ctx context.Context, s Session) (bool, string, error) {
 	token := newToken()
 	r, err := s.Run("plant", token, s.Guest)

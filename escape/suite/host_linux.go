@@ -56,8 +56,7 @@ func hostBusy() (int64, error) {
 	return 0, errors.New("/proc/stat has no cpu line")
 }
 
-// busyTicks sums the columns of a /proc/stat cpu line that are both busy and counted once: user nice system irq softirq steal, skipping idle, iowait,
-// and guest and guest_nice, which user and nice already hold.
+// busyTicks sums the columns of a /proc/stat cpu line that are both busy and counted once: user nice system irq softirq steal, skipping idle, iowait, and guest and guest_nice, which user and nice already hold.
 func busyTicks(line string) (int64, error) {
 	fields := strings.Fields(line)
 	if len(fields) < 8 {

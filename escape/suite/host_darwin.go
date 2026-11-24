@@ -35,8 +35,7 @@ import (
 	"syscall"
 )
 
-// The host as the judge sees it, from Mach and sysctl: the memory the I12 flood row reads and the processes the I11 rows kill and count. The other
-// load figures serve I10 rows not enforced on a Mac: an error, never a pass.
+// The host as the judge sees it, from Mach and sysctl: the memory the I12 flood row reads and the processes the I11 rows kill and count. The other load figures serve I10 rows not enforced on a Mac: an error, never a pass.
 
 // hostMemAvailable is the memory the host can hand out at once, in bytes.
 func hostMemAvailable() (int64, error) {

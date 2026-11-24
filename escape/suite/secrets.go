@@ -37,8 +37,7 @@ const (
 )
 
 // NewSecret makes a fresh secret bound to the first allowed name of w, in the header boundHeader, for the runner to put in a session's Config when a test wants one; Narrow binds it to narrowMethod
-// requests under narrowPath alone; Repos scopes it, as a git token in the Authorization header, to those repositories. With a Source of w's own, a sign-in flow, the row has no value: the endpoint the
-// source names issues the tokens, and the access one goes in the Authorization header, as a bearer token does.
+// requests under narrowPath alone; Repos scopes it, as a git token in the Authorization header, to those repositories. With a Source of w's own, a sign-in flow, the row has no value: the endpoint the source names issues the tokens, and the access one goes in the Authorization header, as a bearer token does.
 func NewSecret(w Want) sandbox.Secret {
 	sec := sandbox.Secret{Name: "escape", Value: secretPrefix + newToken()[:secretHex], Host: w.Allow[0], Header: cmp.Or(w.Header, boundHeader), Env: "ESCAPE_API_KEY"}
 	if w.Narrow {
@@ -184,8 +183,7 @@ func readPrefix(path string, n int) ([]byte, error) {
 	return io.ReadAll(io.LimitReader(f, int64(n)))
 }
 
-// disk reads the first fileLimit bytes of every regular file under dirs, in order, until the budgets run out. Links are not followed; the kernel's views of
-// itself are not files, and a directory walked once is not walked again from a later root.
+// disk reads the first fileLimit bytes of every regular file under dirs, in order, until the budgets run out. Links are not followed; the kernel's views of itself are not files, and a directory walked once is not walked again from a later root.
 func (s *scan) disk(dirs []string) {
 	var read int64
 	for i, dir := range dirs {
@@ -214,8 +212,7 @@ func (s *scan) disk(dirs []string) {
 	}
 }
 
-// memory reads the anonymous writable mappings of the processes that share the probe's pid namespace, then of its ancestors, nearest first. The walk up stops
-// at the first hit and after ancestors levels: on a host that lends itself to the control adapter, what launched the runner is not a target.
+// memory reads the anonymous writable mappings of the processes that share the probe's pid namespace, then of its ancestors, nearest first. The walk up stops at the first hit and after ancestors levels: on a host that lends itself to the control adapter, what launched the runner is not a target.
 const ancestors = 3
 
 func (s *scan) memory(pids []int) {

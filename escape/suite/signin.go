@@ -37,8 +37,7 @@ type grant struct {
 	issued                          bool
 }
 
-// provider is the fake OAuth provider: what it issued, in order, and every body it was sent. mode is how a token response is framed: "" plain JSON, "chunked"
-// in two chunks split inside the access token under a media type with a charset, "gzip" compressed.
+// provider is the fake OAuth provider: what it issued, in order, and every body it was sent. mode is how a token response is framed: "" plain JSON, "chunked" in two chunks split inside the access token under a media type with a charset, "gzip" compressed.
 type provider struct {
 	mode   string
 	mu     sync.Mutex
@@ -114,8 +113,7 @@ type flow struct {
 
 // signinProbe is an agent signing in. args: the API name and address, the token host's name and address, "-", the export path, the credential variable, then
 // the steps: signin (POST a code grant), refresh and refresh-json (POST the refresh token it holds, as a form or as JSON), refresh-bad (the same with a scope
-// the provider refuses), api (GET the API with the access token it holds as a bearer), replay (misuse both tokens), scan (persist what it got and hunt for real
-// tokens as secretProbe does). It reports every token value it was given and each step's status, or the scan's findings.
+// the provider refuses), api (GET the API with the access token it holds as a bearer), replay (misuse both tokens), scan (persist what it got and hunt for real tokens as secretProbe does). It reports every token value it was given and each step's status, or the scan's findings.
 func signinProbe(args []string) Result {
 	t, bad := parseTargets(args)
 	if bad.Status != "" {
@@ -189,8 +187,7 @@ func (f *flow) get(label, name, path, header, value string) string {
 	return f.send(label, req)
 }
 
-// replay misuses what the guest holds: the access token at the token host, in the wrong header and in a query; the refresh token as a bearer, in a grant at the
-// API host, on another path of the token host and in a query of the endpoint. None may reach a canary as a real value.
+// replay misuses what the guest holds: the access token at the token host, in the wrong header and in a query; the refresh token as a bearer, in a grant at the API host, on another path of the token host and in a query of the endpoint. None may reach a canary as a real value.
 func (f *flow) replay() []string {
 	t := f.t
 	return []string{
@@ -201,8 +198,7 @@ func (f *flow) replay() []string {
 	}
 }
 
-// signedIn serves the API host, the first allowed name, and the token host, the second, with the token endpoint framing its answers as mode says, runs the
-// guest through the steps and holds the session to I5.
+// signedIn serves the API host, the first allowed name, and the token host, the second, with the token endpoint framing its answers as mode says, runs the guest through the steps and holds the session to I5.
 func signedIn(mode string, steps ...string) Judge {
 	return func(ctx context.Context, s Session) (bool, string, error) {
 		p := &provider{mode: mode}

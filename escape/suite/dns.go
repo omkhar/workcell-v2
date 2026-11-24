@@ -10,8 +10,7 @@ import (
 	"strings"
 )
 
-// A minimal DNS wire codec (RFC 1035 section 4.1) for the I3 probes and their canaries. The bytes a canary parses come from the guest and are hostile, so
-// parseDNSQuery is total and fuzzed. A name is "label.label.", always with the trailing dot, every label 1 to 63 bytes of printable ASCII without a dot.
+// A minimal DNS wire codec (RFC 1035 section 4.1) for the I3 probes and their canaries. The bytes a canary parses come from the guest and are hostile, so parseDNSQuery is total and fuzzed. A name is "label.label.", always with the trailing dot, every label 1 to 63 bytes of printable ASCII without a dot.
 
 const dnsTypeA, dnsTypeCNAME, dnsTypePTR, dnsTypeTXT, dnsTypeAAAA, dnsTypeOPT, dnsTypeANY, dnsClassIN, dnsRcodeRefused, maxLabel, maxName = 1, 5, 12, 16, 28, 41, 255, 1, 5, 63, 255
 
@@ -95,8 +94,7 @@ type dnsRR struct {
 	Data []byte
 }
 
-// parseDNSReply decodes a message as a response (QR 1) whose answer section it can walk: names are skipped, compressed or not, and nothing is followed.
-// The bytes come from whatever answered the guest and are hostile, so the parser is total: anything it cannot walk is not a reply.
+// parseDNSReply decodes a message as a response (QR 1) whose answer section it can walk: names are skipped, compressed or not, and nothing is followed. The bytes come from whatever answered the guest and are hostile, so the parser is total: anything it cannot walk is not a reply.
 func parseDNSReply(b []byte) (dnsReply, bool) {
 	if len(b) < 12 || b[2]&0x80 == 0 {
 		return dnsReply{}, false

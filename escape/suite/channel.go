@@ -19,8 +19,7 @@ import (
 // fresh connections to the same port. The evidence is the host's: what `workcell run` returned for the hostile run and whether a plain run after still works. I12 holds only if the run ends within
 // hangBound without a crash or control bytes on stderr, reporting the command's own status or a clean refusal, never one the frame named.
 //
-// Frames: a 6-byte header of version 1, a type and a big-endian length of at most 65536, then the payload. Guest-to-host types are Stdout 5, Stderr 6, Exit 7
-// and Ack 8. An Exit payload is a tag byte and a value: 0 then one byte of status, 1 then one byte of signal, 2 then up to 256 bytes of text.
+// Frames: a 6-byte header of version 1, a type and a big-endian length of at most 65536, then the payload. Guest-to-host types are Stdout 5, Stderr 6, Exit 7 and Ack 8. An Exit payload is a tag byte and a value: 0 then one byte of status, 1 then one byte of signal, 2 then up to 256 bytes of text.
 const (
 	typeStdout, typeExit, typeAck = 5, 7, 8
 	tagCode                       = 0                // Exit payload: a code
@@ -66,8 +65,7 @@ func hostileText(n int) []byte {
 	return b[:n]
 }
 
-// channelProbe takes the init's channel to the host at the last argument and sends the hostile traffic of kind args[0], then stays alive so that the host's
-// answer to the frame, and not the command's end, is what ends the run. The storm kind uses fresh connections instead; plain sends nothing.
+// channelProbe takes the init's channel to the host at the last argument and sends the hostile traffic of kind args[0], then stays alive so that the host's answer to the frame, and not the command's end, is what ends the run. The storm kind uses fresh connections instead; plain sends nothing.
 func channelProbe(args []string) Result {
 	if len(args) < 2 {
 		return Result{Status: "error", Detail: "want kind and channel address"}
@@ -159,8 +157,7 @@ func drip(ch *rawConn, f []byte) Result {
 // frameFlood is channelProbe's frame-flood kind under the arguments cpuJudge passes: the seconds, then the channel address.
 func frameFlood(args []string) Result { return channelProbe(append([]string{"frame-flood"}, args...)) }
 
-// swarm opens n fresh connections to the host end at once, has each handled by each (which returns a count), holds them for wait, and says how many opened, the
-// counts' sum and the last dial error as a suffix.
+// swarm opens n fresh connections to the host end at once, has each handled by each (which returns a count), holds them for wait, and says how many opened, the counts' sum and the last dial error as a suffix.
 func swarm(addr string, n int, wait time.Duration, each func(c *rawConn) int) (opened, sum int, last string) {
 	var mu sync.Mutex
 	var wg sync.WaitGroup
@@ -197,8 +194,7 @@ func storm(addr string) Result {
 	return Result{Status: "stormed", Detail: fmt.Sprintf("%d of %d connections opened, %d forged Exit frames sent%s", opened, stormSize, sent, last)}
 }
 
-// flood opens floodSize fresh connections at once and offers the host side floodBytes on each, under one header that promises 4 GiB, until it stops taking
-// them; then holds them all for the judge's samples. Whatever the host side took it holds somewhere for as long as the connections stand.
+// flood opens floodSize fresh connections at once and offers the host side floodBytes on each, under one header that promises 4 GiB, until it stops taking them; then holds them all for the judge's samples. Whatever the host side took it holds somewhere for as long as the connections stand.
 func flood(addr string) Result {
 	chunk := frame(typeStdout, make([]byte, floodBytes-6))
 	binary.BigEndian.PutUint32(chunk[2:], 0xffffffff)
@@ -209,8 +205,7 @@ func flood(addr string) Result {
 	return Result{Status: "flooded", Detail: fmt.Sprintf("%d of %d connections opened, the host side took %d MiB%s", opened, floodSize, taken>>20, last)}
 }
 
-// allowed is the exit status each kind lets a sound host report: 0, the command's own, when the host ignored the frame or the connections; 125, a clean refusal
-// of the session; 126, the error path a forged error text reaches. Never the forged code, and never a crash.
+// allowed is the exit status each kind lets a sound host report: 0, the command's own, when the host ignored the frame or the connections; 125, a clean refusal of the session; 126, the error path a forged error text reaches. Never the forged code, and never a crash.
 var allowed = map[string][]int{
 	"exit-empty": {0, rawCleanExit}, "ack-short": {0, rawCleanExit}, "unknown-type": {0, rawCleanExit}, "version-2": {0, rawCleanExit},
 	"exit-text": {rawCleanExit, rawNoStart}, "giant-header": {rawCleanExit}, "slow-drip": {rawCleanExit}, "storm": {0, rawCleanExit},
@@ -267,8 +262,7 @@ func firstLine(b []byte) string {
 	return clean(string(line), 120, isPrint, '?')
 }
 
-// channelJudge runs each kind in turn, each in its own session boot, and then a plain run, which must still work: the hostile run's VM, sockets and files must
-// be gone. The first kind the host end fails under decides.
+// channelJudge runs each kind in turn, each in its own session boot, and then a plain run, which must still work: the hostile run's VM, sockets and files must be gone. The first kind the host end fails under decides.
 func channelJudge(kinds ...string) Judge {
 	return func(ctx context.Context, s Session) (bool, string, error) {
 		ch, err := s.Channel(ctx)
@@ -290,8 +284,7 @@ func channelJudge(kinds ...string) Judge {
 	}
 }
 
-// floodJudge runs the flood with the host's available memory sampled, as the I10 judges do, against a plain run's own cost measured the same way just before:
-// the host may hold no more for a guest's connections than for none. The flood run must also end as any hostile run must.
+// floodJudge runs the flood with the host's available memory sampled, as the I10 judges do, against a plain run's own cost measured the same way just before: the host may hold no more for a guest's connections than for none. The flood run must also end as any hostile run must.
 func floodJudge(ctx context.Context, s Session) (bool, string, error) {
 	ch, err := s.Channel(ctx)
 	if err != nil {

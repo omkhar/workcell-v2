@@ -19,8 +19,7 @@ import (
 // The rebinding rows (I4). The policy allows one name, and the judge is the resolver the host side of the session asks about it (sandbox.Config.Resolver, at judgeResolver port 53): it answers the
 // allowed name with an address the host must never dial, the host's own loopback, a LAN address, the metadata address, in one spelling or another, or, in a network of the session's own, an address on
 // a network the host itself holds (sandbox.Neighbour), with TTL 0, and refuses every other name. The guest connects to the allowed name as a program would, by the forward port or by SNI at 443,
-// twice. A canary listens at the answer. The host must resolve the name itself (a host that never asked vetted nothing: an error, never a pass) and the canary must see nothing. On control the guest
-// resolves and dials for itself, so the canary sees it on every row.
+// twice. A canary listens at the answer. The host must resolve the name itself (a host that never asked vetted nothing: an error, never a pass) and the canary must see nothing. On control the guest resolves and dials for itself, so the canary sees it on every row.
 //
 // Missing, and said so in the report: the row where the first answer is an address the host may dial and the second is not, and the row where one answer set holds both. Each needs a global unicast
 // address the test host owns, and every range set aside for that (RFC 5737, 2001:db8::/32, 3fff::/20) is one the host refuses; every other address is someone's.
@@ -42,8 +41,7 @@ type rebind struct {
 	a, aaaa       []string
 	cname, canary string
 	sni           bool
-	// names are the names answered with the records, as the resolver hears them, with the trailing dot, the first the one rebindJudge's guest connects to;
-	// allowedName alone when empty. A denied name among them lets a session whose policy the guest widened reach a canary under it (sandbox.Config.Deny).
+	// names are the names answered with the records, as the resolver hears them, with the trailing dot, the first the one rebindJudge's guest connects to; allowedName alone when empty. A denied name among them lets a session whose policy the guest widened reach a canary under it (sandbox.Config.Deny).
 	names []string
 }
 
@@ -101,8 +99,7 @@ func connectName(addr, token string, sni bool) Result {
 	return Result{Status: "connected", Detail: "to " + addr}
 }
 
-// rebindJudge runs a canary at the row's address, where the product reaches the test host, and the judge's resolver, has the guest connect to the allowed
-// name, and holds the host to the answer: the canary must see nothing, and the resolver must have been asked.
+// rebindJudge runs a canary at the row's address, where the product reaches the test host, and the judge's resolver, has the guest connect to the allowed name, and holds the host to the answer: the canary must see nothing, and the resolver must have been asked.
 func rebindJudge(r rebind) Judge {
 	return func(ctx context.Context, s Session) (bool, string, error) {
 		port, mode := forwardPort, "line"
@@ -201,8 +198,7 @@ func (ns *nameServer) questions() []string {
 // typeNames names the types a resolver is asked, for the record of it.
 var typeNames = map[uint16]string{dnsTypeA: "A", dnsTypeAAAA: "AAAA", dnsTypeCNAME: "CNAME", dnsTypeTXT: "TXT", dnsTypePTR: "PTR", dnsTypeANY: "ANY"}
 
-// answer is the response to q: for a name of the row's, the CNAME when the row has one and then the row's records of the type asked, NOERROR with no record
-// when it has none of that type; REFUSED for every other name.
+// answer is the response to q: for a name of the row's, the CNAME when the row has one and then the row's records of the type asked, NOERROR with no record when it has none of that type; REFUSED for every other name.
 func (r rebind) answer(q dnsQuestion) []byte {
 	names := r.names
 	if len(names) == 0 {
@@ -237,8 +233,7 @@ type dnsRecord struct {
 	Data []byte
 }
 
-// dnsResponse encodes the response to q: its id, QR, RD and RA set, the rcode, the question again and the records, each with TTL 0, so that nothing may cache
-// what the judge said and every connection asks again.
+// dnsResponse encodes the response to q: its id, QR, RD and RA set, the rcode, the question again and the records, each with TTL 0, so that nothing may cache what the judge said and every connection asks again.
 func dnsResponse(q dnsQuestion, rcode uint16, rrs []dnsRecord) []byte {
 	b := make([]byte, 12, 512)
 	binary.BigEndian.PutUint16(b[0:], q.ID)

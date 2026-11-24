@@ -68,8 +68,7 @@ func TestCLICancel(t *testing.T) {
 	}
 }
 
-// TestIsolatedNetwork starts the network a session of its own gets (isolate, suite.Hold) and looks from inside it: the loopback device holds IsolatedNet;
-// "host" and "neighbour" bind at CanaryAddr and Neighbour (bind), and a dial inside the namespace reaches both, the first through a local route alone. It
+// TestIsolatedNetwork starts the network a session of its own gets (isolate, suite.Hold) and looks from inside it: the loopback device holds IsolatedNet; "host" and "neighbour" bind at CanaryAddr and Neighbour (bind), and a dial inside the namespace reaches both, the first through a local route alone. It
 // needs unshare and root, since the test enters the namespace itself; elsewhere it is skipped.
 func TestIsolatedNetwork(t *testing.T) {
 	if _, err := exec.LookPath("unshare"); err != nil {

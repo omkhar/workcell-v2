@@ -38,8 +38,7 @@ type Config struct {
 	// Mount serves Workspace live (`--mount`, SPEC A5) instead of a clone; control shows it live either way.
 	Mount                    bool
 	CPUs, MemoryMiB, DiskMiB int
-	// Allow names the hosts the session policy allows, each resolving to the test host's own address, where the judge's canaries listen (SPEC T8); Deny names
-	// hosts it does not, resolved the same way. Control has no policy.
+	// Allow names the hosts the session policy allows, each resolving to the test host's own address, where the judge's canaries listen (SPEC T8); Deny names hosts it does not, resolved the same way. Control has no policy.
 	Allow, Deny []string
 	// Resolver is the IPv4 address of a DNS server on the test host, port 53, the host side resolves every name with; "" leaves the adapter's own.
 	Resolver string
@@ -51,15 +50,13 @@ type Config struct {
 	Secret *Secret
 	// Update is the [update] table the session's configuration carries (Channel, CA and Key), so each start makes the daily channel check; nil for none.
 	Update *UpdateConfig
-	// Command, when set, is a provider run by name, `workcell run <Command> <args>`, in place of the loader that carries the payload in: the test has installed
-	// a layer whose binary is the payload (Install), and stdin stays open and empty, so the guest's first frame is the command's own.
+	// Command, when set, is a provider run by name, `workcell run <Command> <args>`, in place of the loader that carries the payload in: the test has installed a layer whose binary is the payload (Install), and stdin stays open and empty, so the guest's first frame is the command's own.
 	Command string
 	// Head makes the operator's stdout a reader that goes away after its first read, as `| head -1` does, for every command of the session (I9).
 	Head bool
 }
 
-// Secret is one [[secret]] entry: Value, bound to Host, goes in Header; the guest sees only a placeholder in Env (A4, I5, I6). Method and Path narrow the
-// binding, Repos scopes it to `owner/name` repositories as a git credential is. Source, when set, names the product's own source instead of a file holding
+// Secret is one [[secret]] entry: Value, bound to Host, goes in Header; the guest sees only a placeholder in Env (A4, I5, I6). Method and Path narrow the binding, Repos scopes it to `owner/name` repositories as a git credential is. Source, when set, names the product's own source instead of a file holding
 // Value: `signin:<host><path>` is a sign-in flow. Control stages Value itself, and nothing for a sign-in row.
 type Secret struct {
 	Name, Value, Host, Header, Env, Method, Path, Source string
@@ -105,25 +102,21 @@ type Observe interface {
 	Helper(ctx context.Context, name string) (pid int, err error)
 	// Channel describes the host-guest channel as the guest reaches it.
 	Channel(ctx context.Context) (Channel, error)
-	// Bind opens a listener ("tcp4") or packet socket ("udp4") at addr where the product reaches the test host, "host" standing for its address there. A port
-	// that needs root fails with EACCES, and the judge binds it as root.
+	// Bind opens a listener ("tcp4") or packet socket ("udp4") at addr where the product reaches the test host, "host" standing for its address there. A port that needs root fails with EACCES, and the judge binds it as root.
 	Bind(ctx context.Context, network, addr string) (net.Listener, net.PacketConn, error)
 	// Relay describes the host end of the network relay, one stream per relayed connection behind the header of ADR-003.
 	Relay(ctx context.Context) (Channel, error)
-	// Update runs the product's update client once, as `workcell update` does with u, and returns Installed for u.Name. What the client keeps between runs is
-	// the session's. A refusal is not an error; a client that could not run is.
+	// Update runs the product's update client once, as `workcell update` does with u, and returns Installed for u.Name. What the client keeps between runs is the session's. A refusal is not an error; a client that could not run is.
 	Update(ctx context.Context, u UpdateConfig) (installed []byte, err error)
 	// Installed returns the artifact installed for the pin name, read on the host from the current layer; nil when none is.
 	Installed(ctx context.Context, name string) ([]byte, error)
-	// Install has the host install l for every session of this process, as `workcell update --to <version> <agent>` does, and returns the host path of the
-	// layer's image, "" when the adapter keeps none. A refusal is an error.
+	// Install has the host install l for every session of this process, as `workcell update --to <version> <agent>` does, and returns the host path of the layer's image, "" when the adapter keeps none. A refusal is an error.
 	Install(ctx context.Context, l Layer) (image string, err error)
 	// Bench runs `workcell bench start` once with this session's artifacts (P1).
 	Bench(ctx context.Context) (Output, error)
 }
 
-// Channel is the host end of the host-guest channel, or of the relay, as the init is connected to it: "unix:<path>" or "vsock:<cid>:<port>". The host answers
-// no guest frame; what a hostile one did shows in the run (I12).
+// Channel is the host end of the host-guest channel, or of the relay, as the init is connected to it: "unix:<path>" or "vsock:<cid>:<port>". The host answers no guest frame; what a hostile one did shows in the run (I12).
 type Channel struct{ Addr string }
 
 // Names lists the adapters, in the order shown to a user.
@@ -194,8 +187,7 @@ func LoopbackHolds(ip string) error {
 // CanaryAddr, outside that prefix, which a local route alone makes the host's: a product that dials only off the host's networks reaches them still.
 const IsolatedNet, Neighbour, CanaryAddr = "192.175.48.1/25", "192.175.48.2", "192.175.48.129"
 
-// placed is addr with "host" or "neighbour" replaced: where the judge's canaries listen, or an address on a network the test host holds, in the network the
-// product reaches the test host in. In a session's own network (isolated) those are CanaryAddr and Neighbour; in the host's own, both are HostAddr.
+// placed is addr with "host" or "neighbour" replaced: where the judge's canaries listen, or an address on a network the test host holds, in the network the product reaches the test host in. In a session's own network (isolated) those are CanaryAddr and Neighbour; in the host's own, both are HostAddr.
 func placed(addr string, isolated bool) (string, error) {
 	host, port, err := net.SplitHostPort(addr)
 	if err != nil {
@@ -228,8 +220,7 @@ func bindHere(network, addr string) (net.Listener, net.PacketConn, error) {
 	return ln, nil, err
 }
 
-// headPipe is the operator's stdout under `| head -1`: a pipe whose reader takes what its first read gives, into out, and then goes away. finish closes this
-// end and waits for that; it is called once the command has ended.
+// headPipe is the operator's stdout under `| head -1`: a pipe whose reader takes what its first read gives, into out, and then goes away. finish closes this end and waits for that; it is called once the command has ended.
 func headPipe(out io.Writer) (w *os.File, finish func(), err error) {
 	r, w, err := os.Pipe()
 	if err != nil {

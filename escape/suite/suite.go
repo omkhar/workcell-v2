@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Omkhar Arasaratnam
 
-// Package suite declares the escape tests. Each test names the invariant it proves, a probe that runs as root inside the guest (in the payload binary) and the
-// judgement made on the host. A test is added by one entry in All.
+// Package suite declares the escape tests. Each test names the invariant it proves, a probe that runs as root inside the guest (in the payload binary) and the judgement made on the host. A test is added by one entry in All.
 package suite
 
 import (
@@ -93,8 +92,7 @@ func Lookup(name string) (Test, bool) {
 	return Test{}, false
 }
 
-// Select returns the tests whose invariant ID, or whose name, is in only, a comma-separated list, or every test when only is empty. An entry with no test is an
-// error, so that an enforced invariant can never pass by having nothing to run.
+// Select returns the tests whose invariant ID, or whose name, is in only, a comma-separated list, or every test when only is empty. An entry with no test is an error, so that an enforced invariant can never pass by having nothing to run.
 func Select(only string) ([]Test, error) {
 	if strings.TrimSpace(only) == "" {
 		return All, nil

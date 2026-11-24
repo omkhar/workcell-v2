@@ -32,8 +32,7 @@ import (
 // request on to the name the SNI gave, verifying the upstream's certificate as itself. Both canaries share one listener at port 443, told apart by SNI; their certificate chains to the suite's own
 // authority, the host side's trust store (sandbox.Config.Roots). A guest that validates a canary's leaf was spliced through, not terminated.
 
-// terminating is the sandbox the rows want: two allowed names, bare, the judge as the host's resolver, and the host side in a network of its own, where the
-// judge holds the one address both names resolve to (SPEC T8).
+// terminating is the sandbox the rows want: two allowed names, bare, the judge as the host's resolver, and the host side in a network of its own, where the judge holds the one address both names resolve to (SPEC T8).
 var terminating = Want{Allow: []string{"bound.escape.test", "other.escape.test"}, Resolver: judgeResolver, Isolated: true}
 
 // authority is the suite's certificate authority, made once per process.
@@ -98,15 +97,13 @@ func certificate(names ...string) (*tls.Config, error) {
 	return &tls.Config{Certificates: []tls.Certificate{{Certificate: [][]byte{der}, PrivateKey: key}}, MinVersion: tls.VersionTLS12}, nil
 }
 
-// canaries is how twoNames serves the two names: the bound canary accepts ECH under the other's name (ech), presents a certificate for the other's name alone
-// (misleaf), or answers as respond says instead of 200.
+// canaries is how twoNames serves the two names: the bound canary accepts ECH under the other's name (ech), presents a certificate for the other's name alone (misleaf), or answers as respond says instead of 200.
 type canaries struct {
 	ech, misleaf bool
 	respond      func(other *canary) http.HandlerFunc
 }
 
-// twoNames serves a canary for the bound name, the first allowed, and one for the other, the first denied name or else the second allowed, on one listener at
-// port 443 where the product reaches the test host (serveTwo), and hands them to judge.
+// twoNames serves a canary for the bound name, the first allowed, and one for the other, the first denied name or else the second allowed, on one listener at port 443 where the product reaches the test host (serveTwo), and hands them to judge.
 func twoNames(c canaries, judge func(s Session, bound, other *canary) (bool, string, error)) Judge {
 	return func(ctx context.Context, s Session) (bool, string, error) {
 		others := slices.Concat(s.Deny, s.Allow[1:])
@@ -137,8 +134,7 @@ func twoNames(c canaries, judge func(s Session, bound, other *canary) (bool, str
 	}
 }
 
-// serveTwo serves the two canaries on one listener at port 443 where the product reaches the test host, under keys for ECH when given, and runs the judge's
-// resolver there, answering both names with that address. The caller stops both.
+// serveTwo serves the two canaries on one listener at port 443 where the product reaches the test host, under keys for ECH when given, and runs the judge's resolver there, answering both names with that address. The caller stops both.
 func serveTwo(ctx context.Context, s Session, keys []tls.EncryptedClientHelloKey, bound, other *canary) (*nameServer, func(), error) {
 	ln, _, err := bind(ctx, s, "tcp4", hostAddr+":443")
 	if err != nil {

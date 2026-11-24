@@ -13,8 +13,7 @@ import (
 	"syscall"
 )
 
-// loopbackAddr adds ip/32 to the loopback interface, so that a canary can listen on an address the host does not otherwise own, such as the cloud metadata
-// address, and no packet to it can leave the host. It returns the function that removes the address again. It needs CAP_NET_ADMIN, and without it asks sudo
+// loopbackAddr adds ip/32 to the loopback interface, so that a canary can listen on an address the host does not otherwise own, such as the cloud metadata address, and no packet to it can leave the host. It returns the function that removes the address again. It needs CAP_NET_ADMIN, and without it asks sudo
 // to run ip(8), which a hosted runner grants without a password. It refuses an address the host already has, so that it only ever removes its own.
 func loopbackAddr(ip net.IP) (func(), error) {
 	ip4 := ip.To4()
@@ -52,8 +51,7 @@ func addrRequest(typ uint16, flags uint16, index int, ip4 net.IP, bits int) erro
 	return netlink(typ, flags, attr(attr(body, syscall.IFA_LOCAL, ip4), syscall.IFA_ADDRESS, ip4))
 }
 
-// localRoute adds ip4/32 to the local table as a local route out of the interface, as `ip route add local <ip4> dev lo` does: every packet to it is the host's
-// own, as to one of its addresses, while no interface holds a prefix it lies in.
+// localRoute adds ip4/32 to the local table as a local route out of the interface, as `ip route add local <ip4> dev lo` does: every packet to it is the host's own, as to one of its addresses, while no interface holds a prefix it lies in.
 func localRoute(index int, ip4 net.IP) error {
 	rtm := []byte{syscall.AF_INET, 32, 0, 0, syscall.RT_TABLE_LOCAL, syscall.RTPROT_BOOT, syscall.RT_SCOPE_HOST, syscall.RTN_LOCAL}
 	body := binary.NativeEndian.AppendUint32(rtm, 0) // then the flags

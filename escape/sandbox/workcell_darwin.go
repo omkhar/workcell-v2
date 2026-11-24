@@ -17,8 +17,7 @@ import (
 	"time"
 )
 
-// The pinned arm64 guest: Firecracker's CI kernel, which boots under Virtualization.framework (measured in U-102). The product drives the framework in-process,
-// so there is no hypervisor binary to fetch, and the binary that does it must carry the virtualization entitlement.
+// The pinned arm64 guest: Firecracker's CI kernel, which boots under Virtualization.framework (measured in U-102). The product drives the framework in-process, so there is no hypervisor binary to fetch, and the binary that does it must carry the virtualization entitlement.
 const guestArch, vmlinuxURL, vmlinuxSum = "arm64", "https://s3.amazonaws.com/spec.ccfc.min/firecracker-ci/v1.14/aarch64/vmlinux-6.1.155", "61baeae1ac6197be4fc5c71fa78df266acdc33c54570290d2f611c2b42c105be"
 
 // entitlements is the one entitlement a process needs to start a VM.
@@ -116,8 +115,7 @@ func (l atCanary) Addr() net.Addr {
 }
 func (*holder) stop() {}
 
-// settle waits out mDNSResponder's cache after a session resolved the suite's names through it: an answer is held 15 s whatever its TTL (U-701) and no user can
-// flush it, else the next session never asks the judge.
+// settle waits out mDNSResponder's cache after a session resolved the suite's names through it: an answer is held 15 s whatever its TTL (U-701) and no user can flush it, else the next session never asks the judge.
 func settle() { time.Sleep(16 * time.Second) }
 
 // rootBindArgv is what RootBind runs: bindHelper, through sudo.
@@ -125,8 +123,7 @@ func rootBindArgv(network, addr, path, _ string, _ int) []string {
 	return []string{"sudo", "-n", bindHelper, network, addr, path}
 }
 
-// productProcess is the product's own process under root, the process the adapter started for a run: root itself, since nothing wraps the product here and its
-// VM runs inside it (Virtualization.framework, in-process).
+// productProcess is the product's own process under root, the process the adapter started for a run: root itself, since nothing wraps the product here and its VM runs inside it (Virtualization.framework, in-process).
 func productProcess(root int, _ string) (int, bool) { return root, true }
 
 // hypervisor fetches nothing: Virtualization.framework is part of the OS.
@@ -137,8 +134,7 @@ func hostBuild(ctx context.Context, repo, out, pkg, overlay string) error {
 	return goBuild(ctx, repo, out, pkg, overlay, "CGO_ENABLED=1", "GOOS=darwin", "GOARCH=arm64")
 }
 
-// sign signs the freshly built bin ad hoc with the virtualization entitlement, from a plist written under dir. It happens once, before the binary ever runs:
-// re-signing one that has run can get it killed (U-102).
+// sign signs the freshly built bin ad hoc with the virtualization entitlement, from a plist written under dir. It happens once, before the binary ever runs: re-signing one that has run can get it killed (U-102).
 func sign(ctx context.Context, dir, bin string) error {
 	plist := filepath.Join(dir, "vz.entitlements")
 	if err := os.WriteFile(plist, []byte(entitlements), 0o644); err != nil {
