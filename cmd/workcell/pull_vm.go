@@ -100,6 +100,11 @@ func fetch(dest string, use func(int, *manifest, source) error) (int, error) {
 	if err != nil {
 		return 0, err
 	}
+	lock, err := lockSession(session, unix.LOCK_EX|unix.LOCK_NB) // held for the pull's whole life, as a run holds its own: ls reads the session as running, rm refuses it and stop ends this process; a run that still holds it is refused here, before any boot (C63)
+	if err != nil {
+		return 0, err
+	}
+	defer lock.Close()
 	image := filepath.Join(session, "workspace.ext4")
 	st, err := os.Stat(image)
 	if errors.Is(err, fs.ErrNotExist) { // a mount session has no image: its work is in the directory itself (ADR-005)
