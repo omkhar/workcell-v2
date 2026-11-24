@@ -426,16 +426,19 @@ func TestGrowthCap(t *testing.T) {
 	}
 }
 
-// TestPace is C64: frames that take no reply, here ones too short to be a request, are read no faster than paceFrames a paceEvery however cheap each is (I10).
-// Sixteen periods' worth, then a request whose reply comes after them, take at least sixteen periods from before Serve began.
+// TestPace is C64: frames that take no reply are read no faster than paceFrames a paceEvery however cheap each is, a BATCH_FORGET's entries counted perForget
+// to one (I10). Eight periods' worth of frames too short to be a request, eight of 64 KiB BATCH_FORGETs of a node the host does not know, then a request whose
+// reply comes after them, take at least sixteen periods from before Serve began.
 func TestPace(t *testing.T) {
 	t0 := time.Now()
 	k, stop := start(t, t.TempDir())
 	defer stop()
 	k.ok(reqInit(7, 37))
-	_, _ = k.pipe.Write(bytes.Repeat([]byte{wire.Version, FrameType, 0, 0, 0, 4, 1, 2, 3, 4}, 16*paceFrames))
+	_, _ = k.pipe.Write(bytes.Repeat([]byte{wire.Version, FrameType, 0, 0, 0, 4, 1, 2, 3, 4}, 8*paceFrames))
+	batch := req(opBatchForget, 0, 0, u32(4093, 0), bytes.Repeat(u64(2, 1), 4093)) // 65536 bytes: 1 + 4093/perForget toward the pace
+	_, _ = k.pipe.Write(bytes.Repeat(append([]byte{wire.Version, FrameType, 0, 1, 0, 0}, batch...), 8*paceFrames/(1+4093/perForget)))
 	k.ok(reqStatfs())
 	if d := time.Since(t0); d < 16*paceEvery {
-		t.Errorf("%d frames read in %v; the pace is %d a %v", 16*paceFrames, d, paceFrames, paceEvery)
+		t.Errorf("sixteen periods of frames read in %v; the pace is %d a %v", d, paceFrames, paceEvery)
 	}
 }
