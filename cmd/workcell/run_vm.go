@@ -90,7 +90,7 @@ func session(argv []string, caps limits, mount bool, a artifacts, allow *proxy.A
 		err = holds(cwd) // before a session directory, the key or the export exists (I7, I9, I13)
 	}
 	if err == nil && mount && within(cwd, os.TempDir()) { // the VMM's sockets would lie in the guest's view, for it to swap for a link to any host socket of the operator's (I1, I4)
-		err = fmt.Errorf("%s holds the temp directory %s, where the VMM's sockets would lie in the guest's view: set TMPDIR elsewhere or run without --mount", cwd, os.TempDir())
+		err = fmt.Errorf("%q holds the temp directory %s, where the VMM's sockets would lie in the guest's view: set TMPDIR elsewhere or run without --mount", cwd, os.TempDir())
 	}
 	if err == nil { // the export and the live mount take this process's own directory, ".", so the name judged must still be its own (C61)
 		err = named(unix.AT_FDCWD, cwd)
@@ -120,7 +120,7 @@ func session(argv []string, caps limits, mount bool, a artifacts, allow *proxy.A
 		image, live = "", "." // the record alone: the work lands in the directory itself
 	} else if st, err := workspace.Export(context.Background(), ".", image, caps.disk()); err != nil {
 		os.RemoveAll(dir)
-		return result{err: fmt.Errorf("copy %s for the guest: %w", cwd, err)}
+		return result{err: fmt.Errorf("copy %q for the guest: %w", cwd, err)}
 	} else if err = os.WriteFile(filepath.Join(dir, "inodes"), []byte(strconv.FormatUint(uint64(st.Inodes), 10)), 0o600); err != nil { // the most entries the image can ever hold, for pull (I10): written before the guest runs, so nothing it does grows it
 		os.RemoveAll(dir)
 		return result{err: err}
@@ -244,7 +244,7 @@ func boot(a artifacts, caps limits, sigs <-chan os.Signal, session string, log *
 	l, err := list(filepath.Join(a.dir, "sessions")) // a running mount session serves its directory live: a VMM directory under it would hand that guest the sockets, to swap for a link to any host socket of the operator's (I1, I4, I7)
 	for _, s := range l {
 		if _, noImage := os.Stat(filepath.Join(a.dir, "sessions", s.id, "workspace.ext4")); s.state == "running" && noImage != nil && within(s.repo, os.TempDir()) {
-			return nil, 0, fmt.Errorf("the temp directory %s lies inside %s, which the running mount session %s serves live: set TMPDIR elsewhere or workcell stop %s first", os.TempDir(), s.repo, s.id, s.id)
+			return nil, 0, fmt.Errorf("the temp directory %s lies inside %q, which the running mount session %s serves live: set TMPDIR elsewhere or workcell stop %s first", os.TempDir(), s.repo, s.id, s.id)
 		}
 	}
 	if err != nil {

@@ -231,7 +231,7 @@ func ls(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	for _, s := range l {
-		fmt.Fprintf(stdout, "%s  %-7s  %s\n", s.id, s.state, s.repo)
+		fmt.Fprintf(stdout, "%s  %-7s  %s\n", s.id, s.state, shown(s.repo))
 	}
 	return 0
 }

@@ -103,13 +103,13 @@ func bound(secrets []binding) string {
 // explanation is the text for a session of dir: what its guest sees as /workspace, in plain words.
 func explanation(mount bool, dir string) string {
 	if mount {
-		return "workspace: " + dir + ", live (--mount)\n" +
+		return "workspace: " + shown(dir) + ", live (--mount)\n" +
 			"  The agent writes directly to the real tree: every change it makes lands there as it is\n" +
 			"  made, and workcell pull and diff have nothing to bring back. A file that has more than one\n" +
 			"  hard link can be read but not changed, also when all its names lie inside this directory;\n" +
 			"  the default copy has no such limit.\n"
 	}
-	return "workspace: a copy of " + dir + "\n" +
+	return "workspace: a copy of " + shown(dir) + "\n" +
 		"  The agent works in the copy; the real tree does not change until workcell pull brings\n" +
 		"  the work back, and workcell diff lists it first.\n"
 }
