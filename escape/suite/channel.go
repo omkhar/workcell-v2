@@ -120,18 +120,24 @@ func channelProbe(args []string) Result {
 		linger = longLinger
 	case "slow-drip":
 		return drip(ch, frame(typeStdout, []byte("drip")))
-	case "frame-flood": // empty Stdout frames, as many as the host takes in args[1] s, the guest's CPU at its cap meanwhile (cpuProbe): the decoder's load (I10)
+	case "frame-flood", "fuse-flood": // empty Stdout frames on the init's channel, or FUSE INTERRUPT requests on its file service, neither answered: as many as the host takes in args[1] s, the guest's CPU at its cap meanwhile (cpuProbe): the decoder's load (I10)
 		v, r := ints(args[1:2], 1, "seconds")
 		if r.Status != "" {
 			return r
 		}
 		go cpuProbe(args[1:2])
-		batch, sent := bytes.Repeat(frame(typeStdout, nil), 10922), 0 // about 64 KiB a write: a blocking write of more would outlast the deadline
-		for by := time.Now().Add(time.Duration(v[0]) * time.Second); time.Now().Before(by) || sent%6 != 0 && time.Since(by) < sendWait; {
-			n, _ := ch.write(batch[sent%6:], max(time.Until(by), sendWait)) // the rest of a frame the deadline cut comes first: the init's own frames follow it
+		unit, batch, sent := frame(typeStdout, nil), []byte(nil), 0
+		for i := 1; len(batch)+len(unit) <= 64<<10; i++ { // about 64 KiB a write, of whole frames: a blocking write of more would outlast the deadline
+			if kind == "fuse-flood" {
+				unit = interrupt(uint64(i)) // the unique rises, as the kernel's do
+			}
+			batch = append(batch, unit...)
+		}
+		for by := time.Now().Add(time.Duration(v[0]) * time.Second); time.Now().Before(by) || sent%len(unit) != 0 && time.Since(by) < sendWait; {
+			n, _ := ch.write(batch[sent%len(unit):], max(time.Until(by), sendWait)) // the rest of a frame the deadline cut comes first: the init's own frames follow it
 			sent += n
 		}
-		return Result{Status: "tried", Detail: fmt.Sprintf("the host took %d empty Stdout frames (%d MiB) on the init's channel in %d s", sent/6, sent>>20, v[0])}
+		return Result{Status: "tried", Detail: fmt.Sprintf("the host took %d frames of %d bytes (%d MiB) on the init's connection in %d s", sent/len(unit), len(unit), sent>>20, v[0])}
 	default:
 		return Result{Status: "error", Detail: "unknown kind " + kind}
 	}
@@ -154,8 +160,20 @@ func drip(ch *rawConn, f []byte) Result {
 	return Result{Status: "sent", Detail: fmt.Sprintf("%d bytes dripped over %s", sent, longLinger)}
 }
 
-// frameFlood is channelProbe's frame-flood kind under the arguments cpuJudge passes: the seconds, then the channel address.
+// interrupt is one FUSE INTERRUPT request as the guest kernel sends it on the file service of a `--mount` session (ADR-005), in that service's own frame (type 1): a fuse_in_header of 40 bytes, little-endian
+// (len 48, opcode 36, unique, nodeid 1, uid, gid, pid, padding), then its one argument, the unique of the request it interrupts. The host answers it with nothing, so the flood needs no reader.
+func interrupt(unique uint64) []byte {
+	b := binary.LittleEndian.AppendUint32([]byte{}, 48)
+	b = binary.LittleEndian.AppendUint32(b, 36)
+	b = binary.LittleEndian.AppendUint64(b, unique)
+	b = binary.LittleEndian.AppendUint64(b, 1)
+	b = append(b, make([]byte, 16)...)
+	return frame(1, binary.LittleEndian.AppendUint64(b, unique))
+}
+
+// frameFlood and fuseFlood are channelProbe's frame-flood and fuse-flood kinds under the arguments cpuJudge passes: the seconds, then the host end's address.
 func frameFlood(args []string) Result { return channelProbe(append([]string{"frame-flood"}, args...)) }
+func fuseFlood(args []string) Result  { return channelProbe(append([]string{"fuse-flood"}, args...)) }
 
 // swarm opens n fresh connections to the host end at once, has each handled by each (which returns a count), holds them for wait, and says how many opened, the counts' sum and the last dial error as a suffix.
 func swarm(addr string, n int, wait time.Duration, each func(c *rawConn) int) (opened, sum int, last string) {
@@ -207,9 +225,8 @@ func flood(addr string) Result {
 
 // allowed is the exit status each kind lets a sound host report: 0, the command's own, when the host ignored the frame or the connections; 125, a clean refusal of the session; 126, the error path a forged error text reaches. Never the forged code, and never a crash.
 var allowed = map[string][]int{
-	"exit-empty": {0, rawCleanExit}, "ack-short": {0, rawCleanExit}, "unknown-type": {0, rawCleanExit}, "version-2": {0, rawCleanExit},
-	"exit-text": {rawCleanExit, rawNoStart}, "giant-header": {rawCleanExit}, "slow-drip": {rawCleanExit}, "storm": {0, rawCleanExit},
-	"storm-flood": {0, rawCleanExit}, "after-exit": {0, rawCleanExit}, "half-close": {rawCleanExit}, "full-shutdown": {rawCleanExit}, "reboot": {rawCleanExit},
+	"exit-empty": {0, rawCleanExit}, "ack-short": {0, rawCleanExit}, "unknown-type": {0, rawCleanExit}, "version-2": {0, rawCleanExit}, "exit-text": {rawCleanExit, rawNoStart}, "giant-header": {rawCleanExit}, "slow-drip": {rawCleanExit},
+	"storm": {0, rawCleanExit}, "storm-flood": {0, rawCleanExit}, "after-exit": {0, rawCleanExit}, "half-close": {rawCleanExit}, "full-shutdown": {rawCleanExit}, "reboot": {rawCleanExit},
 }
 
 // channelRun runs kind against the session's channel and holds the host end to what every kind demands. It returns the run's exit status, or the reason the host end fell short, "" when it did not.
@@ -294,9 +311,7 @@ func floodJudge(ctx context.Context, s Session) (bool, string, error) {
 	if err != nil {
 		return false, "", err
 	}
-	var exit int
-	var why string
-	var rerr error
+	var exit, why, rerr = 0, "", error(nil)
 	flooded, _, err := sampledRun(hostMemAvailable, func() { exit, why, rerr = channelRun(ctx, s, ch.Addr, "storm-flood") })
 	if err != nil || rerr != nil || why != "" {
 		return false, why, errors.Join(err, rerr)

@@ -156,5 +156,6 @@ func pad4(b []byte) []byte {
 // Channel is where the guest's init dialled the host: AF_VSOCK, the host's CID 2, port 5000. A probe finds the init's connection by that peer and may dial the same port afresh.
 func (*workcell) Channel(context.Context) (Channel, error) { return Channel{Addr: "vsock:2:5000"}, nil }
 
-// Relay is where the guest's init opens one vsock stream per relayed connection (ADR-003): the host's CID 2, port 5001.
+// Relay is where the guest's init opens one vsock stream per relayed connection (ADR-003): the host's CID 2, port 5001. Files is where it holds the one connection a `--mount` session's export is served on (ADR-005): port 5002.
 func (*workcell) Relay(context.Context) (Channel, error) { return Channel{Addr: "vsock:2:5001"}, nil }
+func (*workcell) Files(context.Context) (Channel, error) { return Channel{Addr: "vsock:2:5002"}, nil }

@@ -268,6 +268,9 @@ func (c *control) Relay(context.Context) (Channel, error) {
 	return Channel{Addr: "unix:" + c.relay.ln.Addr().String()}, nil
 }
 
+// Files is the channel: a plain container serves the export as the host's own tree, through no connection of its own, so the file service's frames meet the naive host, which skips a type it does not know.
+func (c *control) Files(ctx context.Context) (Channel, error) { return c.Channel(ctx) }
+
 // startHelpers starts one payload process per helper name, once.
 func (c *control) startHelpers() error {
 	if c.helpers != nil {

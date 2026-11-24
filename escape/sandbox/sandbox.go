@@ -104,8 +104,9 @@ type Observe interface {
 	Channel(ctx context.Context) (Channel, error)
 	// Bind opens a listener ("tcp4") or packet socket ("udp4") at addr where the product reaches the test host, "host" standing for its address there. A port that needs root fails with EACCES, and the judge binds it as root.
 	Bind(ctx context.Context, network, addr string) (net.Listener, net.PacketConn, error)
-	// Relay describes the host end of the network relay, one stream per relayed connection behind the header of ADR-003.
+	// Relay describes the host end of the network relay, one stream per relayed connection behind the header of ADR-003; Files the host end of the file service a `--mount` session's export is served through (ADR-005), the init's one connection to it.
 	Relay(ctx context.Context) (Channel, error)
+	Files(ctx context.Context) (Channel, error)
 	// Update runs the product's update client once, as `workcell update` does with u, and returns Installed for u.Name. What the client keeps between runs is the session's. A refusal is not an error; a client that could not run is.
 	Update(ctx context.Context, u UpdateConfig) (installed []byte, err error)
 	// Installed returns the artifact installed for the pin name, read on the host from the current layer; nil when none is.
