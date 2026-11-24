@@ -6558,3 +6558,206 @@ X-Forwarded-Prefix, X-Forwarded-Path and X-Forwarded-Uri among them (PARKED.md w
 client: a request under a narrowed rule that carries one of these names, as a header or a query parameter, with
 the placeholder is answered 403, and the answer names the binding and not the header.
 Sweep 3 now stands at four mediums (C65, C66, C67 and C68, all fixed) and one low (C64, fixed).
+
+## S-1006, sweep 3: resolver: tunnelling, rebinding, cache and case tricks (I3, I4), as built at main f8fc5ab
+
+Sweep 3 (S8), the last the SPEC allows, fresh context (S3), the whole surface read as built after S-F1 to S-F51,
+not a diff. Auditor on the top tier in the cloud session, which has no hypervisor; nothing of this audit needed
+a VM. The auditor wrote its own trust boundary before it opened any earlier record.
+
+Trust boundary. Guest root owns every byte and the timing of each vsock stream to host port 5001: the 20-byte
+relay header that stream() in cmd/workcell/relay.go decodes and, behind a UDP/53 header at any address, one
+2-byte length frame and up to 65535 bytes handed to resolver.Answer, on up to 1024 streams (1023 on Firecracker)
+under a 5 s deadline; the guest's resolv.conf, routes and listeners enforce nothing (A1). The network attacker
+owns the answers that the host's system resolver returns for an allowed name (A and AAAA sets, CNAME chains,
+TTL 0, timing) and every upstream byte at the address it steers the host to; those enter at connect in
+internal/proxy/proxy.go (LookupNetIP of the rooted name, then hostNets, then blockedAddr on every address,
+then a dial by literal) and through the Transport.DialContext of terminate.go, which re-enters connect. The
+operator chooses the allowed set, canonical lower-case ASCII, which reaches the resolver and the proxy as the
+same strings; the repository can only narrow. Authority: the supervisor at the operator's uid, which can open
+any TCP connection the host can (loopback, LAN, metadata, VPN, NAT hairpin), writes name_not_allowed notes, and
+holds descriptors and memory. The resolver answers from policy alone, with no upstream, cache or forwarding,
+so for the guest's own queries "no query leaves the host" is structural; connect is the one place where a
+guest action makes a query leave the host, and only for a name on the allowlist. Trusted without checking:
+the kernel's route and interface tables, the system resolver for addresses (vetted afterwards), and that
+blockedAddr's classes plus the interface prefixes and the main table's on-link routes name every address the
+host itself answers or sits beside. Not knowable to that vetting, as the auditor listed before it read the
+records: an address behind a VPN or a policy table, a NAT hairpin, public space used internally one hop away,
+an address the host owns through the local table alone, and a metadata address in public space outside the
+list. Both candidates live in the last two items. internal/proxy/proxy.go carries `// Ported from v1`, so
+both are ordinary public candidates with a v1 line (SPEC section 13); neither is a defect in Go, the kernel
+or anyone else's project, so nothing falls under S14's stop.
+
+Lenses (S9). Parsing and resources: question() wants QDCOUNT 1, plain labels of at most 63 bytes, a name of
+at most 253 bytes with the separating dot counted before the check, and type and class only when four bytes
+remain; label types 0x40 to 0xFF are refused as long labels; reply() copies at most 255 wire bytes of question
+plus the 16-byte record, so maxReply 287 holds exactly; TC, AA, Z, AD and CD are masked and RD is echoed as
+sent. A fresh probe of twelve rows beyond TestAnswer (a pointer to a later offset, label types 0x41 and 0x80,
+60000 junk bytes after a valid question, RD clear, every flag set, the 253-byte name, types HTTPS and 0, class 0,
+opcode NOTIFY, a NUL in a label) gave every reply within the bound, no flag or count leaked, no panic. ReadFrame
+allocates at most 65535 bytes per stream under the stream's absolute deadline, 64 MiB at the slot cap. routes()
+refuses a malformed row, which fails closed. Fuzz: FuzzAnswer 20 s (4.07 million runs), FuzzDecode 20 s (3.35
+million), FuzzReadFrame 20 s (3.30 million), the suite's FuzzParseDNSQuery 20 s and FuzzParseDNSReply 21 s:
+no crasher. Logic and state: both sides fold ASCII only and the allowed set is ASCII, so no other spelling
+matches (U+0130 and the Kelvin sign shrink under ToLower and are refused by the length check); a rooted name
+is the wire form, so the resolver takes it and the SNI check refuses a trailing dot; an allowed name's AAAA,
+TXT, ANY, HTTPS and type 0 are NOERROR with no record, so no HTTPS-record ECH path exists; every allowlist
+host on any port gets the hint 127.0.0.1, the proxy scopes by port afterwards, and the hint is never dialled;
+connect's vetting is all or nothing over one answer set, with Unmap before both the vet and the dial; UDP 53
+at any address is the resolver's, and UDP elsewhere closes without a record (C14, intended). Concurrency and
+check-to-use: one lookup per connection, the host's networks read after it, every answer vetted before any dial,
+the dial by literal under a shared 30 s budget, no second lookup (TestConnectVetsEveryAnswerOnEveryConnection
+green); the terminated transport pools per host and re-enters connect for each new upstream connection, so a
+pooled connection reuses the address vetted at its dial; a shared lookup hands each caller the same set, and
+each vets it; the DNS exchange, its reply write included, runs under the stream's absolute deadline; a host
+network that appears between the read and the dial is microseconds and not the attacker's to time. Cryptography
+and identity: none on the resolver; the one identity check on the path is the terminated upstream's certificate
+for the SNI host (S-1005), which is why both candidates stop at the ClientHello on 443 and matter on a forward
+port, where the operator's grant trusts DNS; DNSSEC is not consulted. Failure modes: in hostNets a missing file
+adds nothing, and any other read error, a malformed row or an InterfaceAddrs error refuses with blocked_address;
+a lookup error or an empty set is resolve_failed, a dial failure dial_failed; a ReadFrame error or a nil Answer
+closes the stream with nothing reflected; an Accept error of serveRelay closes every adapter; past the soft
+limit every admission is refused while the hint still answers; no error path fails open. Downgrade, rollback
+and replay: header version 1 only; the resolver is stateless and echoes the id; the product caches nothing and
+vets per connection, so a stale or poisoned answer in the system's cache can only change which vetted address
+is dialled, or give resolve_failed. Interaction between surfaces: the refused name that reaches the audit log
+is lower-case [a-z0-9.-] of at most 253 bytes or empty; tunnelling moves 253 bytes per refused query into the
+host's own log and nothing off the host; the host's only outbound queries are A and AAAA of a rooted allowlist
+name; every Isolated row of the suite relies on the product dialling an address that the host owns through a
+local route alone (the canary address), which is the mechanism of C69 used as a fixture.
+
+Earlier fixes on this surface, traced again in the code as built, all hold: C7 (S-F4: 168.63.129.16/32 in
+blockedPrefixes and Unmap first in blockedAddr; TestBlockedAddr green); C13 (S-F8: TLSHandshakeTimeout and
+MaxConnsPerHost in the terminating transport; c13_test green); C23 and C24 (S-F16: handle acts on a nil
+Note only, before any dial; unrecorded_test green); C66 (S-F49: hostNets reads both /proc tables, routes
+keeps the rows with no gateway that are neither default, local nor multicast; TestRoutes green; the row
+rebind-on-link-neighbour-forward is live in the Linux build and escape/_pending/ was gone); C14 (refuted in
+sweep 1) stands as relay.go and its tests have it. C69 is the residue of S-F49's own exclusion of the local
+table, reproduced now.
+
+Coverage. Read in full: internal/resolver/resolver.go and its test; internal/relay/relay.go and its test;
+cmd/workcell/{relay,run_vm,policy,log}.go and relay_test.go; internal/proxy/{proxy,allowlist,terminate}.go
+with proxy_test.go, forward_test.go and c13_test.go; internal/policy/policy.go;
+internal/audit/audit.go; cmd/workcell-init/{net,main}.go; internal/vmm/vmm.go and both backends;
+escape/suite/{dns,dnstests,resolver,rebind,packets,addr_linux,host_linux,priv_linux,relay,https,suite,tests,floods,floods_linux,channel,channel_linux,lifecycle}.go
+with dns_test.go and rebind_test.go;
+escape/sandbox/{sandbox,workcell,workcell_vm,workcell_linux,control_linux,control_resolver_linux,control_relay_linux}.go;
+escape/cmd/payload/main.go; docs/adr/003-network-path.md; loop/SPEC.md; this file's map, its records of
+S-1006 in sweeps 1 and 2 and of S-1004 in sweep 3; PARKED.md by search for the surface's terms; both enforced
+lists and fuzz-minutes.txt. Not opened: internal/proxy/signin.go and its tests and the other c*_test files;
+internal/secret; cmd/workcell/{explain,update}.go; the suite's secrets, signin, terminate, audit, repo and
+files rows; escape/sandbox/workcell_darwin.go and the adapter tests; docs/threat-model.md and docs/policy.md;
+_legacy/; the Go standard library's sources (sweeps 1 and 2 read net and net/http; this audit relied on
+their record and on behaviour). Ran: go test of internal/resolver, internal/relay, internal/proxy (the whole
+package) and cmd/workcell's relay tests, the non-VM tests of escape/suite and escape/sandbox, go vet of the
+four packages, the five fuzz bursts, three probes by go test -overlay from a scratch directory, and one probe
+as root in a network namespace of its own that spoke netlink itself, since the session has no ip tool. Every
+listener was a socket the probe itself started inside its own namespace or on loopback, no packet left the
+session and no third party was touched (S12, T8); the tree was unchanged at the end. Not run by the auditor:
+anything on a real VM, the escape suite, the gate, anything over IPv6 (the session's kernel has none, so the
+IPv6 half of C69 is reasoned only), any macOS path, the four-hour fuzz of S10. No model declined a request,
+no safeguard re-ran one and no tool permission was refused to the auditor.
+
+Evidence gaps, not findings (PARKED.md holds what a retro must weigh, R3). The suite has no I4 row with an
+IPv6 answer, with a mixed answer set (feasible now in the isolated network with the canary address beside
+a neighbour, against the head comment of rebind.go) or with a metadata address in public space; a DNS
+frame whose header promises more than it sends is unit-tested only. A synthesised AAAA of a NAT64 network
+(64:ff9b::/96) is refused, and one refused answer refuses the name, so on an IPv6-only network every allowed
+name is blocked_address: closed, a matter of use and no invariant. An on-link public prefix in a routing table
+other than main (policy routing, a VPN's own table) is C66's layout outside /proc/net/route; reasoned only.
+
+### S-1006 candidates, sweep 3
+
+C69. ID I4 ("The guest cannot reach host loopback, the LAN, link-local or cloud metadata addresses, or another
+session. Names are resolved on the host and the vetted address is the one dialled."). It is the residue of
+S-F49's own exclusion of the local table, now reproduced. Attacker: guest root, with the network attacker
+as the host's resolver for an allowed name, the model of the rebind rows, of C7 and of C66. Precondition it
+does not control: the host owns a public (global unicast) prefix through the kernel's local routing table
+alone, an AnyIP route such as `ip route add local 192.175.48.0/25 dev lo` or, on IPv6, `ip -6 route add local
+2001:db8:1::/64 dev lo`, the documented way to serve every address of a routed prefix on one machine (anycast
+and edge hosts, a server with a routed /64), with no interface address and no main-table route for it; private,
+link-local and unique-local prefixes of that kind stay refused by class. Rare on a developer's laptop. Where:
+internal/proxy/proxy.go: hostNets reads the interface prefixes and /proc/net/route, which the kernel fills
+from the main table only, so no row of the local table is ever seen; routes drops every IPv6 row that carries
+RTF_LOCAL on purpose; blockedAddr then has no prefix to hold the address against, and connect dials it. also
+in v1 main: egressproxy/proxy.go. Input: that layout; a policy that allows one name on a forward port (a bare
+name's 443 is terminated, and the upstream certificate check stops it after the TCP connect and the ClientHello);
+the resolver answers the name with any address of the prefix; the guest connects to the name. Effect claimed:
+connect dials the address from the host and the kernel delivers the connection to the host itself, which is
+what a local route means, so a service bound on the host to 0.0.0.0 or to the prefix receives the guest's bytes:
+host-local reach through the vetting. Auditor's evidence: a probe by go test -overlay, run as root in a network
+namespace of its own with the route added by netlink: /proc/net/route held the header line only, hostNets
+gave 127.0.0.1/8 alone, blockedAddr(192.175.48.2) was false, connect returned a connection and the canary
+at 192.175.48.2:8443 read the token; with 192.175.48.1/25 added as an interface address the same address was
+blocked. The IPv6 half is reasoned only, since the session's kernel has no IPv6. Severity claimed: medium by S6.
+
+Reproducing test: TestC69AnyIPLocalRoute, package proxy, build tag linux, written by the redteam from the claim
+alone. It runs itself again in a user and network namespace of its own, or through `sudo -n unshare -n` where
+no user namespace can be made, brings lo up and adds `local 192.175.48.0/25 dev lo` to the local table by raw
+netlink, adds 192.175.48.129/25 as an interface address for the control arm, listens at 192.175.48.6:8443, and
+calls the product's connect with only the lookup answered by the test, so the real hostNets, blockedAddr and
+dial run; it fails when connect admits the address and the listener reads the bytes, and a dial failure is a
+fatal layout error, so it cannot pass for want of a route. Run by go test -overlay against the real package,
+plain and under -race, by the redteam and again by the orchestrator: "I4: connect admitted 192.175.48.6,
+the host's own through the local table alone, and the host's listener read "GET /secret HTTP/1.0\r\n\r\n"";
+the control arm (192.175.48.130, inside the interface address's prefix, wants blocked_address) passes. The
+redteam also ran it as uid nobody through the user namespace and ran the sudo fallback's command by hand,
+with the same failure. No VM was needed.
+
+Outcome: CONFIRMED at medium by the verifier, which ran the test itself, saw the same line and the control arm
+pass, and traced the real path: a forward-port connection goes from handle through route and Deny to connect,
+blockedAddr is called nowhere else in cmd/ or internal/, and terminate.go's dialer reaches the same connect, so
+nothing else refuses the address. Its own namespace probe showed the stronger form: a listener on 0.0.0.0:8443 read
+the bytes sent to 192.175.48.6, and /proc/net/route held no row for the prefix. The attacker is in scope and the
+test takes no power it lacks: the route and the listener are the host's layout, which is the precondition. Not
+intended behaviour and not a parked limit: docs/threat-model.md and the accepted decisions say nothing of it;
+this file's own records left the local table out (C9 in sweep 1, C66 and S-F49 in this sweep) only so that
+the suite's canary address stays dialable, a constraint of the test harness and not a judgement that such an
+address is not the host; PARKED.md already says that a public alias on loopback is the host itself. Not low,
+because the break is shown by a test, and how rare the layout is is no axis of S6; not high, because it needs
+a host layout that the attacker does not control. C66 was graded medium on the same shape.
+
+What the fix costs, for the maintainer (S8): the product must count an address of the local table as the host's
+own, and every Isolated row of the suite reaches its canary by exactly such a route (escape/sandbox/sandbox.go,
+and localRoute in escape/suite/priv_linux.go), so the fix and a new model of "the Internet" in the suite's
+isolated network land together: the canary behind a gateway, for instance a second namespace over a veth pair
+with a route `via`. The auditor's fix shape: in routes, stop dropping the rows that carry RTF_LOCAL (about three
+product lines fewer, and it closes the IPv6 half); for IPv4, where /proc/net/route cannot show the local table,
+read the routes by a netlink dump (RTM_GETROUTE) and keep the local rows and the unicast rows with no gateway
+of both families, in place of routes and hexAddr, about forty lines out and forty in, in a Linux file with
+a stub beside it. That is a choice about how the suite models the Internet, not a patch. Fix unit S-F52. Not
+someone else's project: the kernel does what its documentation says.
+
+C70. ID I4 ("cloud metadata addresses"). Attacker: guest root, with the network attacker as the host's resolver
+for an allowed name. Preconditions it does not control: the host runs on Equinix Metal (formerly Packet), and
+the policy forwards a plain port. Where: blockedPrefixes in internal/proxy/proxy.go, whose own comment says
+it names a cloud metadata address on public space and which holds Azure's 168.63.129.16/32 alone. also in v1
+main: egressproxy/proxy.go. Input: the resolver answers an allowed forward-port name with 192.80.8.124, which
+the provider's public documentation gives as the address of its metadata service, one that knows its caller by
+source address; the guest sends a plain HTTP request on the forward port. Effect claimed: blockedAddr does not
+refuse the address or its IPv4-mapped form, so on a host of that platform the proxy would dial the metadata
+service from the host's own address and relay the instance's metadata and user data to the guest. Auditor's
+evidence: a probe by go test -overlay: blockedAddr(192.80.8.124) is false beside true for 168.63.129.16,
+169.254.169.254, 100.100.100.200 and 192.0.0.192; the address's role is from the provider's documentation,
+and nothing was sent to it or to any third party (S12). The auditor also went through the metadata endpoints
+of seventeen other providers: each is link-local, in the shared address space, unique-local, in 192.0.0.0/24
+or the Azure address already listed. Severity claimed: low, because the platform reached its end of life in
+June 2026 and no break on a live host is shown.
+
+Reproducing test: TestC70EquinixMetadata, package proxy, 15 lines, written by the redteam from the claim alone;
+it calls blockedAddr with no host prefixes, as the existing test does, and touches no network. Run by go test
+-overlay against the real package, plain and under -race, by the redteam and again by the orchestrator: the
+rows 192.80.8.124 and ::ffff:192.80.8.124 fail ("blockedAddr(...) = false, want true"), and the control rows
+pass (168.63.129.16 refused, 192.0.3.1 allowed). No VM was needed.
+
+Outcome: CONFIRMED at low by the verifier, which ran the test itself and traced connect: lookup, then blockedAddr
+on every answer as the only gate, then a dial by literal; its own probe with the lookup and the dial stubbed saw
+connect dial 192.80.8.124:80 for both spellings where 168.63.129.16 and 169.254.169.254 gave blocked_address,
+and a forwarded plain port checks no certificate, so nothing else refuses it. The structure is C7's, which
+was medium; this is low because the platform has reached its end of life, so the precondition that made C7
+medium cannot be met today: hardening with no demonstrated break. The address's role rests on the provider's
+documentation and on the verifier's own knowledge; the repository says nothing of it. The verifier adds that
+to list it as residual risk without a code row would also be defensible (S7 lists lows); the fix is one line,
+so the fix unit S-F53 stands and the maintainer may strike it.
+
+Sweep 3 now stands at five mediums (C65, C66, C67 and C68, fixed; C69, open) and two lows (C64, fixed; C70, open).
