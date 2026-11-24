@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Omkhar Arasaratnam
 
-// Finding C63 of S-1013, sweep 2 (hardening, the second order of C56), parked for S-F46, which moves this file to cmd/workcell/c63_test.go.
+// Regression test of finding C63 of S-1013, sweep 2 (I7, I12), fixed by S-F46.
 
 //go:build linux || (darwin && arm64 && cgo)
 
