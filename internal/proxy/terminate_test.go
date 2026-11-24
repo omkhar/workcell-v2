@@ -268,11 +268,9 @@ func TestTerminateOffersHTTP11Only(t *testing.T) {
 		defer conn.Close()
 		return conn.ConnectionState().NegotiatedProtocol, nil
 	}
-	if _, err := dial("h2"); err == nil {
-		t.Error("h2-only handshake succeeded, want refusal")
-	}
-	if got, err := dial("h2", "http/1.1"); err != nil || got != "http/1.1" {
-		t.Errorf("negotiated = (%q, %v), want http/1.1", got, err)
+	_, h2 := dial("h2")
+	if got, err := dial("h2", "http/1.1"); h2 == nil || err != nil || got != "http/1.1" {
+		t.Errorf("h2-only handshake error %v, negotiated (%q, %v); want a refusal, then http/1.1", h2, got, err)
 	}
 }
 

@@ -3,7 +3,7 @@
 
 //go:build linux
 
-// Reproduces C69 of S-1006 sweep 3 (I4): an address the host owns through the kernel's local table alone (an AnyIP route, `local 192.175.48.0/25 dev lo`, no interface address, no main-table route) is // not among hostNets, so connect dials it and the kernel delivers the guest's bytes to a listener on the host. It fails until fix unit S-F52 lands; S-F52 moves it to internal/proxy/c69_test.go.
+// Reproduces C69 of S-1006 sweep 3 (I4): an address the host owns through the kernel's local table alone (an AnyIP route, `local 192.175.48.0/25 dev lo`, no interface address, no main-table route) is not among hostNets, so connect dials it and the kernel delivers the guest's bytes to a listener on the host. It fails until fix unit S-F52 lands.
 package proxy
 
 import (
