@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"maps"
 	"math/big"
 	"net"
 	"net/http"
@@ -41,11 +42,10 @@ const MaxCALifetime = 24 * time.Hour
 var discardLog = log.New(io.Discard, "", 0)
 
 var (
-	headerNamePattern  = regexp.MustCompile(`^[A-Za-z0-9-]+$`)
-	methodPattern      = regexp.MustCompile(`^[A-Z]+$`)
-	placeholderPattern = regexp.MustCompile(`^wcph-[0-9a-f]{32}$`)
-	// placeholderAnywhere matches any placeholder in case-folded text.
-	placeholderAnywhere = regexp.MustCompile(`wcph-[0-9a-f]{32}`)
+	headerNamePattern   = regexp.MustCompile(`^[A-Za-z0-9-]+$`)
+	methodPattern       = regexp.MustCompile(`^[A-Z]+$`)
+	placeholderPattern  = regexp.MustCompile(`^wcph-[0-9a-f]{32}$`)
+	placeholderAnywhere = regexp.MustCompile(`wcph-[0-9a-f]{32}`) // any placeholder in case-folded text
 )
 
 // NewPlaceholder returns a fresh random placeholder. The agent holds it in place of a brokered credential; the proxy swaps it on the way out.
@@ -110,12 +110,17 @@ func NewTerminateRule(host, header, method, path string, repos []string) (Termin
 	return r, nil
 }
 
-// overrideHeaders are the routing overrides a framework honours instead of the request line: the method from the first three on a POST (Rack::MethodOverride, ASP.NET MVC, Google's API front end), the path from the last two (IIS URL Rewrite, Symfony HttpFoundation). A rule that narrows refuses a request carrying any of them (C68).
-var overrideHeaders = []string{"X-Http-Method-Override", "X-Http-Method", "X-Method-Override", "X-Original-Url", "X-Rewrite-Url"}
+// cgiName is a header or query parameter name as a CGI-style server spells a header (RFC 3875 4.1.18 maps "-" to "_"), in lower case: one variable whatever the letter case and the mix of "-" and "_" the request used.
+func cgiName(n string) string { return strings.ReplaceAll(strings.ToLower(n), "-", "_") }
 
-// admits reports whether the rule swaps on a request of method to u with headers h: the rule's method when it names one, and a path under its prefix, or within one of its repositories, when it names either, and then none of overrideHeaders present, with any value or none. The path is judged as sent and under both folds (see fold), so that neither an encoded slash, a backslash, a ;param nor ".." leads out from under the prefix on any reading.
+// overrides are the routing overrides a framework honours instead of the request line, as cgiName spells them: the method from the first three as a header on a POST (Rack::MethodOverride, ASP.NET MVC, Google's API front end) and from the first or the last as a query parameter (ASP.NET MVC, Spring, Symfony), the path from the others (IIS URL Rewrite, Symfony HttpFoundation). A rule that narrows refuses a request carrying any of them as a header or a query parameter (C68).
+var overrides = []string{"x_http_method_override", "x_http_method", "x_method_override", "x_original_url", "x_rewrite_url", "_method"}
+
+// admits reports whether the rule swaps on a request of method to u with headers h: the rule's method when it names one, and a path under its prefix, or within one of its repositories, when it names either, and then none of overrides named by a header or a query parameter, with any value or none. The path is judged as sent and under both folds (see fold), so that neither an encoded slash, a backslash, a ;param nor ".." leads out from under the prefix on any reading.
 func (r TerminateRule) admits(method string, u *url.URL, h http.Header) bool {
-	if r.Method != "" && method != r.Method || (r.Method != "" || r.Path != "" || len(r.Repos) > 0) && slices.ContainsFunc(overrideHeaders, func(n string) bool { return h.Values(n) != nil }) {
+	params, _ := url.ParseQuery(strings.ReplaceAll(u.RawQuery, ";", "&")) // the parameter names as they decode; a pair holding ";" would otherwise be dropped unjudged, though a framework reads it
+	names := slices.AppendSeq(slices.Collect(maps.Keys(h)), maps.Keys(params))
+	if r.Method != "" && method != r.Method || (r.Method != "" || r.Path != "" || len(r.Repos) > 0) && slices.ContainsFunc(names, func(n string) bool { return slices.Contains(overrides, cgiName(n)) }) {
 		return false
 	}
 	sent := u.EscapedPath()
@@ -165,10 +170,7 @@ func NewSessionCA(hosts []string, notAfter time.Time) (*SessionCA, error) {
 		MaxPathLenZero:              true,
 		PermittedDNSDomainsCritical: true,
 		PermittedDNSDomains:         hosts,
-		ExcludedIPRanges: []*net.IPNet{
-			{IP: net.IPv4zero, Mask: net.CIDRMask(0, 32)},
-			{IP: net.IPv6zero, Mask: net.CIDRMask(0, 128)},
-		},
+		ExcludedIPRanges:            []*net.IPNet{{IP: net.IPv4zero, Mask: net.CIDRMask(0, 32)}, {IP: net.IPv6zero, Mask: net.CIDRMask(0, 128)}},
 	}
 	cert, err := sign(template, template, &key.PublicKey, key)
 	if err != nil {
