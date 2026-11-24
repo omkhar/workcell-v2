@@ -86,8 +86,7 @@ func traversalProbe(args []string) Result {
 	if err != nil {
 		return Result{Status: "error", Detail: err.Error()}
 	}
-	// Not filepath.Join: it would fold the ".." away before the kernel sees it.
-	return Result{Status: "tried", Detail: "read=" + tryRead(t.guest+"/../secret") + " write=" + tryWrite(t.guest+"/../written-"+t.token)}
+	return Result{Status: "tried", Detail: "read=" + tryRead(t.guest+"/../secret") + " write=" + tryWrite(t.guest+"/../written-"+t.token)} // Not filepath.Join: it would fold the ".." away before the kernel sees it.
 }
 
 // symlinkProbe follows the planted links, and one of its own to the secret's host path, and writes through the link to the directory beside the export.

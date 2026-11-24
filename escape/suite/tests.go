@@ -22,8 +22,7 @@ import (
 var All = append(append([]Test{
 	// The first row runs under a policy that opens one port (forwarded), so that an allowlist is shown to open no other port.
 	{ID: "I2", Name: "raw-ip-odd-port-tcp4", Probe: dialProbe, Host: tcpCanary("tcp4", hostAddr+":0", ""), Want: forwarded}, {ID: "I2", Name: "ipv4-mapped-ipv6-tcp", Probe: dialProbe, Host: tcpCanary("tcp4", hostAddr+":0", "::ffff:"+hostAddr)},
-	{ID: "I2", Name: "udp4-datagram", Probe: udpProbe, Host: udpCanary(hostAddr+":0", lineToken)},
-	{ID: "I2", Name: "quic-initial", Probe: quicProbe, Host: udpCanary(hostAddr+":0", quicToken)}, {ID: "I2", Name: "icmp-echo", Probe: icmpProbe, Host: icmpJudge},
+	{ID: "I2", Name: "udp4-datagram", Probe: udpProbe, Host: udpCanary(hostAddr+":0", lineToken)}, {ID: "I2", Name: "quic-initial", Probe: quicProbe, Host: udpCanary(hostAddr+":0", quicToken)}, {ID: "I2", Name: "icmp-echo", Probe: icmpProbe, Host: icmpJudge},
 	// The policy opens one forward port for one name. The guest dials the canary at that very port, as TCP and as UDP: the port is served, but the host resolves the allowed name itself and never dials the address the guest named (I4), and a UDP datagram to a TCP port has no listener.
 	{ID: "I2", Name: "allowed-port-raw-ip-tcp4", Probe: dialProbe, Host: tcpCanary("tcp4", hostAddr+":"+forwardPort, ""), Want: forwarded}, {ID: "I2", Name: "allowed-port-udp4", Probe: udpProbe, Host: udpCanary(hostAddr+":"+forwardPort, lineToken), Want: forwarded},
 	// Root in the guest skips the init and speaks the relay's own header to the host end (ADR-003), naming the canary as TCP, as UDP, under a version or proto the host does not serve; and offers a header that never completes, in one short write or a byte at a time.
@@ -38,13 +37,10 @@ var All = append(append([]Test{
 	// The relay header names the host's own loopback and the metadata address.
 	{ID: "I4", Name: "relay-header-host-loopback", Probe: relayProbe, Host: relayCanary("tcp4", "127.0.0.1:0", "tcp")}, {ID: "I4", Name: "relay-header-metadata", Probe: relayProbe, Host: onLoopback("169.254.169.254", relayCanary("tcp4", "169.254.169.254:0", "tcp"))},
 	// Rebinding: the guest connects to an allowed name, by its forward port or by SNI at 443, and the judge, as the host's resolver, answers it with the host's loopback, a LAN address, the metadata address, loopback as an IPv4-mapped IPv6 address, the unspecified address, or a CNAME to a denied name that is loopback. The canary at the answer must see nothing.
-	{ID: "I4", Name: "rebind-loopback-forward", Probe: rebindProbe, Host: rebindJudge(rebind{a: []string{"127.0.0.1"}, canary: "127.0.0.1"}), Want: rebinding},
-	{ID: "I4", Name: "rebind-loopback-sni", Probe: rebindProbe, Host: rebindJudge(rebind{a: []string{"127.0.0.1"}, canary: "127.0.0.1", sni: true}), Want: rebindingSNI},
-	{ID: "I4", Name: "rebind-lan-forward", Probe: rebindProbe, Host: onLoopback("10.255.255.254", rebindJudge(rebind{a: []string{"10.255.255.254"}, canary: "10.255.255.254"})), Want: rebinding},
-	{ID: "I4", Name: "rebind-metadata-forward", Probe: rebindProbe, Host: onLoopback("169.254.169.254", rebindJudge(rebind{a: []string{"169.254.169.254"}, canary: "169.254.169.254"})), Want: rebinding},
+	{ID: "I4", Name: "rebind-loopback-forward", Probe: rebindProbe, Host: rebindJudge(rebind{a: []string{"127.0.0.1"}, canary: "127.0.0.1"}), Want: rebinding}, {ID: "I4", Name: "rebind-loopback-sni", Probe: rebindProbe, Host: rebindJudge(rebind{a: []string{"127.0.0.1"}, canary: "127.0.0.1", sni: true}), Want: rebindingSNI},
+	{ID: "I4", Name: "rebind-lan-forward", Probe: rebindProbe, Host: onLoopback("10.255.255.254", rebindJudge(rebind{a: []string{"10.255.255.254"}, canary: "10.255.255.254"})), Want: rebinding}, {ID: "I4", Name: "rebind-metadata-forward", Probe: rebindProbe, Host: onLoopback("169.254.169.254", rebindJudge(rebind{a: []string{"169.254.169.254"}, canary: "169.254.169.254"})), Want: rebinding},
 	{ID: "I4", Name: "rebind-metadata-sni", Probe: rebindProbe, Host: onLoopback("169.254.169.254", rebindJudge(rebind{a: []string{"169.254.169.254"}, canary: "169.254.169.254", sni: true})), Want: rebindingSNI},
-	{ID: "I4", Name: "rebind-unspecified-forward", Probe: rebindProbe, Host: rebindJudge(rebind{a: []string{"0.0.0.0"}, canary: "0.0.0.0"}), Want: rebinding},
-	{ID: "I4", Name: "rebind-cname-denied-forward", Probe: rebindProbe, Host: rebindJudge(rebind{cname: deniedName, a: []string{"127.0.0.1"}, canary: "127.0.0.1"}), Want: rebindingCNAME},
+	{ID: "I4", Name: "rebind-unspecified-forward", Probe: rebindProbe, Host: rebindJudge(rebind{a: []string{"0.0.0.0"}, canary: "0.0.0.0"}), Want: rebinding}, {ID: "I4", Name: "rebind-cname-denied-forward", Probe: rebindProbe, Host: rebindJudge(rebind{cname: deniedName, a: []string{"127.0.0.1"}, canary: "127.0.0.1"}), Want: rebindingCNAME},
 	// Under a name of its own: its A answer is empty, which a Mac's resolver holds for over a minute (U-701), in the rows after it and in the next run's.
 	{ID: "I4", Name: "rebind-mapped-loopback-forward", Probe: rebindProbe, Host: rebindJudge(rebind{aaaa: []string{"::ffff:127.0.0.1"}, canary: "127.0.0.1", names: []string{"mapped.escape.test."}}), Want: rebindingMapped},
 	// The answer is a public address on a network the host itself holds, in the session's own network (sandbox.IsolatedNet): no range set aside catches it, and the canary there is the host itself, or its neighbour on that network.
@@ -55,25 +51,19 @@ var All = append(append([]Test{
 	{ID: "I3", Name: "doh-get-tcp4", Probe: dohProbe(http.MethodGet), Host: dnsCanary(dnsOverHTTPS, queried)}, {ID: "I3", Name: "tunnel-txt-udp4", Probe: tunnelProbe, Host: dnsCanary(dnsOverUDP, tunnelled)},
 	// The guest's configured resolver must answer the allowed name, in any case and with EDNS0, and refuse every other name (one no policy names, a subdomain, a name that merely ends or starts in it, other types) promptly, with a DNS answer carrying no address. The same at any address on port 53, under a policy allowing nothing, after hostile datagrams (I12) and after a burst (I10).
 	{ID: "I3", Name: "resolver-answers-allowed", Probe: lookupProbe, Host: resolverJudge(resolvConf, "plain", allowedLookups), Want: reachable}, {ID: "I3", Name: "resolver-refuses-others", Probe: lookupProbe, Host: resolverJudge(resolvConf, "plain", deniedLookups), Want: reachable},
-	{ID: "I3", Name: "resolver-at-host-address", Probe: lookupProbe, Host: resolverJudge(hostAddr+":53", "plain", bothLookups), Want: reachable},
-	{ID: "I3", Name: "resolver-at-lan-address", Probe: lookupProbe, Host: onLoopback("10.255.255.254", resolverJudge("10.255.255.254:53", "plain", bothLookups)), Want: reachable},
-	{ID: "I3", Name: "resolver-empty-policy", Probe: lookupProbe, Host: resolverJudge(resolvConf, "plain", nothingLookups)}, {ID: "I3", Name: "resolver-after-garbage", Probe: lookupProbe, Host: resolverJudge(resolvConf, "garbage", bothLookups), Want: reachable},
-	{ID: "I3", Name: "resolver-after-burst", Probe: lookupProbe, Host: resolverJudge(resolvConf, "burst", bothLookups), Want: reachable},
+	{ID: "I3", Name: "resolver-at-host-address", Probe: lookupProbe, Host: resolverJudge(hostAddr+":53", "plain", bothLookups), Want: reachable}, {ID: "I3", Name: "resolver-at-lan-address", Probe: lookupProbe, Host: onLoopback("10.255.255.254", resolverJudge("10.255.255.254:53", "plain", bothLookups)), Want: reachable},
+	{ID: "I3", Name: "resolver-empty-policy", Probe: lookupProbe, Host: resolverJudge(resolvConf, "plain", nothingLookups)}, {ID: "I3", Name: "resolver-after-garbage", Probe: lookupProbe, Host: resolverJudge(resolvConf, "garbage", bothLookups), Want: reachable}, {ID: "I3", Name: "resolver-after-burst", Probe: lookupProbe, Host: resolverJudge(resolvConf, "burst", bothLookups), Want: reachable},
 	// A secret lies beside the export on the host. The guest goes for it and its directory by path, link, mount and file handle, and for the host's disks by device node.
 	{ID: "I1", Name: "dotdot-traversal", Probe: traversalProbe, Host: outside(nil), Want: exported}, {ID: "I1", Name: "planted-symlink", Probe: symlinkProbe, Host: outside(plantLinks), Want: exported},
-	{ID: "I1", Name: "bind-mount", Probe: mountProbe, Host: outside(nil), Want: exported}, {ID: "I1", Name: "open-by-handle", Probe: handleProbe, Host: outside(nil), Want: exported},
-	{ID: "I1", Name: "device-node", Probe: deviceProbe, Host: deviceJudge, Want: exported}, {ID: "I1", Name: "link-rename", Probe: moveProbe, Host: outside(nil), Want: exported},
+	{ID: "I1", Name: "bind-mount", Probe: mountProbe, Host: outside(nil), Want: exported}, {ID: "I1", Name: "open-by-handle", Probe: handleProbe, Host: outside(nil), Want: exported}, {ID: "I1", Name: "device-node", Probe: deviceProbe, Host: deviceJudge, Want: exported}, {ID: "I1", Name: "link-rename", Probe: moveProbe, Host: outside(nil), Want: exported},
 	// The same in mount mode (`--mount`): the export is the user's own tree, served live, so every name the guest utters meets the host's file service (ADR-005); a write inside the export is correct, a byte beside or above it a break.
-	{ID: "I1", Name: "mount-dotdot-traversal", Probe: traversalProbe, Host: outside(nil), Want: live}, {ID: "I1", Name: "mount-planted-symlink", Probe: symlinkProbe, Host: outside(plantLinks), Want: live},
-	{ID: "I1", Name: "mount-bind-mount", Probe: mountProbe, Host: outside(nil), Want: live}, {ID: "I1", Name: "mount-open-by-handle", Probe: handleProbe, Host: outside(nil), Want: live},
-	{ID: "I1", Name: "mount-device-node", Probe: deviceProbe, Host: deviceJudge, Want: live}, {ID: "I1", Name: "mount-link-rename", Probe: moveProbe, Host: outside(nil), Want: live},
-	{ID: "I7", Name: "cross-session-residue", Probe: residueProbe, Host: residueJudge, Want: exported},
+	{ID: "I1", Name: "mount-dotdot-traversal", Probe: traversalProbe, Host: outside(nil), Want: live}, {ID: "I1", Name: "mount-planted-symlink", Probe: symlinkProbe, Host: outside(plantLinks), Want: live}, {ID: "I1", Name: "mount-bind-mount", Probe: mountProbe, Host: outside(nil), Want: live}, {ID: "I1", Name: "mount-open-by-handle", Probe: handleProbe, Host: outside(nil), Want: live},
+	{ID: "I1", Name: "mount-device-node", Probe: deviceProbe, Host: deviceJudge, Want: live}, {ID: "I1", Name: "mount-link-rename", Probe: moveProbe, Host: outside(nil), Want: live}, {ID: "I7", Name: "cross-session-residue", Probe: residueProbe, Host: residueJudge, Want: exported},
 	// Root changes the provider layer the host installed; the next session must not see it.
 	{ID: "I7", Name: "layer-read-only", Probe: layerProbe, Host: layerJudge}, // and B8: a digest mismatch is refused
 	// The guest asks for twice its cap; the host, watched from outside, must give no more than the cap.
 	{ID: "I10", Name: "fork-flood", Probe: forkProbe, Host: forkJudge, Want: capped}, {ID: "I10", Name: "memory-flood", Probe: memoryProbe, Host: memoryJudge, Want: capped},
-	{ID: "I10", Name: "disk-flood", Probe: diskProbe, Host: diskJudge, Want: capped}, {ID: "I10", Name: "descriptor-flood", Probe: fileProbe, Host: fileJudge, Want: capped},
-	{ID: "I10", Name: "log-flood", Probe: logProbe, Host: logJudge, Want: capped}, {ID: "I10", Name: "cpu-flood", Probe: cpuProbe, Host: cpuJudge(nil), Want: capped},
+	{ID: "I10", Name: "disk-flood", Probe: diskProbe, Host: diskJudge, Want: capped}, {ID: "I10", Name: "descriptor-flood", Probe: fileProbe, Host: fileJudge, Want: capped}, {ID: "I10", Name: "log-flood", Probe: logProbe, Host: logJudge, Want: capped}, {ID: "I10", Name: "cpu-flood", Probe: cpuProbe, Host: cpuJudge(nil), Want: capped},
 	// The same cap, loaded off the vCPU: the devices a VMM serves on host threads of its own (virtio-blk, vsock), and the console as the arm it does hold.
 	{ID: "I10", Name: "device-cpu-flood", Probe: emulationProbe, Host: cpuJudge(Session.Relay), Want: capped},
 	// And the supervisor's own decoder: root writes the smallest valid frames on the init's channel as fast as the host takes them, each read in several calls.
@@ -98,28 +88,20 @@ var All = append(append([]Test{
 	{ID: "I5", Name: "signin-gzip", Probe: signinProbe, Host: signedIn("gzip", "signin", "api"), Want: signedInWant}, {ID: "I5", Name: "signin-error-echo", Probe: signinProbe, Host: signedIn("", "signin", "refresh-bad", "api"), Want: signedInWant},
 	// Two allowed names, both terminated on the host. On a connection whose TLS names one, the request names the other, in the Host header, in :authority, or hidden from the SNI by ECH: neither canary may see a request for the other. A plain client in the guest must meet the host's own leaf, trusted through the environment the product set, never the canary's: terminated, not spliced. A canary presenting a leaf for the other name gets no request.
 	{ID: "I6", Name: "sni-host-mismatch-h1", Probe: mismatchProbe(false), Host: twoNames(canaries{}, strictJudge), Want: terminating}, {ID: "I6", Name: "sni-authority-mismatch-h2", Probe: mismatchProbe(true), Host: twoNames(canaries{}, strictJudge), Want: terminating},
-	{ID: "I6", Name: "ech-hidden-sni", Probe: echProbe, Host: twoNames(canaries{ech: true}, strictJudge), Want: terminating}, {ID: "I6", Name: "terminated-session-leaf", Probe: terminatedProbe, Host: twoNames(canaries{}, terminationJudge), Want: terminating},
-	{ID: "I6", Name: "upstream-leaf-mismatch", Probe: upstreamProbe, Host: twoNames(canaries{misleaf: true}, upstreamJudge), Want: terminating},
+	{ID: "I6", Name: "ech-hidden-sni", Probe: echProbe, Host: twoNames(canaries{ech: true}, strictJudge), Want: terminating}, {ID: "I6", Name: "terminated-session-leaf", Probe: terminatedProbe, Host: twoNames(canaries{}, terminationJudge), Want: terminating}, {ID: "I6", Name: "upstream-leaf-mismatch", Probe: upstreamProbe, Host: twoNames(canaries{misleaf: true}, upstreamJudge), Want: terminating},
 	// The repository the guest hands back is hostile: its hooks, config, attributes and submodule URL aim at the host, and its tree names paths through "..", through a symlink an earlier pull brought, twice in different case, and under ".git".
 	{ID: "I8", Name: "pull-runs-hook", Probe: repoProbe, Host: obeyed("hooks"), Want: exported}, {ID: "I8", Name: "pull-obeys-git-config", Probe: repoProbe, Host: obeyed("config"), Want: exported},
-	{ID: "I8", Name: "pull-fetches-submodule", Probe: repoProbe, Host: fetched, Want: exported}, {ID: "I8", Name: "pull-dotdot-path", Probe: repoProbe, Host: obeyed("dotdot"), Want: exported},
-	{ID: "I8", Name: "pull-through-symlink", Probe: repoProbe, Host: obeyed("link", "fill"), Want: exported},
+	{ID: "I8", Name: "pull-fetches-submodule", Probe: repoProbe, Host: fetched, Want: exported}, {ID: "I8", Name: "pull-dotdot-path", Probe: repoProbe, Host: obeyed("dotdot"), Want: exported}, {ID: "I8", Name: "pull-through-symlink", Probe: repoProbe, Host: obeyed("link", "fill"), Want: exported},
 	{ID: "I8", Name: "pull-case-collision", Probe: repoProbe, Host: collided, Want: exported}, {ID: "I8", Name: "pull-writes-dotgit", Probe: repoProbe, Host: planted, Want: exported},
 	// A workcell.toml in the repository tries to widen the policy: the allowlist, by another spelling of a name or through a symlink out of the repository; the secret's binding, to another host, header or source, or free of its method and path; the workspace mode; the caps. The guest replays its credential at the name only the repository allows or binds, and must see nothing. One file narrows the allowlist, which must hold. One is a pipe.
-	{ID: "I13", Name: "repo-policy-widens-allowlist", Probe: exchangeProbe, Host: twoNames(canaries{}, swapJudge("GET,bound,/check,header", "GET,other,/replay,header")), Want: widened},
-	{ID: "I13", Name: "repo-policy-respells-name", Probe: exchangeProbe, Host: twoNames(canaries{}, swapJudge("GET,bound,/check,header", "GET,other,/replay,header", "GET,other,/plain,none")), Want: respelled},
-	{ID: "I13", Name: "repo-policy-through-symlink", Probe: exchangeProbe, Host: twoNames(canaries{}, swapJudge("GET,bound,/check,header", "GET,other,/plain,none")), Want: linked},
-	{ID: "I13", Name: "repo-policy-narrows-allowlist", Probe: exchangeProbe, Host: twoNames(canaries{}, swapJudge("GET,bound,/check,header", "GET,other,/plain,none")), Want: narrowing},
+	{ID: "I13", Name: "repo-policy-widens-allowlist", Probe: exchangeProbe, Host: twoNames(canaries{}, swapJudge("GET,bound,/check,header", "GET,other,/replay,header")), Want: widened}, {ID: "I13", Name: "repo-policy-respells-name", Probe: exchangeProbe, Host: twoNames(canaries{}, swapJudge("GET,bound,/check,header", "GET,other,/replay,header", "GET,other,/plain,none")), Want: respelled},
+	{ID: "I13", Name: "repo-policy-through-symlink", Probe: exchangeProbe, Host: twoNames(canaries{}, swapJudge("GET,bound,/check,header", "GET,other,/plain,none")), Want: linked}, {ID: "I13", Name: "repo-policy-narrows-allowlist", Probe: exchangeProbe, Host: twoNames(canaries{}, swapJudge("GET,bound,/check,header", "GET,other,/plain,none")), Want: narrowing},
 	{ID: "I13", Name: "repo-policy-rebinds-secret", Probe: exchangeProbe, Host: twoNames(canaries{}, swapJudge("GET,bound,/check,header", "GET,other,/replay,header")), Want: rebound},
-	{ID: "I13", Name: "repo-policy-lifts-secret-binding", Probe: exchangeProbe, Host: twoNames(canaries{}, swapJudge("POST,bound,/v1/ok,header", "GET,bound,/check,header", "POST,bound,/v2/no,header")), Want: lifted},
-	{ID: "I13", Name: "repo-policy-rewires-secret", Probe: exchangeProbe, Host: twoNames(canaries{}, swapJudge("GET,bound,/check,header", "GET,bound,/auth,auth")), Want: rewired},
-	{ID: "I13", Name: "repo-policy-mounts-workspace", Probe: liveProbe, Host: liveJudge, Want: mounted}, {ID: "I13", Name: "repo-policy-is-a-pipe", Probe: liveProbe, Host: liveJudge, Want: piped},
-	{ID: "I13", Name: "repo-policy-lifts-memory-cap", Probe: memoryProbe, Host: memoryJudge, Want: uncapped},
+	{ID: "I13", Name: "repo-policy-lifts-secret-binding", Probe: exchangeProbe, Host: twoNames(canaries{}, swapJudge("POST,bound,/v1/ok,header", "GET,bound,/check,header", "POST,bound,/v2/no,header")), Want: lifted}, {ID: "I13", Name: "repo-policy-rewires-secret", Probe: exchangeProbe, Host: twoNames(canaries{}, swapJudge("GET,bound,/check,header", "GET,bound,/auth,auth")), Want: rewired},
+	{ID: "I13", Name: "repo-policy-mounts-workspace", Probe: liveProbe, Host: liveJudge, Want: mounted}, {ID: "I13", Name: "repo-policy-is-a-pipe", Probe: liveProbe, Host: liveJudge, Want: piped}, {ID: "I13", Name: "repo-policy-lifts-memory-cap", Probe: memoryProbe, Host: memoryJudge, Want: uncapped},
 	// The guest, told where the host keeps the session's record, plants a record, sends the record's path to /dev/null, or empties it; and a user with the file drops, alters, cuts, appends or reorders records after the fact, which verify must notice.
-	{ID: "I9", Name: "audit-forge-record", Probe: auditProbe, Host: auditJudge("forge"), Want: exported},
-	{ID: "I9", Name: "audit-suppress-record", Probe: auditProbe, Host: auditJudge("suppress")}, {ID: "I9", Name: "audit-truncate-record", Probe: auditProbe, Host: auditJudge("truncate")},
-	{ID: "I9", Name: "verify-dropped-record", Probe: auditProbe, Host: offlineJudge("drop")}, {ID: "I9", Name: "verify-altered-byte", Probe: auditProbe, Host: offlineJudge("alter")},
-	{ID: "I9", Name: "verify-truncated-record", Probe: auditProbe, Host: offlineJudge("truncate")},
+	{ID: "I9", Name: "audit-forge-record", Probe: auditProbe, Host: auditJudge("forge"), Want: exported}, {ID: "I9", Name: "audit-suppress-record", Probe: auditProbe, Host: auditJudge("suppress")}, {ID: "I9", Name: "audit-truncate-record", Probe: auditProbe, Host: auditJudge("truncate")},
+	{ID: "I9", Name: "verify-dropped-record", Probe: auditProbe, Host: offlineJudge("drop")}, {ID: "I9", Name: "verify-altered-byte", Probe: auditProbe, Host: offlineJudge("alter")}, {ID: "I9", Name: "verify-truncated-record", Probe: auditProbe, Host: offlineJudge("truncate")},
 	{ID: "I9", Name: "verify-appended-record", Probe: auditProbe, Host: offlineJudge("append")}, {ID: "I9", Name: "verify-swapped-records", Probe: auditProbe, Host: offlineJudge("swap")},
 	// The guest connects to an allowed name and to a denied one; the records the run adds must name both attempts, let through and refused. The names reach the guest in hex, so its own words cannot put them in the record.
 	{ID: "I9", Name: "audit-records-connection", Probe: connectProbe, Host: recordedJudge, Want: servable}, {ID: "I9", Name: "run-stdout-reader-closed", Probe: chatterProbe, Host: chatterJudge, Want: Want{Head: true}},
@@ -132,21 +114,16 @@ var All = append(append([]Test{
 	{ID: "I12", Name: "channel-connect-storm", Probe: channelProbe, Host: channelJudge("storm"), Bound: channelBound}, {ID: "I12", Name: "channel-connect-flood", Probe: channelProbe, Host: floodJudge, Bound: channelBound},
 	{ID: "I12", Name: "channel-cut-mid-frame", Probe: channelProbe, Host: channelJudge("half-close", "full-shutdown"), Bound: channelBound}, {ID: "I12", Name: "channel-frames-after-exit", Probe: channelProbe, Host: channelJudge("after-exit"), Bound: channelBound},
 	// Root restarts the guest's kernel while the run stands: the host must end the session itself, leave no process of it behind, and run again after (I7).
-	{ID: "I12", Name: "guest-reboot", Probe: channelProbe, Host: rebootJudge, Bound: channelBound},
-	{ID: "I12", Name: "channel-first-frame-rollback", Probe: rollbackProbe, Host: rollbackJudge, Want: Want{Command: layerAgent}},
+	{ID: "I12", Name: "guest-reboot", Probe: channelProbe, Host: rebootJudge, Bound: channelBound}, {ID: "I12", Name: "channel-first-frame-rollback", Probe: rollbackProbe, Host: rollbackJudge, Want: Want{Command: layerAgent}},
 	// The update client on the host, after one honest install from a channel the judge signs and serves, meets a manifest signed by another key or with a corrupted signature, past its expiry, below the last serial or a day ahead, and an artifact whose bytes do not match, stop short, come by a redirect, or come without TLS. None may install, and a valid successor must.
-	{ID: "I14", Name: "update-wrong-key", Probe: idleProbe, Host: updateJudge("wrong-key")}, {ID: "I14", Name: "update-corrupt-signature", Probe: idleProbe, Host: updateJudge("corrupt-signature")},
-	{ID: "I14", Name: "update-expired-manifest", Probe: idleProbe, Host: updateJudge("expired")}, {ID: "I14", Name: "update-lower-serial", Probe: idleProbe, Host: updateJudge("lower-serial")},
+	{ID: "I14", Name: "update-wrong-key", Probe: idleProbe, Host: updateJudge("wrong-key")}, {ID: "I14", Name: "update-corrupt-signature", Probe: idleProbe, Host: updateJudge("corrupt-signature")}, {ID: "I14", Name: "update-expired-manifest", Probe: idleProbe, Host: updateJudge("expired")}, {ID: "I14", Name: "update-lower-serial", Probe: idleProbe, Host: updateJudge("lower-serial")},
 	{ID: "I14", Name: "update-serial-ahead", Probe: idleProbe, Host: updateJudge("serial-ahead")}, {ID: "I14", Name: "update-digest-mismatch", Probe: idleProbe, Host: updateJudge("digest-mismatch")},
-	{ID: "I14", Name: "update-truncated-download", Probe: idleProbe, Host: updateJudge("truncated")}, {ID: "I14", Name: "update-redirected-url", Probe: idleProbe, Host: updateJudge("redirected")},
-	{ID: "I14", Name: "update-plain-http-url", Probe: idleProbe, Host: updateJudge("plain-http")},
+	{ID: "I14", Name: "update-truncated-download", Probe: idleProbe, Host: updateJudge("truncated")}, {ID: "I14", Name: "update-redirected-url", Probe: idleProbe, Host: updateJudge("redirected")}, {ID: "I14", Name: "update-plain-http-url", Probe: idleProbe, Host: updateJudge("plain-http")},
 	// The installer's second entry: the channel check a session start makes by itself, and the install the next start makes from what it kept. A manifest under another key or past its expiry must install nothing; a valid one installs exactly the digest it pins, after one check a day.
-	{ID: "I14", Name: "update-daily-wrong-key", Probe: idleProbe, Host: dailyJudge("wrong-key")}, {ID: "I14", Name: "update-daily-expired", Probe: idleProbe, Host: dailyJudge("expired")},
-	{ID: "I14", Name: "update-daily-once", Probe: idleProbe, Host: dailyJudge("once")},
+	{ID: "I14", Name: "update-daily-wrong-key", Probe: idleProbe, Host: dailyJudge("wrong-key")}, {ID: "I14", Name: "update-daily-expired", Probe: idleProbe, Host: dailyJudge("expired")}, {ID: "I14", Name: "update-daily-once", Probe: idleProbe, Host: dailyJudge("once")},
 	// The product's own start benchmark, run on the host: twenty warm boots, and the median must be under the hosted budget.
 	{ID: "P1", Name: "warm-start", Probe: idleProbe, Host: benchJudge, Bound: benchBound},
 }, linuxRows...), pinSmoke()...) // the rows a Linux host alone runs (priv_linux.go), and B6, a smoke test of each guest pin that changed (smoke.go)
-
 // hostAddr, in a canary address, stands for where the product reaches the test host (sandbox.Observe.Bind): its first non-loopback IPv4 address, or in a session's own network sandbox.CanaryAddr, which lies on no network of the host's.
 const hostAddr = "host"
 
@@ -168,8 +145,7 @@ func dialProbe(args []string) Result {
 	if _, err := fmt.Fprintln(c, args[1]); err != nil {
 		return Result{Status: "connected-write-failed", Detail: err.Error()}
 	}
-	// With every address local to the guest (ADR-003) a completed connect proves nothing by itself; only the canary's catch does.
-	return Result{Status: "connected", Detail: "to " + args[0]}
+	return Result{Status: "connected", Detail: "to " + args[0]} // With every address local to the guest (ADR-003) a completed connect proves nothing by itself; only the canary's catch does.
 }
 
 // udpProbe sends the token args[1] as a datagram line to args[0].

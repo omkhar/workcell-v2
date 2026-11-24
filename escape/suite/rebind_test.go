@@ -19,16 +19,10 @@ func TestRebindAnswer(t *testing.T) {
 		rcode   uint16
 		answers int
 		addrs   []string
-	}{
-		{"A", loop, dnsQuestion{ID: 7, Name: allowedName, Type: dnsTypeA}, 0, 1, []string{"127.0.0.1"}},
-		{"A, upper case", loop, dnsQuestion{ID: 8, Name: "ALLOWED.ESCAPE.TEST.", Type: dnsTypeA}, 0, 1, []string{"127.0.0.1"}},
-		{"AAAA, none", loop, dnsQuestion{Name: allowedName, Type: dnsTypeAAAA}, 0, 0, nil}, {"TXT, none", loop, dnsQuestion{Name: allowedName, Type: dnsTypeTXT}, 0, 0, nil},
-		{"two A", both, dnsQuestion{Name: allowedName, Type: dnsTypeA}, 0, 2, []string{"10.255.255.254", "169.254.169.254"}},
-		{"AAAA mapped", both, dnsQuestion{Name: allowedName, Type: dnsTypeAAAA}, 0, 1, []string{"127.0.0.1"}},
-		{"CNAME then A", alias, dnsQuestion{Name: allowedName, Type: dnsTypeA}, 0, 2, []string{"127.0.0.1"}}, {"CNAME, no AAAA", alias, dnsQuestion{Name: allowedName, Type: dnsTypeAAAA}, 0, 1, nil},
-		{"other name", loop, dnsQuestion{ID: 9, Name: deniedName, Type: dnsTypeA}, dnsRcodeRefused, 0, nil},
-		{"subdomain", loop, dnsQuestion{Name: "sub." + allowedName, Type: dnsTypeA}, dnsRcodeRefused, 0, nil},
-		{"the alias target", alias, dnsQuestion{Name: deniedName, Type: dnsTypeA}, dnsRcodeRefused, 0, nil},
+	}{{"A", loop, dnsQuestion{ID: 7, Name: allowedName, Type: dnsTypeA}, 0, 1, []string{"127.0.0.1"}}, {"A, upper case", loop, dnsQuestion{ID: 8, Name: "ALLOWED.ESCAPE.TEST.", Type: dnsTypeA}, 0, 1, []string{"127.0.0.1"}}, {"AAAA, none", loop, dnsQuestion{Name: allowedName, Type: dnsTypeAAAA}, 0, 0, nil}, {"TXT, none", loop, dnsQuestion{Name: allowedName, Type: dnsTypeTXT}, 0, 0, nil},
+		{"two A", both, dnsQuestion{Name: allowedName, Type: dnsTypeA}, 0, 2, []string{"10.255.255.254", "169.254.169.254"}}, {"AAAA mapped", both, dnsQuestion{Name: allowedName, Type: dnsTypeAAAA}, 0, 1, []string{"127.0.0.1"}},
+		{"CNAME then A", alias, dnsQuestion{Name: allowedName, Type: dnsTypeA}, 0, 2, []string{"127.0.0.1"}}, {"CNAME, no AAAA", alias, dnsQuestion{Name: allowedName, Type: dnsTypeAAAA}, 0, 1, nil}, {"other name", loop, dnsQuestion{ID: 9, Name: deniedName, Type: dnsTypeA}, dnsRcodeRefused, 0, nil},
+		{"subdomain", loop, dnsQuestion{Name: "sub." + allowedName, Type: dnsTypeA}, dnsRcodeRefused, 0, nil}, {"the alias target", alias, dnsQuestion{Name: deniedName, Type: dnsTypeA}, dnsRcodeRefused, 0, nil},
 	}
 	for _, c := range cases {
 		got, ok := parseDNSReply(c.r.answer(c.q))
@@ -43,8 +37,7 @@ func TestRebindAnswer(t *testing.T) {
 			t.Errorf("%s: the first answer is not the CNAME: %+v", c.name, got.Answers[0])
 		}
 	}
-	// The question comes back as asked, and a query is not a reply.
-	q := dnsQuestion{ID: 0x1234, Name: allowedName, Type: dnsTypeA}
+	q := dnsQuestion{ID: 0x1234, Name: allowedName, Type: dnsTypeA} // The question comes back as asked, and a query is not a reply.
 	a := loop.answer(q)
 	if qs := dnsQuery(q); string(a[12:12+len(qs)-12]) != string(qs[12:]) {
 		t.Errorf("the question section differs: % x vs % x", a[12:12+len(qs)-12], qs[12:])

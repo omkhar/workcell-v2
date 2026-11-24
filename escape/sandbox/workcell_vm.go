@@ -46,8 +46,7 @@ func RootBind(network, addr, payload string, ns int) (net.Listener, net.PacketCo
 		if err != nil {
 			return nil, nil, err
 		}
-		// Dead: 0 bytes and no error, where a live socket says EAGAIN (udp) or ENOTCONN (a listener).
-		if n, _, rerr := syscall.Recvfrom(int(f.Fd()), make([]byte, 1), syscall.MSG_DONTWAIT|syscall.MSG_PEEK); n != 0 || rerr != nil {
+		if n, _, rerr := syscall.Recvfrom(int(f.Fd()), make([]byte, 1), syscall.MSG_DONTWAIT|syscall.MSG_PEEK); n != 0 || rerr != nil { // Dead: 0 bytes and no error, where a live socket says EAGAIN (udp) or ENOTCONN (a listener).
 			defer f.Close()
 			if strings.HasPrefix(network, "udp") {
 				pc, err := net.FilePacketConn(f)
@@ -149,49 +148,44 @@ func prepareWorkcell(ctx context.Context, dir string) error {
 	}
 	start := time.Now()
 	fmt.Fprintln(os.Stderr, "escape: preparing the workcell sandbox: the pinned downloads, three builds and the guest image, once")
-	err = parallel(
-		func() error { return hypervisor(ctx, data) },
-		func() error {
-			k, err := fetch(ctx, vmlinuxURL, vmlinuxSum)
-			if err != nil {
-				return err
-			}
-			return os.WriteFile(filepath.Join(data, "vmlinux"), k, 0o644)
-		},
-		func() error {
-			init := filepath.Join(tmp, "init")
-			if err := goBuild(ctx, repo, init, module+"/cmd/workcell-init", "", "CGO_ENABLED=0", "GOOS=linux", "GOARCH="+guestArch); err != nil {
-				return err
-			}
-			b, err := os.ReadFile(init)
-			if err != nil {
-				return err
-			}
-			var cpio bytes.Buffer
-			if err := errors.Join(cpioEntry(&cpio, "init", 0o100755, b), cpioEntry(&cpio, "TRAILER!!!", 0, nil)); err != nil {
-				return err
-			}
-			return os.WriteFile(filepath.Join(data, "initrd.cpio"), cpio.Bytes(), 0o644)
-		},
-		func() error {
-			mkimage := filepath.Join(tmp, "mkimage")
-			if err := hostBuild(ctx, repo, mkimage, module+"/cmd/mkimage", ""); err != nil {
-				return err
-			}
-			cmd := exec.CommandContext(ctx, mkimage, "-pin", filepath.Join(repo, "pins", "debian.json"), "-arch", guestArch, "-o", filepath.Join(data, "root.ext4"))
-			cmd.Dir = tmp
-			if out, err := cmd.CombinedOutput(); err != nil {
-				return fmt.Errorf("mkimage: %v: %s", err, bytes.TrimSpace(out))
-			}
-			return nil
-		},
-		func() error {
-			bin := filepath.Join(tmp, "workcell")
-			if err := hostBuild(ctx, repo, bin, module+"/cmd/workcell", ""); err != nil {
-				return err
-			}
-			return sign(ctx, tmp, bin)
-		},
+	err = parallel(func() error { return hypervisor(ctx, data) }, func() error {
+		k, err := fetch(ctx, vmlinuxURL, vmlinuxSum)
+		if err != nil {
+			return err
+		}
+		return os.WriteFile(filepath.Join(data, "vmlinux"), k, 0o644)
+	}, func() error {
+		init := filepath.Join(tmp, "init")
+		if err := goBuild(ctx, repo, init, module+"/cmd/workcell-init", "", "CGO_ENABLED=0", "GOOS=linux", "GOARCH="+guestArch); err != nil {
+			return err
+		}
+		b, err := os.ReadFile(init)
+		if err != nil {
+			return err
+		}
+		var cpio bytes.Buffer
+		if err := errors.Join(cpioEntry(&cpio, "init", 0o100755, b), cpioEntry(&cpio, "TRAILER!!!", 0, nil)); err != nil {
+			return err
+		}
+		return os.WriteFile(filepath.Join(data, "initrd.cpio"), cpio.Bytes(), 0o644)
+	}, func() error {
+		mkimage := filepath.Join(tmp, "mkimage")
+		if err := hostBuild(ctx, repo, mkimage, module+"/cmd/mkimage", ""); err != nil {
+			return err
+		}
+		cmd := exec.CommandContext(ctx, mkimage, "-pin", filepath.Join(repo, "pins", "debian.json"), "-arch", guestArch, "-o", filepath.Join(data, "root.ext4"))
+		cmd.Dir = tmp
+		if out, err := cmd.CombinedOutput(); err != nil {
+			return fmt.Errorf("mkimage: %v: %s", err, bytes.TrimSpace(out))
+		}
+		return nil
+	}, func() error {
+		bin := filepath.Join(tmp, "workcell")
+		if err := hostBuild(ctx, repo, bin, module+"/cmd/workcell", ""); err != nil {
+			return err
+		}
+		return sign(ctx, tmp, bin)
+	},
 	)
 	if err != nil {
 		return fmt.Errorf("workcell adapter: %w", err)
@@ -264,8 +258,7 @@ func (w *workcell) Start(_ context.Context, cfg Config) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	// The secret's value, where only the host reads it: a file of the session's own, mode 0600, beside the policy and outside any export. A row with a source of its own (a sign-in flow) has no value to write.
-	source := filepath.Join(dir, "secret")
+	source := filepath.Join(dir, "secret") // The secret's value, where only the host reads it: a file of the session's own, mode 0600, beside the policy and outside any export. A row with a source of its own (a sign-in flow) has no value to write.
 	if cfg.Secret != nil && cfg.Secret.Source == "" {
 		if err := os.WriteFile(source, []byte(cfg.Secret.Value), 0o600); err != nil {
 			os.RemoveAll(dir)
@@ -283,8 +276,7 @@ func (w *workcell) Start(_ context.Context, cfg Config) (string, error) {
 		os.RemoveAll(dir)
 		return "", fmt.Errorf("workcell: %w", err)
 	}
-	// The session's policy, where `workcell run` reads it with XDG_CONFIG_HOME at the session's config directory: <dir>/config/workcell/config.toml.
-	file := filepath.Join(dir, "config", policyFile)
+	file := filepath.Join(dir, "config", policyFile) // The session's policy, where `workcell run` reads it with XDG_CONFIG_HOME at the session's config directory: <dir>/config/workcell/config.toml.
 	if err := errors.Join(os.MkdirAll(filepath.Dir(file), 0o755), os.Mkdir(filepath.Join(dir, "cwd"), 0o755)); err == nil {
 		err = os.WriteFile(file, policy, 0o644)
 	}
@@ -405,8 +397,7 @@ func (w *workcell) cli(ctx context.Context, in io.Reader, args ...string) (Outpu
 	w.run = nil
 	w.mu.Unlock()
 	if ctx.Err() != nil && cmd.Process != nil {
-		// The kill Go sent after WaitDelay reached only cmd.Process, which under steering is sudo: what is left of the group, a product that ignored the SIGTERM and its hypervisor, goes now. They run as the suite's user, so that needs no sudo.
-		_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+		_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL) // The kill Go sent after WaitDelay reached only cmd.Process, which under steering is sudo: what is left of the group, a product that ignored the SIGTERM and its hypervisor, goes now. They run as the suite's user, so that needs no sudo.
 	}
 	out := Output{Stdout: stdout.bytes(), Stderr: stderr.bytes()}
 	var exit *exec.ExitError
@@ -566,8 +557,7 @@ func (w *workcell) Install(ctx context.Context, l Layer) (string, error) {
 		return "", fmt.Errorf("workcell: build with the row %s: %w", name, err)
 	}
 	w.bin = bin
-	// The update is the host's own, never steered: a served artifact is trusted through the suite's roots, an upstream's through the host's.
-	host := &workcell{dir: w.dir, bin: bin}
+	host := &workcell{dir: w.dir, bin: bin} // The update is the host's own, never steered: a served artifact is trusted through the suite's roots, an upstream's through the host's.
 	if l.Artifact != nil {
 		host.cfg.Roots = w.cfg.Roots
 	}
@@ -652,8 +642,7 @@ func (w *workcell) Installed(ctx context.Context, name string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	// debugfs reads the image without a mount; it exits 0 whatever happened, and says on stderr what it could not do.
-	image := filepath.Join(layers, filepath.Base(strings.TrimSpace(string(current))))
+	image := filepath.Join(layers, filepath.Base(strings.TrimSpace(string(current)))) // debugfs reads the image without a mount; it exits 0 whatever happened, and says on stderr what it could not do.
 	cmd := exec.CommandContext(ctx, "debugfs", "-R", "cat bin/"+agent, image)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr

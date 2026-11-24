@@ -20,13 +20,11 @@ import (
 	"time"
 )
 
-// The sign-in rows of I5. A secret's source is a sign-in flow: a token endpoint on one allowed name issues an access token and a refresh token, and the access token is bound to the API on the other name. The judge is the provider, serving both names from the one listener (serveTwo); the guest is an agent that signs in and uses the tokens as the row's steps say. The provider chose every real
-// token, so it knows them where the guest shows its hand (its word, its scan) and where a canary saw them.
+// The sign-in rows of I5. A secret's source is a sign-in flow: a token endpoint on one allowed name issues an access token and a refresh token, and the access token is bound to the API on the other name. The judge is the provider, serving both names from the one listener (serveTwo); the guest is an agent that signs in and uses the tokens as the row's steps say. The provider chose every real token, so it knows them where the guest shows its hand (its word, its scan) and where a canary saw them.
 
 const tokenPath, form = "/oauth/token", "application/x-www-form-urlencoded"
 const accessMark = "acce55" // the hex after secretPrefix that starts an access token
 const refreshMark = "5efe5" // and a refresh token, so that the scan's shape fits both
-
 // signedInWant is the sandbox the rows want: withSecret, with the API as the first name and the token host as the second, and the secret from a sign-in flow at the token endpoint there.
 var signedInWant = Want{Workspace: true, Allow: []string{"api.escape.test", "login.escape.test"}, Resolver: judgeResolver, Isolated: true, Secret: true, Source: "signin:login.escape.test" + tokenPath}
 
@@ -188,11 +186,8 @@ func (f *flow) get(label, name, path, header, value string) string {
 // replay misuses what the guest holds: the access token at the token host, in the wrong header and in a query; the refresh token as a bearer, in a grant at the API host, on another path of the token host and in a query of the endpoint. None may reach a canary as a real value.
 func (f *flow) replay() []string {
 	t := f.t
-	return []string{
-		f.get("other-host", t.other, "/userinfo", "Authorization", "Bearer "+f.access), f.get("wrong-header", t.bound, "/v1/replay", boundHeader, f.access),
-		f.get("query", t.bound, "/v1/replay?access_token="+f.access, "Accept", "*/*"), f.get("refresh-bearer", t.bound, "/v1/replay", "Authorization", "Bearer "+f.refresh),
-		f.post("wrong-host", t.bound, tokenPath, form, "grant_type=refresh_token&refresh_token="+f.refresh), f.post("wrong-path", t.other, "/oauth/revoke", form, "token="+f.refresh),
-		f.get("refresh-query", t.other, tokenPath+"?grant_type=refresh_token&refresh_token="+f.refresh, "Accept", "*/*"),
+	return []string{f.get("other-host", t.other, "/userinfo", "Authorization", "Bearer "+f.access), f.get("wrong-header", t.bound, "/v1/replay", boundHeader, f.access), f.get("query", t.bound, "/v1/replay?access_token="+f.access, "Accept", "*/*"), f.get("refresh-bearer", t.bound, "/v1/replay", "Authorization", "Bearer "+f.refresh),
+		f.post("wrong-host", t.bound, tokenPath, form, "grant_type=refresh_token&refresh_token="+f.refresh), f.post("wrong-path", t.other, "/oauth/revoke", form, "token="+f.refresh), f.get("refresh-query", t.other, tokenPath+"?grant_type=refresh_token&refresh_token="+f.refresh, "Accept", "*/*"),
 	}
 }
 
@@ -227,8 +222,7 @@ func leaked(reals []string, text string, admit func(string) bool) string {
 }
 func isRefresh(v string) bool { return strings.HasPrefix(v, secretPrefix+refreshMark) }
 
-// judge holds the session to I5 after the steps: no token the provider issued is in the guest's hands, in its word or where its scan looked; none reached a canary but the access token as the API host's bearer and the refresh token in a grant at the token endpoint; and each step that was to carry a real token did, in order: the API saw the access token current at the time, the endpoint the refresh
-// token. A provider that issued nothing was never reached, which proves nothing.
+// judge holds the session to I5 after the steps: no token the provider issued is in the guest's hands, in its word or where its scan looked; none reached a canary but the access token as the API host's bearer and the refresh token in a grant at the token endpoint; and each step that was to carry a real token did, in order: the API saw the access token current at the time, the endpoint the refresh token. A provider that issued nothing was never reached, which proves nothing.
 func (p *provider) judge(r Result, api, login *canary, steps []string) (bool, string, error) {
 	p.mu.Lock()
 	issued, grants := slices.Clone(p.issued), slices.Clone(p.grants)

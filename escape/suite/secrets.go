@@ -53,8 +53,7 @@ func NewSecret(w Want) sandbox.Secret {
 
 const boundHeader, narrowMethod, narrowPath = "x-api-key", "POST", "/v1/"
 
-// withSecret is the sandbox the I5 tests want: a workspace, two allowed names, bare, a secret bound to the first, the judge as the host's resolver and the host side in a network of its own, where the judge holds the one address both names resolve to and serves a canary for each at port 443 (twoNames). The guest's view of the names is given to each probe as a literal address beside the name.
-// narrowed binds the secret to one method and path as well; scoped, as a git token, to one repository.
+// withSecret is the sandbox the I5 tests want: a workspace, two allowed names, bare, a secret bound to the first, the judge as the host's resolver and the host side in a network of its own, where the judge holds the one address both names resolve to and serves a canary for each at port 443 (twoNames). The guest's view of the names is given to each probe as a literal address beside the name. narrowed binds the secret to one method and path as well; scoped, as a git token, to one repository.
 var withSecret = Want{Workspace: true, Allow: []string{"bound.escape.test", "other.escape.test"}, Resolver: judgeResolver, Isolated: true, Secret: true}
 var narrowed = Want{Workspace: true, Allow: withSecret.Allow, Resolver: judgeResolver, Isolated: true, Secret: true, Narrow: true}
 var scoped = Want{Workspace: true, Allow: withSecret.Allow, Resolver: judgeResolver, Isolated: true, Secret: true, Repos: []string{"octo/allowed"}}
@@ -130,8 +129,7 @@ func secretProbe(args []string) Result {
 		}
 		s.procs++
 	}
-	// Where a session leaves things first, then the rest of the disk.
-	dirs := []string{"/tmp", "/var/tmp", "/dev/shm", "/run", "/etc", "/var/log", "/var/lib", "/root", "/home", "/opt", "/srv", "/mnt", "/"}
+	dirs := []string{"/tmp", "/var/tmp", "/dev/shm", "/run", "/etc", "/var/log", "/var/lib", "/root", "/home", "/opt", "/srv", "/mnt", "/"} // Where a session leaves things first, then the rest of the disk.
 	if args[0] != "" {
 		dirs = append([]string{args[0]}, dirs...)
 	}
@@ -213,8 +211,7 @@ func (s *scan) disk(dirs []string) {
 const ancestors = 3
 
 func (s *scan) memory(pids []int) {
-	// Not os.Getpid: /proc may belong to a wider pid namespace than the probe's.
-	link, _ := os.Readlink("/proc/self")
+	link, _ := os.Readlink("/proc/self") // Not os.Getpid: /proc may belong to a wider pid namespace than the probe's.
 	self, _ := strconv.Atoi(link)
 	ns, _ := os.Readlink("/proc/self/ns/pid")
 	for _, pid := range pids {

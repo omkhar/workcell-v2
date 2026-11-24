@@ -236,8 +236,7 @@ func dnsOverTCP(withTLS bool) dnsListener {
 			}
 			ln = tls.NewListener(ln, cfg)
 		}
-		// wg covers the accept loop and every connection it spawned; a connection's goroutine is added from inside the loop, so the count never reaches zero while one can still be added. The 2 s deadline bounds each connection, so Wait never blocks for long.
-		var wg sync.WaitGroup
+		var wg sync.WaitGroup // wg covers the accept loop and every connection it spawned; a connection's goroutine is added from inside the loop, so the count never reaches zero while one can still be added. The 2 s deadline bounds each connection, so Wait never blocks for long.
 		wg.Go(func() {
 			for {
 				c, err := ln.Accept()
@@ -292,8 +291,7 @@ func dnsOverHTTPS(addr string, got func(dnsQuestion)) (string, func(), error) {
 		w.WriteHeader(http.StatusOK)
 	}),
 	}
-	// stop refuses new connections, waits for handlers in flight (each bounded by ReadTimeout) and only then returns, so that every query that arrived has been reported. Close is the backstop should Shutdown give up.
-	var wg sync.WaitGroup
+	var wg sync.WaitGroup // stop refuses new connections, waits for handlers in flight (each bounded by ReadTimeout) and only then returns, so that every query that arrived has been reported. Close is the backstop should Shutdown give up.
 	wg.Go(func() { srv.ServeTLS(ln, "", "") })
 	return ln.Addr().String(), func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)

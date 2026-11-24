@@ -12,8 +12,7 @@ import (
 
 // A KVM host reports a guest's vCPU time in guest and guest_nice and again in user and nice; the judge must count it once, or a capped guest looks like it spent twice its CPU.
 func TestBusyTicksCountsGuestTimeOnce(t *testing.T) {
-	// user nice system idle iowait irq softirq steal guest guest_nice
-	got, err := busyTicks("cpu 1000 10 200 5000 30 4 6 7 900 8")
+	got, err := busyTicks("cpu 1000 10 200 5000 30 4 6 7 900 8") // user nice system idle iowait irq softirq steal guest guest_nice
 	if err != nil {
 		t.Fatal(err)
 	}

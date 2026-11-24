@@ -17,8 +17,7 @@ import (
 	"strings"
 )
 
-// A repository the guest writes by hand: the guest has no git, so the probe lays .git down itself in the formats git reads, and which git's own tools would refuse to make. Loose objects are zlib streams of "<kind> <size>\0" and the content, named by the SHA-1 of that. A tree is entries of
-// "<mode> <name>\0" and a raw id, in git's order. A commit names its tree. The index is version 2: a header, entries with no stat data, a checksum.
+// A repository the guest writes by hand: the guest has no git, so the probe lays .git down itself in the formats git reads, and which git's own tools would refuse to make. Loose objects are zlib streams of "<kind> <size>\0" and the content, named by the SHA-1 of that. A tree is entries of "<mode> <name>\0" and a raw id, in git's order. A commit names its tree. The index is version 2: a header, entries with no stat data, a checksum.
 
 // repo is a work tree whose .git the probe writes.
 type repo struct{ dir string }

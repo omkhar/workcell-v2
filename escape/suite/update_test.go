@@ -43,8 +43,7 @@ func (c *sticky) Update(ctx context.Context, u sandbox.UpdateConfig) ([]byte, er
 func (c *careful) Update(ctx context.Context, u sandbox.UpdateConfig) ([]byte, error) {
 	pool := x509.NewCertPool()
 	pool.AppendCertsFromPEM(u.CA)
-	client := &http.Client{Timeout: 5 * time.Second, Transport: &http.Transport{TLSClientConfig: &tls.Config{RootCAs: pool, MinVersion: tls.VersionTLS12}},
-		CheckRedirect: func(*http.Request, []*http.Request) error { return errors.New("redirect refused") }}
+	client := &http.Client{Timeout: 5 * time.Second, Transport: &http.Transport{TLSClientConfig: &tls.Config{RootCAs: pool, MinVersion: tls.VersionTLS12}}, CheckRedirect: func(*http.Request, []*http.Request) error { return errors.New("redirect refused") }}
 	get := func(url string, limit int64) ([]byte, error) {
 		if !strings.HasPrefix(url, "https://") {
 			return nil, errors.New("not https")
@@ -68,8 +67,7 @@ func (c *careful) Update(ctx context.Context, u sandbox.UpdateConfig) ([]byte, e
 		dec.DisallowUnknownFields()
 		err = dec.Decode(&env)
 	}
-	if err == nil && (env.PayloadType != payloadType || len(env.Signatures) != 1 || env.Signatures[0].KeyID != keyID(u.Key) ||
-		!ed25519.Verify(u.Key, pae(env.Payload), env.Signatures[0].Sig)) {
+	if err == nil && (env.PayloadType != payloadType || len(env.Signatures) != 1 || env.Signatures[0].KeyID != keyID(u.Key) || !ed25519.Verify(u.Key, pae(env.Payload), env.Signatures[0].Sig)) {
 		err = errors.New("bad signature")
 	}
 	if err == nil {

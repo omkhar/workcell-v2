@@ -16,8 +16,7 @@ func TestParseBench(t *testing.T) {
 		in   string
 		p50  int
 		fail bool
-	}{
-		{"bench start n=20 p50=699ms min=650ms max=812ms\n", 699, false}, {"bench start n=20 p50=0ms min=0ms max=0ms\n", 0, false},
+	}{{"bench start n=20 p50=699ms min=650ms max=812ms\n", 699, false}, {"bench start n=20 p50=0ms min=0ms max=0ms\n", 0, false},
 		{"bench start n=20 p50=699ms min=650ms max=812ms", 0, true},      // no newline
 		{"bench start n=20 p50=699ms min=650ms max=812ms\nx\n", 0, true}, // a second line
 		{"bench start n=19 p50=699ms min=650ms max=812ms\n", 0, true},    // too few samples

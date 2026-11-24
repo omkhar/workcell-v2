@@ -221,13 +221,12 @@ func fetchWithin(req *http.Request, addrs map[string]string, cfg *tls.Config, h2
 // transport is the guest's transport of fetch: dialling the judge's address for a name, verifying nothing, HTTP/1.1 unless h2.
 func transport(addrs map[string]string, cfg *tls.Config, h2 bool) *http.Transport {
 	cfg.InsecureSkipVerify = true //nolint:gosec // the probe is the attacker
-	tr := &http.Transport{Proxy: http.ProxyFromEnvironment, TLSClientConfig: cfg, ForceAttemptHTTP2: h2,
-		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-			if host, _, err := net.SplitHostPort(addr); err == nil && addrs[host] != "" {
-				addr = addrs[host]
-			}
-			return (&net.Dialer{Timeout: 3 * time.Second}).DialContext(ctx, network, addr)
-		},
+	tr := &http.Transport{Proxy: http.ProxyFromEnvironment, TLSClientConfig: cfg, ForceAttemptHTTP2: h2, DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+		if host, _, err := net.SplitHostPort(addr); err == nil && addrs[host] != "" {
+			addr = addrs[host]
+		}
+		return (&net.Dialer{Timeout: 3 * time.Second}).DialContext(ctx, network, addr)
+	},
 	}
 	if !h2 {
 		tr.TLSNextProto = map[string]func(string, *tls.Conn) http.RoundTripper{} // HTTP/1.1 only
@@ -273,8 +272,7 @@ func echProbe(args []string) Result {
 		return Result{Status: "error", Detail: "ECH config list: " + err.Error()}
 	}
 	check := t.check()
-	cfg := &tls.Config{ServerName: t.bound, MinVersion: tls.VersionTLS13, EncryptedClientHelloConfigList: list,
-		EncryptedClientHelloRejectionVerify: func(tls.ConnectionState) error { return nil }}
+	cfg := &tls.Config{ServerName: t.bound, MinVersion: tls.VersionTLS13, EncryptedClientHelloConfigList: list, EncryptedClientHelloRejectionVerify: func(tls.ConnectionState) error { return nil }}
 	resp, err := fetch(t.get(t.bound, "/ech"), t.addrs, cfg, false)
 	var rejected *tls.ECHRejectionError
 	if errors.As(err, &rejected) {
@@ -345,8 +343,7 @@ func (e exchange) credential(v string) string {
 }
 func parseExchange(spec string) (exchange, bool) {
 	f := strings.Split(spec, ",")
-	if len(f) != 4 || f[0] == "" || f[1] != "bound" && f[1] != "other" || !strings.HasPrefix(f[2], "/") ||
-		!slices.Contains([]string{"header", "bearer", "auth", "basic", "path", "query", "none"}, f[3]) {
+	if len(f) != 4 || f[0] == "" || f[1] != "bound" && f[1] != "other" || !strings.HasPrefix(f[2], "/") || !slices.Contains([]string{"header", "bearer", "auth", "basic", "path", "query", "none"}, f[3]) {
 		return exchange{}, false
 	}
 	return exchange{f[0], f[1], f[2], f[3]}, true
@@ -356,8 +353,7 @@ func parseExchange(spec string) (exchange, bool) {
 func (e exchange) admitted(sec sandbox.Secret) bool {
 	raw, _, _ := strings.Cut(e.path, "?")
 	decoded, _ := url.PathUnescape(raw)
-	return e.name == "bound" && strings.EqualFold(headerOf[e.where], sec.Header) && (sec.Method == "" || sec.Method == e.method) && strings.HasPrefix(e.path, sec.Path) &&
-		(len(sec.Repos) == 0 || slices.ContainsFunc(sec.Repos, func(repo string) bool { return within(raw, repo) && within(path.Clean(decoded), repo) }))
+	return e.name == "bound" && strings.EqualFold(headerOf[e.where], sec.Header) && (sec.Method == "" || sec.Method == e.method) && strings.HasPrefix(e.path, sec.Path) && (len(sec.Repos) == 0 || slices.ContainsFunc(sec.Repos, func(repo string) bool { return within(raw, repo) && within(path.Clean(decoded), repo) }))
 }
 
 // within says whether p is /repo or /repo.git, or lies under either.
@@ -412,8 +408,7 @@ func exchangeProbe(args []string) Result {
 	return Result{Status: "sent", Detail: detail}
 }
 
-// swapJudge has the guest send the exchanges and holds the canaries to the swap rule: an exchange the binding admits must have reached the bound canary with
-// the real value in the bound header, no other may have reached either canary, nor anything the admitted ones did not send (a path rewritten on the way), and the other name sees nothing at all. The real value anywhere else, or in the guest's own hands, is a leak. Canaries that saw nothing proved nothing.
+// swapJudge has the guest send the exchanges and holds the canaries to the swap rule: an exchange the binding admits must have reached the bound canary with the real value in the bound header, no other may have reached either canary, nor anything the admitted ones did not send (a path rewritten on the way), and the other name sees nothing at all. The real value anywhere else, or in the guest's own hands, is a leak. Canaries that saw nothing proved nothing.
 func swapJudge(specs ...string) func(s Session, bound, other *canary) (bool, string, error) {
 	return func(s Session, bound, other *canary) (bool, string, error) {
 		r, err := run(s, bound, other, specs...)

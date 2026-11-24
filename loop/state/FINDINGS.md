@@ -6247,3 +6247,252 @@ table alone, since the cloud session's kernel has none. Known price, parked unde
 public space without being the default (0.0.0.0/1 on a tunnel device, or 2000::/3 on a tun device as an OpenVPN
 IPv6 redirect installs it) now refuses every public address behind it, where it was dialled before. Sweep 3 now
 stands at two mediums (C65, fixed; C66, fixed) and one low (C64, fixed).
+
+## S-1005, sweep 3: TLS termination and HTTP handling: smuggling, HTTP/2, WebSocket, redirects, CONNECT, CA handling (I5, I6), as built at main de37d68
+
+Sweep 3 (S8), the last the SPEC allows, fresh context (S3), the whole surface read as built after S-F1 to S-F49,
+not a diff. Auditor on the top tier in the cloud session, which has no hypervisor; nothing of this audit needed
+a VM. The auditor wrote its own trust boundary before it opened any earlier record.
+
+Trust boundary. Guest root and hostile model output own every byte of a 443 relay stream after the 20-byte header
+that stream() in cmd/workcell/relay.go reads: the ClientHello (crypto/tls over a recording conn, 16 KiB cap, 10 s
+deadline, extension 0xfe0d refused, the SNI lowered with a length check and matched by exact allowlist membership),
+then, replayed byte for byte into the per-connection tls.Server of serveTerminated in internal/proxy/terminate.go
+(a leaf for the routed host, TLS 1.2 or later, ALPN http/1.1 alone), the whole HTTP/1.1 stream that net/http parses:
+request line, target, method, headers (64 KiB), bodies, trailers, pipelining, Upgrade, Expect, count, rate and
+timing. They also own the relay header's address (used only for sameHost's port, which the adapter fixes at 443),
+the placeholders (wcph- plus 32 hex, fresh per rule and per session) and the public CA PEM. The handler judges in this
+order: an opaque target or a scheme without a host (400), TRACE and CONNECT (405), sameHost against the connection's
+SNI (421), per rule placeholderForm, then admits (403), then broker.Lookup; tokenEndpoint, then tokenRequest (502);
+carriesPlaceholder (502); then httputil.ReverseProxy, whose Rewrite forces scheme, URL host and Host to the SNI
+host over p.transport (RootCAs the system pool plus an absolute SSL_CERT_FILE, ServerName the SNI host, HTTP/1.1,
+DialContext re-entering p.connect), with ModifyResponse = tokenResponse. The malicious repository owns the working
+directory (ca.pem and certs/, refused since S-F22 and S-F36) and workcell.toml (narrow only, S-F27). The network
+attacker owns every host off the allowlist and, in the project's own I4 model, the host resolver's answers for
+allowed names; it does not own an allowed host's x509 identity. Authority: the supervisor as the operator's uid,
+with the session CA key, the broker (file, cmd and keychain reads per use, sign-in tokens held one generation),
+the audit log, and a plain dialer to any public address the resolver gives. Trusted without checking: the framing
+and hop-by-hop handling of crypto/tls, net/http and httputil on go1.27.4; the host resolver and root store; the
+compiled-in provider TOML; the operator's config; and every byte an allowlisted upstream answers: its redirects,
+media types and echoes, its router's reading of a path, and its framework's reading of override headers. Both
+candidates live in that last item. internal/proxy/terminate.go carries `// Ported from v1`, so C68 is an ordinary
+public candidate with a v1 line (SPEC section 13); signin.go is not ported. Both candidates rest on documented
+behaviour of providers and frameworks, not on a defect in someone else's project, so nothing falls under S14's stop.
+
+Lenses (S9). Parsing and resources: the header block is capped at 64 KiB and the handshake plus header read at
+10 s (S-F6); a token body and a token answer at 256 KiB plus 1, before and after gzip, with br and zstd refused;
+a Basic value at 4 KiB of strict base64; the hello at 16 KiB; the leaf cache is keyed by allowed names only;
+1024 slots on each side, and a kept-alive or Upgrade-hijacked connection holds its slot by design. Smuggling
+was run again as raw bytes over TLS on go1.27.4: CL.TE is re-framed, the upstream saw one POST with an empty
+body and the smuggled GET naming another allowed Host was answered 421 host_mismatch as a second request; TE.CL
+with a malformed chunk gave 502, the chunk's bytes reaching the bound host as a body only; "xchunked" is 501,
+"Transfer-Encoding : chunked" 400, two Content-Length headers 400; the h2 preface without Host is 421, and with
+a Host it crosses as the method PRI to the bound host; bytes pipelined behind an Upgrade request are dropped by
+Go's handleUpgradeResponse, and the 101 tunnel is bound to the bound host, which alone saw the swapped key in the
+judged upgrade request. Four fuzz targets ran 20 s each with no crasher (FuzzCarriesPlaceholder 233,616 executions,
+FuzzSwapRefresh 656,900, FuzzHide 258,568, FuzzPeekSNI 2,821). No panic reachable from guest bytes was found. Logic
+and state: sameHost's ASCII-only fold and port rule hold (an IPv6 literal, an empty port, 0443, two colons, a trailing
+dot with a port and the Kelvin sign all fail closed); an absolute-form target naming another allowed host is 421,
+userinfo is dropped, HTTP/1.0 without Host is 421, Host with :8443 is 421, a lowercase connect in authority form
+is 400 target_refused (C32), OPTIONS * reaches the handler (C27); admits judges the path on three readings (C10,
+C33) and tokenEndpoint claims on three; the swap forms are bare, Bearer and Basic only. What no code does became
+the candidates: tokenResponse reads an answer of a sign-in host on an unclaimed path only when its media type is
+JSON or form (C67), and nothing refuses or strips a header with which an upstream's framework reads the method or
+the path from somewhere other than the request line (C68). Concurrency and check-to-use: p.terminate, p.signin,
+p.ca, p.broker, p.transport and p.upstreamRoots are written once in Terminate before Serve; the leaf cache is
+under a mutex; the broker is under a mutex and hands out clones; the token context rides the request context
+into the cloned outgoing request; the carried refresh token covers the rotation race (C15); nothing changes r.URL
+between admits and the clone; the peek and the terminating server parse the same replayed bytes. Cryptography and
+identity: a P-256 CA of at most 24 hours, NotBefore one minute back, critical PermittedDNSDomains equal to the
+443 allowlist, every IP range excluded, path length 0, KeyUsageCertSign; a leaf per lowered allowed name with
+ServerAuth and a random 128-bit serial; the key never leaves the host and the guest gets the PEM (16 KiB cap)
+as a convenience; a fresh tls.Config per connection, so no ticket resumption across connections and no 0-RTT;
+the upstream is verified against the explicit pool with ServerName the SNI host, TLS 1.2 or later, HTTP/1.1,
+pooled per host string, no Proxy. Nothing new. Failure modes: every error path refuses or closes. A leaf error
+fails the handshake; an upstreamRoots error fails Terminate before boot; a broker error is 502; the token reasons
+are 502; a ModifyResponse error is an empty 502 before any upstream header is copied; a failed Note half-closes
+before any dial; HEAD at the token endpoint is 502. Nothing fails open except the unread answer and the unjudged
+header of the two candidates. Downgrade, rollback and replay: TLS 1.2 or later on both sides; an h2-only ALPN is
+refused and the h2 preface is 421; placeholders are fresh per session and refused anywhere else; the guest never
+holds a real refresh token to replay; the broker keeps one generation and zeroes the replaced one; a replayed code
+grant gains nothing. Interaction between surfaces: the refusal records of a kept-alive connection fill the audit
+log at request rate, and S-F16 then refuses every connection, a loss and never a gain; loadPolicy's C34 and C54
+checks read as built; the resolver's hint is never dialled; the trust store in the guest is a convenience (A1);
+C67 and C68 each need a trait of the provider, as C10, C33 and C55 did.
+
+Refuted by the auditor before any candidate was raised: a lowercase `trace` crosses as a method with the swapped
+key to the bound host, and only an upstream that folds method case and has TRACE enabled would echo it (Go, Apache,
+nginx, Node and Python compare case: no such server is known); `Connection: X-Api-Key` makes ReverseProxy drop
+the swapped header (self-harm); bytes pipelined behind an Upgrade request reach nothing; `//host/path` stays
+a path (parked line 107 stands); double percent-decoding, NUL truncation and trailing-space stripping stay the
+parked residuals (no named router); an SSL_CERT_FILE that is an absolute path inside the repository needs the
+operator's own environment to name it (C53's record judged it no distinct finding); a 206 of a JSON token answer
+is refused as malformed JSON; a nested or camelCase token field and an id_token are the provider's shape (U-403,
+parked); a token echoed in a response header or trailer has no precedent (parked); a CA PEM over 16 KiB from a
+huge allowlist makes the init refuse the Exec, the operator's own availability; an Accept header at the claimed
+path gains nothing, since learn refuses an XML 2xx there.
+
+Earlier fixes on this surface, traced again in the code as built, all hold: C10 (S-F5: fold and opaque, three
+readings in admits and tokenEndpoint; c10_test green); C11 (S-F6: MaxHeaderBytes 64 KiB and ReadHeaderTimeout;
+c11_test); C12 (S-F7: hide widens swaps with the url-encoded and JSON-escaped spellings; c12_test, FuzzHide clean);
+C13 (S-F8: TLSHandshakeTimeout, MaxConnsPerHost, IdleConnTimeout; c13_test); C15 (S-F9: tokenCtx carries the
+swapped refresh token into learn; c15_test); C23 and C24 (S-F16: handle acts on a nil Note only; unrecorded_test
+on both ports); C27 (S-F19: DisableGeneralOptionsHandler; TestC27, and the probe's OPTIONS * reached the handler);
+C30 and C53 (S-F22, S-F36: upstreamRoots refuses a relative SSL_CERT_FILE and any relative SSL_CERT_DIR entry
+before SystemCertPool; both tests green); C32 (S-F25: the refusal of an opaque target or a scheme without a host
+is the handler's first statement; c32_test, and the probe's authority-form connect gave 400 target_refused); C33
+(S-F26: the opaque reading; c33_test); C34 (S-F27) and C54 (S-F37, S-F41) in cmd/workcell/policy.go, by reading;
+C35 (S-F28: cmd.Dir "/", by reading); C55 (S-F38: tokenResponse reads an unclaimed 2xx JSON or form answer of a
+sign-in host and refuses a token answer; /oauth/token.json with a JSON answer is 502; its own record's residual
+is C67); C66 (S-F49: hostNets and routes; TestRoutes green); B-835 (the 16 KiB hello cap; TestPeekSNI). The whole
+package is green on go1.27.4.
+
+Coverage. Read in full: internal/proxy/{terminate,signin,proxy,allowlist}.go and every test file of the package
+(terminate, signin, proxy, allowlist, clients, forward, git, providers, unrecorded, c10, c11, c12, c13, c15, c30, c32,
+c33, c53, c55); internal/secret/{broker,source}.go; internal/guest/{trust,guest}.go; internal/provider/provider.go
+and the four provider TOML files; internal/relay/relay.go; cmd/workcell/{run_vm,policy,data,relay}.go;
+cmd/workcell-init/{main,net}.go; escape/suite/{tests,terminate,https,secrets,signin,helpers}.go;
+docs/adr/003-network-path.md; docs/threat-model.md; loop/SPEC.md; this file's records of S-1005 in sweeps 1 and
+2, of S-1016b, c and d and the closing part, of S-1007 in sweeps 1 and 2, both S-1017 verdicts and S-1004 in
+sweep 3; PARKED.md in full. Skimmed: internal/policy/policy.go (the Secret row, by grep); in the Go 1.27.4 source
+handleUpgradeResponse of httputil/reverseproxy.go, closeAfterReply and isH2Upgrade of net/http's server.go and the
+Content-Length deletion of transfer.go, by grep, with the rest of net/http's reader and ReverseProxy confirmed by
+probe wherever a claim rested on it. Not opened: internal/secret's tests; cmd/workcell-init/{exec,mount,pull,root}.go;
+internal/audit, resolver and wire; escape/sandbox; the escape rows of other surfaces; the rest of cmd/workcell;
+docs/policy.md and docs/providers.md; _legacy/ (the v1 paths are taken from the ported headers). Ran: go test of
+internal/proxy on the unchanged tree (green, 13 s); go vet; four probe tests by go test -overlay from a scratch
+directory against the real package (the media types of C67, the override headers of C68, eighteen raw request
+shapes, and raw CL.TE bytes); a fix-shaped overlay of signin.go and terminate.go with the two candidates' probes
+and the whole package under -race (green, 17 s); the four 20 s fuzz bursts. Every listener was a loopback socket
+the probe itself started, no packet left the session and no real provider was touched (S12, T8); the tree was
+unchanged at the end. Not run by the auditor: anything on a real VM, the escape suite, cmd/workcell's tests,
+any macOS path, the four-hour fuzz of S10. No model declined a request, no safeguard re-ran one and no tool
+permission was refused to the auditor.
+
+Evidence gaps, not findings (PARKED.md holds what a retro must weigh, R3). No escape row drives Upgrade, CONNECT,
+pipelining, absolute-form targets or the token-answer media types on a real VM; the package's Go tests are their
+proof. hide scans neither response headers nor trailers, and readToken's full read of a short original body lets
+the transport fill the response's trailer, which ReverseProxy then writes after the rewritten body, so a token
+in a trailer would pass (no provider sends one). A token under a non-standard key, nested, or an id_token passes
+as issued at the claimed path (U-403, parked). tokenEndpoint has no method check (harmless). A 101 answered at
+a token endpoint parks the handler in readToken until the upstream closes (parked, bounded). Lookup and Refresh
+record a grant before carriesPlaceholder may refuse (the parked I9 wording). The terminated path emits refusal
+records at request rate (parked).
+
+### S-1005 candidates, sweep 3
+
+C67. ID I5 ("Real credential bytes never exist in guest memory ..."), and the sign-in flow's own contract at the
+head of internal/proxy/signin.go: a real token the broker holds never appears in an answer. It is the residual that
+S-F38's record of C55 and PARKED.md left for the next audit, now reproduced, with a lever the guest holds. Attacker:
+guest root or hostile model output, choosing the spelling of the token endpoint's path and the Accept header of
+its own request. Preconditions it does not control: the provider's router serves the token action on a spelling
+outside tokenEndpoint's three readings (a Rails `(.:format)` route, as C55 records), and the provider answers
+in a media type other than application/json or application/x-www-form-urlencoded; GitHub's OAuth documentation
+gives XML for `Accept: application/xml` beside form and JSON, so there the guest picks the media type. Where:
+tokenResponse in internal/proxy/signin.go, whose early return passes unread every 2xx of a sign-in host on an
+unclaimed path when the media type is neither of the two, an absent Content-Type included; and tokenAnswer,
+whose form branch reads a JSON object as one form key, since url.ParseQuery does not fail on it, so a JSON token
+answer under a form label counts as no token answer. signin.go is not ported, so there is no v1 line. Input:
+a policy row `source = "signin:login.example.com/oauth/token"` bound to api.example.com; a provider that serves
+`/oauth/token.xml` and `/oauth/token.json` as the token action and answers a code grant with real tokens as
+`application/xml; charset=utf-8` (GitHub's documented XML shape), as text/json, as application/vnd.api+json,
+as text/plain form text, with no Content-Type at all, or as a JSON object under a form Content-Type; the guest
+posts `grant_type=authorization_code&code=c0de` to that spelling through the terminating proxy. Effect claimed:
+the guest reads a 200 with the real access and refresh tokens verbatim, usable and refreshable outside the
+session, where the honest spelling `/oauth/token` gives it placeholders, the honest spelling with `Accept:
+application/xml` is refused 502, and `/oauth/token.json` with a JSON answer is refused 502 (C55 holds); the
+leaks leave no token_answer_refused record. Auditor's evidence: a probe of nine rows by go test -overlay on the
+unchanged tree, six of them leaking, and all nine refused or swapped under a fix-shaped overlay with the whole
+package green under -race. Severity claimed: medium by S6, the class and grade of C55.
+
+Reproducing test: TestC67TokenAnswerInAnotherMediaType, package proxy, 69 lines, written by the redteam from the
+claim alone, on the fixture of c55_test.go; each row runs its own loopback TLS provider and asserts only that no
+byte of a real token appears in the status line, headers or body the guest reads, so a fix may refuse the answer
+or swap the tokens. Run by go test -overlay against the real package, plain and under -race, by the redteam and
+again by the orchestrator: the control row (the honest spelling with a JSON answer, which wants 200 and both
+placeholders) passes, and the six claim rows fail, each with "the guest read a real token" above a 200 and the
+verbatim body: xml, text/json, vnd.api+json, text/plain form, no content-type, form label over json. No VM was needed.
+
+Outcome: CONFIRMED at medium by the verifier, which ran the test itself (the control row passes, all six other
+rows fail) and probed tokenEndpoint on its own: its three readings leave `/oauth/token.xml`, `.json` and `.JSON`
+unchanged, so none is claimed, and the early return of tokenResponse then relays the body unread. The attacker is
+in scope and the test takes no power it lacks: it reuses the harness of C55 that S-F38 accepted and changes only
+the provider's answer type. Not intended behaviour: the comment that any other answer passes unread describes
+the code, not an accepted leak, and docs/providers.md does not park it. Not high, because a provider that serves
+only the exact path and answers JSON is out of reach; medium, because the break is shown and rests on two traits
+of the provider that the attacker does not control, one already accepted in C55 and one documented by a named
+provider. Not v1 code and not someone else's project.
+
+C68. ID I5 ("A placeholder is useless at any destination other than the one it is bound to"), as C33 and the
+product's own refusal text read the binding: "the credential in x-api-key is bound to method POST under path
+/v1/" and "bound to repositories octo/allowed". It is the parked tool note of S-1016b, now reproduced. Attacker:
+guest root or hostile model output, choosing the headers of its own request. Precondition it does not control:
+the bound host's framework honours a routing-override header. That is documented behaviour and not a defect
+in anyone's project: Rack::MethodOverride (in the default middleware stack of every Rails application),
+ASP.NET MVC's HttpMethodOverride and Google's API front end take the method from `X-HTTP-Method-Override` on a
+POST; IIS URL Rewrite with ASP.NET and Symfony HttpFoundation's Request take the path from `X-Original-URL` or
+`X-Rewrite-URL`. Where: internal/proxy/terminate.go, the rule loop of serveTerminated's handler, where admits judges
+r.Method and r.URL alone before the swap, and the ReverseProxy with Rewrite, which strips hop-by-hop and X-Forwarded
+headers only and forwards every other header as sent. also in v1 main: egressproxy/terminate.go. Input: rules `{Host:
+n.example.com, Header: x-api-key, Method: POST, Path: /v1/}` and `{Host: r.example.com, Header: authorization, Repos:
+[octo/allowed]}`, a broker holding the real secret, and an upstream that reads the method and the path as those
+frameworks do; the guest sends an admitted request line with its placeholder and one override header: `POST /v1/x`
+with `X-HTTP-Method-Override: DELETE` or `GET`; `POST /v1/x` with `X-Original-URL: /v2/admin` or `X-Rewrite-URL:
+/v2/admin`; `GET /octo/allowed.git/info/refs` as Bearer with `X-Original-URL: /octo/other.git/info/refs`; `POST
+/octo/allowed.git/git-receive-pack` as git's Basic with `X-Original-URL: /evil/repo.git/git-receive-pack`. Effect
+claimed: every row is answered 200 and the upstream served, with the real secret, `DELETE /v1/x`, `GET /v1/x`,
+`POST /v2/admin` (twice), `GET /octo/other.git/info/refs` and `POST /evil/repo.git/git-receive-pack`, where the
+plain forms of the same requests are refused 403 binding_mismatch with the secret withheld; no record is written
+for the bypassed rows. Auditor's evidence: a probe of six override rows by go test -overlay on the unchanged tree,
+all served with the real secret, and all six refused 403 under a fix-shaped overlay with the whole package green
+under -race. Severity claimed: medium by S6, the class and grade of C10 and C33, a request that admits reads one
+way and the upstream another; the auditor noted that a verifier may weigh C36's reading (the product promises
+the method and path as sent) against C33's (the binding is what the upstream serves).
+
+Reproducing test: TestC68RoutingOverrideHeaders, package proxy, 76 lines, written by the redteam from the claim
+alone, on the fixture of c10_test.go; a row passes if the request is refused or is served without the override,
+so a fix may refuse or strip. Run by go test -overlay against the real package, plain and under -race, by the
+redteam and again by the orchestrator: the control rows pass (the plain `POST /v1/x` and the plain allowed
+repository are served with the real secret, the plain `DELETE /v1/x` and `POST /v2/admin` are refused), and the
+six override rows fail, each answered 200 with the upstream's own line: "DELETE /v1/x real-secret", "GET /v1/x
+real-secret", "POST /v2/admin real-secret" twice, "GET /octo/other.git/info/refs Bearer real-secret" and "POST
+/evil/repo.git/git-receive-pack real-secret". No VM was needed.
+
+Outcome: CONFIRMED at medium by the verifier, which ran the test itself and traced the request along the real path
+from the listener through Serve and serveTerminated to the ReverseProxy: admits judges only r.Method and r.URL and
+the override header crosses untouched, so the override header is the only difference between a refused row and a
+served one. The attacker is in scope and the test takes no power it lacks: the stock harness of the package, with
+an upstream that honours the header as the stated precondition. Not intended behaviour: docs/policy.md promises
+that method, path and repos narrow the swap and that any other request gets a 403 with the value not read, and the
+product already treats a request that the proxy and the upstream read differently as a break of I5 in the direct
+sibling C10, under the same precondition of a host behind such a router; C68 is that class by a header where C10
+was by a path encoding. Medium under S6: I5 is broken, but only where the bound host honours an override header;
+not high, since a host without such a framework is unaffected. The frameworks' behaviour is documented, so S14
+does not apply; terminate.go is ported, so the record carries its v1 line and the maintainer sends the same fix to v1.
+
+Parked and handed on: the two tests wait in escape/_pending/S-F50/c67_test.go and escape/_pending/S-F51/c68_test.go,
+each with a head that says where it goes: internal/proxy/c67_test.go and internal/proxy/c68_test.go, unchanged. The
+live suite lists main's 147 rows, by the orchestrator's compare of the two lists. The test budget had 3 lines of room,
+so the 145 lines were paid by 148 layout folds in 34 files under escape/, in a run of the redteam of its own: 103
+joins of adjacent code lines (the first row of a table on its opening line and adjacent rows on shared lines where
+the table already did that, the closure chain of parallel() in workcell_vm.go, spread literals and conditions),
+29 comments moved from a line of their own above a statement to the end of that statement's line, 10 two-line doc
+comments joined, and 6 blank lines that gofmt does not require. No row, verdict, string, name or comment word changed:
+the orchestrator compared every changed file with its parent by a tool of its own, the Go token stream with every
+semicolon kept except one before a closing bracket, and the comment words in order, equal in all 34. The longest
+line made has 499 columns, where the tree already held one of 849. Test code stands at 28485 of 28491 and product
+at 14994 of 15000. Fix units S-F50 (C67) and S-F51 (C68) stand below S-1005 in PLAN.md, and each starts with the
+move of its test. Three things they must know. The auditor's fix shapes measured about 4 product lines for C67
+(drop the media-type clause of tokenResponse, let tokenAnswer's form branch also take a body that is valid JSON,
+and refuse any other media type whose body names access_token or refresh_token in any case) and about 3 for C68
+(a rule that narrows refuses a request carrying one of the override headers with 403 binding_mismatch), against 6
+lines of room, so one of them folds a line first. C67's fix widens the honest cost that S-F38's reviewer recorded:
+on a sign-in host every 2xx on an unclaimed path is then held whole, and one over 256 KiB is answered 502, which
+matters only where the token host is also a streaming API host. And C68's fix cannot see an override carried in
+a body the proxy does not read (`_method` as a form field for Rack, `X-HTTP-Method-Override` as a form parameter
+for ASP.NET MVC); the query form could be judged at a line's cost. Both residuals belong in the fix units' records.
+
+Sweep 3 verdict for this surface: two candidates, C67 and C68, both confirmed at medium. Sweep 3 now stands at
+four mediums (C65 and C66, fixed; C67 and C68, open) and one low (C64, fixed). It is the last sweep that S8 allows,
+so S-1017 will mark itself `[!]` and the loop will stop there for the maintainer; the audits before it still run,
+and S7 wants both mediums fixed before cutover.
