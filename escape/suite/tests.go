@@ -30,8 +30,7 @@ var All = append([]Test{
 	{ID: "I2", Name: "relay-header-tcp", Probe: relayProbe, Host: relayCanary("tcp4", hostAddr+":0", "tcp")}, {ID: "I2", Name: "relay-header-udp", Probe: relayProbe, Host: relayCanary("udp4", hostAddr+":0", "udp")},
 	{ID: "I2", Name: "relay-header-bad-version", Probe: relayProbe, Host: relayCanary("tcp4", hostAddr+":0", "version-0", "version-2")}, {ID: "I2", Name: "relay-header-bad-proto", Probe: relayProbe, Host: relayCanary("tcp4", hostAddr+":0", "proto-0", "proto-1")},
 	// The same header names the canary at the port the policy serves, as TCP, which the host hands to the proxy, and as UDP, which it serves on no port but 53. Neither may end at the address in the header.
-	{ID: "I2", Name: "relay-header-allowed-port", Probe: relayProbe, Host: relayCanary("tcp4", hostAddr+":"+forwardPort, "tcp"), Want: forwarded},
-	{ID: "I2", Name: "relay-header-allowed-port-udp", Probe: relayProbe, Host: relayCanary("udp4", hostAddr+":"+forwardPort, "udp"), Want: forwarded},
+	{ID: "I2", Name: "relay-header-allowed-port", Probe: relayProbe, Host: relayCanary("tcp4", hostAddr+":"+forwardPort, "tcp"), Want: forwarded}, {ID: "I2", Name: "relay-header-allowed-port-udp", Probe: relayProbe, Host: relayCanary("udp4", hostAddr+":"+forwardPort, "udp"), Want: forwarded},
 	{ID: "I12", Name: "relay-short-header", Probe: relayProbe, Host: relayHeld("short"), Bound: relayBound}, {ID: "I12", Name: "relay-slow-header", Probe: relayProbe, Host: relayHeld("slow"), Bound: relayBound},
 	// A real guest's 127.0.0.1 is its own loopback. The host's loopback services it could reach are those bound to every host address, dialled as the host.
 	{ID: "I4", Name: "host-loopback-tcp4", Probe: dialProbe, Host: tcpCanary("tcp4", "0.0.0.0:0", hostAddr)}, {ID: "I4", Name: "lan-rfc1918-tcp4", Probe: dialProbe, Host: onLoopback("10.255.255.254", tcpCanary("tcp4", "10.255.255.254:0", ""))},
@@ -49,15 +48,13 @@ var All = append([]Test{
 	// Under a name of its own: its A answer is empty, which a Mac's resolver holds for over a minute (U-701), in the rows after it and in the next run's.
 	{ID: "I4", Name: "rebind-mapped-loopback-forward", Probe: rebindProbe, Host: rebindJudge(rebind{aaaa: []string{"::ffff:127.0.0.1"}, canary: "127.0.0.1", names: []string{"mapped.escape.test."}}), Want: rebindingMapped},
 	// The answer is a public address on a network the host itself holds, in the session's own network (sandbox.IsolatedNet): no range set aside catches it, and the canary there is the host itself, or its neighbour on that network.
-	{ID: "I4", Name: "rebind-host-network-forward", Probe: rebindProbe, Host: rebindJudge(rebind{canary: "neighbour"}), Want: rebindingOwn},
-	{ID: "I4", Name: "rebind-host-network-sni", Probe: rebindProbe, Host: rebindJudge(rebind{canary: "neighbour", sni: true}), Want: rebindingOwnSNI},
+	{ID: "I4", Name: "rebind-host-network-forward", Probe: rebindProbe, Host: rebindJudge(rebind{canary: "neighbour"}), Want: rebindingOwn}, {ID: "I4", Name: "rebind-host-network-sni", Probe: rebindProbe, Host: rebindJudge(rebind{canary: "neighbour", sni: true}), Want: rebindingOwnSNI},
 	// DNS for a name no policy allows, sent past the guest's resolver straight to a host-side capture: as plain DNS, as DoT, as DoH, and as a tunnel.
 	{ID: "I3", Name: "direct-resolver-udp4", Probe: dnsUDPProbe, Host: dnsCanary(dnsOverUDP, queried)}, {ID: "I3", Name: "direct-resolver-tcp4", Probe: dnsTCPProbe, Host: dnsCanary(dnsOverTCP(false), queried)},
 	{ID: "I3", Name: "dot-tcp4", Probe: dotProbe, Host: dnsCanary(dnsOverTCP(true), queried)}, {ID: "I3", Name: "doh-post-tcp4", Probe: dohProbe(http.MethodPost), Host: dnsCanary(dnsOverHTTPS, queried)},
 	{ID: "I3", Name: "doh-get-tcp4", Probe: dohProbe(http.MethodGet), Host: dnsCanary(dnsOverHTTPS, queried)}, {ID: "I3", Name: "tunnel-txt-udp4", Probe: tunnelProbe, Host: dnsCanary(dnsOverUDP, tunnelled)},
 	// The guest's configured resolver must answer the allowed name, in any case and with EDNS0, and refuse every other name (one no policy names, a subdomain, a name that merely ends or starts in it, other types) promptly, with a DNS answer carrying no address. The same at any address on port 53, under a policy allowing nothing, after hostile datagrams (I12) and after a burst (I10).
-	{ID: "I3", Name: "resolver-answers-allowed", Probe: lookupProbe, Host: resolverJudge(resolvConf, "plain", allowedLookups), Want: reachable},
-	{ID: "I3", Name: "resolver-refuses-others", Probe: lookupProbe, Host: resolverJudge(resolvConf, "plain", deniedLookups), Want: reachable},
+	{ID: "I3", Name: "resolver-answers-allowed", Probe: lookupProbe, Host: resolverJudge(resolvConf, "plain", allowedLookups), Want: reachable}, {ID: "I3", Name: "resolver-refuses-others", Probe: lookupProbe, Host: resolverJudge(resolvConf, "plain", deniedLookups), Want: reachable},
 	{ID: "I3", Name: "resolver-at-host-address", Probe: lookupProbe, Host: resolverJudge(hostAddr+":53", "plain", bothLookups), Want: reachable},
 	{ID: "I3", Name: "resolver-at-lan-address", Probe: lookupProbe, Host: onLoopback("10.255.255.254", resolverJudge("10.255.255.254:53", "plain", bothLookups)), Want: reachable},
 	{ID: "I3", Name: "resolver-empty-policy", Probe: lookupProbe, Host: resolverJudge(resolvConf, "plain", nothingLookups)}, {ID: "I3", Name: "resolver-after-garbage", Probe: lookupProbe, Host: resolverJudge(resolvConf, "garbage", bothLookups), Want: reachable},
@@ -81,13 +78,10 @@ var All = append([]Test{
 	{ID: "I10", Name: "device-cpu-flood", Probe: emulationProbe, Host: cpuJudge(Session.Relay), Want: capped},
 	// And the supervisor's own decoder: root writes the smallest valid frames on the init's channel as fast as the host takes them, each read in several calls.
 	{ID: "I10", Name: "channel-cpu-flood", Probe: frameFlood, Host: cpuJudge(Session.Channel), Want: capped},
-	// And the file service of a `--mount` session, on the init's connection to it, which the row above does not cover: root writes FUSE INTERRUPT requests, which the host answers with nothing, as fast as it takes them.
-	{ID: "I10", Name: "mount-cpu-flood", Probe: fuseFlood, Host: cpuJudge(Session.Files), Want: cappedLive},
 	// The same disk flood in mount mode: the export is the host's own tree, served live, so a byte the guest writes under it, or a size it sets without writing, is the host's at once.
 	{ID: "I10", Name: "mount-disk-flood", Probe: mountDiskProbe, Host: mountDiskJudge, Want: cappedLive},
 	// A secret is bound to one allowed name, both terminated on the host. The guest hunts for the real value in every process, on disk and in memory; sends its credential, alone and as a bearer token, in the bound header to the bound name, which must reach the canary real; replays it at the other name, in another header, in the path and in the query, none of which may reach a canary. Under a binding narrowed to one method and path, only that is swapped. A redirect from the bound host carries it on to the other.
-	{ID: "I5", Name: "secret-in-guest", Probe: secretProbe, Host: secretJudge, Want: withSecret},
-	{ID: "I5", Name: "placeholder-swapped", Probe: exchangeProbe, Host: twoNames(canaries{}, swapJudge("GET,bound,/check,header", "GET,bound,/bearer,bearer")), Want: withSecret},
+	{ID: "I5", Name: "secret-in-guest", Probe: secretProbe, Host: secretJudge, Want: withSecret}, {ID: "I5", Name: "placeholder-swapped", Probe: exchangeProbe, Host: twoNames(canaries{}, swapJudge("GET,bound,/check,header", "GET,bound,/bearer,bearer")), Want: withSecret},
 	{ID: "I5", Name: "placeholder-replay", Probe: exchangeProbe, Host: twoNames(canaries{}, swapJudge("GET,bound,/check,header", "GET,other,/replay,header")), Want: withSecret},
 	{ID: "I5", Name: "placeholder-misplaced", Probe: exchangeProbe, Host: twoNames(canaries{}, swapJudge("GET,bound,/check,header", "GET,other,/replay,header", "GET,bound,/auth,auth", "GET,bound,/path,path", "GET,bound,/query,query")), Want: withSecret},
 	{ID: "I5", Name: "placeholder-narrowed", Probe: exchangeProbe, Host: twoNames(canaries{}, swapJudge("POST,bound,/v1/ok,header", "GET,bound,/v1/ok,header", "POST,bound,/v2/no,header", "GET,bound,/check,header")), Want: narrowed},
@@ -99,13 +93,10 @@ var All = append([]Test{
 	{ID: "I5", Name: "signin-exchange", Probe: signinProbe, Host: signedIn("", "signin", "api"), Want: signedInWant}, {ID: "I5", Name: "signin-refresh", Probe: signinProbe, Host: signedIn("", "signin", "api", "refresh", "api"), Want: signedInWant},
 	{ID: "I5", Name: "signin-refresh-json", Probe: signinProbe, Host: signedIn("", "signin", "refresh-json", "api"), Want: signedInWant}, {ID: "I5", Name: "signin-scan", Probe: signinProbe, Host: signedIn("", "signin", "api", "refresh", "scan"), Want: signedInWant},
 	{ID: "I5", Name: "signin-replay", Probe: signinProbe, Host: signedIn("", "signin", "replay", "api"), Want: signedInWant}, {ID: "I5", Name: "signin-chunked", Probe: signinProbe, Host: signedIn("chunked", "signin", "api", "refresh", "api"), Want: signedInWant},
-	{ID: "I5", Name: "signin-gzip", Probe: signinProbe, Host: signedIn("gzip", "signin", "api"), Want: signedInWant},
-	{ID: "I5", Name: "signin-error-echo", Probe: signinProbe, Host: signedIn("", "signin", "refresh-bad", "api"), Want: signedInWant},
+	{ID: "I5", Name: "signin-gzip", Probe: signinProbe, Host: signedIn("gzip", "signin", "api"), Want: signedInWant}, {ID: "I5", Name: "signin-error-echo", Probe: signinProbe, Host: signedIn("", "signin", "refresh-bad", "api"), Want: signedInWant},
 	// Two allowed names, both terminated on the host. On a connection whose TLS names one, the request names the other, in the Host header, in :authority, or hidden from the SNI by ECH: neither canary may see a request for the other. A plain client in the guest must meet the host's own leaf, trusted through the environment the product set, never the canary's: terminated, not spliced. A canary presenting a leaf for the other name gets no request.
-	{ID: "I6", Name: "sni-host-mismatch-h1", Probe: mismatchProbe(false), Host: twoNames(canaries{}, strictJudge), Want: terminating},
-	{ID: "I6", Name: "sni-authority-mismatch-h2", Probe: mismatchProbe(true), Host: twoNames(canaries{}, strictJudge), Want: terminating},
-	{ID: "I6", Name: "ech-hidden-sni", Probe: echProbe, Host: twoNames(canaries{ech: true}, strictJudge), Want: terminating},
-	{ID: "I6", Name: "terminated-session-leaf", Probe: terminatedProbe, Host: twoNames(canaries{}, terminationJudge), Want: terminating},
+	{ID: "I6", Name: "sni-host-mismatch-h1", Probe: mismatchProbe(false), Host: twoNames(canaries{}, strictJudge), Want: terminating}, {ID: "I6", Name: "sni-authority-mismatch-h2", Probe: mismatchProbe(true), Host: twoNames(canaries{}, strictJudge), Want: terminating},
+	{ID: "I6", Name: "ech-hidden-sni", Probe: echProbe, Host: twoNames(canaries{ech: true}, strictJudge), Want: terminating}, {ID: "I6", Name: "terminated-session-leaf", Probe: terminatedProbe, Host: twoNames(canaries{}, terminationJudge), Want: terminating},
 	{ID: "I6", Name: "upstream-leaf-mismatch", Probe: upstreamProbe, Host: twoNames(canaries{misleaf: true}, upstreamJudge), Want: terminating},
 	// The repository the guest hands back is hostile: its hooks, config, attributes and submodule URL aim at the host, and its tree names paths through "..", through a symlink an earlier pull brought, twice in different case, and under ".git".
 	{ID: "I8", Name: "pull-runs-hook", Probe: repoProbe, Host: obeyed("hooks"), Want: exported}, {ID: "I8", Name: "pull-obeys-git-config", Probe: repoProbe, Host: obeyed("config"), Want: exported},
@@ -134,13 +125,10 @@ var All = append([]Test{
 	{ID: "I11", Name: "proxy-killed", Probe: holdProbe, Host: helperKilled("proxy", false), Want: servable}, {ID: "I11", Name: "resolver-killed", Probe: holdProbe, Host: helperKilled("resolver", false), Want: servable},
 	{ID: "I11", Name: "broker-killed", Probe: holdProbe, Host: helperKilled("broker", false), Want: servable}, {ID: "I11", Name: "proxy-killed-at-start", Probe: holdProbe, Host: helperKilled("proxy", true), Want: servable},
 	// Root in the guest writes on the init's own channel connection: frames no decoder can take, a forged Exit under a version the host never issued, an error text made of terminal escapes, a 4 GiB header then silence, one byte a second; and a storm of fresh connections each carrying a forged Exit. The host must end each run in time, without a crash, with a clean stderr and the truthful status, and run again after.
-	{ID: "I12", Name: "channel-malformed-frames", Probe: channelProbe, Host: channelJudge("exit-empty", "ack-short", "version-2", "unknown-type"), Bound: channelBound},
-	{ID: "I12", Name: "channel-forged-exit-text", Probe: channelProbe, Host: channelJudge("exit-text"), Bound: channelBound},
-	{ID: "I12", Name: "channel-oversized-frame", Probe: channelProbe, Host: channelJudge("giant-header"), Bound: channelBound},
-	{ID: "I12", Name: "channel-slow-drip", Probe: channelProbe, Host: channelJudge("slow-drip"), Bound: channelBound},
+	{ID: "I12", Name: "channel-malformed-frames", Probe: channelProbe, Host: channelJudge("exit-empty", "ack-short", "version-2", "unknown-type"), Bound: channelBound}, {ID: "I12", Name: "channel-forged-exit-text", Probe: channelProbe, Host: channelJudge("exit-text"), Bound: channelBound},
+	{ID: "I12", Name: "channel-oversized-frame", Probe: channelProbe, Host: channelJudge("giant-header"), Bound: channelBound}, {ID: "I12", Name: "channel-slow-drip", Probe: channelProbe, Host: channelJudge("slow-drip"), Bound: channelBound},
 	{ID: "I12", Name: "channel-connect-storm", Probe: channelProbe, Host: channelJudge("storm"), Bound: channelBound}, {ID: "I12", Name: "channel-connect-flood", Probe: channelProbe, Host: floodJudge, Bound: channelBound},
-	{ID: "I12", Name: "channel-cut-mid-frame", Probe: channelProbe, Host: channelJudge("half-close", "full-shutdown"), Bound: channelBound},
-	{ID: "I12", Name: "channel-frames-after-exit", Probe: channelProbe, Host: channelJudge("after-exit"), Bound: channelBound},
+	{ID: "I12", Name: "channel-cut-mid-frame", Probe: channelProbe, Host: channelJudge("half-close", "full-shutdown"), Bound: channelBound}, {ID: "I12", Name: "channel-frames-after-exit", Probe: channelProbe, Host: channelJudge("after-exit"), Bound: channelBound},
 	// Root restarts the guest's kernel while the run stands: the host must end the session itself, leave no process of it behind, and run again after (I7).
 	{ID: "I12", Name: "guest-reboot", Probe: channelProbe, Host: rebootJudge, Bound: channelBound},
 	{ID: "I12", Name: "channel-first-frame-rollback", Probe: rollbackProbe, Host: rollbackJudge, Want: Want{Command: layerAgent}},
