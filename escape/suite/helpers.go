@@ -23,9 +23,7 @@ import (
 
 // The I11 rows. The proxy and the resolver are parts of the one supervisor that owns the VM (A9), so "the proxy dies" is that process killed, SIGKILL, while the guest holds a connection it served. Every process of the session must go with it, the held connection close, no canary and no resolver hear from the guest again. What the guest says afterwards counts against the product, never for it.
 
-// servable is the sandbox the rows want: a bare allowed name, a denied one, the judge as the host's resolver, and the host side in a network of its own (T8).
-var servable = Want{Allow: []string{"allowed.escape.test"}, Deny: []string{"denied.escape.test"}, Resolver: judgeResolver, Isolated: true}
-
+var servable = Want{Allow: []string{"allowed.escape.test"}, Deny: []string{"denied.escape.test"}, Resolver: judgeResolver, Isolated: true} // servable is the sandbox the rows want: a bare allowed name, a denied one, the judge as the host's resolver, and the host side in a network of its own (T8).
 // bind opens network/addr on the host side of s (sandbox.Observe.Bind), as root on the test host when a port in the host's own network needs that.
 func bind(ctx context.Context, s Session, network, addr string) (net.Listener, net.PacketConn, error) {
 	ln, pc, err := s.Bind(ctx, network, addr)

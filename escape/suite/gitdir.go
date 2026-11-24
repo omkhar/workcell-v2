@@ -19,10 +19,8 @@ import (
 
 // A repository the guest writes by hand: the guest has no git, so the probe lays .git down itself in the formats git reads, and which git's own tools would refuse to make. Loose objects are zlib streams of "<kind> <size>\0" and the content, named by the SHA-1 of that. A tree is entries of "<mode> <name>\0" and a raw id, in git's order. A commit names its tree. The index is version 2: a header, entries with no stat data, a checksum.
 
-type repo struct{ dir string } // repo is a work tree whose .git the probe writes.
-
+type repo struct{ dir string }             // repo is a work tree whose .git the probe writes.
 type entry struct{ mode, name, id string } // entry is one tree or index entry: a mode as git writes it in a tree ("100644", "100755", "120000", "40000", "160000"), a name, a hex id.
-
 // create removes any .git in the work tree and writes an empty repository: HEAD on main, a config of the core section with extra lines after repositoryformatversion and filemode, and the two directories git looks for. Nothing else: no template, no hooks.
 func (r repo) create(extra string) error {
 	g := filepath.Join(r.dir, ".git")

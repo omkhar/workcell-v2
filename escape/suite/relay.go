@@ -26,9 +26,7 @@ const (
 	relayBound                                  = 30 * time.Second // Test.Bound for the header kinds that wait
 )
 
-// errHeld is read's answer when the peer neither wrote nor closed in time.
-var errHeld = errors.New("the stream is still open")
-
+var errHeld = errors.New("the stream is still open") // errHeld is read's answer when the peer neither wrote nor closed in time.
 // relayHeader encodes the relay's header: version, proto, the port big-endian and the address as 16 bytes, an IPv4 address mapped.
 func relayHeader(version, proto byte, ip net.IP, port uint16) []byte {
 	h := []byte{version, proto, byte(port >> 8), byte(port)}
@@ -39,7 +37,6 @@ func relayHeader(version, proto byte, ip net.IP, port uint16) []byte {
 	return append(h, ip16...)
 }
 func framed(b []byte) []byte { return append([]byte{byte(len(b) >> 8), byte(len(b))}, b...) } // framed is a datagram as the relay carries it on a UDP stream: a two-byte big-endian length, then the bytes.
-
 // relayProbe dials the host end of the relay at args[1] afresh and speaks the header itself. The kinds tcp, udp, version-N and proto-N name args[2], a canary, as the destination and send the token args[3] behind the header; short and slow send part of a header and wait for the host to drop the stream.
 func relayProbe(args []string) Result {
 	if len(args) < 2 {

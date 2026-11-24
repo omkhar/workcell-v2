@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Omkhar Arasaratnam
 
-// Payload runs one escape probe inside the guest, as root, and prints its result as a single line for the runner on the host to parse. It is also every helper of the control sandbox (SPEC T2), a process that enforces nothing, the judge's hand on the test host for what needs root there (suite.Bind), and the holder of a session's own network namespace (suite.Hold).
+// Payload runs one escape probe inside the guest, as root, and prints its result as a single line for the runner on the host to parse. It is also every helper of the control sandbox (SPEC T2), a process that enforces nothing, the judge's hand on the test host for what needs root there (suite.Bind), the holder of a session's own network namespace (suite.Hold) and the check of its layout (suite.Routed).
 //
 //	payload <test name> [args...]
 //	payload helper <name>
 //	payload bind <network> <address> <unix socket>
 //	payload netns <unix socket> <on-link: true|false>
+//	payload routed
 package main
 
 import (
@@ -26,6 +27,9 @@ func main() {
 	}
 	if len(os.Args) == 4 && os.Args[1] == "netns" {
 		os.Exit(suite.Hold(os.Args[2], os.Args[3] == "true"))
+	}
+	if len(os.Args) == 2 && os.Args[1] == "routed" {
+		os.Exit(suite.Routed())
 	}
 	r := suite.Result{Status: "error", Detail: "usage: payload <test name> [args...]"}
 	if len(os.Args) >= 2 {

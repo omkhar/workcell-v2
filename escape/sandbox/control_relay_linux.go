@@ -10,9 +10,7 @@ import (
 	"strconv"
 )
 
-// naiveRelay is the host end of the control sandbox's relay, the deliberately weak counterpart of the product's (SPEC T2, I2, I4, I12): it accepts every stream, waits for the 20-byte header with no clock, checks neither version nor proto, dials whatever address and port the header names, as UDP when the proto says so and as TCP otherwise, and splices. It is what a relay that trusted the guest would be. Only the suite's own probes name an address, and they name canaries on the test host (SPEC T8, S12).
-type naiveRelay struct{ ln net.Listener }
-
+type naiveRelay struct{ ln net.Listener } // naiveRelay is the host end of the control sandbox's relay, the deliberately weak counterpart of the product's (SPEC T2, I2, I4, I12): it accepts every stream, waits for the 20-byte header with no clock, checks neither version nor proto, dials whatever address and port the header names, as UDP when the proto says so and as TCP otherwise, and splices. It is what a relay that trusted the guest would be. Only the suite's own probes name an address, and they name canaries on the test host (SPEC T8, S12).
 func (r *naiveRelay) serve() {
 	for {
 		c, err := r.ln.Accept()

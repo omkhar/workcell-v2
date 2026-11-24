@@ -24,7 +24,6 @@ import (
 // The I3 probes send a DNS query for a name no policy can allow straight to a listener the judge started on the host, bypassing whatever resolver the guest was given: over plain UDP and TCP, inside TLS (DoT, RFC 7858) and inside HTTPS (DoH, RFC 8484), and as a tunnel that carries data out in the labels. A query that arrives is the proof; the guest's word is not. Every probe is given a literal address and never looks a name up.
 
 func dnsName(token string) string { return token + ".invalid." } // dnsName is the name the guest asks for: unique per run, never allowed.
-
 // dnsUDPProbe sends an A query for the token's name as one datagram to args[0].
 func dnsUDPProbe(args []string) Result {
 	if len(args) != 2 {
@@ -32,9 +31,7 @@ func dnsUDPProbe(args []string) Result {
 	}
 	return sendUDP(args[0], dnsQuery(dnsQuestion{Name: dnsName(args[1]), Type: dnsTypeA}))
 }
-
-// dnsTCPProbe and dotProbe send the same query, length-prefixed, over a TCP connection to args[0], bare or inside TLS to a server the guest does not verify (it is the attacker, and the server is its own).
-func dnsTCPProbe(args []string) Result { return dnsStream(args, false) }
+func dnsTCPProbe(args []string) Result { return dnsStream(args, false) } // dnsTCPProbe and dotProbe send the same query, length-prefixed, over a TCP connection to args[0], bare or inside TLS to a server the guest does not verify (it is the attacker, and the server is its own).
 func dotProbe(args []string) Result    { return dnsStream(args, true) }
 func dnsStream(args []string, withTLS bool) Result {
 	if len(args) != 2 {

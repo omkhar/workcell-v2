@@ -240,7 +240,6 @@ func report(resp *http.Response, err error) Result {
 	return Result{Status: "served", Detail: fmt.Sprintf("%s %d from %s", resp.Proto, resp.StatusCode, resp.Request.URL.Host)}
 }
 func after(check string, r Result) Result { r.Detail = check + "; " + r.Detail; return r } // after prefixes the hostile request's result with the check's.
-
 // mismatchProbe opens TLS to the bound name and asks, on that connection, for the other name in the Host header or the :authority pseudo-header.
 func mismatchProbe(h2 bool) Probe {
 	return func(args []string) Result {
@@ -330,7 +329,6 @@ func redirectTo(other *canary) http.HandlerFunc {
 type exchange struct{ method, name, path, where string }
 
 var headerOf = map[string]string{"header": boundHeader, "bearer": boundHeader, "auth": "authorization", "basic": "authorization"} // headerOf is the header each where kind puts the credential in; none for the rest.
-
 // credential is the value of the exchange's header for the credential v.
 func (e exchange) credential(v string) string {
 	basic := "Basic " + base64.StdEncoding.EncodeToString([]byte("x-access-token:"+v))

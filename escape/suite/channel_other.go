@@ -10,8 +10,7 @@ import (
 	"time"
 )
 
-type rawConn struct{} // The payload runs in a Linux guest; elsewhere the channel is out of reach.
-
+type rawConn struct{}   // The payload runs in a Linux guest; elsewhere the channel is out of reach.
 func (*rawConn) close() {}
 func (*rawConn) write([]byte, time.Duration) (int, error) {
 	return 0, errors.New("the channel is Linux only")

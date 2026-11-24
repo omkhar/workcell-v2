@@ -23,11 +23,9 @@ import (
 // The sign-in rows of I5. A secret's source is a sign-in flow: a token endpoint on one allowed name issues an access token and a refresh token, and the access token is bound to the API on the other name. The judge is the provider, serving both names from the one listener (serveTwo); the guest is an agent that signs in and uses the tokens as the row's steps say. The provider chose every real token, so it knows them where the guest shows its hand (its word, its scan) and where a canary saw them.
 
 const tokenPath, form = "/oauth/token", "application/x-www-form-urlencoded"
-const accessMark = "acce55" // the hex after secretPrefix that starts an access token
-const refreshMark = "5efe5" // and a refresh token, so that the scan's shape fits both
-// signedInWant is the sandbox the rows want: withSecret, with the API as the first name and the token host as the second, and the secret from a sign-in flow at the token endpoint there.
-var signedInWant = Want{Workspace: true, Allow: []string{"api.escape.test", "login.escape.test"}, Resolver: judgeResolver, Isolated: true, Secret: true, Source: "signin:login.escape.test" + tokenPath}
-
+const accessMark = "acce55"                                                                                                                                                                              // the hex after secretPrefix that starts an access token
+const refreshMark = "5efe5"                                                                                                                                                                              // and a refresh token, so that the scan's shape fits both
+var signedInWant = Want{Workspace: true, Allow: []string{"api.escape.test", "login.escape.test"}, Resolver: judgeResolver, Isolated: true, Secret: true, Source: "signin:login.escape.test" + tokenPath} // signedInWant is the sandbox the rows want: withSecret, with the API as the first name and the token host as the second, and the secret from a sign-in flow at the token endpoint there.
 // grant is one request body a canary received, and what the token endpoint made of it: the refresh token it presented, and whether a pair was issued for it.
 type grant struct {
 	at, path, method, body, refresh string

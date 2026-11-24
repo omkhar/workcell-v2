@@ -277,7 +277,6 @@ var (
 )
 
 func repoPolicy(w Want, shape, policy string) Want { w.Shape, w.Policy = shape, policy; return w } // repoPolicy is w with the repository's policy in the shape.
-
 // PlantPolicy puts the repository's policy in the export ws before the session starts, in the shape w.Shape names: "" a plain file, "link" a symbolic link to a file beside the export (where the host, not the guest, can follow it), "fifo" a named pipe no one writes. The host must start, or refuse, within the test's time whatever the shape (SPEC I13, I10).
 func PlantPolicy(ws string, w Want) error {
 	path := filepath.Join(ws, "workcell.toml")

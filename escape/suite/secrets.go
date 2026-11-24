@@ -53,8 +53,7 @@ func NewSecret(w Want) sandbox.Secret {
 
 const boundHeader, narrowMethod, narrowPath = "x-api-key", "POST", "/v1/"
 
-// withSecret is the sandbox the I5 tests want: a workspace, two allowed names, bare, a secret bound to the first, the judge as the host's resolver and the host side in a network of its own, where the judge holds the one address both names resolve to and serves a canary for each at port 443 (twoNames). The guest's view of the names is given to each probe as a literal address beside the name. narrowed binds the secret to one method and path as well; scoped, as a git token, to one repository.
-var withSecret = Want{Workspace: true, Allow: []string{"bound.escape.test", "other.escape.test"}, Resolver: judgeResolver, Isolated: true, Secret: true}
+var withSecret = Want{Workspace: true, Allow: []string{"bound.escape.test", "other.escape.test"}, Resolver: judgeResolver, Isolated: true, Secret: true} // withSecret is the sandbox the I5 tests want: a workspace, two allowed names, bare, a secret bound to the first, the judge as the host's resolver and the host side in a network of its own, where the judge holds the one address both names resolve to and serves a canary for each at port 443 (twoNames). The guest's view of the names is given to each probe as a literal address beside the name. narrowed binds the secret to one method and path as well; scoped, as a git token, to one repository.
 var narrowed = Want{Workspace: true, Allow: withSecret.Allow, Resolver: judgeResolver, Isolated: true, Secret: true, Narrow: true}
 var scoped = Want{Workspace: true, Allow: withSecret.Allow, Resolver: judgeResolver, Isolated: true, Secret: true, Repos: []string{"octo/allowed"}}
 

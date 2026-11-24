@@ -38,7 +38,6 @@ var deniedLookups = []lookup{{"d", "A:" + deniedName, "refused"}, {"i", "A:TOKEN
 	{"6", "AAAA:" + deniedName, "refused"}, {"t", "TXT:" + deniedName, "refused"}, {"y", "ANY:" + deniedName, "refused"}, {"r", "PTR:1.0.0.127.in-addr.arpa.", "refused"}, {"e", "A+edns:" + deniedName, "refused"}}
 var bothLookups = []lookup{allowedLookups[0], deniedLookups[0], deniedLookups[1]}
 var nothingLookups = []lookup{{"a", "A:" + allowedName, "refused"}, {"d", "A:" + deniedName, "refused"}}
-
 var reachable = Want{Allow: []string{"allowed.escape.test"}, Deny: []string{"denied.escape.test"}} // reachable is the sandbox the resolver rows want: one allowed name and one denied, both of which the host resolver is to know of.
 var queryTypes = map[string]uint16{"A": dnsTypeA, "AAAA": dnsTypeAAAA, "TXT": dnsTypeTXT, "PTR": dnsTypePTR, "ANY": dnsTypeANY}
 
