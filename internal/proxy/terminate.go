@@ -110,10 +110,12 @@ func NewTerminateRule(host, header, method, path string, repos []string) (Termin
 	return r, nil
 }
 
-// admits reports whether the rule swaps on a request of method to u: the rule's method when it names one, and a path under its prefix, or within one of its repositories, when it names either. The path is judged as sent and under both folds (see fold), so that neither an encoded slash, a backslash,
-// a ;param nor ".." leads out from under the prefix on any reading.
-func (r TerminateRule) admits(method string, u *url.URL) bool {
-	if r.Method != "" && method != r.Method {
+// overrideHeaders are the routing overrides a framework honours instead of the request line: the method from the first three on a POST (Rack::MethodOverride, ASP.NET MVC, Google's API front end), the path from the last two (IIS URL Rewrite, Symfony HttpFoundation). A rule that narrows refuses a request carrying any of them (C68).
+var overrideHeaders = []string{"X-Http-Method-Override", "X-Http-Method", "X-Method-Override", "X-Original-Url", "X-Rewrite-Url"}
+
+// admits reports whether the rule swaps on a request of method to u with headers h: the rule's method when it names one, and a path under its prefix, or within one of its repositories, when it names either, and then none of overrideHeaders present, with any value or none. The path is judged as sent and under both folds (see fold), so that neither an encoded slash, a backslash, a ;param nor ".." leads out from under the prefix on any reading.
+func (r TerminateRule) admits(method string, u *url.URL, h http.Header) bool {
+	if r.Method != "" && method != r.Method || (r.Method != "" || r.Path != "" || len(r.Repos) > 0) && slices.ContainsFunc(overrideHeaders, func(n string) bool { return h.Values(n) != nil }) {
 		return false
 	}
 	sent := u.EscapedPath()
@@ -224,8 +226,7 @@ func (ca *SessionCA) issue(host string, key *ecdsa.PrivateKey) (*x509.Certificat
 	}, ca.cert, &key.PublicKey, ca.key)
 }
 
-// Terminate makes p terminate TLS for every host on the SNI allowlist, with a leaf from ca, and swap each rule's placeholder header via broker. A rule's host must be on the SNI allowlist, as must its sign-in host; a host can have one rule per header, and a token endpoint serves one rule. Header
-// names are stored lowercase, the form the credential broker's grants use, since HTTP header names ignore case.
+// Terminate makes p terminate TLS for every host on the SNI allowlist, with a leaf from ca, and swap each rule's placeholder header via broker. A rule's host must be on the SNI allowlist, as must its sign-in host; a host can have one rule per header, and a token endpoint serves one rule. Header names are stored lowercase, the form the credential broker's grants use, since HTTP header names ignore case.
 func (p *Proxy) Terminate(ca *SessionCA, broker Broker, rules []TerminateRule) error {
 	terminate := make(map[string][]TerminateRule, len(p.allow.sni))
 	for host := range p.allow.sni {
@@ -347,8 +348,7 @@ func sameHost(host, sni, port string) bool {
 	return (!hasPort || p == "443" || p == port) && strings.TrimSuffix(name, ".") == sni
 }
 
-// serveTerminated terminates TLS for host with a session leaf and proxies HTTP/1.1 requests to the real host, swapping the placeholder headers. It refuses a request that names another host than the SNI did (I6), one that sends a placeholder outside the method and path its rule binds it to (I5), and
-// one that still carries a placeholder after the swap.
+// serveTerminated terminates TLS for host with a session leaf and proxies HTTP/1.1 requests to the real host, swapping the placeholder headers. It refuses a request that names another host than the SNI did (I6), one that sends a placeholder outside the method and path its rule binds it to or with a routing override beside it (I5), and one that still carries a placeholder after the swap.
 func (p *Proxy) serveTerminated(client net.Conn, host string, replay []byte) {
 	rules := p.terminate[host]
 	tlsConn := tls.Server(&replayConn{Conn: client, r: io.MultiReader(bytes.NewReader(replay), client)}, &tls.Config{
@@ -399,7 +399,7 @@ func (p *Proxy) serveTerminated(client net.Conn, host string, replay []byte) {
 				if !ok {
 					continue
 				}
-				if !rule.admits(r.Method, r.URL) {
+				if !rule.admits(r.Method, r.URL, r.Header) {
 					scope := fmt.Sprintf("method %s under path %s", cmp.Or(rule.Method, "*"), cmp.Or(rule.Path, "/"))
 					if len(rule.Repos) > 0 {
 						scope = "repositories " + strings.Join(rule.Repos, ", ")
