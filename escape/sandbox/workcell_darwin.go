@@ -57,8 +57,7 @@ func steered(_, resolver string, _, argv []string, _ int) ([]string, error) {
 	return nil, fmt.Errorf("scutil --dns lists no resolver for %s at %s: /etc/resolver/%s must name it, or a question for the suite's names would leave the host", judgeDomain, resolver, judgeDomain)
 }
 
-// holder is a session's own network on a Mac: the host's own, in the shape isolate checks; pid is the suite's own.
-type holder struct{ pid int }
+type holder struct{ pid int } // holder is a session's own network on a Mac: the host's own, in the shape isolate checks; pid is the suite's own.
 
 // isolate checks that shape by what it does, and sends nothing before the route is known to end on lo0 (T8).
 func isolate(_, _ string, _ bool) (*holder, error) { // unsupported refused OnLink before this
@@ -123,8 +122,7 @@ func rootBindArgv(network, addr, path, _ string, _ int) []string {
 // productProcess is the product's own process under root, the process the adapter started for a run: root itself, since nothing wraps the product here and its VM runs inside it (Virtualization.framework, in-process).
 func productProcess(root int, _ string) (int, bool) { return root, true }
 
-// hypervisor fetches nothing: Virtualization.framework is part of the OS.
-func hypervisor(context.Context, string) error { return nil }
+func hypervisor(context.Context, string) error { return nil } // hypervisor fetches nothing: Virtualization.framework is part of the OS.
 
 // hostBuild compiles pkg for this Mac, with cgo, which the framework needs, under the build overlay file named when one is.
 func hostBuild(ctx context.Context, repo, out, pkg, overlay string) error {

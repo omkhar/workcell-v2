@@ -42,8 +42,7 @@ type control struct {
 // controlLoader runs as pid 1 of the run's namespaces: $0 the session's resolv.conf, $1 the command, then its arguments.
 const controlLoader = `mount --make-rprivate / && mount --bind "$0" /etc/resolv.conf || { echo "control: cannot bind the session's resolv.conf over /etc/resolv.conf" >&2; exit 125; }; exec "$@"`
 
-// helperNames are the session's helpers: each a payload that sleeps, started on first use.
-var helperNames = []string{"proxy", "resolver", "broker", "supervisor"}
+var helperNames = []string{"proxy", "resolver", "broker", "supervisor"} // helperNames are the session's helpers: each a payload that sleeps, started on first use.
 
 func newControl() (Sandbox, error) { return &control{}, nil }
 func (c *control) Start(_ context.Context, cfg Config) (string, error) {

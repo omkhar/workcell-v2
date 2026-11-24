@@ -49,9 +49,7 @@ func frame(kind byte, payload []byte) []byte {
 	h = binary.BigEndian.AppendUint32(h, uint32(len(payload)))
 	return append(h, payload...)
 }
-
-// exitTag and textTag are a forged Exit payload: a status, and an error text.
-func exitTag(code byte) []byte   { return []byte{tagCode, code} }
+func exitTag(code byte) []byte   { return []byte{tagCode, code} } // exitTag and textTag are a forged Exit payload: a status, and an error text.
 func textTag(text []byte) []byte { return append([]byte{tagText}, text...) }
 
 // hostileText is an error text of n bytes that would retitle, clear and recolour a terminal and plant a fake result line, were it printed raw.

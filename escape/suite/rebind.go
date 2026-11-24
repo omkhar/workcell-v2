@@ -188,8 +188,7 @@ func (ns *nameServer) questions() []string {
 	return slices.Clone(ns.asked)
 }
 
-// typeNames names the types a resolver is asked, for the record of it.
-var typeNames = map[uint16]string{dnsTypeA: "A", dnsTypeAAAA: "AAAA", dnsTypeCNAME: "CNAME", dnsTypeTXT: "TXT", dnsTypePTR: "PTR", dnsTypeANY: "ANY"}
+var typeNames = map[uint16]string{dnsTypeA: "A", dnsTypeAAAA: "AAAA", dnsTypeCNAME: "CNAME", dnsTypeTXT: "TXT", dnsTypePTR: "PTR", dnsTypeANY: "ANY"} // typeNames names the types a resolver is asked, for the record of it.
 
 // answer is the response to q: for a name of the row's, the CNAME when the row has one and then the row's records of the type asked, NOERROR with no record when it has none of that type; REFUSED for every other name.
 func (r rebind) answer(q dnsQuestion) []byte {

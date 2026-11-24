@@ -10,8 +10,7 @@ import (
 	"net"
 )
 
-// workcell on another OS: the product has no hypervisor there, so nothing here is implemented.
-type workcell struct{}
+type workcell struct{} // workcell on another OS: the product has no hypervisor there, so nothing here is implemented.
 
 const steersResolver = false
 

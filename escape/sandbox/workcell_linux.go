@@ -87,9 +87,7 @@ func untar(b []byte, each func(*tar.Header, io.Reader) error) error {
 func hostBuild(ctx context.Context, repo, out, pkg, overlay string) error {
 	return goBuild(ctx, repo, out, pkg, overlay, "CGO_ENABLED=0", "GOOS=linux", "GOARCH="+runtime.GOARCH)
 }
-
-// sign does nothing: a Linux binary runs unsigned.
-func sign(context.Context, string, string) error { return nil }
+func sign(context.Context, string, string) error { return nil } // sign does nothing: a Linux binary runs unsigned.
 
 // steersResolver: on Linux the product can be run under a /etc/resolv.conf of the session's own, so a session may name a resolver.
 const steersResolver = true
@@ -133,9 +131,7 @@ func isolate(dir, payload string, onLink bool) (*holder, error) {
 func (h *holder) bind(network, addr string) (net.Listener, net.PacketConn, error) {
 	return RootBind(network, addr, h.payload, h.pid)
 }
-
-// stop hangs up on the holder, which then exits; the namespace goes once nothing runs in it.
-func (h *holder) stop() { h.conn.Close() }
+func (h *holder) stop() { h.conn.Close() } // stop hangs up on the holder, which then exits; the namespace goes once nothing runs in it.
 
 // asRoot is argv through sudo, without a prompt, when the suite is not root.
 func asRoot(argv ...string) []string {
@@ -144,9 +140,7 @@ func asRoot(argv ...string) []string {
 	}
 	return argv
 }
-
-// settle has nothing to wait for: the product resolves through the file steered gave it, and nothing on the host caches that.
-func settle() {}
+func settle() {} // settle has nothing to wait for: the product resolves through the file steered gave it, and nothing on the host caches that.
 
 // rootBindArgv is what RootBind runs: the payload's bind verb (suite.Bind) as root, entered into the network namespace that the process ns holds when ns is set.
 func rootBindArgv(network, addr, path, payload string, ns int) []string {

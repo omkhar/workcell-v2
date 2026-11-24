@@ -13,8 +13,7 @@ import (
 	"time"
 )
 
-// Result is what a probe reports: a short token such as "connected" and one line of printable ASCII, both bounded and sanitised by Format.
-type Result struct{ Status, Detail string }
+type Result struct{ Status, Detail string } // Result is what a probe reports: a short token such as "connected" and one line of printable ASCII, both bounded and sanitised by Format.
 
 const maxStatus, maxDetail, prefix = 32, 256, "escape-result "
 
@@ -31,22 +30,18 @@ type Run func(args ...string) (Result, error)
 type Session struct {
 	Run Run
 	// Exec runs the test's probe as Run does, but gives back the run itself, exit status and streams unparsed, under ctx (I12); a non-zero status is a result.
-	Exec func(ctx context.Context, args ...string) (sandbox.Output, error)
-	// Workspace is the host directory exported into the guest, "" for none; its parent is the test's alone, so a judge may plant files beside it.
-	Workspace string
+	Exec      func(ctx context.Context, args ...string) (sandbox.Output, error)
+	Workspace string // Workspace is the host directory exported into the guest, "" for none; its parent is the test's alone, so a judge may plant files beside it.
 	Guest     string // where the guest sees Workspace
 	// Allow and Secret are the session's policy as the runner made it from Want: the allowed names, and the credential bound to the first, with its real value, which the guest must never hold.
-	Allow  []string
-	Deny   []string // names that resolve for the session but no policy allows
-	Secret sandbox.Secret
-	// Payload is the host path of the payload binary: the probe, and the helper a judge runs through sudo for what needs root on the test host.
-	Payload string
-	// Pull brings the guest's workspace back to the host directory dest, as the product's pull does.
-	Pull func(dest string) error
+	Allow   []string
+	Deny    []string // names that resolve for the session but no policy allows
+	Secret  sandbox.Secret
+	Payload string                  // Payload is the host path of the payload binary: the probe, and the helper a judge runs through sudo for what needs root on the test host.
+	Pull    func(dest string) error // Pull brings the guest's workspace back to the host directory dest, as the product's pull does.
 	// Another starts a second session with the same Want, its own export and, when update is not nil, that [update] table. The runner stops it with the first.
-	Another func(update *sandbox.UpdateConfig) (Session, error)
-	// Observe is the host side of the session: its record, its helpers and its channel.
-	sandbox.Observe
+	Another         func(update *sandbox.UpdateConfig) (Session, error)
+	sandbox.Observe // Observe is the host side of the session: its record, its helpers and its channel.
 }
 
 // Judge runs on the host. It may start canaries (on loopback only, SPEC T8), run the probe through s.Run, and says whether the invariant held.
@@ -66,9 +61,8 @@ type Want struct {
 	Source                   string   // the secret's source in the product's words, such as a sign-in flow (sandbox.Secret.Source)
 	Repos                    []string // the repositories a git token is scoped to (sandbox.Secret.Repos)
 	Policy, Shape            string
-	// Command is a provider the session runs by name (sandbox.Config.Command).
-	Command string
-	Head    bool // the operator's stdout reader goes away after its first read (sandbox.Config.Head)
+	Command                  string // Command is a provider the session runs by name (sandbox.Config.Command).
+	Head                     bool   // the operator's stdout reader goes away after its first read (sandbox.Config.Head)
 }
 
 // Test is one escape test.
@@ -78,8 +72,7 @@ type Test struct {
 	Probe Probe
 	Host  Judge
 	Want  Want
-	// Bound is the runner's limit on the whole test, start to stop, when the test needs more than the runner's default; zero is that default.
-	Bound time.Duration
+	Bound time.Duration // Bound is the runner's limit on the whole test, start to stop, when the test needs more than the runner's default; zero is that default.
 }
 
 // Lookup finds a test by name.
