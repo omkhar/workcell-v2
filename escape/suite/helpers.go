@@ -49,8 +49,7 @@ const wakeWait = 6 * time.Second            // how long the session has to go aw
 const closeWithin = 2 * time.Second         // how soon after the death the held connection must close
 const settle = 300 * time.Millisecond       // a moment for a late request to show at a canary
 
-// holdProbe is the guest of the I11 rows. It asks its resolver for the allowed name, fetches https://<allowed>/reach, once more after a pause when that
-// fails, holds a second connection open on /stream until the far end closes it or holdFor passes, and then, as a program does after losing a connection,
+// holdProbe is the guest of the I11 rows. It asks its resolver for the allowed name, fetches https://<allowed>/reach, once more after a pause when that fails, holds a second connection open on /stream until the far end closes it or holdFor passes, and then, as a program does after losing a connection,
 // tries again: its resolver for both names and /after at both. args: allowed name, its address, denied name, its address.
 func holdProbe(args []string) Result {
 	if len(args) != 4 {
@@ -129,8 +128,7 @@ func (st *stream) times() (opened, ended time.Time) {
 	return st.opened, st.ended
 }
 
-// serve answers /stream with a byte every 100 ms until the connection ends, and any other path at once. The canary's read deadline is lifted for the
-// connection, since the guest holds it longer than a request may take.
+// serve answers /stream with a byte every 100 ms until the connection ends, and any other path at once. The canary's read deadline is lifted for the connection, since the guest holds it longer than a request may take.
 func (st *stream) serve(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path != "/stream" {
 		return
@@ -168,8 +166,7 @@ func (st *stream) serve(w http.ResponseWriter, r *http.Request) {
 }
 
 // helperKilled runs the guest of holdProbe, waits until the allowed canary serves the connection the guest holds (or, atStart, kills at once, while the guest
-// is still booting), kills the named helper with SIGKILL, and judges the host after: the helper is dead and every process of the session with it, the held
-// connection closed within closeWithin, the run over within wakeWait, no request at either canary and no question at the judge's resolver after the kill,
+// is still booting), kills the named helper with SIGKILL, and judges the host after: the helper is dead and every process of the session with it, the held connection closed within closeWithin, the run over within wakeWait, no request at either canary and no question at the judge's resolver after the kill,
 // and, if the guest could still speak, its resolver answered no name. A guest that held no connection before the kill is an error, not a pass.
 func helperKilled(name string, atStart bool) Judge {
 	return func(ctx context.Context, s Session) (bool, string, error) {
@@ -333,8 +330,7 @@ func below(children map[int][]int, pid int) []int {
 	return out
 }
 
-// survivors lists what is left of a session after its helper's death: the processes below the helper, listed before the kill, that still run, and any
-// process still in the helper's group, unless that is the judge's own.
+// survivors lists what is left of a session after its helper's death: the processes below the helper, listed before the kill, that still run, and any process still in the helper's group, unless that is the judge's own.
 func survivors(kin []int, pgid int) []int {
 	var out []int
 	for _, p := range kin {

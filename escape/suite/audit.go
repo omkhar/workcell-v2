@@ -23,8 +23,7 @@ import (
 // forgedMarker begins the record the forge probe plants. No judge passes it as an argument, so a record holding it was written by the guest.
 const forgedMarker = "forged-record-"
 
-// auditProbe does args[0] to the record at args[1]: forge plants a record (also in args[2], the export, when that is set), suppress sends the path to
-// /dev/null, truncate empties it, and noop is a run that only records.
+// auditProbe does args[0] to the record at args[1]: forge plants a record (also in args[2], the export, when that is set), suppress sends the path to /dev/null, truncate empties it, and noop is a run that only records.
 func auditProbe(args []string) Result {
 	if len(args) < 2 {
 		return Result{Status: "error", Detail: "want a verb and the record's path"}
@@ -195,8 +194,7 @@ func offlineJudge(edit string) Judge {
 }
 
 // connectProbe opens TLS from the guest to the allowed name and to the denied one, each at the address the judge gave, and says only how each went: never the
-// names. Both sandboxes may keep the guest's words, its command line and its output, so the names come in hex and leave as "served", "refused" and the like; a
-// record naming one can then only be the host's own account of the connection. args: allowed name in hex, its address, denied name in hex, its address.
+// names. Both sandboxes may keep the guest's words, its command line and its output, so the names come in hex and leave as "served", "refused" and the like; a record naming one can then only be the host's own account of the connection. args: allowed name in hex, its address, denied name in hex, its address.
 func connectProbe(args []string) Result {
 	if len(args) != 4 {
 		return Result{Status: "error", Detail: "want allowed name in hex, address, denied name in hex, address"}

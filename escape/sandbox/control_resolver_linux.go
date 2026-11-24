@@ -43,8 +43,7 @@ func (r *naiveResolver) serve() {
 	}
 }
 
-// answer builds the reply to a query: its header with QR, RD and RA set, its question as it came, and one record for the question's own name (a pointer to
-// offset 12). A message it cannot read gets nothing.
+// answer builds the reply to a query: its header with QR, RD and RA set, its question as it came, and one record for the question's own name (a pointer to offset 12). A message it cannot read gets nothing.
 func (r *naiveResolver) answer(q []byte) []byte {
 	if len(q) < 12 || q[2]&0x80 != 0 || binary.BigEndian.Uint16(q[4:]) == 0 {
 		return nil

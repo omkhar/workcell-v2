@@ -27,16 +27,14 @@ import (
 	"time"
 )
 
-// The adapter on a host with a hypervisor the product drives: Firecracker on Linux, Virtualization.framework on macOS. What differs per OS lives in
-// workcell_linux.go and workcell_darwin.go; the session itself is the same.
+// The adapter on a host with a hypervisor the product drives: Firecracker on Linux, Virtualization.framework on macOS. What differs per OS lives in workcell_linux.go and workcell_darwin.go; the session itself is the same.
 const maxDownload = 256 << 20 // more than any pinned download; a runaway body stops here
 const module = "github.com/omkhar/workcell/v2"
 
 // loader runs inside the guest: it takes the payload from stdin and runs it with the test's arguments.
 const loader = `cat >/tmp/p && chmod 755 /tmp/p && exec /tmp/p "$@"`
 
-// RootBind binds network/addr as root on the test host, by a helper that hands the socket back over a unix socket (rootBindArgv), in the session's own network
-// when ns is set, "host" and "neighbour" in addr standing for the test host's addresses there (placed). A socket handed over dead is bound again.
+// RootBind binds network/addr as root on the test host, by a helper that hands the socket back over a unix socket (rootBindArgv), in the session's own network when ns is set, "host" and "neighbour" in addr standing for the test host's addresses there (placed). A socket handed over dead is bound again.
 func RootBind(network, addr, payload string, ns int) (net.Listener, net.PacketConn, error) {
 	addr, err := placed(addr, ns != 0)
 	if err != nil {
@@ -65,8 +63,7 @@ func RootBind(network, addr, payload string, ns int) (net.Listener, net.PacketCo
 	}
 }
 
-// handedOver runs argv with its last word replaced by a unix socket of its own and takes the descriptor sent there, polling: on macOS a socket queued on a
-// connection not yet accepted is dead once its sender exits (U-701).
+// handedOver runs argv with its last word replaced by a unix socket of its own and takes the descriptor sent there, polling: on macOS a socket queued on a connection not yet accepted is dead once its sender exits (U-701).
 func handedOver(argv []string, network, where string) (*os.File, error) {
 	dir, err := os.MkdirTemp("", "escape-bind-")
 	if err != nil {
@@ -267,8 +264,7 @@ func (w *workcell) Start(_ context.Context, cfg Config) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	// The secret's value, where only the host reads it: a file of the session's own, mode 0600, beside the policy and outside any export. A row with a source
-	// of its own (a sign-in flow) has no value to write.
+	// The secret's value, where only the host reads it: a file of the session's own, mode 0600, beside the policy and outside any export. A row with a source of its own (a sign-in flow) has no value to write.
 	source := filepath.Join(dir, "secret")
 	if cfg.Secret != nil && cfg.Secret.Source == "" {
 		if err := os.WriteFile(source, []byte(cfg.Secret.Value), 0o600); err != nil {
@@ -411,8 +407,7 @@ func (w *workcell) cli(ctx context.Context, in io.Reader, args ...string) (Outpu
 	w.run = nil
 	w.mu.Unlock()
 	if ctx.Err() != nil && cmd.Process != nil {
-		// The kill Go sent after WaitDelay reached only cmd.Process, which under steering is sudo: what is left of the group, a product that ignored the
-		// SIGTERM and its hypervisor, goes now. They run as the suite's user, so that needs no sudo.
+		// The kill Go sent after WaitDelay reached only cmd.Process, which under steering is sudo: what is left of the group, a product that ignored the SIGTERM and its hypervisor, goes now. They run as the suite's user, so that needs no sudo.
 		_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
 	}
 	out := Output{Stdout: stdout.bytes(), Stderr: stderr.bytes()}
@@ -429,8 +424,7 @@ func (w *workcell) cli(ctx context.Context, in io.Reader, args ...string) (Outpu
 	return out, nil
 }
 
-// A session of the suite is several of the product's, one per `workcell run` (A2), each with sessions/<id>/audit.log under the data directory, one JSON line
-// per record; the suite's record is theirs, in order, the file itself.
+// A session of the suite is several of the product's, one per `workcell run` (A2), each with sessions/<id>/audit.log under the data directory, one JSON line per record; the suite's record is theirs, in order, the file itself.
 
 // sessions lists the product's sessions of this one with a record, oldest first: an id begins with the session's UTC start time.
 func (w *workcell) sessions() ([]string, error) {
@@ -452,8 +446,7 @@ func record(id string) string {
 	return filepath.Join(prepared.xdg, "workcell", "sessions", id, "audit.log")
 }
 
-// Audit reads every record of the product's sessions of this one, oldest first, and returns the newest file's path. With no session yet it runs one that does
-// nothing in the guest, under the session's own policy and caps.
+// Audit reads every record of the product's sessions of this one, oldest first, and returns the newest file's path. With no session yet it runs one that does nothing in the guest, under the session's own policy and caps.
 func (w *workcell) Audit(ctx context.Context) (string, []string, error) {
 	if w.dir == "" {
 		return "", nil, errors.New("workcell: Audit before Start")
@@ -525,8 +518,7 @@ func (w *workcell) Bind(_ context.Context, network, addr string) (net.Listener, 
 	return bindHere(network, addr)
 }
 
-// Helper names the process whose death I11 is about: the proxy, the resolver and the broker are the one `workcell run` that owns the VM (A9), found below the
-// run in flight (productProcess), given a moment to appear.
+// Helper names the process whose death I11 is about: the proxy, the resolver and the broker are the one `workcell run` that owns the VM (A9), found below the run in flight (productProcess), given a moment to appear.
 func (w *workcell) Helper(ctx context.Context, name string) (int, error) {
 	switch name {
 	case "proxy", "resolver", "broker", "supervisor":
@@ -551,8 +543,7 @@ func (w *workcell) Helper(ctx context.Context, name string) (int, error) {
 // rows maps a provider to its pin row, as the product's install table does.
 var rows = map[string]string{"claude": "claude-code", "codex": "codex", "copilot": "copilot-cli"}
 
-// Install builds the product once more with the row l needs in place of the file under pins/, by a build overlay (A11), has it run `workcell update --to
-// <version> <agent>`, and names the image `current` then points at. Runs use that binary.
+// Install builds the product once more with the row l needs in place of the file under pins/, by a build overlay (A11), has it run `workcell update --to <version> <agent>`, and names the image `current` then points at. Runs use that binary.
 func (w *workcell) Install(ctx context.Context, l Layer) (string, error) {
 	name, ok := rows[l.Agent]
 	if w.dir == "" || !ok {
@@ -678,8 +669,7 @@ func (w *workcell) Installed(ctx context.Context, name string) ([]byte, error) {
 	return b, nil
 }
 
-// Stop removes the session's directory, every session image the product kept (no `workcell rm` exists yet), every layer and what the update client keeps
-// between runs, so that the next test finds only its own.
+// Stop removes the session's directory, every session image the product kept (no `workcell rm` exists yet), every layer and what the update client keeps between runs, so that the next test finds only its own.
 func (w *workcell) Stop() error {
 	if w.dir == "" {
 		return nil

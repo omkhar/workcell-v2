@@ -23,15 +23,13 @@ import (
 	"time"
 )
 
-// The provider layer row (I7, B8). The host installs the agents in layers from an upstream the judge serves (T8), each in its real upstream's shape; root in
-// the guest does what it can to claude's layer (hijack), and a second session must run the versions the host installed from a layer unchanged. In between,
+// The provider layer row (I7, B8). The host installs the agents in layers from an upstream the judge serves (T8), each in its real upstream's shape; root in the guest does what it can to claude's layer (hijack), and a second session must run the versions the host installed from a layer unchanged. In between,
 // bytes whose digest is not the row's must be refused (B8). hijacked is what the guest's own agent, or the mismatched bytes, print.
 var layers = map[string]string{"claude": "9.9.9", "codex": "8.8.8"}
 
 const layerAgent, hijacked = "claude", "6.6.6"
 
-// shaped is the artifact an agent's upstream serves for a binary that prints version, and the path it serves it at: claude a bare executable, codex a gzip tar
-// whose only entry, at the root, is named by the target triple. The binary is a shell script as far as the row cares.
+// shaped is the artifact an agent's upstream serves for a binary that prints version, and the path it serves it at: claude a bare executable, codex a gzip tar whose only entry, at the root, is named by the target triple. The binary is a shell script as far as the row cares.
 func shaped(agent, version string) (string, []byte) {
 	body := []byte("#!/bin/sh\necho " + version + "\n")
 	if agent != "codex" {
@@ -122,8 +120,7 @@ func fields(detail string) map[string]string {
 	return out
 }
 
-// layerProbe runs `<agent> --version` for each agent of layers on PATH, hashes every file of claude's layer (the parent of the binary's directory) and, as
-// "attack", tries as root to make claude print the version given, then says what it prints. Versions first: a detail is cut at maxDetail.
+// layerProbe runs `<agent> --version` for each agent of layers on PATH, hashes every file of claude's layer (the parent of the binary's directory) and, as "attack", tries as root to make claude print the version given, then says what it prints. Versions first: a detail is cut at maxDetail.
 func layerProbe(args []string) Result {
 	if len(args) != 2 {
 		return Result{Status: "error", Detail: "want attack|check and version"}
@@ -148,8 +145,7 @@ func layerProbe(args []string) Result {
 	return Result{Status: "tried", Detail: strings.Join(detail, " ")}
 }
 
-// hijack tries what root has to change the layer at root, whose binary is path: a write, an unlink and a fresh file, and a new file beside it. The judge
-// decides on the second session's view, whatever these say.
+// hijack tries what root has to change the layer at root, whose binary is path: a write, an unlink and a fresh file, and a new file beside it. The judge decides on the second session's view, whatever these say.
 func hijack(path, root string, body []byte) string {
 	write := func(p string) string { return "write=" + status(os.WriteFile(p, body, 0o755)) }
 	out := []string{write(path), "unlink=" + status(os.Remove(path))}

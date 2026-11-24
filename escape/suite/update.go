@@ -27,8 +27,7 @@ import (
 	"time"
 )
 
-// The I14 judges run the product's update client on the host against a channel and an upstream the judge serves on the test host's own loopback (SPEC T8),
-// signed with a key the judge made, in the format of ADR-004: updateJudge through `workcell update`, dailyJudge through the check a session start makes by
+// The I14 judges run the product's update client on the host against a channel and an upstream the judge serves on the test host's own loopback (SPEC T8), signed with a key the judge made, in the format of ADR-004: updateJudge through `workcell update`, dailyJudge through the check a session start makes by
 // itself. The invariant holds only if nothing from a hostile manifest is installed. The guest plays no part; the probe is idle.
 
 // payloadType is the DSSE payload type of channel.json.
@@ -162,8 +161,7 @@ func moved(url string) http.HandlerFunc {
 // idleProbe is the probe of a test the guest plays no part in.
 func idleProbe([]string) Result { return Result{Status: "idle", Detail: "this test runs on the host"} }
 
-// channel is a judge's channel: an HTTPS server under the suite's authority serving channel.json and the artifacts it pins, a listener beside it that is not
-// HTTPS, the one key the client trusts, and the honest manifest published first, m, pinning 1.0.0 as the artifact good.
+// channel is a judge's channel: an HTTPS server under the suite's authority serving channel.json and the artifacts it pins, a listener beside it that is not HTTPS, the one key the client trusts, and the honest manifest published first, m, pinning 1.0.0 as the artifact good.
 type channel struct {
 	src, plain *upstream
 	key        ed25519.PrivateKey
@@ -295,8 +293,7 @@ func updateJudge(variant string) Judge {
 
 // dailyJudge is I14 at the installer's second entry: the channel check a session start makes by itself, once a day, and the install the next start makes from what it
 // kept, in a session of its own carrying the [update] table. Under a hostile variant the channel serves only that manifest, pinning 1.0.1: the first start must ask for
-// channel.json (a client that never checks proves nothing), and after a second nothing may be installed nor the pinned artifact fetched. Under "once" it serves the
-// honest manifest: after three starts the layer must hold the honest artifact, exactly the digest pinned, and channel.json was asked for once.
+// channel.json (a client that never checks proves nothing), and after a second nothing may be installed nor the pinned artifact fetched. Under "once" it serves the honest manifest: after three starts the layer must hold the honest artifact, exactly the digest pinned, and channel.json was asked for once.
 func dailyJudge(variant string) Judge {
 	return func(ctx context.Context, s Session) (bool, string, error) {
 		ch, err := openChannel()

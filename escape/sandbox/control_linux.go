@@ -125,8 +125,7 @@ func (c *control) Exec(ctx context.Context, args ...string) (Output, error) {
 	stdout, stderr := &bounded{limit: MaxStdout}, &bounded{limit: MaxStderr}
 	host := &naiveHost{stdout: stdout, stderr: stderr, cancel: cancel}
 	host.wg.Go(func() { host.accept(c.ln) })
-	// The loader makes every mount private in the run's own mount namespace, binds the session's resolv.conf over /etc/resolv.conf, then becomes the payload,
-	// or the command the session runs by name from the prefix's PATH.
+	// The loader makes every mount private in the run's own mount namespace, binds the session's resolv.conf over /etc/resolv.conf, then becomes the payload, or the command the session runs by name from the prefix's PATH.
 	cmd := exec.CommandContext(cctx, "/bin/sh", append([]string{"-c", controlLoader, filepath.Join(c.dir, "resolv.conf"), cmp.Or(c.command, c.payload)}, args...)...)
 	cmd.Dir = "/"
 	cmd.Env = c.env
@@ -181,8 +180,7 @@ func (c *control) Exec(ctx context.Context, args ...string) (Output, error) {
 	return host.result(out), nil
 }
 
-// Pull does what a naive sandbox does: git in the guest's own repository and configuration, so every hook, filter, attribute and submodule URL is obeyed, then
-// the tree written under dest through whatever a name resolves to.
+// Pull does what a naive sandbox does: git in the guest's own repository and configuration, so every hook, filter, attribute and submodule URL is obeyed, then the tree written under dest through whatever a name resolves to.
 func (c *control) Pull(ctx context.Context, dest string) error {
 	git, err := exec.LookPath("git")
 	if err != nil {
@@ -338,8 +336,7 @@ func (c *control) Installed(_ context.Context, name string) ([]byte, error) {
 	return b, err
 }
 
-// Install unpacks the artifact into the writable prefix every session's PATH starts with, and keeps no image; a bare executable, or a tar whose root holds one
-// regular file and no bin/, is bin/<agent>.
+// Install unpacks the artifact into the writable prefix every session's PATH starts with, and keeps no image; a bare executable, or a tar whose root holds one regular file and no bin/, is bin/<agent>.
 func (c *control) Install(ctx context.Context, l Layer) (string, error) {
 	if l.Artifact == nil { // a real pin: fetched as it is, digest checked
 		var err error

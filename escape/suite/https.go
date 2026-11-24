@@ -416,8 +416,7 @@ func exchangeProbe(args []string) Result {
 }
 
 // swapJudge has the guest send the exchanges and holds the canaries to the swap rule: an exchange the binding admits must have reached the bound canary with
-// the real value in the bound header, no other may have reached either canary, nor anything the admitted ones did not send (a path rewritten on the way), and
-// the other name sees nothing at all. The real value anywhere else, or in the guest's own hands, is a leak. Canaries that saw nothing proved nothing.
+// the real value in the bound header, no other may have reached either canary, nor anything the admitted ones did not send (a path rewritten on the way), and the other name sees nothing at all. The real value anywhere else, or in the guest's own hands, is a leak. Canaries that saw nothing proved nothing.
 func swapJudge(specs ...string) func(s Session, bound, other *canary) (bool, string, error) {
 	return func(s Session, bound, other *canary) (bool, string, error) {
 		r, err := run(s, bound, other, specs...)

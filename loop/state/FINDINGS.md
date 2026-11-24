@@ -5189,3 +5189,302 @@ on S-1003, C53 on S-1005, C54 and C55 on S-1007, C56 on S-1008, C58 on S-1009, C
 and two lows (C57 and C59, fixed), so S-1017 will call a third sweep (S8) whatever this surface says. The
 shapes seen are R3 notes, copied to PARKED.md in three lines: the observations, the tool and coverage gaps,
 and the two parked clauses that are obsolete.
+
+## S-1013, sweep 2: chains across surfaces, and the start-up, shutdown, crash and upgrade windows, as built at main 179b03c
+
+Fresh context, the whole product read as built (not a diff), after the 32 fix units of sweep 1 and S-F33 to S-F43 of
+sweep 2, at the claim commit 3941336 on main 179b03c. One auditor run, finished without a stop: no model declined,
+no safeguard re-ran a request and no tool permission was refused, in the auditor, the four redteam runs or the
+verifiers. No hypervisor in the session, and nothing was run on a VM: the windows were run with the real
+cmd/workcell binary against a stand-in VMM, a script that execs sleep, with dummy artifacts in a scratch data
+directory. Result: three candidates, C61 (medium), C62 (low) and C63 (low), each CONFIRMED by its own verifier, C63
+with its effect narrowed; they are recorded below with their tests. The session's container was restarted while the
+three verifiers ran; the tree and the parked tests were unchanged, the orchestrator ran the three tests again for
+their logs and started the verifiers again with the same words. The parked lines of chains and windows were each
+ruled on.
+
+Trust boundary. The chained surface has no entry point of its own: its attacker bytes are those of the single
+surfaces (guest frames on vsock 5000, 5001 and 5002; the guest-written workspace.ext4 and cache images, attached and
+never parsed on the host; the repository tree and its workcell.toml; hostile model output as argv and as the agent's
+conduct inside a mount session; the network attacker as the host's DNS and TLS peer and as the channel and artifact
+server, with availability alone). What is new is where those bytes meet host state that outlives one session and the
+operator's own environment: the data directory (audit.key; sessions/<id> with audit.log, audit.seal, lock, repo,
+vmm, workspace.ext4 and inodes; layers/<agent> with its images, current, previous, failed and download residue;
+caches; channel.serial, channel.day and channel.next; updates.log), the VMM socket directory under os.TempDir()
+(vsock, vsock_5000, vsock_5001, vsock_5002, firecracker.json, attach), and the operator's cwd, TMPDIR, XDG and
+SSL_CERT variables. Since sweep 1 the product judges the operator's cwd against that state before anything is made,
+by name resolved to identity (S-F12, S-F20, S-F21, S-F35, S-F39, S-F37, S-F41): cwd against the data and config
+directories, against the temp directory, against every running session's VMM directory, and a secret source against
+cwd. The order of a start, read from run and session and checked with the real binary: parseRun, loadPolicy,
+loadArtifacts, startup (apply, then the daily goroutine), findLayers, openCaches, then session: Getwd, holds, the
+mount TMPDIR check, newSession (key, directory, lock, repo, audit.Create, session_start), Export and the inodes
+record, boot (the TMPDIR and running-mount checks, MkdirTemp, recordBoot, Listen 5000 and 5001, adapters, proxy,
+session CA, Serve, serveRelay, Listen 5002 and openMount under --mount, Start, accept), the Exec frame, the attach
+listener, the seat. Every helper (audit log, proxy, resolver, broker, CA) is up before Start, so no guest exists
+before they do. What the boundary trusts across that order is a spelling: the directory that session judged by name
+is opened again by name, later, by Export and openMount (C61), and the liveness of a VMM directory is read from a
+lock that pull and bench never take (C63). Under --mount a guest holds every byte of the names beneath its export:
+RENAME to any name but the empty one, dot, dot-dot, one with a slash or a NUL, and SYMLINK to any target, which is
+the primitive that every chain below uses.
+
+Parsing and resources. No new parser on this surface. holds and boot's running-mount check cost one open, one flock
+and one or two reads per session directory per start, unbounded in the count of stale sessions (operator hygiene,
+R3). The vmm, repo and inodes files are host-written; inodes is bounded by ParseInt and its sum cannot wrap. A
+socket path over 108 bytes fails closed: run with a long scratch TMPDIR printed the bind error, exited 125 and had
+removed the directory (PARKED line 14's clause, seen). The one unbounded wait of this surface, C60's marker read
+against cwd, is closed by S-F43 (read; its test is green). Refuted: that any guest-written file is parsed by the
+host at a window (workspace.ext4 and the caches are attached and never read; the pull judges every entry; the layer
+markers have no in-scope writer since S-F12 and S-F21).
+
+Logic and state. With a stand-in VMM, a session directory with repo, lock, an audit.log holding session_start, and a
+vmm record naming a directory that holds firecracker.json, vsock_5000 and vsock_5001 exist before the guest's first
+byte can arrive. Shutdown runs the defers in reverse: attach listener closed, terminal restored, VM killed and
+reaped and its directory removed, session_end recorded, lock released. The marker transitions of point, apply, fail
+and update were walked for a crash at each step: a marker is a temporary file and a rename, point writes previous
+and then current, a crash between them leaves previous equal to current, which the next apply or update repairs by a
+new fetch, and a crash between fail's failed marker and its point leaves the set-aside image current until the
+operator runs update (availability only). The state that no code judges: the name of the directory the operator's
+shell sits in is the guest's to change under a mount session on an ancestor, and Export and the session records
+(repo, and so the session that pull, diff, log, verify and attach pick) go by that name (C61, C62).
+
+Concurrency and check-to-use. C61 is the gap: session takes cwd from Getwd, judges it (holds, the TMPDIR rule),
+records it (newSession, measured at 4.18 ms here with its two fsyncs) and then Export opens the same string,
+following a symlink at its last component. fetch opens an explicit pull destination the same way after holds; the
+default dot is the cwd inode and immune (reasoned, not shown: the dummy VMM stops before any write). Refuted: the
+stop ladder's read of the pid before the kill (a millisecond window, operator-timed), two applies on one
+channel.next (PARKED line 45: a double set-aside is one), the serial floor's two verifies (PARKED line 191, both
+signed), fail's unlocked point against the operator's update verb (PARKED line 143: the guest cannot observe the
+operator's keystroke), the first-use race of LoadKey (fails closed on an empty file, read), findLayers against a
+concurrent point (availability: the boot fails). C63 is a check that no code performs: fetch and bench hold nothing
+that holds reads as live, so S-F39's refusal does not cover a pull in flight.
+
+Cryptography and identity. Nothing new is signed or verified on this surface: the seal binds the session id (S-F17),
+channel.next is verified again against the floor, markers are bare names. The identity primitive on which the fixes
+of both sweeps converged (compare inodes, not spellings: S-F35's SameFile walk) is what C61 lacks at the open: it is
+applied at the judge only. PARKED line 131's within-by-letter clause (a TMPDIR in capitals on a case-insensitive
+Mac) is settled by S-F35: Rel fails on the spelling and the walk then stats the ancestors by inode (read).
+
+Failure modes. Every error path on this surface fails closed, by reading and by the windows run: holds and boot
+return list's error; within on an absent directory returns false, the safe direction; a failed Export removes the
+image and the session directory; every exit of boot runs closeAll; session_end is written on the signal path too
+(seen: exit 143); SIGKILL leaves no end record and verify then says incomplete, not intact (seen); a socket path too
+long exits 125 with the directory removed (seen); the zero installer no longer reads against cwd (S-F43). No
+fail-open error branch was found. The two openings are checks that no code makes: the identity of the directory
+opened after it was judged (C61) and the liveness of a pull's or a bench's VMM directory (C63).
+
+Downgrade, rollback and replay. apply verifies channel.next again with the floor that the daily check wrote, and
+removes the file first; --rollback reads no manifest (PARKED line 184 stands, for S-1018); update --to goes through
+choose and Select, so a withdrawn digest is refused; the C2 residual (a forged first frame sets aside the layer that
+this start installed and goes back to the signed previous version) is also reachable with no frame by the operator's
+own `workcell run ./claude` in a fresh start (PARKED line 131's clause), which hostile model output could suggest:
+the same accepted residual, no new candidate. A stale vmm record left by SIGKILL is ignored by holds by design and
+removed by rm (seen). The markers are rename-atomic, so no torn marker is read.
+
+Interaction between surfaces. C61 is the clone export of S-1008 (Export opens its root by name) times the mount
+guest's RENAME and SYMLINK of S-1008 (fileserve) times the start order of S-1002, under the precondition that
+S-1016c accepted for C39 and left low for want of a demonstration (PARKED line 123). C62 is the same RENAME against
+the decision that PARKED line 104 recorded for S-F23 (the operator's own cwd stays unquoted, "which no guest
+names"): a guest does name it. C63 is the second order of S-F39 (holds refuses a directory that holds a running
+session's VMM directory, liveness read from the lock) against the boots of pull and bench, which hold no lock, and
+bench no record (PARKED lines 24 and 144). The sweep 1 chain fixes still hold as built: C28 (TMPDIR in a mount
+export), C29 and C19 (holds both ways), C30 and C53 (relative trust-store paths refused), C31 (quoted names), C52
+(the SameFile walk, run as root here) and C56, each with its test green; C56's second arm is what C63 reopens for a
+pull in place of a run.
+
+Chains tried, each as one record with another gives or does not give a break. C39 (PARKED line 123, S-1016c, low, "a
+VM row would prove it") with the RENAME and SYMLINK of fileserve and Export's open of the judged name gives I1, and
+I5, I7 and I9 by choice of target: C61. PARKED line 104 with the same RENAME and Getwd's fallback to the kernel's
+name when PWD no longer matches gives raw terminal control bytes from ls, explain and pull: C62. PARKED lines 24 and
+144 with S-F39's lock-keyed holds give a mount session that serves a pull's live VMM directory: C63. No route:
+PARKED line 173 (5002 open after a failed init dial; the host listens on 5002 before Start, so the dial never
+fails); line 45 with C2 (two set-asides of one image equal one); line 130 (C45: attach dials the recorded directory
+without the lock) with a mount guest planting an attach link in a stale VMM directory (it needs the operator to
+attach to an exited session by id, and the frames are the seat's); line 131's `./claude` clause with hostile model
+output (the C2 residual, accepted); line 143 with a guest-timed first frame (the operator's timing cannot be seen
+from the guest); line 148 (a dot-dot TMPDIR through a link into the export) with S-F35 (still fails closed, since
+Listen binds under a directory that does not exist); S-F40's inodes record with a crash between Export and its write
+(PARKED line 182: pull refuses); a guest-planted symlink chain at a stale recorded VMM path later served under a
+mount export, against rm (the Lstat of the last component, the wc prefix, IsDir and a no-follow descent hand rm only
+a directory the guest made inside its own export; reasoned); Firecracker dying mid-session, mid-pull or mid-boot
+(EOF on the channel gives 125, an error in the pull's frame, "the VMM ended" in accept); an operator's update racing
+a run's apply (each point removes what the other made current, availability only); two first uses of audit.key
+(fails closed, read). S-F37 and S-F41's source check with C61's window is folded into C61's effect: the swap can aim
+at the source's directory.
+
+Windows tried. Start-up: the order above, the two arms of C61, and the socket-path refusal with the real binary.
+Shutdown: the real binary with the stand-in VMM waiting in accept; `workcell stop <id>` returned 0 after 0.058 s,
+run exited 143, audit.log holds session_start and session_end "exit 143", verify says intact, the VMM directory is
+gone, the stand-in is dead, rm returns 0. Crash: SIGKILL of the supervisor while the guest boots: the stand-in died
+with it, ls said exited at once, the VMM directory stayed and the vmm record named it, audit.log holds session_start
+only, verify said "incomplete: the session's end was not recorded", attach failed (no attach socket exists before
+the guest connects), stop said "not running", and rm removed the session directory and the VMM directory. The crash
+points inside apply, point, fail and fetch were walked by reading. Verbs on a running session: rm refused ("is
+running: workcell stop first"), verify intact, and pull booted the running session's live image read-write into a
+second VM (it failed only because the stand-in guest never connects), which is PARKED line 24 and belongs with C63.
+Upgrade: --to and --rollback racing a run, a first frame after an update, the daily goroutine against apply
+(channel.day first, channel.next rename-atomic, the floor checked again), withdrawn on --rollback (PARKED line 184).
+Half-written session directories read by ls, verify, rm, pull, attach and the next run: a directory with lock but no
+repo lists as exited and matches no cwd; verify fails on a missing log; rm validates every vmm entry; a clone
+session without inodes is refused by pull; attach fails on a missing socket; the next run's holds ignores stale
+records by design.
+
+Parked lines of chains and windows, ruled. Candidates: 24 (C63), 104 (C62), 123 (C61). Settled: 97 and 175 (by
+S-F39), 131's within-by-letter clause (by S-F35), 192 and 194 (by S-F43), 14's SIGKILL clause (recordBoot and rm,
+seen). Stand: 14's long-TMPDIR clause, 17, 34, 45, 47 (the host-level stop and rm behaviour is measured above, the
+escape row is still missing), 69, 77, 78, 95, 96 (its bind-mount clause is now 150's), 100, 108 and 138 (the
+mechanism is 144's), 130, 131's other clauses, 142, 143, 144 (named in C63 as the unfixed sibling), 145, 146, 147,
+148, 149, 150 (deferred to the next audit of S-1003, not taken here), 173, 176, 179, 180, 181, 182, 183, 184, 191,
+193.
+
+Coverage. Read in full: SPEC, the Phase 10 part of PLAN.md, the sweep 1 chains record and every sweep 2 record of
+this file, PARKED.md whole; every non-test file of cmd/workcell and cmd/workcell-init; internal/vmm with the
+firecracker and vz backends, internal/audit, wire, guest, workspace, proxy (proxy, terminate, signin, allowlist),
+secret, fileserve (serve, ops, codec), channel, artifact, relay, resolver, policy and provider; of internal/rootfs
+ext4file.go, tree.go, layer.go, build.go and the head of ext4.go; pins.go; the lifecycle, rollback, update, layer
+and audit files of escape/suite and the workcell adapter; the tests of C19, C43, C52, C56 and C60, and the update
+and session tests. Not opened: internal/pins, sigstore, advisory and bump, cmd/bump, cmd/mkimage, oci.go and the
+body of ext4.go, the control adapter and the Mac adapter of escape/sandbox, the other suite files and tests, docs/,
+.github/ and _legacy/. Ran: go test ./... on the unchanged tree (29 packages ok); three probes by go test -overlay
+from the session's scratch directory, plain and under -race; the change the auditor proposes for C61 as a two-file
+overlay, with cmd/workcell and internal/workspace green under -race and go vet clean; the real binary against the
+stand-in VMM for the stop, crash, rm, verify, attach and pull windows; the newSession timing and the sweep of flip
+periods. Every listener, file and process was the probe's own under temporary directories (S12, T8). Not run:
+anything on a VM, the escape suite, any macOS path, the pull-destination variant of C61 end to end, and C61's rename
+and symlink through the real fileserve server (os.Rename and os.Symlink stood for them; the adversarial rows 9 and
+10 of fileserve show a symlink to ../secret and to /etc/passwd served). One of the auditor's compound commands was
+mis-parsed by the shell, so that a plain `rm spikes` ran in the repository's directory; rm refused the directory,
+and git status showed nothing removed or changed.
+
+### S-1013 candidates, sweep 2
+
+C61. ID I1 (the guest cannot read or write any host path outside the session's own workspace export), and I5, I7 and
+I9 by the target chosen: the directory of a file: secret, or the data directory with audit.key and every session's
+record and image, as C19 counted them. ATTACKER: guest root in a mount session, by hostile model output or a
+malicious repository's hooks, whose export is a proper ancestor of the directory in which the operator later starts
+a clone session. Precondition the attacker does not control: the operator runs `workcell run --mount` in a parent
+directory and, while it runs, `workcell run` in a subdirectory of it. SEVERITY: medium (S6), the shape of C19, C28,
+C52 and C56. This is PARKED line 123's C39, which S-1016c recorded low for want of a demonstration. WHERE:
+cmd/workcell/run_vm.go: session takes cwd from os.Getwd, judges it (holds, the TMPDIR rule), records it (newSession)
+and hands the same string to workspace.Export and, under --mount, to openMount; internal/workspace/workspace.go:
+Export makes the name absolute and opens it with O_RDONLY|O_DIRECTORY and no O_NOFOLLOW, so a symlink at the last
+component is followed; internal/fileserve: opSymlink takes any target and rename any name that checkName admits;
+cmd/workcell/pull_vm.go: fetch opens an explicit pull destination by name after holds, the same shape (reasoned
+only). INPUT: terminal 1: `cd ~/work && workcell run --mount -- claude`. The guest, as root, in a loop: rename
+/workspace/proj away, link the name proj to a host directory of its choice, wait some milliseconds, remove the link,
+put the directory back, wait. Terminal 2, whose shell sits in ~/work/proj: `workcell run -- make`. Getwd returns
+~/work/proj while the real directory bears that name, holds and newSession judge and record that name, and Export
+opens it some milliseconds later: when the link bears the name by then, the whole target is exported. EFFECT: the
+clone session's workspace.ext4, handed to its guest as /workspace, is an export of the host directory that the mount
+guest chose. Under --mount the swap of the last component is refused by the no-follow open of fileserve; an ancestor
+swap there needs a directory of the same last name at the target, which the guest can supply only inside its own
+export, so clone mode is the general case. A guest that flips the name too fast makes the start fail instead: a
+denial that the ancestor's guest can always cause. Reproducing test, by the redteam, who was given the claim and not
+the auditor's reasoning: TestC61CloneExportFollowsARenamedWorkingDirectory, package main of cmd/workcell, 45 lines,
+parked at escape/_pending/S-F44/c61_test.go. It makes work/proj and an outside directory holding a key file with a
+random canary, a data directory through c19Data, and a second session whose lock it holds and whose vmm file is a
+FIFO, so that session parks in holds, after Getwd; a goroutine's open of the FIFO for writing returns at that
+moment, renames proj away and links its name to the outside directory, and closes; session then runs to boot, where
+the dummy VMM ends it, and the test reads the new session's workspace.ext4. Run by the orchestrator by go test
+-overlay on the claim tree, plain and -race, log saved: both fail with "the clone session of .../proj exported
+.../002, where a link under that name pointed by the time of the export: a key outside every export is in the
+guest's image (I1)". Outcome: CONFIRMED at medium by the verifier, who repeated both runs and then took away the
+rendezvous, since a guest cannot plant that FIFO: a variant of its own with a free-running rename, link, sleep,
+restore, sleep loop and no FIFO, 100 starts per period, exported the outside directory 9 times at a period of 50
+microseconds, 14 to 23 at 200 microseconds, 10 to 14 at 1 ms, 10 to 24 at 3 ms, once at 10 ms and never at 50 ms,
+the same under -race and with PWD unset; the window from Getwd to the end of newSession measured 0.8 to 5 ms. So the
+race is won about one start in seven, and the FIFO is a deterministic scheduler, not a power the effect depends on.
+The verifier read the guest's two steps in fileserve (the adversarial rows "22 rename a to x" and "10 symlink
+absolute"), found nothing in holds or boot that refuses a clone session whose cwd lies inside a running mount
+session's export, and traced Getwd: with PWD matching, Go takes it, and with the link in place it falls back to
+getcwd, which gives the real directory under its new name, exported harmlessly; either way Getwd gives work/proj
+whenever the real directory bears the name. Not intended behaviour: R6 asks for no-follow, descriptor-relative
+handling where the host reads data the guest controlled, and a clone cwd inside a mount export is that. Severity by
+S6: one precondition the attacker does not control, as C28, C52 and C56; the rate per start does not lower it, since
+every clone start is a new try. The verifier's note for the fix: the export's walker also opens files by name at
+write time (seen as a failed "write image: open .../proj/id_ed25519"), so the fix must export from one descriptor
+taken once. The auditor's own probe of the same shape failed 3 of 3 runs under -race, its free-running arm won 2 of
+20 starts at an 8 ms phase and 3 of 20 at 32 ms, and with a two-file overlay that has session pass "." and Export
+open the directory as given, both arms passed with cmd/workcell and internal/workspace green under -race. Not S14:
+run_vm.go, pull_vm.go, workspace.go and fileserve are v2's own, nothing ported, no v1 line. Fix unit: S-F44, below
+S-1013 in PLAN.md.
+
+C62. ID none directly: I12's "confuse the host" in spirit, and the product's own rule, set by C20, C31 and C38, that
+a guest-chosen name is quoted before it reaches the operator's terminal; hardening, the class of C31. ATTACKER:
+guest root in a mount session on an ancestor of the directory the operator's shell sits in, as in C61. SEVERITY: low
+(S6: no invariant broken). WHERE: cmd/workcell/session.go (ls prints the recorded repo with %s),
+cmd/workcell/explain.go (explanation concatenates the directory, twice), cmd/workcell/pull_vm.go (the mount-session
+and the no-session messages name cwd), cmd/workcell/run_vm.go (the TMPDIR refusal and the copy error),
+cmd/workcell/data.go (holds names the directory, twice), internal/workspace/workspace.go (`open %s`, the site that
+PARKED line 104 kept raw because "no guest names it"); the guest's primitive is the RENAME of fileserve, whose
+checkName admits ESC, BEL and CSI bytes. INPUT: the mount guest renames /workspace/proj to a name that holds an OSC
+title sequence, a CSI clear and an SGR colour. The operator's shell sits in that directory by inode and runs
+`workcell run -- make`: Getwd finds that PWD no longer names the directory and takes the kernel's name, so repo
+records the name with its control bytes. Later `workcell ls`, `workcell explain` there, or `workcell pull` in such a
+directory with no session, prints it. EFFECT: the terminal's title is set and the screen cleared and recoloured, as
+in C31. A second half, with no invariant and not part of the candidate: sessions are keyed by that spelling (newest
+compares repo with cwd), so a guest that swaps the names of two sibling directories in which the operator has
+sessions chooses which session pull, diff, log, verify and attach answer for each; reasoned only, parked.
+Reproducing test, by the redteam from the claim alone: TestC62WorkingDirectoryNameReachesTheTerminalRaw, package
+main of cmd/workcell, 35 lines, parked at escape/_pending/S-F45/c62_test.go. It makes a directory of such a name,
+changes into it, calls session once so that the session is recorded (and proves the record with newest), and asks of
+four outputs that none holds a 0x1b: ls, explanation in clone and in mount mode, and newest's error for a sibling of
+such a name. Run by the orchestrator by go test -overlay on the claim tree, plain and -race, log saved: all four
+rows fail, each output quoted in the failure with the raw sequence in it. Outcome: CONFIRMED at low by the verifier,
+who repeated both runs, read the rename's name check and its Renameat in fileserve, and showed with a probe of its
+own that Getwd, in a directory renamed under it with PWD still holding the old path, returns the new name with its
+control bytes. The verifier's note: the test makes the directory with os.Mkdir where the guest would rename it, and
+the mount export must be an ancestor of the shell's directory, since the guest cannot rename the root of its own
+export; that is a plausible layout and matters only above low. R2 holds by the precedent of C31 and C38; medium
+would be wrong, since nothing that an invariant guards is crossed. Not S14: cmd/workcell and internal/workspace are
+v2's own, no v1 line. Fix unit: S-F45, below S-1013 in PLAN.md.
+
+C63. ID I1 and I4 by the mechanism of C56 (a guest replaces a live VMM socket by a link and the VMM connects by
+path), with I7's rm clause and I12 for the effect; the second order of S-F39 and the lockless boot of PARKED line
+24. ATTACKER: guest root of a mount session that the operator starts while a `workcell pull` or diff runs, in a
+directory that holds the pull's temp directory, from a shell whose TMPDIR lies elsewhere: the precondition of C56's
+second arm, against a pull in place of a run. SEVERITY: low (S6: hardening). WHERE: cmd/workcell/pull_vm.go: fetch
+takes no lock, and boot records the pull's VMM directory in the pulled session's vmm file, whose lock the ended run
+left free; cmd/workcell/data.go: holds refuses a directory that holds a VMM directory only for a session whose state
+is running; cmd/workcell/session.go: running reads the lock; cmd/workcell/bench_vm.go: bench boots with no session
+and records nothing (PARKED line 144). INPUT: terminal 1, with TMPDIR=~/work/tmp: `cd ~/proj && workcell pull`.
+Terminal 2, with TMPDIR=/tmp: `cd ~/work && workcell run --mount -- claude`; holds refuses nothing, because the
+pulled session reads as exited. The guest then finds the pull VM's sockets under /workspace/tmp. EFFECT, as claimed
+by the auditor: the pull's firecracker.json and sockets are served live to the guest, whose unlink ends the pull at
+its time limit and whose link sends the pull init's frames to a host socket it names; beside it, ls shows the pulled
+session exited during the pull, rm removes its image while the VM holds it open, and a pull of a running session
+attaches the live image read-write to a second VM. Reproducing test, by the redteam from the claim alone:
+TestC63PullHoldsNoLock, package main of cmd/workcell, 40 lines, parked at escape/_pending/S-F46/c63_test.go. It
+makes a session with a free lock and an image through c19Data, makes its inodes file a FIFO so that fetch parks
+after it has chosen the session and before boot, asks running of that session at that moment, and then lets the pull
+go on to boot, with a bound of 10 s. Run by the orchestrator by go test -overlay on the claim tree, plain and -race,
+log saved: both fail with "running(...) = false, <nil> while a pull of ... runs between its session lookup and its
+boot". Outcome: CONFIRMED at low by the verifier, with the effect narrowed. The state is real and lasts the whole
+pull: no code but newSession takes the lock, so fetch holds none from newest to the close of its VM, and the FIFO
+only parks it. Terminal 2 does start, by trace: holds refuses only a running session, the TMPDIR rule looks at
+terminal 2's own temp directory, and boot's arm looks only for running mount sessions; and the pull's VMM directory
+does lie under the export, made by MkdirTemp under terminal 1's TMPDIR and recorded. But the denial and the
+redirection are not attainable by the guest: the mount session cannot already run when the pull boots (boot's arm
+refuses the pull then), so it must start after the pull's MkdirTemp; the pull's init connects within about a second,
+the accepted listener is closed and unlinked, and a pull-mode init runs no command and never dials the relay port,
+so for the rest of the pull the mount guest finds a dead vsock, firecracker.json and an idle vsock_5000, and
+unlinking or linking them denies nothing and redirects no frame. A second VM booted and its agent acting inside the
+pull's own boot window is not a thing the attacker controls. So no invariant break is shown, and low stands; what
+stands under R2 is operator-side: the pull's session reads exited in ls, rm during a pull takes the free lock and
+removes the live VMM directory and the image that the VM holds open, and a mount session of a directory that holds
+the pull's temp directory is admitted. The auditor's two probes showed holds returning nil for a directory that
+holds a recorded VMM directory with a listening socket under a session whose lock is free, and running false while
+fetch was parked. Not S14: cmd/workcell is v2's own, no v1 line. Fix unit: S-F46, below S-1013 in PLAN.md.
+
+The 120 test lines of the three parked tests were paid by 124 comment re-flows in 45 files under escape/ (sandbox
+and suite), made by a tool of the redteam's that joins only full-line comment runs and leaves directives, licence
+headers, lists and indented blocks alone. No token outside a comment changed and every comment keeps its words in
+their order: the orchestrator compared the token stream and the comment words of each of the 45 files with its
+parent's, 0 mismatches. At 200 columns no re-flow was left, since the earlier units had used them up, so the new
+lines run to 310 columns, where escape/suite/tests.go already held a line of 772. gofmt clean, go build and go vet
+of ./escape/... clean, go test ./escape/... ok, the control list of 145 rows identical before and after: product
+15000 of 15000, test 28496 of 28500.
+
+Sweep 2 verdict for this surface: one medium confirmed, C61, open until S-F44, and two lows, C62 and C63, open until
+S-F45 and S-F46. Sweep 2 now stands at eight mediums (C52 to C56, C58 and C60 fixed, C61 open) and four lows (C57
+and C59 fixed, C62 and C63 open), so S-1017 will call a third sweep (S8). The next candidate number is C64. The
+observations that are not candidates are R3 notes, copied to PARKED.md in four lines.

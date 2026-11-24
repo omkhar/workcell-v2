@@ -10,8 +10,7 @@ import (
 	"time"
 )
 
-// SPEC P1: warm session start p50 under 2.5 s on a hosted CI runner, measured by `workcell bench start` over 20 samples. The product does the timing; the
-// judge only runs it, reads its one line and holds it to the budget.
+// SPEC P1: warm session start p50 under 2.5 s on a hosted CI runner, measured by `workcell bench start` over 20 samples. The product does the timing; the judge only runs it, reads its one line and holds it to the budget.
 const benchSamples, benchBudgetMs = 20, 2500
 
 // benchBound gives the twenty-one boots room to be slow and still end as a measured fail, not a timeout: seven seconds each, and teardown.
@@ -35,8 +34,7 @@ func benchJudge(ctx context.Context, s Session) (bool, string, error) {
 	return p50 < benchBudgetMs, clean(string(bytes.TrimSpace(out.Stdout)), maxDetail, isPrint, '?'), nil
 }
 
-// parseBench reads the one line `bench start n=20 p50=<ms> min=<ms> max=<ms>` and returns the median. It is strict: the whole output must be that line
-// and nothing else, with n the sample count and min <= p50 <= max.
+// parseBench reads the one line `bench start n=20 p50=<ms> min=<ms> max=<ms>` and returns the median. It is strict: the whole output must be that line and nothing else, with n the sample count and min <= p50 <= max.
 func parseBench(b []byte) (int, error) {
 	line, ok := bytes.CutSuffix(b, []byte("\n"))
 	if !ok || bytes.IndexByte(line, '\n') >= 0 {

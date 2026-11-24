@@ -55,8 +55,7 @@ func mountProbe(args []string) Result {
 	return Result{Status: "tried", Detail: "mount=ok read=" + tryRead(filepath.Join(mnt, "secret")) + " write=" + tryWrite(filepath.Join(mnt, "written-"+t.token))}
 }
 
-// handleProbe opens the secret by a file handle it forges from the inode number, with generation 0, relative to the export: open_by_handle_at
-// reaches any file on the export's filesystem when that is the host's.
+// handleProbe opens the secret by a file handle it forges from the inode number, with generation 0, relative to the export: open_by_handle_at reaches any file on the export's filesystem when that is the host's.
 func handleProbe(args []string) Result {
 	t, err := outsideArgs(args)
 	if err != nil {

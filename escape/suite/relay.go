@@ -14,8 +14,7 @@ import (
 )
 
 // SPEC I2, I4 and I12 on the network path of ADR-003. Every address is local to the guest: its kernel completes a TCP handshake to a listed port and the init
-// carries the stream to the host as its own vsock stream, behind a 20-byte header that names the destination. Root in the guest (A1) can skip the init and
-// speak that header itself, with any address, port, proto or version. The host must dial none of it: the canary's catch is the evidence of reach. A stream
+// carries the stream to the host as its own vsock stream, behind a 20-byte header that names the destination. Root in the guest (A1) can skip the init and speak that header itself, with any address, port, proto or version. The host must dial none of it: the canary's catch is the evidence of reach. A stream
 // whose header never completes must be dropped, or a guest that sent ten bytes holds a slot of a bounded relay; the guest's side is the only witness.
 const (
 	relayVersion, protoTCP, protoUDP, headerLen = 1, 6, 17, 20
@@ -44,8 +43,7 @@ func relayHeader(version, proto byte, ip net.IP, port uint16) []byte {
 // framed is a datagram as the relay carries it on a UDP stream: a two-byte big-endian length, then the bytes.
 func framed(b []byte) []byte { return append([]byte{byte(len(b) >> 8), byte(len(b))}, b...) }
 
-// relayProbe dials the host end of the relay at args[1] afresh and speaks the header itself. The kinds tcp, udp, version-N and proto-N name args[2], a canary,
-// as the destination and send the token args[3] behind the header; short and slow send part of a header and wait for the host to drop the stream.
+// relayProbe dials the host end of the relay at args[1] afresh and speaks the header itself. The kinds tcp, udp, version-N and proto-N name args[2], a canary, as the destination and send the token args[3] behind the header; short and slow send part of a header and wait for the host to drop the stream.
 func relayProbe(args []string) Result {
 	if len(args) < 2 {
 		return Result{Status: "error", Detail: "want kind and relay address"}
@@ -129,8 +127,7 @@ func relayAnswer(c *rawConn, what string, wait time.Duration) Result {
 	return Result{Status: "closed", Detail: fmt.Sprintf("%s; the host closed the stream after %s (%v)", what, took, err)}
 }
 
-// relayRun runs the relay probe with args and holds the host process to I12 as channelRun does: it must end within relayWait, must not crash and must write no
-// control bytes. It returns the probe's result, or why the host end fell short. A run the host could not complete is an error, never a pass.
+// relayRun runs the relay probe with args and holds the host process to I12 as channelRun does: it must end within relayWait, must not crash and must write no control bytes. It returns the probe's result, or why the host end fell short. A run the host could not complete is an error, never a pass.
 func relayRun(ctx context.Context, s Session, args ...string) (Result, string, error) {
 	rctx, cancel := context.WithTimeout(ctx, relayWait)
 	defer cancel()
@@ -155,8 +152,7 @@ func relayRun(ctx context.Context, s Session, args ...string) (Result, string, e
 	return r, "", err
 }
 
-// relayCanary listens on network at listen and has the guest name that canary in a relay header of each kind in turn, all against the same canary. The
-// invariant holds only if nothing arrives there and the host end stands.
+// relayCanary listens on network at listen and has the guest name that canary in a relay header of each kind in turn, all against the same canary. The invariant holds only if nothing arrives there and the host end stands.
 func relayCanary(network, listen string, kinds ...string) Judge {
 	return func(ctx context.Context, s Session) (bool, string, error) {
 		relay, err := s.Relay(ctx)

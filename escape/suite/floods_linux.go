@@ -83,8 +83,7 @@ func memoryBacked(dir string) bool {
 
 // emulationProbe loads, for args[0] seconds at once, what a VMM serves off the vCPU thread: the first virtio block device, read with O_DIRECT a MiB a request; the host end of the relay at args[1], by
 // connect-then-close, each a vsock request and an accept and a header read on the host; and, as the arm the cap does hold, the serial console, whose every byte is an exit of the vCPU itself. Off the
-// product's VM, which the harness names by a vsock address, a file on disk and /dev/null stand in for the device and the console: the session's own are not the test's (S12). Each arm runs to the
-// deadline on its own; one that blocks is left behind, so the report is on time.
+// product's VM, which the harness names by a vsock address, a file on disk and /dev/null stand in for the device and the console: the session's own are not the test's (S12). Each arm runs to the deadline on its own; one that blocks is left behind, so the report is on time.
 func emulationProbe(args []string) Result {
 	if len(args) != 2 {
 		return Result{Status: "error", Detail: "want seconds and relay address"}

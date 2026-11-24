@@ -17,8 +17,7 @@ import (
 // working directory, and one `workcell pull` per Pull. It runs on Linux and macOS; elsewhere every operation reports ErrNotImplemented. The session policy goes in as the product's own config.toml
 // under a directory of the session's own (XDG_CONFIG_HOME), a secret's value in a file beside it. What the CLI cannot honour yet is refused at Start with ErrNotImplemented, never a false pass.
 
-// Prepare does the one-time setup the named adapter needs, under dir, which the caller removes when the process ends. For workcell that is the four artifacts
-// `workcell run` wants and the binary itself, which takes longer than one test may, so it runs once, outside any test's context.
+// Prepare does the one-time setup the named adapter needs, under dir, which the caller removes when the process ends. For workcell that is the four artifacts `workcell run` wants and the binary itself, which takes longer than one test may, so it runs once, outside any test's context.
 func Prepare(ctx context.Context, name, dir string) error {
 	if name == "workcell" {
 		return prepareWorkcell(ctx, dir)
@@ -30,8 +29,7 @@ func Prepare(ctx context.Context, name, dir string) error {
 // prefix is where a plain container installs every provider, as /usr/local: on every session's PATH, writable.
 var prefix string
 
-// unsupported says why the CLI cannot honour cfg today, "" when it can: it takes an export, a network policy, a secret, any caps (a zero meaning the CLI's
-// default; one outside its bounds it refuses itself), and on Linux a resolver of the test's own and, with one, a network of its own.
+// unsupported says why the CLI cannot honour cfg today, "" when it can: it takes an export, a network policy, a secret, any caps (a zero meaning the CLI's default; one outside its bounds it refuses itself), and on Linux a resolver of the test's own and, with one, a network of its own.
 func unsupported(cfg Config) string {
 	switch {
 	case cfg.Resolver != "" && !steersResolver:
@@ -111,8 +109,7 @@ func runArgs(cfg Config, loader string, args ...string) []string {
 	return runCommand(cfg, append([]string{"/bin/sh", "-c", loader, "sh"}, args...)...)
 }
 
-// runCommand is the argv of one `workcell run` of command in the guest, for a session with cfg's mode and caps: `--mount` for a live export, each non-zero cap
-// as its flag, all before `--`, then the command.
+// runCommand is the argv of one `workcell run` of command in the guest, for a session with cfg's mode and caps: `--mount` for a live export, each non-zero cap as its flag, all before `--`, then the command.
 func runCommand(cfg Config, command ...string) []string {
 	argv := []string{"run"}
 	if cfg.Mount {
@@ -130,8 +127,7 @@ func runCommand(cfg Config, command ...string) []string {
 	return append(append(argv, "--"), command...)
 }
 
-// cpioEntry writes one newc ("070701") cpio entry: a header of the magic and thirteen 8-digit hex fields, the name with its NUL, and the data, each of the last
-// two padded to four bytes. A trailer is the entry named "TRAILER!!!" with no data.
+// cpioEntry writes one newc ("070701") cpio entry: a header of the magic and thirteen 8-digit hex fields, the name with its NUL, and the data, each of the last two padded to four bytes. A trailer is the entry named "TRAILER!!!" with no data.
 func cpioEntry(w io.Writer, name string, mode uint32, data []byte) error {
 	const magic = "070701"
 	ino := uint32(1)
