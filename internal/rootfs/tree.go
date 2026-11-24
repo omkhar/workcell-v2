@@ -50,12 +50,14 @@ const (
 
 // HostFile is a regular file on the host that a File node takes its bytes from, when
 // WriteExt4File writes the image. Size, Dev and Ino are what the caller saw when it
-// looked at the file; the writer opens Path without following a final symlink and fails if
-// the file it gets is another one, or has another size.
+// looked at the file; the writer opens Path, beneath the directory open as Dir when Path is
+// relative, without following a final symlink and fails if the file it gets is another one,
+// or has another size.
 type HostFile struct {
 	Path     string
 	Size     int64 // more than zero
 	Dev, Ino uint64
+	Dir      int // the descriptor a relative Path lies beneath; an absolute Path needs none
 }
 
 // Node is one inode. Which fields count depends on Kind: Data or Source for File, Target

@@ -64,8 +64,7 @@ func lockCache(dir string, c vmm.Cache) (*os.File, error) {
 	if c.Writable {
 		how, busy = unix.LOCK_EX, "cache %s is in use by another session; wait, or run without :rw"
 	}
-	err = unix.Flock(int(f.Fd()), how|unix.LOCK_NB)
-	if err == unix.EWOULDBLOCK {
+	if err = unix.Flock(int(f.Fd()), how|unix.LOCK_NB); err == unix.EWOULDBLOCK {
 		err = fmt.Errorf(busy, c.Name)
 	}
 	if err != nil {

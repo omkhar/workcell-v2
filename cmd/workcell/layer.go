@@ -51,24 +51,16 @@ func layerArgs(layers []vmm.Layer, first rune) (args, path string) {
 func cacheArgs(caches []vmm.Cache, next rune) string {
 	var s strings.Builder
 	for i, c := range caches {
-		mode := "ro"
-		if c.Writable {
-			mode = "rw"
-		}
-		fmt.Fprintf(&s, " workcell.cache=%s:/dev/vd%c:%s", c.Name, next+rune(i), mode)
+		fmt.Fprintf(&s, " workcell.cache=%s:/dev/vd%c:%s", c.Name, next+rune(i), map[bool]string{false: "ro", true: "rw"}[c.Writable])
 	}
 	return s.String()
 }
 
 // cacheEnv points the tools of the two caches workcell knows at their directories; any other cache is mounted and sets nothing.
 func cacheEnv(caches []vmm.Cache) []string {
-	known := map[string][]string{
-		"go":  {"GOMODCACHE=/cache/go/mod", "GOCACHE=/cache/go/build"},
-		"npm": {"npm_config_cache=/cache/npm"},
-	}
 	var env []string
 	for _, c := range caches {
-		env = append(env, known[c.Name]...)
+		env = append(env, map[string][]string{"go": {"GOMODCACHE=/cache/go/mod", "GOCACHE=/cache/go/build"}, "npm": {"npm_config_cache=/cache/npm"}}[c.Name]...)
 	}
 	return env
 }

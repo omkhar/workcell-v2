@@ -92,6 +92,9 @@ func session(argv []string, caps limits, mount bool, a artifacts, allow *proxy.A
 	if err == nil && mount && within(cwd, os.TempDir()) { // the VMM's sockets would lie in the guest's view, for it to swap for a link to any host socket of the operator's (I1, I4)
 		err = fmt.Errorf("%s holds the temp directory %s, where the VMM's sockets would lie in the guest's view: set TMPDIR elsewhere or run without --mount", cwd, os.TempDir())
 	}
+	if err == nil { // the export and the live mount take this process's own directory, ".", so the name judged must still be its own (C61)
+		err = named(unix.AT_FDCWD, cwd)
+	}
 	if err != nil {
 		return result{err: err}
 	}
@@ -110,13 +113,12 @@ func session(argv []string, caps limits, mount bool, a artifacts, allow *proxy.A
 		}
 		log.Close()
 	}()
-	// A clone session copies cwd into the session directory: the image the guest gets as /workspace. The image lives in the data directory, not under TMPDIR,
-	// because a reflink only works within one filesystem and the data directory shares the home filesystem with most repositories. It is as big as the
-	// repository plus the room the guest may write, which is --disk or 1 GiB (I10). It stays when the session ends, for diff and pull.
+	// A clone session copies the directory into the session directory: the image the guest gets as /workspace. The image lives in the data directory, not under TMPDIR, because
+	// a reflink only works within one filesystem and the data directory shares the home filesystem with most repositories. It is as big as the repository plus the room the guest may write, which is --disk or 1 GiB (I10). It stays when the session ends, for diff and pull.
 	image, live := filepath.Join(dir, "workspace.ext4"), ""
 	if mount {
-		image, live = "", cwd // the record alone: the work lands in cwd itself
-	} else if st, err := workspace.Export(context.Background(), cwd, image, caps.disk()); err != nil {
+		image, live = "", "." // the record alone: the work lands in the directory itself
+	} else if st, err := workspace.Export(context.Background(), ".", image, caps.disk()); err != nil {
 		os.RemoveAll(dir)
 		return result{err: fmt.Errorf("copy %s for the guest: %w", cwd, err)}
 	} else if err = os.WriteFile(filepath.Join(dir, "inodes"), []byte(strconv.FormatUint(uint64(st.Inodes), 10)), 0o600); err != nil { // the most entries the image can ever hold, for pull (I10): written before the guest runs, so nothing it does grows it

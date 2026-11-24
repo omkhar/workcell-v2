@@ -72,19 +72,22 @@ func diff(args []string, stderr io.Writer) int {
 // source hands out the next bytes of the files, at most n and at least one, in manifest order.
 type source func(n int) ([]byte, error)
 
-// fetch boots the newest session of the current directory, asks its init for the work tree and gives use the directory dest open as root, the judged manifest and the files' bytes. A dest that holds workcell's own directory is refused first (holds). The whole tree must follow, and the Exit after it, or the result is an error. SIGINT and SIGTERM end the VM, as in run, and give a code of 128 plus the signal.
+// fetch boots the newest session of the current directory, asks its init for the work tree and gives use the directory dest open as root, the judged manifest and the files' bytes. A dest that holds workcell's own directory is refused first (holds), and so is one whose name names another directory after the judgement than the one opened (named, C61). The whole tree must follow, and the Exit after it, or the result is an error. SIGINT and SIGTERM end the VM, as in run, and give a code of 128 plus the signal.
 func fetch(dest string, use func(int, *manifest, source) error) (int, error) {
+	root, err := unix.Open(dest, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_CLOEXEC, 0)
+	if err != nil {
+		return 0, err
+	}
+	defer unix.Close(root)
 	if err := holds(dest); err != nil {
 		return 0, err
 	}
 	if within(dest, os.TempDir()) { // the VMM's sockets, of a session running now or of one begun during the pull, would lie under it, for the guest's tree to swap for a link to any host socket of the operator's (I1, I4, I7)
 		return 0, fmt.Errorf("%s holds the temp directory %s, where the VMM's sockets lie, which no pull may write over: set TMPDIR elsewhere", dest, os.TempDir())
 	}
-	root, err := unix.Open(dest, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_CLOEXEC, 0)
-	if err != nil {
+	if err := named(root, dest); err != nil {
 		return 0, err
 	}
-	defer unix.Close(root)
 	a, err := loadArtifacts()
 	if err != nil {
 		return 0, err
@@ -141,6 +144,17 @@ func fetch(dest string, use func(int, *manifest, source) error) (int, error) {
 		return 128 + int(p.sig), nil
 	}
 	return 0, err
+}
+
+// named is the error for a directory, open as dir (unix.AT_FDCWD for this process's own), that name does not name now. holds and the TMPDIR rule judge the
+// name; a guest that renamed the directory away and put a link under its name in between would have had another directory judged than the one taken (C61).
+func named(dir int, name string) error {
+	var opened, now unix.Stat_t
+	err := cmp.Or(unix.Fstatat(dir, ".", &opened, 0), unix.Stat(name, &now))
+	if err != nil || opened.Dev != now.Dev || opened.Ino != now.Ino { // a name gone for the instant is refused with the rest
+		return fmt.Errorf("%s no longer names the directory it did a moment ago: it was renamed or replaced", name)
+	}
+	return nil
 }
 
 // newest is the directory of the newest session whose repo file names dir: session directories sort by time.
@@ -307,10 +321,7 @@ func put(root int, e guest.Entry, data source) error {
 			return fmt.Errorf("remove what is there: %w", err)
 		}
 	}
-	mode, fd, rm := uint32(0o644), -1, 0
-	if e.Exec {
-		mode = 0o755
-	}
+	mode, fd, rm := map[bool]uint32{false: 0o644, true: 0o755}[e.Exec], -1, 0
 	switch e.Kind {
 	case guest.KindDir:
 		err, rm = unix.Mkdirat(pfd, name, 0o755), unix.AT_REMOVEDIR

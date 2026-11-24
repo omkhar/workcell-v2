@@ -171,11 +171,7 @@ func verify(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "usage: workcell verify [id]")
 		return 2
 	}
-	id := ""
-	if len(args) == 1 {
-		id = args[0]
-	}
-	dir, err := logSession(id)
+	dir, err := logSession(strings.Join(args, "")) // the one argument, or "" for none
 	if err != nil {
 		fmt.Fprintln(stderr, "workcell verify:", err)
 		return 2

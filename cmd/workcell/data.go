@@ -28,10 +28,9 @@ func xdgDir(env string, home ...string) (string, error) {
 	return filepath.Join(append(append([]string{h}, home...), "workcell")...), err
 }
 
-// holds is the error for a directory that holds, or lies inside, workcell's data or config directory, named: a session there would carry the
-// audit key, other sessions, their records and the images into the guest, and pull would write the guest's versions back (I7, I9, I13).
-// So is a directory that holds the VMM directory of a running session (vmm, under its TMPDIR): the sockets there would lie in the guest's
-// view, or under a pull, for the guest to swap for a link to any host socket of the operator's (I1, I4, I7). A stale record refuses nothing.
+// holds is the error for a directory that holds, or lies inside, workcell's data or config directory, named: a session there would carry the audit key, other
+// sessions, their records and the images into the guest, and pull would write the guest's versions back (I7, I9, I13). So is a directory that holds the VMM
+// directory of a running session (vmm, under its TMPDIR): the sockets there would lie in the guest's view, or under a pull, for the guest to swap for a link to any host socket of the operator's (I1, I4, I7). A stale record refuses nothing.
 func holds(dir string) error {
 	data, err := dataDir()
 	if err != nil {

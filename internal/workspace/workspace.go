@@ -32,19 +32,20 @@ type Stats struct {
 
 // Export writes the directory dir to a new file at imagePath as an ext4 image with free
 // bytes of room for the guest to write. The image is sparse, and it is removed again if
-// the export fails.
+// the export fails. dir is opened once, as given: "." is this process's own directory, whatever
+// name it bears by then, and every file's bytes are taken beneath that one descriptor (C61).
 func Export(ctx context.Context, dir, imagePath string, free int64) (st Stats, err error) {
-	root, err := filepath.Abs(dir)
+	root, err := filepath.Abs(dir) // the name, for messages
 	if err != nil {
 		return st, err
 	}
-	fd, err := unix.Open(root, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_CLOEXEC, 0)
+	fd, err := unix.Open(dir, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_CLOEXEC, 0)
 	if err != nil {
 		return st, fmt.Errorf("open %s: %w", root, err)
 	}
+	defer unix.Close(fd)
 	img, err := os.OpenFile(imagePath, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0o600)
 	if err != nil {
-		_ = unix.Close(fd)
 		return st, err
 	}
 	defer func() {
@@ -54,20 +55,22 @@ func Export(ctx context.Context, dir, imagePath string, free int64) (st Stats, e
 	}()
 	var self unix.Stat_t // the image may lie inside dir; it is not part of the export
 	if err := unix.Fstat(int(img.Fd()), &self); err != nil {
-		_ = unix.Close(fd)
 		return st, err
 	}
-	w := &walker{ctx: ctx, root: root, tree: rootfs.NewTree(), self: self, links: map[[2]uint64]string{}}
+	w := &walker{ctx: ctx, root: root, base: fd, tree: rootfs.NewTree(), self: self, links: map[[2]uint64]string{}}
 	var rs unix.Stat_t
 	if err := unix.Fstat(fd, &rs); err != nil {
-		_ = unix.Close(fd)
 		return st, err
 	}
 	w.tree.Lookup("/").Mode = uint32(rs.Mode) & 0o7777
-	if err := w.dir(fd, ""); err != nil {
-		return st, err
+	top, err := unix.Dup(fd) // the walk closes the descriptor it is given; fd stays open for the writer
+	if err == nil {
+		err = w.dir(top, "")
 	}
-	if err := w.tree.WriteExt4File(img, time.Now(), free); err != nil {
+	if err == nil {
+		err = w.tree.WriteExt4File(img, time.Now(), free)
+	}
+	if err != nil {
 		return st, err
 	}
 	return Stats{w.files, w.bytes, w.tree.Inodes}, nil
@@ -75,7 +78,8 @@ func Export(ctx context.Context, dir, imagePath string, free int64) (st Stats, e
 
 type walker struct {
 	ctx   context.Context
-	root  string
+	root  string // the export's name, for messages
+	base  int    // the export itself, open: the writer opens each file beneath it, never by the name again
 	tree  *rootfs.Tree
 	self  unix.Stat_t
 	links map[[2]uint64]string // (device, inode) of a file with more than one name, to its first path
@@ -115,14 +119,13 @@ func (w *walker) entry(fd int, rel, name string) error {
 	n := rootfs.Node{Mode: uint32(st.Mode) & 0o7777}
 	switch uint32(st.Mode) & unix.S_IFMT {
 	case unix.S_IFDIR:
+		n.Kind = rootfs.Dir
+		if err := w.tree.Put(p, n); err != nil {
+			return err
+		}
 		cfd, err := unix.Openat(fd, name, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
 		if err != nil {
 			return fmt.Errorf("open %q: %w", host, err)
-		}
-		n.Kind = rootfs.Dir
-		if err := w.tree.Put(p, n); err != nil {
-			_ = unix.Close(cfd)
-			return err
 		}
 		return w.dir(cfd, p)
 	case unix.S_IFLNK:
@@ -143,7 +146,7 @@ func (w *walker) entry(fd int, rel, name string) error {
 		}
 		n.Kind = rootfs.File
 		if st.Size > 0 {
-			n.Source = &rootfs.HostFile{Path: host, Size: st.Size, Dev: uint64(st.Dev), Ino: uint64(st.Ino)}
+			n.Source = &rootfs.HostFile{Path: p[1:], Size: st.Size, Dev: uint64(st.Dev), Ino: uint64(st.Ino), Dir: w.base}
 			w.bytes += st.Size
 		}
 	default:
