@@ -49,6 +49,8 @@ var All = append([]Test{
 	{ID: "I4", Name: "rebind-mapped-loopback-forward", Probe: rebindProbe, Host: rebindJudge(rebind{aaaa: []string{"::ffff:127.0.0.1"}, canary: "127.0.0.1", names: []string{"mapped.escape.test."}}), Want: rebindingMapped},
 	// The answer is a public address on a network the host itself holds, in the session's own network (sandbox.IsolatedNet): no range set aside catches it, and the canary there is the host itself, or its neighbour on that network.
 	{ID: "I4", Name: "rebind-host-network-forward", Probe: rebindProbe, Host: rebindJudge(rebind{canary: "neighbour"}), Want: rebindingOwn}, {ID: "I4", Name: "rebind-host-network-sni", Probe: rebindProbe, Host: rebindJudge(rebind{canary: "neighbour", sni: true}), Want: rebindingOwnSNI},
+	// The same neighbour, with the host's own address held as a /32 and the prefix around it on-link through a route alone, as a cloud NIC or a DHCP classless route lays it out (sandbox.Config.OnLink): no interface prefix holds the neighbour, and it is the host's LAN still.
+	{ID: "I4", Name: "rebind-on-link-neighbour-forward", Probe: rebindProbe, Host: rebindJudge(rebind{canary: "neighbour"}), Want: rebindingOnLink},
 	// DNS for a name no policy allows, sent past the guest's resolver straight to a host-side capture: as plain DNS, as DoT, as DoH, and as a tunnel.
 	{ID: "I3", Name: "direct-resolver-udp4", Probe: dnsUDPProbe, Host: dnsCanary(dnsOverUDP, queried)}, {ID: "I3", Name: "direct-resolver-tcp4", Probe: dnsTCPProbe, Host: dnsCanary(dnsOverTCP(false), queried)},
 	{ID: "I3", Name: "dot-tcp4", Probe: dotProbe, Host: dnsCanary(dnsOverTCP(true), queried)}, {ID: "I3", Name: "doh-post-tcp4", Probe: dohProbe(http.MethodPost), Host: dnsCanary(dnsOverHTTPS, queried)},

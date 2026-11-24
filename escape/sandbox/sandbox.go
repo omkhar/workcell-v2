@@ -44,6 +44,8 @@ type Config struct {
 	Resolver string
 	// Isolated, on Linux, runs the host side in a network namespace of its own with one address and no way out, so nothing leaves the test host (T8, S12). It needs Resolver.
 	Isolated bool
+	// OnLink, with Isolated, lays that network out as a cloud NIC's (Linux only): the host's own address alone on the device, as a /32, with the prefix around it on-link through a route in the main table alone (suite.Hold).
+	OnLink bool
 	// Roots is a PEM bundle the host side trusts upstream, as SSL_CERT_FILE: the suite's own authority.
 	Roots string
 	// Secret is a credential bound to one allowed name; nil for none.
@@ -56,8 +58,7 @@ type Config struct {
 	Head bool
 }
 
-// Secret is one [[secret]] entry: Value, bound to Host, goes in Header; the guest sees only a placeholder in Env (A4, I5, I6). Method and Path narrow the binding, Repos scopes it to `owner/name` repositories as a git credential is. Source, when set, names the product's own source instead of a file holding
-// Value: `signin:<host><path>` is a sign-in flow. Control stages Value itself, and nothing for a sign-in row.
+// Secret is one [[secret]] entry: Value, bound to Host, goes in Header; the guest sees only a placeholder in Env (A4, I5, I6). Method and Path narrow the binding, Repos scopes it to `owner/name` repositories as a git credential is. Source, when set, names the product's own source instead of a file holding Value: `signin:<host><path>` is a sign-in flow. Control stages Value itself, and nothing for a sign-in row.
 type Secret struct {
 	Name, Value, Host, Header, Env, Method, Path, Source string
 	Repos                                                []string
@@ -182,8 +183,7 @@ func LoopbackHolds(ip string) error {
 	return fmt.Errorf("%s is not an address of the host's loopback interface, which its setup must hold", ip)
 }
 
-// A session's own network (Config.Isolated) is AS112 space (RFC 7534): global unicast that the product's vetting accepts and no operator's, and nothing sent to it leaves the host (T8, S12). There the test host holds IsolatedNet on its loopback device, so Neighbour lies on a network of the host's own, and the judge's canaries listen at CanaryAddr, outside that prefix, which a local route alone
-// makes the host's: a product that dials only off the host's networks reaches them still.
+// A session's own network (Config.Isolated) is AS112 space (RFC 7534): global unicast that the product's vetting accepts and no operator's, and nothing sent to it leaves the host (T8, S12). There the test host holds IsolatedNet on its loopback device, so Neighbour lies on a network of the host's own, and the judge's canaries listen at CanaryAddr, outside that prefix, which a local route alone makes the host's: a product that dials only off the host's networks reaches them still.
 const IsolatedNet, Neighbour, CanaryAddr = "192.175.48.1/25", "192.175.48.2", "192.175.48.129"
 
 // placed is addr with "host" or "neighbour" replaced: where the judge's canaries listen, or an address on a network the test host holds, in the network the product reaches the test host in. In a session's own network (isolated) those are CanaryAddr and Neighbour; in the host's own, both are HostAddr.
