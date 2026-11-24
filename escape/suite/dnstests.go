@@ -23,8 +23,7 @@ import (
 
 // The I3 probes send a DNS query for a name no policy can allow straight to a listener the judge started on the host, bypassing whatever resolver the guest was given: over plain UDP and TCP, inside TLS (DoT, RFC 7858) and inside HTTPS (DoH, RFC 8484), and as a tunnel that carries data out in the labels. A query that arrives is the proof; the guest's word is not. Every probe is given a literal address and never looks a name up.
 
-// dnsName is the name the guest asks for: unique per run, never allowed.
-func dnsName(token string) string { return token + ".invalid." }
+func dnsName(token string) string { return token + ".invalid." } // dnsName is the name the guest asks for: unique per run, never allowed.
 
 // dnsUDPProbe sends an A query for the token's name as one datagram to args[0].
 func dnsUDPProbe(args []string) Result {
@@ -289,8 +288,7 @@ func dnsOverHTTPS(addr string, got func(dnsQuestion)) (string, func(), error) {
 			got(q)
 		}
 		w.WriteHeader(http.StatusOK)
-	}),
-	}
+	})}
 	var wg sync.WaitGroup // stop refuses new connections, waits for handlers in flight (each bounded by ReadTimeout) and only then returns, so that every query that arrived has been reported. Close is the backstop should Shutdown give up.
 	wg.Go(func() { srv.ServeTLS(ln, "", "") })
 	return ln.Addr().String(), func() {

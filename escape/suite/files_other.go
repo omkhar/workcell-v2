@@ -5,8 +5,7 @@
 
 package suite
 
-// The device, mount, handle and fork probes run only in a Linux guest.
-func deviceProbe([]string) Result    { return linuxOnly("device") }
+func deviceProbe([]string) Result    { return linuxOnly("device") } // The device, mount, handle and fork probes run only in a Linux guest.
 func mountProbe([]string) Result     { return linuxOnly("mount") }
 func handleProbe([]string) Result    { return linuxOnly("handle") }
 func forkProbe([]string) Result      { return linuxOnly("fork") }

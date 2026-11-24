@@ -90,9 +90,7 @@ func pins(version, url string, artifact []byte, released int64) map[string]map[s
 	sum := sha256.Sum256(artifact)
 	return map[string]map[string]pin{pinName: {runtime.GOARCH: {Version: version, URL: url, SHA256: hex.EncodeToString(sum[:]), Released: released}}}
 }
-
-// artifact is a provider binary as far as the judge cares: bytes naming their label, long enough to cut short.
-func artifact(label string) []byte { return bytes.Repeat([]byte("escape artifact "+label+"\n"), 256) }
+func artifact(label string) []byte { return bytes.Repeat([]byte("escape artifact "+label+"\n"), 256) } // artifact is a provider binary as far as the judge cares: bytes naming their label, long enough to cut short.
 
 // upstream is one server on the test host's loopback, HTTPS under cfg or plain HTTP without one, answering each path as set and recording every path asked for.
 type upstream struct {
@@ -119,8 +117,7 @@ func serve(cfg *tls.Config) (*upstream, error) {
 			return
 		}
 		h(w, r)
-	}),
-	}
+	})}
 	u.stop = func() { srv.Close() }
 	if cfg == nil {
 		go srv.Serve(ln)
@@ -156,9 +153,7 @@ func cut(b []byte) http.HandlerFunc {
 func moved(url string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) { http.Redirect(w, r, url, http.StatusFound) }
 }
-
-// idleProbe is the probe of a test the guest plays no part in.
-func idleProbe([]string) Result { return Result{Status: "idle", Detail: "this test runs on the host"} }
+func idleProbe([]string) Result { return Result{Status: "idle", Detail: "this test runs on the host"} } // idleProbe is the probe of a test the guest plays no part in.
 
 // channel is a judge's channel: an HTTPS server under the suite's authority serving channel.json and the artifacts it pins, a listener beside it that is not HTTPS, the one key the client trusts, and the honest manifest published first, m, pinning 1.0.0 as the artifact good.
 type channel struct {

@@ -264,27 +264,19 @@ func planted(ctx context.Context, s Session) (bool, string, error) {
 
 // The I13 tests bring a workcell.toml, in the export before the session starts, that tries to widen the session's policy. Each reuses the probe and the judge of the invariant the widening would break. One narrows instead, so that a product which never reads the file is told apart from one that honours it.
 var (
-	// widened allows one name at user level; the repository allows the other.
-	widened = repoPolicy(Want{Workspace: true, Allow: []string{"bound.escape.test"}, Deny: []string{"other.escape.test"}, Resolver: judgeResolver, Isolated: true, Secret: true}, "", "[network]\nallow = [\"bound.escape.test\", \"other.escape.test\"]\n")
-	// respelled allows the other name as the user did not spell it: in capitals, with a trailing dot, by wildcard, as a forward port.
-	respelled = repoPolicy(widened, "", "[network]\nallow = [\"bound.escape.test\", \"OTHER.escape.test\", \"other.escape.test.\", \"*.escape.test\", \"other.escape.test:443\"]\n")
-	linked    = repoPolicy(widened, "link", widened.Policy) // widened through a symbolic link to a file beside the export, outside the repository
-	// narrowing allows both names at user level; the repository allows only the bound one.
-	narrowing = repoPolicy(withSecret, "", "[network]\nallow = [\"bound.escape.test\"]\n")
-	// rebound binds the user's secret, in the repository's policy, to the other allowed name as well.
-	rebound = repoPolicy(withSecret, "", "[[secret]]\nname = \"escape\"\nsource = \"file:/etc/hostname\"\nhost = \"other.escape.test\"\nheader = \"x-api-key\"\n")
-	// lifted repeats the user's narrowed secret without its method and path.
-	lifted = repoPolicy(narrowed, "", "[[secret]]\nname = \"escape\"\nsource = \"file:/etc/hostname\"\nhost = \"bound.escape.test\"\nheader = \"x-api-key\"\n")
-	// rewired repeats the user's secret with another header and a host file as its source.
-	rewired = repoPolicy(withSecret, "", "[[secret]]\nname = \"escape\"\nsource = \"file:/etc/hostname\"\nhost = \"bound.escape.test\"\nheader = \"authorization\"\n")
-	mounted = repoPolicy(exported, "", "[workspace]\nmode = \"mount\"\n") // the user's tree live in the guest instead of a clone
-	piped   = repoPolicy(exported, "fifo", "")                            // a workcell.toml no one will ever write to: a read of it never returns
-	// uncapped asks for more than the user's caps.
-	uncapped = repoPolicy(Want{Workspace: true, CPUs: capped.CPUs, MemoryMiB: capped.MemoryMiB, DiskMiB: capped.DiskMiB}, "", "[resources]\ncpus = 8\nmemory = \"4GiB\"\ndisk = \"20GiB\"\n")
+	widened   = repoPolicy(Want{Workspace: true, Allow: []string{"bound.escape.test"}, Deny: []string{"other.escape.test"}, Resolver: judgeResolver, Isolated: true, Secret: true}, "", "[network]\nallow = [\"bound.escape.test\", \"other.escape.test\"]\n") // widened allows one name at user level; the repository allows the other.
+	respelled = repoPolicy(widened, "", "[network]\nallow = [\"bound.escape.test\", \"OTHER.escape.test\", \"other.escape.test.\", \"*.escape.test\", \"other.escape.test:443\"]\n")                                                                           // respelled allows the other name as the user did not spell it: in capitals, with a trailing dot, by wildcard, as a forward port.
+	linked    = repoPolicy(widened, "link", widened.Policy)                                                                                                                                                                                                    // widened through a symbolic link to a file beside the export, outside the repository
+	narrowing = repoPolicy(withSecret, "", "[network]\nallow = [\"bound.escape.test\"]\n")                                                                                                                                                                     // narrowing allows both names at user level; the repository allows only the bound one.
+	rebound   = repoPolicy(withSecret, "", "[[secret]]\nname = \"escape\"\nsource = \"file:/etc/hostname\"\nhost = \"other.escape.test\"\nheader = \"x-api-key\"\n")                                                                                           // rebound binds the user's secret, in the repository's policy, to the other allowed name as well.
+	lifted    = repoPolicy(narrowed, "", "[[secret]]\nname = \"escape\"\nsource = \"file:/etc/hostname\"\nhost = \"bound.escape.test\"\nheader = \"x-api-key\"\n")                                                                                             // lifted repeats the user's narrowed secret without its method and path.
+	rewired   = repoPolicy(withSecret, "", "[[secret]]\nname = \"escape\"\nsource = \"file:/etc/hostname\"\nhost = \"bound.escape.test\"\nheader = \"authorization\"\n")                                                                                       // rewired repeats the user's secret with another header and a host file as its source.
+	mounted   = repoPolicy(exported, "", "[workspace]\nmode = \"mount\"\n")                                                                                                                                                                                    // the user's tree live in the guest instead of a clone
+	piped     = repoPolicy(exported, "fifo", "")                                                                                                                                                                                                               // a workcell.toml no one will ever write to: a read of it never returns
+	uncapped  = repoPolicy(Want{Workspace: true, CPUs: capped.CPUs, MemoryMiB: capped.MemoryMiB, DiskMiB: capped.DiskMiB}, "", "[resources]\ncpus = 8\nmemory = \"4GiB\"\ndisk = \"20GiB\"\n")                                                                 // uncapped asks for more than the user's caps.
 )
 
-// repoPolicy is w with the repository's policy in the shape.
-func repoPolicy(w Want, shape, policy string) Want { w.Shape, w.Policy = shape, policy; return w }
+func repoPolicy(w Want, shape, policy string) Want { w.Shape, w.Policy = shape, policy; return w } // repoPolicy is w with the repository's policy in the shape.
 
 // PlantPolicy puts the repository's policy in the export ws before the session starts, in the shape w.Shape names: "" a plain file, "link" a symbolic link to a file beside the export (where the host, not the guest, can follow it), "fifo" a named pipe no one writes. The host must start, or refuse, within the test's time whatever the shape (SPEC I13, I10).
 func PlantPolicy(ws string, w Want) error {

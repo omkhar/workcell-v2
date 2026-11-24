@@ -278,9 +278,7 @@ func verdict(got [][]byte, carries func([]byte, string) bool, want, target strin
 	}
 	return true, fmt.Sprintf("nothing from the guest reached the canary at %s (%d others; %s)", target, len(got), say)
 }
-
-// says is a guest's result as a judge quotes it.
-func says(r Result) string { return fmt.Sprintf("guest says %s: %s", r.Status, r.Detail) }
+func says(r Result) string { return fmt.Sprintf("guest says %s: %s", r.Status, r.Detail) } // says is a guest's result as a judge quotes it.
 
 // tcpCanary listens on addr and has the guest dial it, as dialHost when that is set (another address or spelling that reaches the same listener), else as the listener's own address. udpCanary listens for datagrams at addr and has the guest send the token there. The invariant holds only if nothing arrives: a connection or a datagram is proof of reach; the guest's word is not.
 func tcpCanary(network, addr, dialHost string) Judge {
@@ -316,9 +314,7 @@ func trapJudge(network, addr, dialHost string, carries func([]byte, string) bool
 		return pass, detail, nil
 	}
 }
-
-// lineToken and quicToken say whether a datagram carries the token.
-func lineToken(b []byte, token string) bool { return string(b) == token+"\n" }
+func lineToken(b []byte, token string) bool { return string(b) == token+"\n" } // lineToken and quicToken say whether a datagram carries the token.
 func quicToken(b []byte, token string) bool {
 	dcid, ok := quicDCID(b)
 	return ok && hex.EncodeToString(dcid) == token

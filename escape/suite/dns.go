@@ -14,8 +14,7 @@ import (
 
 const dnsTypeA, dnsTypeCNAME, dnsTypePTR, dnsTypeTXT, dnsTypeAAAA, dnsTypeOPT, dnsTypeANY, dnsClassIN, dnsRcodeRefused, maxLabel, maxName = 1, 5, 12, 16, 28, 41, 255, 1, 5, 63, 255
 
-// Response codes (RFC 1035 section 4.1.1), as the resolver probes name them.
-var rcodeNames = map[uint16]string{0: "noerror", 1: "formerr", 2: "servfail", 3: "nxdomain", 4: "notimp", 5: "refused"}
+var rcodeNames = map[uint16]string{0: "noerror", 1: "formerr", 2: "servfail", 3: "nxdomain", 4: "notimp", 5: "refused"} // Response codes (RFC 1035 section 4.1.1), as the resolver probes name them.
 
 // dnsQuestion is the one question of a query.
 type dnsQuestion struct {

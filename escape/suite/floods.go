@@ -20,11 +20,9 @@ import (
 	"time"
 )
 
-// capped is the sandbox the I10 tests want: each judge holds the host to these caps, with slack, while the probe asks for twice as much.
-var capped = Want{CPUs: 1, MemoryMiB: 256, DiskMiB: 64}
+var capped = Want{CPUs: 1, MemoryMiB: 256, DiskMiB: 64} // capped is the sandbox the I10 tests want: each judge holds the host to these caps, with slack, while the probe asks for twice as much.
 
-// cappedLive is capped in mount mode: a write inside the live export lands on the host's disk, where the cap must hold.
-var cappedLive = Want{Workspace: true, Mount: true, CPUs: capped.CPUs, MemoryMiB: capped.MemoryMiB, DiskMiB: capped.DiskMiB}
+var cappedLive = Want{Workspace: true, Mount: true, CPUs: capped.CPUs, MemoryMiB: capped.MemoryMiB, DiskMiB: capped.DiskMiB} // cappedLive is capped in mount mode: a write inside the live export lands on the host's disk, where the cap must hold.
 
 const (
 	forkCount   = 256             // processes the fork probe makes at once: about 50 MiB of page tables, stacks and slab, which a 256 MiB guest holds without thrashing

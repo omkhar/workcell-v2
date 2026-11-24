@@ -39,8 +39,7 @@ var deniedLookups = []lookup{{"d", "A:" + deniedName, "refused"}, {"i", "A:TOKEN
 var bothLookups = []lookup{allowedLookups[0], deniedLookups[0], deniedLookups[1]}
 var nothingLookups = []lookup{{"a", "A:" + allowedName, "refused"}, {"d", "A:" + deniedName, "refused"}}
 
-// reachable is the sandbox the resolver rows want: one allowed name and one denied, both of which the host resolver is to know of.
-var reachable = Want{Allow: []string{"allowed.escape.test"}, Deny: []string{"denied.escape.test"}}
+var reachable = Want{Allow: []string{"allowed.escape.test"}, Deny: []string{"denied.escape.test"}} // reachable is the sandbox the resolver rows want: one allowed name and one denied, both of which the host resolver is to know of.
 var queryTypes = map[string]uint16{"A": dnsTypeA, "AAAA": dnsTypeAAAA, "TXT": dnsTypeTXT, "PTR": dnsTypePTR, "ANY": dnsTypeANY}
 
 // resolverAddr turns the target the judge named into an address: the first nameserver of the guest's /etc/resolv.conf at port 53, or a literal.

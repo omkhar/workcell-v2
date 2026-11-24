@@ -53,8 +53,7 @@ func TestVerdict(t *testing.T) {
 	}
 }
 
-// relayAt is a host whose relay the guest reaches at one address.
-type relayAt struct{ idle }
+type relayAt struct{ idle } // relayAt is a host whose relay the guest reaches at one address.
 
 func (relayAt) Relay(context.Context) (sandbox.Channel, error) {
 	return sandbox.Channel{Addr: "unix:/nowhere/relay"}, nil
@@ -102,8 +101,7 @@ func TestTCPCanaryJudge(t *testing.T) {
 			c.Close()
 		}
 		return Result{Status: "connected-closed", Detail: "no token"}
-	}, false},
-	}
+	}, false}}
 	for _, c := range cases {
 		pass, detail, err := judge(ctx, guest(c.run))
 		if err != nil || pass != c.pass {

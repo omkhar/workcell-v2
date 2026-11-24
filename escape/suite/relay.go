@@ -38,9 +38,7 @@ func relayHeader(version, proto byte, ip net.IP, port uint16) []byte {
 	}
 	return append(h, ip16...)
 }
-
-// framed is a datagram as the relay carries it on a UDP stream: a two-byte big-endian length, then the bytes.
-func framed(b []byte) []byte { return append([]byte{byte(len(b) >> 8), byte(len(b))}, b...) }
+func framed(b []byte) []byte { return append([]byte{byte(len(b) >> 8), byte(len(b))}, b...) } // framed is a datagram as the relay carries it on a UDP stream: a two-byte big-endian length, then the bytes.
 
 // relayProbe dials the host end of the relay at args[1] afresh and speaks the header itself. The kinds tcp, udp, version-N and proto-N name args[2], a canary, as the destination and send the token args[3] behind the header; short and slow send part of a header and wait for the host to drop the stream.
 func relayProbe(args []string) Result {

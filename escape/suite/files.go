@@ -14,14 +14,11 @@ import (
 	"syscall"
 )
 
-// exported is the sandbox the I1 and I7 tests want: a workspace export.
-var exported = Want{Workspace: true}
+var exported = Want{Workspace: true} // exported is the sandbox the I1 and I7 tests want: a workspace export.
 
-// live is the sandbox the mount-mode I1 tests want: the export served live (`--mount`, A5).
-var live = Want{Workspace: true, Mount: true}
+var live = Want{Workspace: true, Mount: true} // live is the sandbox the mount-mode I1 tests want: the export served live (`--mount`, A5).
 
-// residueDirs are the places a guest writes that another guest must not see.
-var residueDirs = []string{"/tmp", "/var/tmp", "/dev/shm", "/root", "/run"}
+var residueDirs = []string{"/tmp", "/var/tmp", "/dev/shm", "/root", "/run"} // residueDirs are the places a guest writes that another guest must not see.
 
 // target is what an I1 probe gets: where the guest sees its export, and the host path, inode and content of a secret the judge planted beside it. An attacker knows the host's layout; the invariant must hold anyway.
 type target struct {
@@ -133,9 +130,7 @@ func tryRead(path string) string {
 	}
 	return strconv.Quote(line)
 }
-
-// tryWrite creates the file and says whether it could.
-func tryWrite(path string) string { return status(os.WriteFile(path, []byte("escape\n"), 0o644)) }
+func tryWrite(path string) string { return status(os.WriteFile(path, []byte("escape\n"), 0o644)) } // tryWrite creates the file and says whether it could.
 
 // short is an error as the underlying errno or a few words, so that several fit one result line.
 func short(err error) string {
