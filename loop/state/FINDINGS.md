@@ -5982,3 +5982,37 @@ or above, and S-1017 will mark itself `[!]` and stop the loop for the maintainer
 same, since S7 wants every medium fixed before cutover. Sweep 3 so far: one medium (C65, open) and one low (C64, fixed).
 No model declined and no safeguard re-ran a request in the auditor, the redteam or the verifier, and no tool permission
 was refused to any of them.
+
+C65 FIXED by S-F48, commits 02875a5 (the test moved) and af4909d (the fix) (PR #305). holds() in cmd/workcell/data.go
+now reads /proc/self/mountinfo after its data and config refusal and before it reads the sessions, and refuses a
+directory that holds any mount point strictly beneath it, for run's working directory and for pull's destination alike:
+"<dir> holds a mount at <mount point>, which may be a second name of workcell's own directory <data directory> or of
+another tree no session may see: unmount it or use another directory". The mount point is compared by prefix with the
+resolved directory, after the kernel's octal escapes for a space, tab, newline and backslash are decoded. The builder
+chose every mount point over only one whose root is workcell's own: a mount's root and device do not tell a bindfs,
+overlayfs or FUSE alias apart, the pull writer can no longer write beneath a sub-mount in any case, and the wider
+refusal also covers the unexpressed variants where the config directory, TMPDIR or a running session's VMM directory is
+the tree mounted beneath the working directory. Its price is that a benign sub-mount, such as a tmpfs node_modules or a
+volume inside the working tree, is refused by name; a working tree that is itself a mount point is not. macOS has no
+such file, so nothing is listed and nothing refused there, which is the stub the unit asked for at no line. The three
+openat2 masks of cmd/workcell/pull_linux.go carry RESOLVE_NO_XDEV, so put() stops with EXDEV at a mount point beneath
+the destination and writes nothing through it. Paid by joined comment lines in data.go, pull_linux.go, run_vm.go,
+session.go and cache_vm.go: product stays at 15000 of 15000, test at 28491 of 28500. The redteam's move kept the test at
+72 lines and made a bind mount that fails with anything but EPERM fail the test, where before it fell through and ran
+against no layout. Evidence. Before the fix, as root in the cloud session (redteam, orchestrator, and the reviewer in a
+worktree of main): both arms fail, plain and -race, with the key minted, the session at boot, the image holding the
+other session's record and the pull writer's bytes in the host's firecracker and the other session's audit.log. On
+af4909d: both arms pass without skipping, plain and -race (builder, orchestrator, reviewer), with the C19, C28, C29 and
+C52 tests and cmd/workcell, internal/workspace and internal/fileserve under -race; loop/gate.sh GATE PASS. Hosted on
+af4909d: gate (288 s as a check, GATE PASS in 268 s, a real VM), gate-macos, gate-arm64 and guard green; the suite
+passed 146, failed 0, errors 0, the six I1 mount rows, the two I10 mount rows and the seven I8 pull rows among them. The
+hosted log runs go test without -v, so it shows the package line of cmd/workcell and not the test by name: that it did
+not skip there rests on the same job's own passwordless sudo in its KVM step, the one condition under which the test
+re-runs itself as root, where a failure of the child fails the test. The review, one round, had no finding; the reviewer
+also probed a mount point with a space in its name, a working directory reached through a link and through "./", a
+working directory that is itself a tmpfs (not refused), and the pull writer into a destination that is itself a mount
+point (written) and at a sub-mount beneath it (EXDEV, nothing written). Not closed, and parked: the export walker and
+the file service's child() still cross a mount made after holds() judged, since both open by plain openat and product
+had no line for an openat2 there, and no section 2 attacker makes a host mount; the reverse layout, the working
+directory mounted inside the data directory, passes holds() as before. Sweep 3 now stands at one medium (C65, fixed) and
+one low (C64, fixed). Not S14: no file involved is ported, and none is someone else's project.
