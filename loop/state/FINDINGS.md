@@ -6524,3 +6524,37 @@ What is left: a spelling of the key names that is neither ASCII, UTF-16 nor UTF-
 would have to offer on request), an answer that carries the token under other key names, and a token in a
 response header or trailer, which hide does not scan (parked at S-1005). None has a reproduction.
 Sweep 3 now stands at four mediums (C65, C66 and C67, fixed; C68, open) and one low (C64, fixed).
+
+C68 FIXED by S-F51, commits 8169b5b (the test moved), dc91d44 (the fix) and e702890 (the review's fix round)
+(PR #310). also in v1 main: egressproxy/terminate.go. admits in internal/proxy/terminate.go now takes the request's
+headers too, and a rule that narrows (method, path or repos set) refuses with 403 binding_mismatch, before the
+broker is asked, a request that names a routing override: any of x_http_method_override, x_http_method,
+x_method_override, x_original_url, x_rewrite_url or _method, as a header name or as a query parameter name, in
+any letter case and any mix of "-" and "_", with any value, none, or several. The names are in one package-level
+list, overrides, read through cgiName, which spells a name as a CGI-style server spells a header. The refusal was
+chosen over stripping: it is less code and it keeps docs/policy.md true as written ("any other request gets a
+403, and the value is not read"), so that file is unchanged. A rule that does not narrow is as before. Net product
+lines: 2 (terminate.go 498 to 500), after three joined comment pairs, one comment moved to the end of its line and
+the ExcludedIPRanges literal folded to one line; product 14996 of 15000, test 28490 of 28494.
+The review round found two more readings (I5, the attacker of C68, each run on dc91d44 under a rule for POST
+/v1/). The underscore spelling: Go's header canonicalisation leaves "_" alone, so `X_HTTP_Method_Override: DELETE`,
+`X-HTTP_Method-Override: DELETE` and `X_Original_URL: /v2/admin` were not found by a lookup of the five names and
+crossed, and a server that maps header names the CGI way (RFC 3875 4.1.18; Puma, Unicorn and WEBrick under
+Rack::MethodOverride) reads each as the same variable: 200 with the real secret as DELETE /v1/x and POST /v2/admin.
+The query string: `POST /v1/x?_method=DELETE` and `?X-HTTP-Method-Override=DELETE` were served with the real secret
+where the framework reads a request parameter (Spring's HiddenHttpMethodFilter, ASP.NET MVC's HttpMethodOverride).
+The fix round judges every header name and every decoded query parameter name of the request against the list,
+a ";" in the query read as "&" so that a pair Go would drop is judged too, and c68_test.go gained two rows (the
+underscore header, the _method parameter) and an upstream that honours them: twelve rows now, where the accept
+line counted ten. With the fix round's test the two new rows fail on dc91d44 and all twelve pass on e702890, plain
+and under -race; with main's terminate.go the six claim rows fail and the four control rows pass (the orchestrator
+ran both by go test and by go test -overlay).
+What is left, none with a reproduction: an override in a body the proxy does not read (`_method` or the header's
+name as a form field, which Rack, Spring, ASP.NET MVC and Symfony all read on a POST); a query pair whose value
+fails percent-decoding (`?_method=DEL%ZZ`), which url.ParseQuery drops and a lenient framework might still read;
+ASP.NET's `%uXXXX` form in a parameter name; PHP's reading of ".", a space or an unmatched "[" in a parameter name
+as "_" (`?.method=DELETE` is `_method` to Symfony); and an override under a name outside the list, the redteam's
+X-Forwarded-Prefix, X-Forwarded-Path and X-Forwarded-Uri among them (PARKED.md weighs them). What it costs an honest
+client: a request under a narrowed rule that carries one of these names, as a header or a query parameter, with
+the placeholder is answered 403, and the answer names the binding and not the header.
+Sweep 3 now stands at four mediums (C65, C66, C67 and C68, all fixed) and one low (C64, fixed).
