@@ -5587,3 +5587,165 @@ Sweep 3 audits every surface again, as built after those fixes, in a fresh conte
 allows: it ends Phase 10 if it confirms nothing at medium or above; otherwise S-1017 is marked `[!]` and the loop stops
 for the maintainer, because a third sweep that still confirms a medium is a design problem and not another patch. The
 next candidate number is C64.
+
+## S-1002, sweep 3: host-guest channel, guest init, supervisor lifecycle (I7, I10, I12), as built at main b87f8bd
+
+Sweep 3 (S8), the last the SPEC allows, fresh context (S3), the whole surface read as built after S-F1 to S-F46, not a
+diff. Auditor on the top tier in the cloud session, which has no hypervisor; what needs a VM runs on the unit's pull
+request. The auditor wrote its own trust boundary before it opened any earlier record.
+
+Trust boundary. The supervisor (`workcell run`, `pull`, `diff`, `bench`; the operator's uid) owns the VM child
+(Firecracker, Pdeathsig SIGKILL, Setpgid, the forking thread's CPU affinity cut to --cpus), the in-process proxy, resolver
+and broker, the audit log and host key, the session directory, the data directory's layer markers (through
+installer.fail), the operator's terminal in raw mode, the pull destination and the mount export (each held as a
+descriptor). Attacker bytes enter at six points. (1) vsock 5000, one connection (once): wire frames (6-byte header,
+version 1, length at most 64 KiB checked before allocation, 5 s per frame once begun, read through bufio, every error
+sticky); Stdout and Stderr coalesced and paced to the seat, Ack (4 bytes), Exit (2 to 257 bytes, Err printed %q), and on
+pull Entry, Data and Exit through manifest.add, checkPath, fold, put (openat2 RESOLVE_BENEATH and NO_SYMLINKS beneath the
+destination descriptor) and compare; what they can change: the exit code, terminal bytes, the `first` flag that drives
+installer.fail only inside fresh, and bytes under the destination. (2) vsock 5001, many connections (1024 slots on the
+host, 1023 in Firecracker): a 20-byte header within 5 s, then TCP bytes to the proxy or a 2-byte-framed DNS query to the
+resolver; what they can change: audit Notes (soft 8 MiB) and dials to allowlisted names. (3) vsock 5002 under --mount
+only, one connection: raw FUSE requests to internal/fileserve (16 workers, 4096 descriptors, 2^17 nodes, growth charged
+to --disk). (4) The serial console, through a paced pipe into a 4 KiB tail, printed sanitised only when a boot fails.
+(5) Guest-written disks: workspace.ext4 (never mounted on the host, booted again for pull), rw caches (attached to later
+guests only by the operator's own --cache), tmpfs (guest RAM). (6) The repository: exported by a descriptor walk, its
+cwd judged by holds and within and then compared by named() against ".", which is what is used. Host-written and out of
+the guest's reach: lock (pid), repo, vmm, inodes, the markers, the attach socket (0700 directory, same uid),
+firecracker.json and the kernel command line. No file of this surface carries `// Ported from v1` (the markers are in
+internal/proxy/{proxy,terminate,allowlist}.go, internal/secret/{broker,source}.go, internal/audit/lines.go and three
+tests), so nothing here falls under S14.
+
+Lenses (S9). Parsing and resources: readFrame clears the deadline only when nothing is buffered, arms it once at the
+first read that must wait, refuses a length over 64 KiB before allocating and never resyncs; guest.DecodeExit, Ack and
+Entry, relay.Decode and ReadFrame, resolver.question and fileserve.parse are bounded and round-trip; 20 s fuzz bursts on
+wire FuzzReadFrame (2.6M execs), guest FuzzDecode (1.6M), fileserve FuzzRequest (377k), relay FuzzDecode (2.0M) and
+FuzzReadFrame (3.2M) and cmd/workcell FuzzPath (272k), no crasher. The channel's CPU is paced (S-F34); the relay's and
+the resolver's cost per stream is bound by Firecracker's connect rate on the pinned cores; the one unpaced guest
+connection is the FUSE stream (C64). Memory per guest frame is one payload; the pull manifest is bounded by MaxEntries,
+MaxNames and the image's size plus a block per inode; the console tail cannot grow. Logic and state: output() ends on
+Exit, a bad Ack or an unknown type and flushes held output before any frame of another kind, so an Exit keeps its place
+(probe: Stdout then Exit in one write arrive in order); `first` is true only for the guest's first frame and fail acts
+only while fresh pairs this start's install with what it replaced (TestFail, c43, c60); session() orders holds, the
+--mount TMPDIR rule, named(), newSession, Export(".") and boot; boot refuses a TMPDIR under a running mount session's
+repo before MkdirTemp; the init's serve loop halts on anything a host never sends; pull's manifest, data, end sequence
+is strict and charges apparent sizes, so a sparse file in a hostile image cannot pass the cap. Concurrency and
+check-to-use: once closes the listener after the first accept; the seat mutex covers send against sit; the channel has
+one writer goroutine; named() closes C61's rename swap and Export walks and reads beneath one descriptor with a device,
+inode and size check; lockSession writes the pid only once it holds the lock and a pull holds it for its life (S-F46);
+the windows that remain (a mount session the operator starts between another session's MkdirTemp and its recordBoot,
+stop's pid reuse within milliseconds, two sessions in one nanosecond with the same 32 random bits) are operator-timed or
+chance, not attacker-timed. Cryptography and identity: none on the channel by design (the VM is the identity, and the
+first connection to 5000 is the init's because no guest code runs before Exec); the session CA goes to the guest as the
+public certificate only, capped at 16 KiB; the audit key stays under the data directory, which holds() keeps out of every
+export in both directions and by inode (S-F35). Failure modes: every exit from boot runs closeAll (kill, close,
+RemoveAll); session_end is recorded after the VM is gone; an export failure removes the session directory; named()
+refuses when either stat fails; running() returns any flock error but EWOULDBLOCK; the file service against a guest that
+never reads its replies ends in 5.0 s with every descriptor closed (probe); a partial next header after a Stdout frame
+holds that output 5.0 s and then ends the session 125 (probe; self-harm). No error path fails open. Downgrade, rollback
+and replay: no sequence numbers by design; frames after Exit are never read; the fresh-window first-frame rollback is the
+accepted C2 residual, unchanged; apply skips the failed digest until the pin changes and `update --to` restores from
+disk. Interaction between surfaces: Exec carries placeholders and the CA only (I5, I6); the pull VM boots with no
+allowlist, no layers and no caches, its relay denies every header and its resolver answers nothing; a crafted image's
+inputs to the init (names holding "/", 4096-byte link targets, a tree listed child before parent) end at the host's
+checkPath, DecodeEntry and dirBeneath; a mount guest on an ancestor can rename the operator's cwd (C61 and C62, fixed)
+and can still steer pull, log and attach among the operator's own sessions by the spelling of the repo, with the
+destination always the operator's directory by descriptor inside that guest's own export.
+
+Refuted by the auditor before any candidate was raised: a partial header after a Stdout frame (the held output arrives
+after 5 s and the session ends; the guest hurts only itself); a FUSE flood whose replies are never read (Serve returns at
+the 5 s write deadline with no descriptor left); the Ack window (an input-side stall only, as sweep 1 showed); a TMPDIR
+through a link and `..` (within passes, but Listen and encode clean the same `..`, the sockets are bound under a
+directory that does not exist, the boot fails closed and closeAll removes what MkdirTemp made; reasoned from the code);
+the findLayers markers `.`, `..` and `/` (no section-2 attacker can write a marker while holds() keeps the data
+directory out of every export; the one route is a data directory bind-mounted beneath cwd, S-1003's deferred variant of
+C52, not raised here); sessions keyed by the spelling of cwd (a mount guest that swaps sibling names makes pull, log,
+verify and attach answer for another of the operator's sessions, but pull writes into the operator's cwd by descriptor
+inside that guest's own export, so it gains nothing it cannot write itself: no invariant, R3); sparse files in a hostile
+image; crafted dirent names with "/" or NUL; time.After per pull frame (collected unreferenced since Go 1.23); a mount
+guest swapping a subdirectory for a link during the export (S-F44's check refuses); session()'s non-Exit returns (the
+process exits and the deferred restore runs); a kernel command line cut short by many forward ports (fewer ports, never
+more); rw caches shared across sessions (the flag's own contract); a relay DNS flood with recorded refusals (bounded by
+the soft limit and the pinned connect rate). C2, C4, C5, C50 and C51 are unchanged or fixed and are not raised again.
+
+Coverage. Read in full: cmd/workcell/{main,run_vm,session,relay,caps,data,layer,cache,cache_vm,pull,pull_vm,pull_linux,
+pull_darwin,update,log,ocsf,policy,explain,bench,bench_vm,backend_linux,backend_darwin,mount_linux,mount_darwin,term_vm,
+term_linux,term_darwin,run_other}.go; cmd/workcell-init/{main,exec,mount,net,pull,root}.go; internal/wire/wire.go;
+internal/guest/{guest,trust,walk}.go; internal/vmm/vmm.go, firecracker/{firecracker,doc}.go, vz/{vz,args,doc}.go;
+internal/relay/relay.go; internal/fileserve/{serve_linux,ops_linux,codec}.go; internal/audit/{audit,key,lines}.go;
+internal/rootfs/ext4file.go; internal/resolver/resolver.go; internal/proxy/proxy.go (Serve, Deny, handle; ported,
+S-1004's); internal/workspace/workspace.go; docs/adr/accepted/001-vmm.md and docs/adr/{003,004,005}; the tests wire_test,
+guest_test, run_vm_test, session_test, relay_test, pull_vm_test, caps_test, data_test, layer_test, cache_vm_test,
+update_test, root_test, firecracker_test, run_test, init_test, mount_test, testdata/{guest,probe}/main.go, c19 to c22,
+c28, c29, c31, c34, c43, c44, c50, c52, c54 and c56 to c63; escape/suite/{lifecycle,channel,channel_linux,floods,
+floods_linux,rollback,tests,gitdir,layer}.go; escape/sandbox/{sandbox,workcell_vm,workcell_linux,
+control_channel_linux}.go, and workcell.go and control_linux.go by their Channel, Relay and Mount lines; the earlier
+records of this surface, C52, C56, C60 to C63 and the sweep verdicts in this file; PARKED.md in full. Skimmed:
+internal/rootfs/tree.go (error sites). Not opened: internal/vmm/vz/vz_test.go (vz cannot run here),
+internal/proxy/{terminate,signin,allowlist}.go bodies, internal/secret, internal/policy, internal/channel, internal/pins,
+internal/artifact, internal/sigstore, internal/rootfs/{ext4,oci,layer,build}.go bodies, cmd/bump, cmd/mkimage, the suite
+files of other surfaces, the body of escape/sandbox/control_linux.go, pins/*.json, _legacy/. Ran: go vet and go test of
+cmd/workcell, cmd/workcell-init, internal/wire, internal/guest, internal/vmm/..., internal/relay, internal/fileserve,
+internal/resolver and internal/workspace (all pass; VM tests skip without /dev/kvm); the six fuzz bursts; three overlay
+probes against sockets and processes the probes themselves started (S12, T8). Not run by the auditor: any VM row, any
+macOS path, the escape suite. No tool permission was refused to the auditor and no request was declined.
+
+Evidence gaps, not findings (PARKED.md holds them, R3). The enforced I10 disk-flood row judges the guest's overlay root
+as a disk, though it is tmpfs-backed, so it fills guest memory and never host disk; the host-disk bound of the workspace
+image rests on run_test.go's workspace-cap alone. ADR-001 names rlimits on the VMM child and the backend sets none; the
+bounds are Firecracker's memory, vCPU and connection limits and the affinity pin, and the enforced I10 rows pass.
+
+### S-1002 candidates, sweep 3
+
+C64. ID I10 (host CPU), the C51 class on the one guest connection S-F34 left unpaced: the file service of a `--mount`
+session; A1 in that the host relies on the init to shape that traffic. Attacker: guest root in a `--mount` session, by
+hostile model output or a malicious repository's hook running as the agent; the precondition it does not control is that
+the operator chose `--mount`. Where: internal/fileserve/serve_linux.go Serve (ReadFrame, parse, a slot of `sem` and a
+`wg.Go` goroutine per request, send under one mutex with one write per reply), started by `go serveMount(...)` in
+cmd/workcell/run_vm.go inside the supervisor, which the --cpus bound and the S-F3 affinity pin do not cover; output() in
+the same file paces port 5000 at paceFrames per paceEvery and Serve paces nothing. Input: as a command in a `--mount`
+session, pidfd_getfd on pid 1 for the socket whose peer is CID 2 port 5002, keep the one vCPU at its cap, and write 64 KiB
+batches of whole frames for 3 s, ending on a frame boundary: 54-byte frames that carry a FUSE INTERRUPT request (wire
+header 1, 1, length 48; fuse_in_header length 48, opcode 36, a rising unique, nodeid 1; 8 bytes of argument), which takes
+no reply. Effect claimed: the supervisor spends host CPU above --cpus for as long as the flood lasts, on a session capped
+at one vCPU. Auditor's evidence, host side only and without a VM (the real Serve against a child process flooding a unix
+socket, 3 s an arm, a 4-core box): 10-byte frames that parse refuses 6.1M a second at 1.40 cores; INTERRUPT 1.07M a second
+at 2.04; FORGET 0.93M at 2.10; ACCESS, GETATTR, STATFS, LOOKUP and READLINK 176k to 180k a second at 1.79 to 1.90; a
+flood whose replies are never read ends at the 5 s write deadline, so the flood must use an opcode without a reply or
+drain. Severity claimed: low, by the precedent of C51 (an overrun bounded near the server's own goroutines, not
+exhaustion). Reproducing test: the escape row I10 mount-cpu-flood, written by the redteam from the claim alone (commit
+774549b on the unit's pull request): a `fuse-flood` kind of channelProbe beside frame-flood, interrupt() for the frame
+(pinned by a line of TestFrame), a `Files` method on the adapters (workcell: vsock:2:5002; control: its channel, where the
+naive host skips the type), the existing cpuJudge with its 1.0 s slack unchanged, Want cappedLive. Paid by 26 folded
+lines under escape/ (21 pairs of rows in tests.go, one map and two var runs); the list of rows is main's 145 plus this
+one, by the orchestrator's compare. T2 on control, run by the redteam in the cloud session: fail, the host spent 11.3 CPU
+seconds in 3.0 s of wall time while the guest, capped at 1 CPU, loaded it (allowed 4.0; 718096 frames of 54 bytes, 36
+MiB, in 3 s). Hosted gate on 774549b, a real VM (log line 283): fail, the host spent 5.3 CPU seconds in 3.4 s of wall
+time while the guest, capped at 1 CPU, loaded it (allowed 4.4; the host took 2754723 frames of 54 bytes, 141 MiB, on the
+init's connection in 3 s); beside it under the same judge on the same runner cpu-flood 3.5 in 3.3 s, device-cpu-flood
+3.5 in 3.3 s and channel-cpu-flood, the paced port 5000, 2.6 in 3.4 s; passed 145, failed 1, errors 0. Outcome:
+CONFIRMED, low, by the verifier from that log and its own run: about 1.8 CPU seconds of excess over the neighbouring
+rows, roughly half a host core above the guest's cap, is tied to the frames' handler and not to noise, to the vCPU (the
+judge's busy ticks leave guest time out) or to the VMM (its thread is pinned); a local overlay test of the real Serve
+against a unix socket gave 15.5M INTERRUPT frames at 276 ns a frame and 1.43 cores of process CPU, against 6 ns a frame
+for a bare reader; the cause is that every INTERRUPT, which handle answers with nothing, still takes a slot of sem and a
+goroutine, and Serve has no pacing. The attacker is in scope (pidfd_getfd on pid 1 needs only CAP_SYS_PTRACE; the harness
+passing the address is convenience, not power; the row writes whole frames only). It is not a break of I10's text: Serve
+is one sequential reader with at most 16 short workers, so the overrun is bounded near one core whatever the rate; and
+--mount is a precondition the attacker does not control, so S6 would cap it at medium even if a break were shown. S6: low,
+no demonstrated break; S7 lists it. The verifier's reservation: the hosted log holds no control run, so T2 rests on the
+redteam's run above, not on the log. Fix unit: S-F47, below S-1002 in PLAN.md: pace Serve's loop as output() paces its
+own (count frames and sleep the rest of paceEvery after each paceFrames), or answer an INTERRUPT and a refused frame
+before a slot and a goroutine are taken; two or three product lines, to be paid by folds, since product stands at 15000
+of 15000. The auditor's lowest-level pin, not written (test budget): 2M ten-byte frames over a unix socket must take
+Serve about paceEvery x 2M / paceFrames rather than the 0.3 s they take now. Variants not expressed (redteam, budget):
+16-byte frames with a 10-byte payload, refused as short; a second connection to port 5002; FORGET and BATCH_FORGET
+floods, which take the server's write lock; the file service and the channel flooded at once; INTERRUPTs whose unique
+names a request of the init in flight. The row and fuseFlood wait in escape/_pending/S-F47/mountcpuflood.go (commit
+a3e2262, on the same pull request); the fuse-flood kind of channelProbe, interrupt() with its line of TestFrame and
+the adapters' Files stay live, since nothing runs them without the row; test code stands at 28500 of 28500. Not S14: no
+file involved is ported, and none is someone else's project.
+
+Sweep 3 verdict for this surface: one candidate, confirmed at low (C64), nothing at medium or above. It gets a fix unit
+(S-F47), as the lows of sweeps 1 and 2 did. No model declined and no safeguard re-ran a request in the audit, the redteam
+or the verifier, and no tool permission was refused to any of them.

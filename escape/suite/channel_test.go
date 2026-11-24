@@ -17,6 +17,10 @@ func TestFrame(t *testing.T) {
 	if f := frame(typeStdout, nil); len(f) != 6 || binary.BigEndian.Uint32(f[2:]) != 0 {
 		t.Fatalf("empty frame = % x", f)
 	}
+	le := binary.LittleEndian
+	if b := interrupt(7); len(b) != 54 || b[0] != 1 || b[1] != 1 || binary.BigEndian.Uint32(b[2:6]) != 48 || le.Uint32(b[6:10]) != 48 || le.Uint32(b[10:14]) != 36 || le.Uint64(b[14:22]) != 7 || le.Uint64(b[22:30]) != 1 || le.Uint64(b[46:54]) != 7 {
+		t.Fatalf("interrupt = % x", b)
+	}
 }
 func TestHostileText(t *testing.T) {
 	for _, n := range []int{maxExitText - 1, 100, 40, 0} {

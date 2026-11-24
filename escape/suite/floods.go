@@ -109,9 +109,7 @@ var logJudge = loadJudge(hostDiskFree, false, logCap+diskSlack<<20, 1<<20, fmt.S
 
 // mountDiskJudge is diskJudge for a live export: the probe writes twice the cap under the export and grows a file there far past it without writing; neither the host's free disk nor a file in the export may pass the cap and its slack. A run that did not end in the probe's own "tried" report is never a pass.
 func mountDiskJudge(ctx context.Context, s Session) (bool, string, error) {
-	var r Result
-	var size int64
-	var rerr error
+	var r, size, rerr = Result{}, int64(0), error(nil)
 	below, _, err := sampledRun(hostDiskFree, func() {
 		r, _, size, rerr = sampled(s, func() (int64, error) { return exportSize(s.Workspace) }, s.Guest, strconv.Itoa(diskWrite), strconv.Itoa(sparseGrow))
 	})
