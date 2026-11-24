@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Omkhar Arasaratnam
 
-// Finding C61 of S-1013, sweep 2 (I1), parked for S-F44, which moves this file to cmd/workcell/c61_test.go.
+// Regression test of finding C61 of S-1013, sweep 2 (I1), fixed by S-F44.
 
 //go:build linux || (darwin && arm64 && cgo)
 
