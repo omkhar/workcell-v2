@@ -6016,3 +6016,210 @@ the file service's child() still cross a mount made after holds() judged, since 
 had no line for an openat2 there, and no section 2 attacker makes a host mount; the reverse layout, the working
 directory mounted inside the data directory, passes holds() as before. Sweep 3 now stands at one medium (C65, fixed) and
 one low (C64, fixed). Not S14: no file involved is ported, and none is someone else's project.
+
+## S-1004, sweep 3: network path and proxy core: routing, SNI, ECH, connection handling, fail-closed behaviour (I2, I4, I11), as built at main fffe3b2
+
+Sweep 3 (S8), the last the SPEC allows, fresh context (S3), the whole surface read as built after S-F1 to S-F48,
+not a diff. Auditor on the top tier in the cloud session, which has no hypervisor; nothing of this audit needed
+a VM. The auditor wrote its own trust boundary before it opened any earlier record.
+
+Trust boundary. Guest root owns every byte of every vsock stream the guest opens to host port 5001: on Linux
+Firecracker dials the unix socket vsock_5001 that the backend's Listen bound in the session's 0700 temporary
+directory, on macOS vz's socket listener (backlog 16). First host code: serveRelay in cmd/workcell/relay.go (1024
+slots), then stream: a 5 s deadline, io.ReadFull of exactly 20 bytes, relay.Decode (length 20, version 1, proto 6
+or 17). Proto 17 with port 53, any address: relay.ReadFrame (a 2-byte length, at most 65535) then resolver.Answer
+(S-1006 owns the parser; the relay path and its deadline are this audit's), one reply frame, close. Proto 6 to
+a port in allow.Ports(): the deadline is lifted and the relayConn goes to that port's adapter, which proxy.Serve
+takes (1024 slots of its own) into handle and route. A port other than 443 maps to forward[port] with no parsing at
+all and a raw splice both ways with the dialled upstream. Port 443 runs peekSNI (the crypto/tls ClientHello parser
+over a recording conn capped at 16 KiB under a 10 s deadline), refuses extension 0xfe0d, lower-cases the SNI with
+a length check, requires membership of the allowlist, then hands every SNI host to serveTerminated (S-1005 owns
+the HTTP judge; the hand-off and the leaf choice are this audit's): bind calls Terminate whenever any SNI host
+exists, so 443 is never spliced in the product. Anything else closes the stream; a TCP header to an unserved port
+is recorded as port_not_allowed. Guest root also controls the count, rate, timing and closing of streams and the
+guest kernel's vsock behaviour. The network attacker owns the upstream bytes after the dial (raw back to the guest
+on a forward port, parsed by net/http on 443) and the DNS answers for an allowed name as the host's resolver sees
+them (net.DefaultResolver through /etc/resolv.conf and /etc/hosts); blockedAddr vets each answer against the netip
+classes, blockedPrefixes and the host's interface prefixes. The operator, out of scope, chooses names and forward
+ports; the repository can only narrow (S-1009). Authority: the supervisor `workcell run`, the operator's uid, one
+process (A9) that holds the VMM child, the session CA key, the broker, the audit log and its key, and the session
+directory. Its network authority is the host's: a plain net.Dialer to the vetted address and port; blockedAddr
+and the allowlist are the whole fence (I2, I4). The resolve is LookupNetIP under 10 s of the rooted name; the
+dial budget is 30 s shared across answers; one blocked answer refuses the host. The audit Note gates admission: a
+failed Note means no dial and EOF to the guest (I9). Trusted without checking: crypto/tls's ClientHello parse and
+ClientHelloInfo.Extensions on go1.27.4; the host kernel's and resolver's semantics; Firecracker and vz refusing a
+guest connect to a host port with no listener (I11); netip's classification plus blockedPrefixes for every address
+form; that the relay header's address is a hint for deny lines only and is never dialled. internal/proxy/proxy.go
+carries `// Ported from v1`, so its candidate is an ordinary public one with a v1 line (SPEC section 13); nothing
+here is a weakness in someone else's project, so nothing falls under S14's stop.
+
+Lenses (S9). Parsing and resources: the relay reads a fixed 20-byte array with ReadFull under an absolute 5 s deadline
+before it allocates anything else, and Decode is total; the DNS frame is one allocation of at most 65535 bytes under
+the same deadline; both have fuzz targets, run for 20 s each (FuzzDecode 2.58 million executions, FuzzReadFrame
+2.33 million, no crasher). The ClientHello is read by crypto/tls on a recording conn capped at 16 KiB under a 10 s
+deadline; a hello spread over tiny records, a 64 KiB record, plaintext, a truncation and an empty SNI are refused
+(TestPeekSNI; FuzzPeekSNI 942 executions in 20 s, no crasher). A forward port is never parsed. Slots cap at 1024 on
+the relay and 1024 on the proxy, and on Linux Firecracker's 1023-connection muxer keeps the relay below its cap;
+per slot the host holds about 20 bytes, or 16 KiB plus crypto/tls input, or 64 KiB of io.Copy buffers, or about
+69 KiB terminated (S-F6). The splice and the terminated keep-alive have no idle timeout by design, bounded by the
+slots. Bytes read beyond the hello are in the recorded buffer and replayed. Logic and state: a port other than 443
+routes to the forward map's one host; 443 by SNI, lower-cased with a length check so that no non-ASCII fold matches,
+by exact set membership; crypto/tls rejects a trailing-dot SNI and duplicate server_name entries; the lowered name
+is used for the leaf, the Rewrite and the record. The relay's served set equals allow.Ports(), which is also what
+the init listens on. ParseAllowlist refuses IP literals, port 0, names that are not DNS names and two hosts on one
+forward port. Address vetting: Unmap, IsGlobalUnicast, IsPrivate, IPv6 outside 2000::/3, the explicit list (0/8,
+CGNAT, 192.0.0/24, 168.63.129.16/32, 2001::/23, 2002::/16, documentation, benchmarking, the 6to4 relay, 240/4,
+2001:db8::/32, 3fff::/20) and every interface prefix of the host, read per connect; a zone-bearing answer is refused
+as outside 2000::/3. C66 below is the one class this vetting cannot see. Concurrency and check-to-use: one lookup per
+connection, every answer vetted before any dial, the dial by literal (TestConnectVetsEveryAnswerOnEveryConnection);
+the terminated transport re-enters connect per upstream connection; the proxy's maps, transport and CA are written
+in Terminate before any Serve goroutine starts; every relayConn is closed exactly once and frees its slot through
+sync.Once; the nanosecond window between the relay's slot release and the proxy's stands as parked; a hot-plug of
+an interface between nets() and the dial is microseconds and the attacker cannot time it. Cryptography and identity:
+SNI is routing identity only; the leaf is issued for the lowered SNI under a CA with critical name constraints; ALPN
+offers http/1.1 alone, so an h2-only client fails closed; Go checks the second ClientHello after a HelloRetryRequest
+for an unchanged server name, so the routed and the terminated name cannot differ. ECH is refused by extension
+type on the outer hello before any name is read, as sweeps 1 and 2 proved on go1.27; GREASE ECH clients get
+no_sni. serveTerminated hands net/http a wrapper around the TLS conn, so r.TLS is nil in the handler and net/http
+sets no handshake deadline of its own: nothing reads r.TLS, the handler takes the host from its closure, and the
+handshake runs under ReadHeaderTimeout's deadline on the wrapped conn, so the 10 s bound holds. Failure modes: every
+error path refuses. A deadline error or a failed peek is no_sni; a lookup error or an empty answer resolve_failed;
+an unreadable interface list or one blocked answer blocked_address; a dial failure dial_failed; a failed replay
+write a close; a failed Note half-closes, drains for at most 10 s and returns before any dial (S-F16). A nil log
+refuses everything. serveRelay ends on any Accept error and closes every adapter, which ends every Serve loop;
+after an EMFILE exit later guest connects wait in the listen backlog unanswered, closed and self-inflicted. I11:
+proxy, resolver and broker are the supervisor; Firecracker dies with it by Pdeathsig on the locked thread, vz's
+VM with the process; a closed 5001 listener is an unlinked socket that the muxer resets. No panic reachable from
+guest bytes was found. Downgrade, rollback and replay: header version 1 only; TLS 1.2 at least on both sides;
+a replayed stream is another connection that meets the same checks; the relay holds no state across streams; the
+product caches no DNS answer and the transport pool reuses a connection only to the address it vetted; forward
+ports are raw by the operator's own grant (I6 covers terminated connections only). Interaction between surfaces:
+streams go to the proxy and DNS frames to the in-process resolver (S-1006); 443 to serveTerminated (S-1005);
+every refusal and admission to the audit log (S-1010): past the soft limit every admission is refused and no
+lookup is made, a loss of the guest's network and never a gain, which also bounds the host's DNS query rate by
+the log cap. The sockets lie in the 0700 directory that S-F20, S-F21, S-F35 and S-F48 keep out of every export;
+only vsock_5000, 5001 and 5002 exist, so a guest connect to any other port is reset.
+
+Refuted by the auditor before any candidate was raised: a proxy shed without a record (each handle holds one
+delivered stream, so handles never exceed the relay's slots; C8's refutation stands); serveRelay's exit on EMFILE
+(fails closed, guest-only harm; Go raises the soft descriptor limit to the hard one at start); a forward entry on port
+53 or 853 that lets DNS for any name leave to that server (the operator's own grant, the class of DoH to an allowed
+443 host); a UDP header to a port other than 53 closed without a record (a datagram is not a connection attempt;
+C14's intended behaviour); r.TLS nil on the terminated server (no reader, the bound comes from ReadHeaderTimeout);
+a hairpin to the host's public NAT address (outside I4's list and reachable from the internet anyway); /etc/hosts
+entries (a loopback or zone-bearing mapping of an allowed name is refused; a single-label name never matches
+under the rooted lookup); pipelined or fragmented hellos (over-reads are replayed; a hello followed by junk is
+reset after the server's first flight); interface addresses with host bits set (Prefix.Contains masks; a malformed
+entry fails ParsePrefix and refuses everything); the guest filling the audit log or holding all 1024 slots idle
+(self-harm inside the bounds); the spliced half-close that becomes a full close (a lost reply, no reach); a forward
+host dialled at 443 (sni_not_allowed), port 0 in a header (no adapter), version 2 and proto 0 or 1 (closed at once);
+the vz backlog of 16 and Firecracker's 1023-connection cap (both refuse before the relay's cap).
+
+Earlier fixes on this surface, traced again in the code as built, all hold: C7 (S-F4: 168.63.129.16/32 in
+blockedPrefixes, and blockedAddr unmaps first, with TestBlockedAddr's rows); C13 (S-F8: TLSHandshakeTimeout,
+MaxConnsPerHost and IdleConnTimeout on the terminated transport, c13_test.go green, the shed and lost counters gone);
+C23 and C24 (S-F16: handle acts only on a nil Note for the Allowed line, unrecorded_test.go on both paths); B-835
+(the 16 KiB hello cap); C11 (S-F6: MaxHeaderBytes and ReadHeaderTimeout); C27 (S-F19: DisableGeneralOptionsHandler);
+C30 and C53 (S-F22, S-F36: no relative SSL_CERT_FILE or SSL_CERT_DIR entry); S-F3's CPU pin of Firecracker. C8
+refuted and C14 intended: both stand. C9 of sweep 1, left there as "not reproduced, reasoned only, low": raised
+again as C66 with the reproduction it lacked. Row 22 of the S-1001 map still names the shed and lost counters that
+S-F8 removed: stale text in the record only.
+
+Coverage. Read in full: internal/proxy/{proxy,allowlist,terminate,signin}.go with the tests proxy, allowlist,
+forward, clients, c10, c11, c12, c13, c15, c30, c53, unrecorded and terminate; internal/relay/relay.go and its test;
+cmd/workcell/{relay,run_vm,policy,explain}.go and relay_test.go; cmd/workcell-init/{net,main,root}.go as data (A1);
+internal/resolver/resolver.go; internal/audit/audit.go; internal/vmm/vmm.go, firecracker/firecracker.go and vz/vz.go;
+escape/suite/{tests,relay,rebind,icmp_linux,packets,addr_linux,lifecycle,helpers,https,suite,audit,dnstests,floods,host_linux,channel,channel_linux}.go;
+escape/sandbox/{sandbox,workcell,workcell_vm,workcell_linux,control_relay_linux}.go; docs/adr/003-network-path.md;
+loop/SPEC.md; the S-1001 map and the records of this surface in sweeps 1 and 2 in this file; PARKED.md in
+full; both enforced lists; go.mod. Skimmed: docs/threat-model.md (the I2 to I12 paragraphs); docs/policy.md and
+escape/sandbox/control_linux.go by grep. Not opened: internal/proxy/{c32,c33,c55,git,providers,signin}_test.go;
+internal/resolver/resolver_test.go; the escape/suite files of other surfaces (dns, resolver, device, secrets, signin,
+terminate, repo, gitdir, files, layer, update, rollback, smoke, priv, bench, floods_linux) and the darwin and other-OS
+stubs; escape/sandbox/{control_channel_linux,control_resolver_linux,workcell_darwin,workcell_other,control_other}.go
+and the adapter tests; the vz library's connection type; the rest of cmd/workcell; internal/policy, secret,
+guest, wire and fileserve; PLAN.md; _legacy/. Ran: go test of internal/relay, internal/proxy (the whole package)
+and cmd/workcell's relay tests on go1.27.4, all green; the three 20 s fuzz bursts; a two-namespace veth probe
+of C66 (IPv4, a real dial, the canary in the neighbour's stack caught the bytes); a probe test of C66 under an
+overlay, which fails on the tree and passes under a fix-shape overlay of 35 lines with the package green; a read
+of /proc/net/route in the probe's own namespace. Every listener and namespace was the probe's own, nothing left
+the session, the tree was unchanged and nothing was left behind (S12, T8); the auditor installed iproute2 in the
+session for the probe. Not run by the auditor: any VM row, the escape suite, the full gate, any macOS or vz path,
+any IPv6 setup (the session's kernel has no IPv6), any probe against a third party. No model declined a request,
+no safeguard re-ran one and no tool permission was refused to the auditor.
+
+Evidence gaps, not findings (PARKED.md holds what a retro must weigh, R3). FuzzPeekSNI runs at about 45 executions a
+second here (a TLS handshake over net.Pipe each), so S10's four hours cover about 650 thousand executions against about
+110 thousand a second for the relay's fuzzers: the ClientHello parse rests on crypto/tls. relay-header-allowed-port
+proves only that a name that does not resolve dials nothing; the proof that the header's address is never dialled
+when the name resolves is the rebind rows'. The I11 rows kill the whole supervisor; no row covers a partial failure
+(the relay loop returned, the proxy's Serve ended), and none proves that streams queued after one are refused and not
+held. icmp-echo cannot fail on the product without a network device; there is no row with a native IPv6 destination;
+the rebind rows take any question as proof of vetting. No row forwards port 53 or 853, and docs/policy.md does not
+say that such a forward lets DNS for any name leave to that server. No row floods a forward port for host CPU or
+holds all 1024 slots idle on a real VM.
+
+### S-1004 candidates, sweep 3
+
+C66. ID I4 ("The guest cannot reach host loopback, the LAN, link-local or cloud metadata addresses ... the vetted
+address is the one dialled"). It is C9 of sweep 1, left there as "not reproduced, reasoned only, low", raised again
+with the reproduction it lacked. Attacker: guest root, with the network attacker as the host's resolver for an
+allowed name, the model of the rebind rows and of C7; the precondition it does not control is the host's network
+layout. Where: internal/proxy/proxy.go, nets() (net.InterfaceAddrs alone), blockedAddr() and connect(), the only
+gate before the dial. also in v1 main: egressproxy/proxy.go. Input: the host's interface holds its address with a
+host-length prefix, a /32 (a point-to-point cloud NIC, a DHCP classless static route) or a /128 (a DHCPv6 address
+with the router advertisement's on-link /64, the usual shape of a managed IPv6 network on Linux), and the prefix
+around it is on-link only by a route; the policy allows one name, bare or as a forward port; the resolver answers
+that name with the address of a neighbour on the link; the guest connects to the name. One answer suffices. Effect
+claimed: nets() never reads the route table, so blockedAddr() does not know the neighbour; the proxy dials it from
+the host's own address and relays the guest's bytes, raw on a forward port, and on 443 the TCP connect and the
+ClientHello reach it, which the rebind rows' own standard counts as reach. Private, unique-local and link-local
+neighbours stay refused by class, so the break needs a link in global unicast space: the usual IPv6 case, and IPv4
+where the link holds public addresses. Auditor's evidence, without a VM: two network namespaces of its own joined
+by a veth with no default route, the host side holding 192.175.48.1/32 with `192.175.48.0/25 dev vh scope link`,
+the neighbour 192.175.48.2/25 with a canary on port 8443; in the host namespace the real nets(), blockedAddr()
+and connect() under a test overlay gave nets() = [127.0.0.1/8 192.175.48.1/32], blockedAddr(192.175.48.2) = false,
+and a dial that the canary in the neighbour's stack logged with the probe's token, from 192.175.48.1; on the same
+run the host's own address and 10.0.0.1 were refused with nothing dialled, and 192.175.48.129, off the link,
+was dialled as a public address must be. IPv6 at the function level only, since the session's kernel has none:
+blockedAddr(2620:4f:8000::2) with the interface prefix 2620:4f:8000::1/128 is false. The auditor also showed the
+distinction that sweep 1 said no test could draw: /proc/net/route lists the main table's unicast on-link route and
+none of the local table's rows, so the suite's canary address (a local route to an address off every interface)
+and a neighbour on the link can be told apart. Severity claimed: medium by S6.
+
+Reproducing test: the row `I4 rebind-on-link-neighbour-forward`, written by the redteam from the claim alone (commit
+033c9b7 on the unit's pull request), a sibling of rebind-host-network-forward with `Want: rebindingOnLink`. The
+Linux isolate gives the session's namespace the claimed layout, 192.175.48.1/32 on lo and `192.175.48.0/25 dev lo
+scope link` in the main table, with local routes for the neighbour 192.175.48.2, where the canary listens, and for
+192.175.48.129; the resolver answers allowed.escape.test with the neighbour, the policy forwards the name's port 8443,
+and the row wants the canary to see nothing. T2, the writer's showing on control, run again by the orchestrator:
+fail, "the guest reached the canary at 192.0.2.2:8443 and delivered its token, 2 times", as its sibling fails
+there. Hosted gate on 033c9b7, a real VM: fail, "the guest reached the canary at 192.175.48.2:8443 and delivered
+its token, 2 times (guest says connected ...); the resolver was asked [AAAA, A, AAAA, A allowed.escape.test.] and
+says A 192.175.48.2"; passed 146, failed 1, errors 0, with the sibling row, the same neighbour under a /25 on the
+interface, passing beside it; gate-macos, gate-arm64 and guard green there, and all four green on the claim 2886c81.
+
+Outcome: CONFIRMED at medium by the verifier, from the hosted log and a probe of its own: the product's vetting
+compiled under an overlay and run in a namespace it made, where 192.175.48.1/25 on lo gives blockedAddr(192.175.48.2)
+= true and 192.175.48.1/32 with the on-link /25 route gives false, with or without the row's local route for the
+neighbour. So the isolate's model, a canary made local so that it can listen, is faithful as far as the vetting
+can tell, and the extra local route could only have pushed the product toward refusing: the test takes no power
+the attacker lacks. The attacker is in scope, the model of the eleven I4 rebind rows. Not intended behaviour: the
+code's own comment says nets() exists to catch the networks of the host's own interfaces, and an on-link prefix
+held by a route alone is such a network. Not high, because private and unique-local links stay refused by class;
+not low, because the break is shown on a VM. The layout exists in practice (DHCPv6 with an on-link /64, cloud
+NICs with a /32, DHCP option 121) and the attacker does not control it. Not someone else's project; a ported file,
+so public under SPEC section 13.
+
+Parked and handed on: the row and rebindingOnLink wait in escape/_pending/S-F49/rebind_on_link.go (commit 6c24914),
+whose head says where each piece goes back; the live suite lists main's 146 rows, by the orchestrator's diff of
+the two lists. The plumbing that is unused without the row stayed live (Config.OnLink, Want.OnLink, Hold's on-link
+branch and the route helper, the payload's netns verb, the adapters' refusal of OnLink off Linux). The row's lines
+were paid by 15 joined pairs of comment lines under escape/, no row and no code changed; test code stands at 28500
+of 28500 and product at 15000 of 15000. Fix unit S-F49 stands below S-1004 in PLAN.md and starts with the move
+back. Two things it must know. The row models the link on lo, so a fix that reads on-link routes must not skip lo,
+and it must leave the local table and the default route out, or the suite's canary address 192.175.48.129 and a
+tunnel's on-link default would be refused. And on a Mac the adapter answers the row with not-implemented, because
+the static lo0 layout of the maintainer's setup cannot also hold a /32 with an on-link route: the fix unit gives
+the row a Mac shape or a place among the Linux-only rows. Sweep 3 now stands at two mediums (C65, fixed; C66,
+open) and one low (C64, fixed).
