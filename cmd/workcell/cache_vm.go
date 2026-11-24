@@ -21,8 +21,7 @@ import (
 // openCaches readies the caches a session asked for: each image named, a missing one made when
 // the session may write it, and each locked for the life of the session, so that readers
 // share, one writer excludes all, and no reader sees an image another guest is writing.
-// free is the room a new image has. release closes the locks; it is never nil, and the
-// caller calls it when the session ends, or now if err is set.
+// free is the room a new image has. release closes the locks; it is never nil, and the caller calls it when the session ends, or now if err is set.
 func openCaches(data string, want []vmm.Cache, free int64) (got []vmm.Cache, release func(), err error) {
 	var locks []*os.File
 	release = func() {

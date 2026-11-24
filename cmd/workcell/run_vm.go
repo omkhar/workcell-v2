@@ -78,8 +78,7 @@ func run(args []string, stderr io.Writer) int {
 }
 
 // session boots a guest and runs argv in it, with the current directory copied in, or served live when mount holds, with the network allow names (nil for none)
-// and the secret bindings, of which the guest gets each placeholder alone, in the variable its row names (I5, A4). It returns how the session ended: the
-// command's code, or with an error, which alone means the session failed and with a nonzero code that the command could not run.
+// and the secret bindings, of which the guest gets each placeholder alone, in the variable its row names (I5, A4). It returns how the session ended: the command's code, or with an error, which alone means the session failed and with a nonzero code that the command could not run.
 func session(argv []string, caps limits, mount bool, a artifacts, allow *proxy.Allowlist, secrets []binding) (r result) {
 	sigs := make(chan os.Signal, 4)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
