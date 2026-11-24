@@ -1,6 +1,6 @@
 # Findings
 
-Phase 10 record (SPEC section 11). Sweep count: 2. One section per audit unit: the attack-surface map (S-1001),
+Phase 10 record (SPEC section 11). Sweep count: 3. One section per audit unit: the attack-surface map (S-1001),
 then each audit's coverage list and candidates, each confirmed, refuted or downgraded under S4.
 
 ## S-1001: attack-surface map, as built at main 30ea6e2
@@ -5561,3 +5561,29 @@ Sweep 2 verdict for this surface: one medium confirmed, C61, open until S-F44, a
 S-F45 and S-F46. Sweep 2 now stands at eight mediums (C52 to C56, C58 and C60 fixed, C61 open) and four lows (C57
 and C59 fixed, C62 and C63 open), so S-1017 will call a third sweep (S8). The next candidate number is C64. The
 observations that are not candidates are R3 notes, copied to PARKED.md in four lines.
+
+## S-1017: sweep verdict, sweep 2, at main 08dd76f
+
+Sweep 2 is S-1002 to S-1013 as S-1017 reset them at sweep 1's verdict, each surface read again in a fresh context as built
+after sweep 1's fixes (S3), and its 14 fix units S-F33 to S-F46 are all `[x]`, with nothing left under `escape/_pending/`.
+It confirmed 8 findings at medium or above, so by S8 it does not end Phase 10: the sweep count above rises from 2 to 3,
+and S-1002 to S-1013, R-3, R-4 and S-1017 go back to `[ ]` with `tries:0` for sweep 3, as the unit line says (S-1003's
+`tries:2` of sweep 2 goes back to 0 with them). S-1014 and S-1016 are not reset, because the unit line does not name
+them, so sweep 2 held no tool pass of S10 beyond the zizmor, actionlint and govulncheck runs that S-1012 records.
+
+| severity | count | records |
+|----------|-------|---------|
+| high | 0 | none |
+| medium | 8 | C52, C53, C54, C55, C56, C58, C60, C61 |
+| low, fixed all the same (S7 lists them) | 6 | C50, C51, C57, C59, C62, C63 |
+
+Per surface: S-1002 two lows (C50, C51); S-1003 C52; S-1005 C53; S-1007 C54 and C55; S-1008 C56 and a low (C57); S-1009
+C58 and a low (C59); S-1011 C60; S-1013 C61 and two lows (C62, C63); S-1004, S-1006, S-1010 and S-1012 no candidates.
+Sweep 1 confirmed 21 at medium or above, 5 of them high; sweep 2 confirmed 8, none high. By their fix-unit lines, five
+of the eight lie in the class of an earlier finding: C53 the sibling of C30; C54 the sibling of C19, C28 and C29; C55 the
+class of C10 and C33; C58 the gap that S-F37 left; C60 the class of C59.
+
+Sweep 3 audits every surface again, as built after those fixes, in a fresh context each (S3). It is the last that S8
+allows: it ends Phase 10 if it confirms nothing at medium or above; otherwise S-1017 is marked `[!]` and the loop stops
+for the maintainer, because a third sweep that still confirms a medium is a design problem and not another patch. The
+next candidate number is C64.
