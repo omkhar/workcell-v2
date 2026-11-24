@@ -171,8 +171,9 @@ func interrupt(unique uint64) []byte {
 	return frame(1, binary.LittleEndian.AppendUint64(b, unique))
 }
 
-// frameFlood is channelProbe's frame-flood kind under the arguments cpuJudge passes: the seconds, then the channel address.
+// frameFlood and fuseFlood are channelProbe's frame-flood and fuse-flood kinds under the arguments cpuJudge passes: the seconds, then the address (the channel's, then the file service's).
 func frameFlood(args []string) Result { return channelProbe(append([]string{"frame-flood"}, args...)) }
+func fuseFlood(args []string) Result  { return channelProbe(append([]string{"fuse-flood"}, args...)) }
 
 // swarm opens n fresh connections to the host end at once, has each handled by each (which returns a count), holds them for wait, and says how many opened, the counts' sum and the last dial error as a suffix.
 func swarm(addr string, n int, wait time.Duration, each func(c *rawConn) int) (opened, sum int, last string) {

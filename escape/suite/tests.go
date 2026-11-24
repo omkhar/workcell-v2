@@ -78,6 +78,8 @@ var All = append([]Test{
 	{ID: "I10", Name: "device-cpu-flood", Probe: emulationProbe, Host: cpuJudge(Session.Relay), Want: capped},
 	// And the supervisor's own decoder: root writes the smallest valid frames on the init's channel as fast as the host takes them, each read in several calls.
 	{ID: "I10", Name: "channel-cpu-flood", Probe: frameFlood, Host: cpuJudge(Session.Channel), Want: capped},
+	// And the file service of a `--mount` session, on the init's connection to it, which the row above does not cover: root writes FUSE INTERRUPT requests, which the host answers with nothing, as fast as it takes them.
+	{ID: "I10", Name: "mount-cpu-flood", Probe: fuseFlood, Host: cpuJudge(Session.Files), Want: cappedLive},
 	// The same disk flood in mount mode: the export is the host's own tree, served live, so a byte the guest writes under it, or a size it sets without writing, is the host's at once.
 	{ID: "I10", Name: "mount-disk-flood", Probe: mountDiskProbe, Host: mountDiskJudge, Want: cappedLive},
 	// A secret is bound to one allowed name, both terminated on the host. The guest hunts for the real value in every process, on disk and in memory; sends its credential, alone and as a bearer token, in the bound header to the bound name, which must reach the canary real; replays it at the other name, in another header, in the path and in the query, none of which may reach a canary. Under a binding narrowed to one method and path, only that is swapped. A redirect from the bound host carries it on to the other.
