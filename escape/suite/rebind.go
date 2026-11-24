@@ -29,6 +29,7 @@ var rebindingMapped = Want{Allow: []string{"mapped.escape.test:" + forwardPort},
 var rebindingCNAME = Want{Allow: []string{"allowed.escape.test:" + forwardPort}, Deny: []string{"denied.escape.test"}, Resolver: judgeResolver}
 var rebindingOwn = Want{Allow: rebinding.Allow, Resolver: judgeResolver, Isolated: true}
 var rebindingOwnSNI = Want{Allow: rebindingSNI.Allow, Resolver: judgeResolver, Isolated: true}
+var rebindingOnLink = Want{Allow: rebinding.Allow, Resolver: judgeResolver, Isolated: true, OnLink: true}
 
 // rebind is one row's answer and canary: the A and AAAA records the allowed name gets, owned by cname when that is set (the allowed name is then an alias of it), the address the canary listens at ("neighbour" standing for an address on a network of the test host's own, as the session's Bind places it; with no record given, the one A record is wherever the canary came to listen), and whether the guest offers TLS with the allowed name as SNI at 443 rather than a line at the forward port.
 type rebind struct {
