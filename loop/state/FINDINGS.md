@@ -5408,6 +5408,32 @@ open the directory as given, both arms passed with cmd/workcell and internal/wor
 run_vm.go, pull_vm.go, workspace.go and fileserve are v2's own, nothing ported, no v1 line. Fix unit: S-F44, below
 S-1013 in PLAN.md.
 
+C61 FIXED by S-F44, commits cf9239b (the test moved) and 12ef82b (the fix) (PR #294). session in
+cmd/workcell/run_vm.go still judges and records the name, and then named(unix.AT_FDCWD, cwd), new in pull_vm.go,
+refuses unless the name is, by device and inode, the process's own directory; the export and the live mount take
+"." and never the name again. Export in internal/workspace/workspace.go opens the directory as given, once, keeps
+that descriptor open for the writer and walks a duplicate of it; a regular file's source is a path relative to
+that descriptor (the new Dir field of rootfs.HostFile), and openSource in internal/rootfs/ext4file.go takes its
+bytes by Openat beneath it, with O_NOFOLLOW on the leaf and the device, inode, size and regular-file check on the
+descriptor it got. fetch opens an explicit pull destination first, judges the name, and refuses by the same named
+unless the name still gives the directory it holds open. A start or a pull that meets the swap prints one line,
+"<name> no longer names the directory it did a moment ago: it was renamed or replaced", and makes nothing: run
+exits 125, pull exits 1. The repo record and the messages keep the name. Net 0 product lines, paid by folds with
+no behaviour changed (the mode in put, cacheArgs and cacheEnv in layer.go, verify's session argument in log.go,
+holdSession, lockCache, one deferred close in Export, two comments): product 15000 of 15000, test 28496 of 28500,
+no test line. The test moved by git mv with its head comment changed, 45 lines; escape/_pending/S-F44/ is gone.
+Before: the test fails on main, plain and -race, with the outside key in the new session's image (the redteam,
+and the reviewer in a worktree of main). After: it passes at 12ef82b, plain and -race. The reviewer's free loop,
+no rendezvous, 100 clone starts at each period: 0, 0 and 0 images with the canary at 200 microseconds, 1 ms and
+3 ms at 12ef82b, where main gave 14, 7 and 26; the starts that met the swap were refused with the one line, the
+rest exported the real directory. The same loop under --mount: every start refused or served the real directory,
+and fileserve's Open of "." held the real directory's inode. A pull destination swapped between its judgement
+and the check is refused and nothing is written. A subdirectory or a file swapped for a link between the walk
+and the write gives "changed while the image was written" or ELOOP and no outside byte, in 0 of 200 racing
+exports. A working directory under a linked ancestor, an unset PWD and a stale PWD run as before. Hosted on
+12ef82b: gate, gate-macos, gate-arm64 and guard green. Not run: a VM row of the swap, and the Mac's live mount,
+which does not exist yet.
+
 C62. ID none directly: I12's "confuse the host" in spirit, and the product's own rule, set by C20, C31 and C38, that
 a guest-chosen name is quoted before it reaches the operator's terminal; hardening, the class of C31. ATTACKER:
 guest root in a mount session on an ancestor of the directory the operator's shell sits in, as in C61. SEVERITY: low

@@ -116,10 +116,10 @@ func TestSourceChecks(t *testing.T) {
 		ok   bool
 	}{
 		{"as seen", *good, true},
-		{"another inode", HostFile{good.Path, good.Size, good.Dev, other.Ino}, false},
-		{"another size", HostFile{good.Path, good.Size + 1, good.Dev, good.Ino}, false},
-		{"a symlink to it", HostFile{link, good.Size, good.Dev, good.Ino}, false},
-		{"missing", HostFile{filepath.Join(dir, "missing"), 1, good.Dev, good.Ino}, false},
+		{"another inode", HostFile{good.Path, good.Size, good.Dev, other.Ino, 0}, false},
+		{"another size", HostFile{good.Path, good.Size + 1, good.Dev, good.Ino, 0}, false},
+		{"a symlink to it", HostFile{link, good.Size, good.Dev, good.Ino, 0}, false},
+		{"missing", HostFile{filepath.Join(dir, "missing"), 1, good.Dev, good.Ino, 0}, false},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

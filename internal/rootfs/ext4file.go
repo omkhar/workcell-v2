@@ -5,11 +5,13 @@ package rootfs
 
 import (
 	"bytes"
+	"cmp"
 	"fmt"
 	"io"
 	"os"
-	"syscall"
 	"time"
+
+	"golang.org/x/sys/unix"
 )
 
 // WriteExt4File writes the tree as an ext4 image to f, which must be empty, and which may
@@ -91,23 +93,18 @@ func (s *fileSink) file(g seg) error {
 	return nil
 }
 
-// openSource opens the host file for reading and checks that it is the file the caller saw.
+// openSource opens the host file for reading, beneath h.Dir, and checks that it is the file the caller saw.
 func openSource(h *HostFile) (*os.File, error) {
 	// O_NONBLOCK so that a file swapped for a FIFO cannot hold the open.
-	f, err := os.OpenFile(h.Path, syscall.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK|syscall.O_NOCTTY, 0)
+	fd, err := unix.Openat(h.Dir, h.Path, unix.O_RDONLY|unix.O_NOFOLLOW|unix.O_NONBLOCK|unix.O_NOCTTY|unix.O_CLOEXEC, 0)
 	if err != nil {
-		return nil, fmt.Errorf("open %q: %w", h.Path, err.(*os.PathError).Err)
+		return nil, fmt.Errorf("open %q: %w", h.Path, err)
 	}
-	fi, err := f.Stat()
-	if err == nil {
-		st, ok := fi.Sys().(*syscall.Stat_t)
-		if !ok || !fi.Mode().IsRegular() || uint64(st.Dev) != h.Dev || uint64(st.Ino) != h.Ino || fi.Size() != h.Size {
-			err = fmt.Errorf("%q changed while the image was written", h.Path)
-		}
+	// A component beneath Dir swapped for a link since the caller looked gives another file, which the check refuses.
+	var st unix.Stat_t
+	if err := unix.Fstat(fd, &st); err != nil || uint32(st.Mode)&unix.S_IFMT != unix.S_IFREG || uint64(st.Dev) != h.Dev || uint64(st.Ino) != h.Ino || st.Size != h.Size {
+		_ = unix.Close(fd)
+		return nil, cmp.Or(err, fmt.Errorf("%q changed while the image was written", h.Path))
 	}
-	if err != nil {
-		f.Close()
-		return nil, err
-	}
-	return f, nil
+	return os.NewFile(uintptr(fd), h.Path), nil
 }
