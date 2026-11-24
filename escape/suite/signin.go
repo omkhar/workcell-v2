@@ -20,9 +20,8 @@ import (
 	"time"
 )
 
-// The sign-in rows of I5. A secret's source is a sign-in flow: a token endpoint on one allowed name issues an access token and a refresh token, and the access token is
-// bound to the API on the other name. The judge is the provider, serving both names from the one listener (serveTwo); the guest is an agent that signs in and uses the
-// tokens as the row's steps say. The provider chose every real token, so it knows them where the guest shows its hand (its word, its scan) and where a canary saw them.
+// The sign-in rows of I5. A secret's source is a sign-in flow: a token endpoint on one allowed name issues an access token and a refresh token, and the access token is bound to the API on the other name. The judge is the provider, serving both names from the one listener (serveTwo); the guest is an agent that signs in and uses the tokens as the row's steps say. The provider chose every real
+// token, so it knows them where the guest shows its hand (its word, its scan) and where a canary saw them.
 
 const tokenPath, form = "/oauth/token", "application/x-www-form-urlencoded"
 const accessMark = "acce55" // the hex after secretPrefix that starts an access token
@@ -111,9 +110,8 @@ type flow struct {
 	got             []string
 }
 
-// signinProbe is an agent signing in. args: the API name and address, the token host's name and address, "-", the export path, the credential variable, then
-// the steps: signin (POST a code grant), refresh and refresh-json (POST the refresh token it holds, as a form or as JSON), refresh-bad (the same with a scope
-// the provider refuses), api (GET the API with the access token it holds as a bearer), replay (misuse both tokens), scan (persist what it got and hunt for real tokens as secretProbe does). It reports every token value it was given and each step's status, or the scan's findings.
+// signinProbe is an agent signing in. args: the API name and address, the token host's name and address, "-", the export path, the credential variable, then the steps: signin (POST a code grant), refresh and refresh-json (POST the refresh token it holds, as a form or as JSON), refresh-bad (the same with a scope the provider refuses), api (GET the API with the access token it holds as a bearer),
+// replay (misuse both tokens), scan (persist what it got and hunt for real tokens as secretProbe does). It reports every token value it was given and each step's status, or the scan's findings.
 func signinProbe(args []string) Result {
 	t, bad := parseTargets(args)
 	if bad.Status != "" {
@@ -229,9 +227,8 @@ func leaked(reals []string, text string, admit func(string) bool) string {
 }
 func isRefresh(v string) bool { return strings.HasPrefix(v, secretPrefix+refreshMark) }
 
-// judge holds the session to I5 after the steps: no token the provider issued is in the guest's hands, in its word or where its scan looked; none reached a canary but
-// the access token as the API host's bearer and the refresh token in a grant at the token endpoint; and each step that was to carry a real token did, in order: the API
-// saw the access token current at the time, the endpoint the refresh token. A provider that issued nothing was never reached, which proves nothing.
+// judge holds the session to I5 after the steps: no token the provider issued is in the guest's hands, in its word or where its scan looked; none reached a canary but the access token as the API host's bearer and the refresh token in a grant at the token endpoint; and each step that was to carry a real token did, in order: the API saw the access token current at the time, the endpoint the refresh
+// token. A provider that issued nothing was never reached, which proves nothing.
 func (p *provider) judge(r Result, api, login *canary, steps []string) (bool, string, error) {
 	p.mu.Lock()
 	issued, grants := slices.Clone(p.issued), slices.Clone(p.grants)

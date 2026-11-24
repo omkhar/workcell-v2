@@ -172,8 +172,7 @@ func dialChannel(addr string) (*rawConn, error) {
 	return &rawConn{fd: fd}, nil
 }
 
-// rebootGuest writes one line, as a command does, syncs and restarts the kernel (reboot -f); from there the host must end the run by itself (I12, I7). It refuses when the init's channel to the host
-// is no vsock: then this is not the product's VM but the test host's own container, which it may not restart (S12). A restart that returns is a result too.
+// rebootGuest writes one line, as a command does, syncs and restarts the kernel (reboot -f); from there the host must end the run by itself (I12, I7). It refuses when the init's channel to the host is no vsock: then this is not the product's VM but the test host's own container, which it may not restart (S12). A restart that returns is a result too.
 func rebootGuest(addr string) Result {
 	peer, err := parsePeer(addr)
 	if err != nil {

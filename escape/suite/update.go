@@ -243,8 +243,7 @@ func (c *channel) hostile(variant string) ([]byte, error) {
 	return bad, err
 }
 
-// updateJudge serves a valid channel and has the client install from it; then it serves the hostile variant named, and after that a valid successor. The invariant holds only if nothing from the
-// variant was installed, neither the artifact it pins nor any bytes but the honest one, and the successor is: a client that installs once and never fetches again proves nothing.
+// updateJudge serves a valid channel and has the client install from it; then it serves the hostile variant named, and after that a valid successor. The invariant holds only if nothing from the variant was installed, neither the artifact it pins nor any bytes but the honest one, and the successor is: a client that installs once and never fetches again proves nothing.
 func updateJudge(variant string) Judge {
 	return func(ctx context.Context, s Session) (bool, string, error) {
 		ch, err := openChannel()
@@ -291,9 +290,8 @@ func updateJudge(variant string) Judge {
 	}
 }
 
-// dailyJudge is I14 at the installer's second entry: the channel check a session start makes by itself, once a day, and the install the next start makes from what it
-// kept, in a session of its own carrying the [update] table. Under a hostile variant the channel serves only that manifest, pinning 1.0.1: the first start must ask for
-// channel.json (a client that never checks proves nothing), and after a second nothing may be installed nor the pinned artifact fetched. Under "once" it serves the honest manifest: after three starts the layer must hold the honest artifact, exactly the digest pinned, and channel.json was asked for once.
+// dailyJudge is I14 at the installer's second entry: the channel check a session start makes by itself, once a day, and the install the next start makes from what it kept, in a session of its own carrying the [update] table. Under a hostile variant the channel serves only that manifest, pinning 1.0.1: the first start must ask for channel.json (a client that never checks proves nothing), and after
+// a second nothing may be installed nor the pinned artifact fetched. Under "once" it serves the honest manifest: after three starts the layer must hold the honest artifact, exactly the digest pinned, and channel.json was asked for once.
 func dailyJudge(variant string) Judge {
 	return func(ctx context.Context, s Session) (bool, string, error) {
 		ch, err := openChannel()

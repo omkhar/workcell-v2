@@ -26,8 +26,7 @@ import (
 	"time"
 )
 
-// control is the plain container of SPEC T2: new mount, pid, uts and ipc namespaces, the host's network and root shared, no cap on what it logs. Its channel is
-// a unix socket served by naiveHost for each run; the command, pid 1 of its namespace, holds the guest end as descriptor 3. Every escape test must fail here.
+// control is the plain container of SPEC T2: new mount, pid, uts and ipc namespaces, the host's network and root shared, no cap on what it logs. Its channel is a unix socket served by naiveHost for each run; the command, pid 1 of its namespace, holds the guest end as descriptor 3. Every escape test must fail here.
 type control struct {
 	dir, payload, workspace string
 	env                     []string // what a naive sandbox exports to the guest: the real secret

@@ -28,8 +28,7 @@ import (
 	"time"
 )
 
-// The I6 rows. A bare allowed name is one the product terminates: the guest is to meet a leaf for the name from a per-session authority whose key is the host's alone, and the host is to carry the
-// request on to the name the SNI gave, verifying the upstream's certificate as itself. Both canaries share one listener at port 443, told apart by SNI; their certificate chains to the suite's own
+// The I6 rows. A bare allowed name is one the product terminates: the guest is to meet a leaf for the name from a per-session authority whose key is the host's alone, and the host is to carry the request on to the name the SNI gave, verifying the upstream's certificate as itself. Both canaries share one listener at port 443, told apart by SNI; their certificate chains to the suite's own
 // authority, the host side's trust store (sandbox.Config.Roots). A guest that validates a canary's leaf was spliced through, not terminated.
 
 // terminating is the sandbox the rows want: two allowed names, bare, the judge as the host's resolver, and the host side in a network of its own, where the judge holds the one address both names resolve to (SPEC T8).
@@ -155,9 +154,8 @@ func serveTwo(ctx context.Context, s Session, keys []tls.EncryptedClientHelloKey
 	return ns, stop, nil
 }
 
-// terminatedProbe is a program in the guest opening TLS to the bound name twice, as programs do: trusting what its environment names (nil roots: the standard library
-// reads SSL_CERT_FILE) and trusting the canary's own authority alone (args[5], PEM in base64). On a terminated connection the first validates a leaf for the name and the
-// second meets a leaf the canary's authority never signed; on a spliced one the second validates. Each that validates asks for /terminated, so that the canary saw it.
+// terminatedProbe is a program in the guest opening TLS to the bound name twice, as programs do: trusting what its environment names (nil roots: the standard library reads SSL_CERT_FILE) and trusting the canary's own authority alone (args[5], PEM in base64). On a terminated connection the first validates a leaf for the name and the second meets a leaf the canary's authority never signed; on a
+// spliced one the second validates. Each that validates asks for /terminated, so that the canary saw it.
 func terminatedProbe(args []string) Result {
 	t, bad := parseTargets(args)
 	if bad.Status != "" {
@@ -202,9 +200,8 @@ func handshake(name, addr string, roots *x509.CertPool) (bool, string, error) {
 	return true, fmt.Sprintf("validated a leaf for %v issued by %q, got %q", leaf.DNSNames, leaf.Issuer.CommonName, strings.TrimSpace(line)), nil
 }
 
-// terminationJudge expects the guest to have validated the bound name with the roots its environment names and not with the canary's authority, and the bound canary to
-// have served the request that came on that connection, in the open and under its own name: the product terminated the connection and reached the upstream as itself. A
-// leaf of the canary's authority in the guest was spliced through; a leaf the guest could validate with neither is one the product set no trust for.
+// terminationJudge expects the guest to have validated the bound name with the roots its environment names and not with the canary's authority, and the bound canary to have served the request that came on that connection, in the open and under its own name: the product terminated the connection and reached the upstream as itself. A leaf of the canary's authority in the guest was spliced through;
+// a leaf the guest could validate with neither is one the product set no trust for.
 func terminationJudge(s Session, bound, other *canary) (bool, string, error) {
 	if _, _, err := roots(); err != nil {
 		return false, "", err
@@ -240,8 +237,7 @@ func upstreamProbe(args []string) Result {
 	return after(t.check(), report(fetch(t.get(t.other, "/check"), t.addrs, &tls.Config{}, false)))
 }
 
-// upstreamJudge, with the bound canary's certificate made for the other name, expects the host to have refused that upstream: the bound canary must have served nothing, while the other, whose
-// certificate is its own, served the guest's request. A product that reached neither proves nothing; one that served the bound name verified no certificate.
+// upstreamJudge, with the bound canary's certificate made for the other name, expects the host to have refused that upstream: the bound canary must have served nothing, while the other, whose certificate is its own, served the guest's request. A product that reached neither proves nothing; one that served the bound name verified no certificate.
 func upstreamJudge(s Session, bound, other *canary) (bool, string, error) {
 	r, err := run(s, bound, other)
 	if err != nil {

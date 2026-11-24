@@ -331,10 +331,8 @@ func redirectTo(other *canary) http.HandlerFunc {
 	}
 }
 
-// The placeholder rows have the guest send a table of requests, each carrying the credential it holds somewhere, and hold the canaries to the swap rule: the credential alone, behind "Bearer ", or as
-// the password of a Basic value, in the bound header of a request to the bound name, of the method, under the path and within a repository the binding names when it names them, reaches the canary as
-// the real value; anything else reaches no canary. An exchange is "method,name,path,where": name is bound or other, and where says where the credential goes: header (x-api-key), bearer (x-api-key,
-// "Bearer "), auth (Authorization, "Bearer "), basic (Authorization, as git sends a token: Basic base64("x-access-token:" + credential)), path (a last element of the path), query (?key=), or none.
+// The placeholder rows have the guest send a table of requests, each carrying the credential it holds somewhere, and hold the canaries to the swap rule: the credential alone, behind "Bearer ", or as the password of a Basic value, in the bound header of a request to the bound name, of the method, under the path and within a repository the binding names when it names them, reaches the canary as the
+// real value; anything else reaches no canary. An exchange is "method,name,path,where": name is bound or other, and where says where the credential goes: header (x-api-key), bearer (x-api-key, "Bearer "), auth (Authorization, "Bearer "), basic (Authorization, as git sends a token: Basic base64("x-access-token:" + credential)), path (a last element of the path), query (?key=), or none.
 type exchange struct{ method, name, path, where string }
 
 // headerOf is the header each where kind puts the credential in; none for the rest.
@@ -354,8 +352,7 @@ func parseExchange(spec string) (exchange, bool) {
 	return exchange{f[0], f[1], f[2], f[3]}, true
 }
 
-// admitted says whether the binding swaps the exchange's credential: it is in the bound header, to the bound name, of the bound method, under the bound path, and, when
-// the binding names repositories, the path as sent and the path decoded and cleaned both lie within one of them (SPEC I5: a placeholder is useless anywhere else).
+// admitted says whether the binding swaps the exchange's credential: it is in the bound header, to the bound name, of the bound method, under the bound path, and, when the binding names repositories, the path as sent and the path decoded and cleaned both lie within one of them (SPEC I5: a placeholder is useless anywhere else).
 func (e exchange) admitted(sec sandbox.Secret) bool {
 	raw, _, _ := strings.Cut(e.path, "?")
 	decoded, _ := url.PathUnescape(raw)

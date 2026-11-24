@@ -305,8 +305,7 @@ func (w *workcell) Start(_ context.Context, cfg Config) (string, error) {
 	return "", nil
 }
 
-// Exec is one `workcell run`: a fresh VM boots, the guest's shell takes the payload from stdin and runs it, and the VM goes away. Every exit status is a result, 125 and 126 included. With a Command,
-// the product runs that name from the layer the test installed, on a stdin nothing writes, held open: no Stdin frame, nothing for the guest to acknowledge before the command speaks.
+// Exec is one `workcell run`: a fresh VM boots, the guest's shell takes the payload from stdin and runs it, and the VM goes away. Every exit status is a result, 125 and 126 included. With a Command, the product runs that name from the layer the test installed, on a stdin nothing writes, held open: no Stdin frame, nothing for the guest to acknowledge before the command speaks.
 func (w *workcell) Exec(ctx context.Context, args ...string) (Output, error) {
 	if w.dir == "" {
 		return Output{}, errors.New("workcell: Exec before Start")
@@ -357,8 +356,7 @@ func (w *workcell) Bench(ctx context.Context) (Output, error) {
 	return w.cli(ctx, nil, "bench", "start")
 }
 
-// cli runs the product once with the prepared artifacts, the session's policy and trust store, in its export, stdin from in, both streams bounded, steered when
-// the session names a resolver. An exit status is a result, not an error. On cancel the product gets SIGTERM and a little while; then its group is killed.
+// cli runs the product once with the prepared artifacts, the session's policy and trust store, in its export, stdin from in, both streams bounded, steered when the session names a resolver. An exit status is a result, not an error. On cancel the product gets SIGTERM and a little while; then its group is killed.
 func (w *workcell) cli(ctx context.Context, in io.Reader, args ...string) (Output, error) {
 	env := append(os.Environ(), "XDG_DATA_HOME="+prepared.xdg, "XDG_CONFIG_HOME="+filepath.Join(w.dir, "config"))
 	if w.cfg.Roots != "" {

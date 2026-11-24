@@ -20,9 +20,8 @@ import (
 	"time"
 )
 
-// TestCLICancel checks that a cancelled steered session ends when its context does, and leaves no product behind: at once when the product exits on the SIGTERM, and after WaitDelay when it ignores
-// the signal. When the suite is not root the product sits behind root's sudo, and the kill Go sends then reaches only sudo, so the adapter must kill the product's group itself. The product is a shell
-// that notes its pid in the session's directory. It needs unshare and, unless the test is root, sudo without a password; elsewhere it is skipped.
+// TestCLICancel checks that a cancelled steered session ends when its context does, and leaves no product behind: at once when the product exits on the SIGTERM, and after WaitDelay when it ignores the signal. When the suite is not root the product sits behind root's sudo, and the kill Go sends then reaches only sudo, so the adapter must kill the product's group itself. The product is a shell that
+// notes its pid in the session's directory. It needs unshare and, unless the test is root, sudo without a password; elsewhere it is skipped.
 func TestCLICancel(t *testing.T) {
 	if _, err := exec.LookPath("unshare"); err != nil {
 		t.Skip(err)
@@ -68,8 +67,7 @@ func TestCLICancel(t *testing.T) {
 	}
 }
 
-// TestIsolatedNetwork starts the network a session of its own gets (isolate, suite.Hold) and looks from inside it: the loopback device holds IsolatedNet; "host" and "neighbour" bind at CanaryAddr and Neighbour (bind), and a dial inside the namespace reaches both, the first through a local route alone. It
-// needs unshare and root, since the test enters the namespace itself; elsewhere it is skipped.
+// TestIsolatedNetwork starts the network a session of its own gets (isolate, suite.Hold) and looks from inside it: the loopback device holds IsolatedNet; "host" and "neighbour" bind at CanaryAddr and Neighbour (bind), and a dial inside the namespace reaches both, the first through a local route alone. It needs unshare and root, since the test enters the namespace itself; elsewhere it is skipped.
 func TestIsolatedNetwork(t *testing.T) {
 	if _, err := exec.LookPath("unshare"); err != nil {
 		t.Skip(err)
