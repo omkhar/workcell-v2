@@ -17,8 +17,7 @@ func TestRelayHeader(t *testing.T) {
 	cases := []struct {
 		ip   string
 		want []byte // the 16 address bytes
-	}{
-		{"192.0.2.2", []byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xff, 0xff, 192, 0, 2, 2}}, {"::ffff:192.0.2.2", []byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xff, 0xff, 192, 0, 2, 2}},
+	}{{"192.0.2.2", []byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xff, 0xff, 192, 0, 2, 2}}, {"::ffff:192.0.2.2", []byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xff, 0xff, 192, 0, 2, 2}},
 		{"2001:db8::7", []byte{0x20, 1, 0xd, 0xb8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 7}}, {"", make([]byte, 16)},
 	}
 	for _, c := range cases {
@@ -43,9 +42,7 @@ func TestVerdict(t *testing.T) {
 		name         string
 		got          [][]byte
 		stream, pass bool
-	}{
-		{"nothing on a stream canary", nil, true, true}, {"nothing on a datagram canary", nil, false, true},
-		{"the token on a stream canary", [][]byte{[]byte("tok\n")}, true, false}, {"the token on a datagram canary", [][]byte{[]byte("x"), []byte("tok\n")}, false, false},
+	}{{"nothing on a stream canary", nil, true, true}, {"nothing on a datagram canary", nil, false, true}, {"the token on a stream canary", [][]byte{[]byte("tok\n")}, true, false}, {"the token on a datagram canary", [][]byte{[]byte("x"), []byte("tok\n")}, false, false},
 		{"a connection without the token", [][]byte{[]byte("")}, true, false}, {"a stray datagram", [][]byte{[]byte("x\n")}, false, true},
 	}
 	for _, c := range cases {
@@ -99,16 +96,13 @@ func TestTCPCanaryJudge(t *testing.T) {
 		name string
 		run  func(args ...string) Result
 		pass bool
-	}{
-		{"refused", func(...string) Result { return Result{Status: "refused", Detail: "connection refused"} }, true},
-		{"accepted then closed, nothing at the canary", func(...string) Result { return Result{Status: "connected-closed", Detail: "EOF"} }, true}, {"the token at the canary", deliver, false},
-		{"a connection at the canary", func(args ...string) Result {
-			c, err := net.Dial("tcp", args[0])
-			if err == nil {
-				c.Close()
-			}
-			return Result{Status: "connected-closed", Detail: "no token"}
-		}, false},
+	}{{"refused", func(...string) Result { return Result{Status: "refused", Detail: "connection refused"} }, true}, {"accepted then closed, nothing at the canary", func(...string) Result { return Result{Status: "connected-closed", Detail: "EOF"} }, true}, {"the token at the canary", deliver, false}, {"a connection at the canary", func(args ...string) Result {
+		c, err := net.Dial("tcp", args[0])
+		if err == nil {
+			c.Close()
+		}
+		return Result{Status: "connected-closed", Detail: "no token"}
+	}, false},
 	}
 	for _, c := range cases {
 		pass, detail, err := judge(ctx, guest(c.run))
@@ -129,8 +123,7 @@ func TestRelayJudges(t *testing.T) {
 	if pass, detail, err := canary(ctx, guest(func(args ...string) Result { return deliver(args[2], args[3]) })); err != nil || pass {
 		t.Errorf("relayCanary with the token arriving = %v, %q, %v; want fail", pass, detail, err)
 	}
-	// relayHeld: a dropped stream or no relay passes; a held or answered one fails.
-	for status, want := range map[string]bool{"closed": true, "no-relay": true, "held": false, "answered": false, "cut": false} {
+	for status, want := range map[string]bool{"closed": true, "no-relay": true, "held": false, "answered": false, "cut": false} { // relayHeld: a dropped stream or no relay passes; a held or answered one fails.
 		pass, detail, err := relayHeld("short")(ctx, guest(say(status)))
 		if err != nil || pass != want {
 			t.Errorf("relayHeld with the guest saying %s = %v, %q, %v; want %v", status, pass, detail, err, want)

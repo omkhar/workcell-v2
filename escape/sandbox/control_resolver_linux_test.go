@@ -41,8 +41,7 @@ func TestNaiveResolver(t *testing.T) {
 			t.Fatalf("type %d: %v", c2.typ, err)
 		}
 		a := buf[:n]
-		if n != len(q)+12+c2.n || !bytes.Equal(a[:2], q[:2]) || a[2] != 0x81 || a[3] != 0x80 || a[7] != 1 || !bytes.Equal(a[12:len(q)], q[12:]) ||
-			a[len(q)] != 0xC0 || a[len(q)+1] != 12 || a[len(q)+3] != c2.want || int(a[len(q)+11]) != c2.n {
+		if n != len(q)+12+c2.n || !bytes.Equal(a[:2], q[:2]) || a[2] != 0x81 || a[3] != 0x80 || a[7] != 1 || !bytes.Equal(a[12:len(q)], q[12:]) || a[len(q)] != 0xC0 || a[len(q)+1] != 12 || a[len(q)+3] != c2.want || int(a[len(q)+11]) != c2.n {
 			t.Errorf("type %d: answer % x", c2.typ, a)
 		}
 	}

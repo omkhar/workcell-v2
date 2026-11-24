@@ -27,13 +27,9 @@ func TestParseDNSQuery(t *testing.T) {
 		in   []byte
 		want dnsQuestion
 		ok   bool
-	}{
-		{"A query", good, q, true}, {"TXT query, many labels", dnsQuery(dnsQuestion{Name: "a.bb.ccc.dddd.", Type: dnsTypeTXT}), dnsQuestion{Name: "a.bb.ccc.dddd.", Type: dnsTypeTXT}, true},
-		{"longest label", dnsQuery(dnsQuestion{Name: strings.Repeat("y", maxLabel) + ".", Type: 1}), dnsQuestion{Name: strings.Repeat("y", maxLabel) + ".", Type: 1}, true},
-		{"name too long", dnsQuery(long), dnsQuestion{}, false}, {"label too long", dnsQuery(dnsQuestion{Name: strings.Repeat("y", maxLabel+1) + ".", Type: 1}), dnsQuestion{}, false},
-		{"trailing bytes", append(good, 1, 2, 3), q, true}, {"truncated", good[:len(good)-1], dnsQuestion{}, false}, {"truncated in name", good[:20], dnsQuestion{}, false},
-		{"response", response, dnsQuestion{}, false}, {"no question", noQuestion, dnsQuestion{}, false}, {"class CH", chaos, dnsQuestion{}, false},
-		{"compression pointer", pointer, dnsQuestion{}, false}, {"root name", dnsQuery(dnsQuestion{Name: ".", Type: 1}), dnsQuestion{}, false},
+	}{{"A query", good, q, true}, {"TXT query, many labels", dnsQuery(dnsQuestion{Name: "a.bb.ccc.dddd.", Type: dnsTypeTXT}), dnsQuestion{Name: "a.bb.ccc.dddd.", Type: dnsTypeTXT}, true}, {"longest label", dnsQuery(dnsQuestion{Name: strings.Repeat("y", maxLabel) + ".", Type: 1}), dnsQuestion{Name: strings.Repeat("y", maxLabel) + ".", Type: 1}, true},
+		{"name too long", dnsQuery(long), dnsQuestion{}, false}, {"label too long", dnsQuery(dnsQuestion{Name: strings.Repeat("y", maxLabel+1) + ".", Type: 1}), dnsQuestion{}, false}, {"trailing bytes", append(good, 1, 2, 3), q, true}, {"truncated", good[:len(good)-1], dnsQuestion{}, false}, {"truncated in name", good[:20], dnsQuestion{}, false},
+		{"response", response, dnsQuestion{}, false}, {"no question", noQuestion, dnsQuestion{}, false}, {"class CH", chaos, dnsQuestion{}, false}, {"compression pointer", pointer, dnsQuestion{}, false}, {"root name", dnsQuery(dnsQuestion{Name: ".", Type: 1}), dnsQuestion{}, false},
 		{"dot in label", dot, dnsQuestion{}, false}, {"space in label", space, dnsQuestion{}, false}, {"header only", good[:12], dnsQuestion{}, false}, {"nothing", nil, dnsQuestion{}, false},
 	}
 	for _, c := range cases {
@@ -79,12 +75,8 @@ func TestTunnelled(t *testing.T) {
 		qs   []dnsQuestion
 		leak bool
 		n    string
-	}{
-		{"all four chunks", all, true, "4 TXT"}, {"three of four chunks, one dropped", []dnsQuestion{all[0], all[1], all[3]}, true, "3 TXT"},
-		{"one chunk", all[2:3], true, "1 TXT"}, {"out of order", []dnsQuestion{all[3], all[0]}, true, "2 TXT"}, {"nothing", nil, false, ""},
-		{"another run's token", []dnsQuestion{txt(0, "fedcba98")}, false, ""}, {"not TXT", []dnsQuestion{{Name: all[0].Name, Type: dnsTypeA}}, false, ""},
-		{"another apex", []dnsQuestion{{Name: "0." + token[0:8] + ".other.invalid.", Type: dnsTypeTXT}}, false, ""},
-		{"empty chunk", []dnsQuestion{{Name: "0." + tunnelApex, Type: dnsTypeTXT}}, false, ""}, {"apex alone", []dnsQuestion{{Name: tunnelApex, Type: dnsTypeTXT}}, false, ""},
+	}{{"all four chunks", all, true, "4 TXT"}, {"three of four chunks, one dropped", []dnsQuestion{all[0], all[1], all[3]}, true, "3 TXT"}, {"one chunk", all[2:3], true, "1 TXT"}, {"out of order", []dnsQuestion{all[3], all[0]}, true, "2 TXT"}, {"nothing", nil, false, ""},
+		{"another run's token", []dnsQuestion{txt(0, "fedcba98")}, false, ""}, {"not TXT", []dnsQuestion{{Name: all[0].Name, Type: dnsTypeA}}, false, ""}, {"another apex", []dnsQuestion{{Name: "0." + token[0:8] + ".other.invalid.", Type: dnsTypeTXT}}, false, ""}, {"empty chunk", []dnsQuestion{{Name: "0." + tunnelApex, Type: dnsTypeTXT}}, false, ""}, {"apex alone", []dnsQuestion{{Name: tunnelApex, Type: dnsTypeTXT}}, false, ""},
 	}
 	for _, c := range cases {
 		what, leak := tunnelled(c.qs, token)
@@ -118,10 +110,8 @@ func TestParseDNSReply(t *testing.T) {
 		addrs []string
 		n     int
 		ok    bool
-	}{
-		{"A", a, 0, []string{"127.0.0.1"}, 1, true}, {"AAAA", aaaa, 0, []string{"::1"}, 1, true}, {"CNAME then A", cname, 0, []string{"10.0.0.1"}, 2, true},
-		{"TXT", txt, 0, nil, 1, true}, {"NODATA", reply(0), 0, nil, 0, true}, {"REFUSED", reply(5), 5, nil, 0, true}, {"NXDOMAIN", reply(3), 3, nil, 0, true},
-		{"a query", q, 0, nil, 0, false}, {"truncated record", a[:len(a)-1], 0, nil, 0, false}, {"truncated name", a[:14], 0, nil, 0, false},
+	}{{"A", a, 0, []string{"127.0.0.1"}, 1, true}, {"AAAA", aaaa, 0, []string{"::1"}, 1, true}, {"CNAME then A", cname, 0, []string{"10.0.0.1"}, 2, true},
+		{"TXT", txt, 0, nil, 1, true}, {"NODATA", reply(0), 0, nil, 0, true}, {"REFUSED", reply(5), 5, nil, 0, true}, {"NXDOMAIN", reply(3), 3, nil, 0, true}, {"a query", q, 0, nil, 0, false}, {"truncated record", a[:len(a)-1], 0, nil, 0, false}, {"truncated name", a[:14], 0, nil, 0, false},
 		{"bad label bits", append(reply(0)[:12:12], 0x80, 1, 0, 1, 0, 1), 0, nil, 0, false}, {"header only", a[:12], 0, nil, 0, false}, {"nothing", nil, 0, nil, 0, false},
 	}
 	for _, c := range cases {

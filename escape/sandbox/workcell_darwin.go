@@ -39,7 +39,6 @@ func hostReady() error {
 // suite's user without a password, binds a port below 1024 at an alias of lo0 and hands the descriptor over as suite.Bind does. No other sudo exists.
 const steersResolver, judgeDomain, bindHelper = true, "escape.test", "/usr/local/libexec/workcell-escape/workcell-bind"
 const landing = "192.175.48.1" // the host's address in IsolatedNet
-
 // steered checks that every question for judgeDomain reaches resolver and nowhere else (T8).
 func steered(_, resolver string, _, argv []string, _ int) ([]string, error) {
 	if err := LoopbackHolds(resolver); err != nil {

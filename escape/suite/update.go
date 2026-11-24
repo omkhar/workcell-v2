@@ -27,8 +27,7 @@ import (
 	"time"
 )
 
-// The I14 judges run the product's update client on the host against a channel and an upstream the judge serves on the test host's own loopback (SPEC T8), signed with a key the judge made, in the format of ADR-004: updateJudge through `workcell update`, dailyJudge through the check a session start makes by
-// itself. The invariant holds only if nothing from a hostile manifest is installed. The guest plays no part; the probe is idle.
+// The I14 judges run the product's update client on the host against a channel and an upstream the judge serves on the test host's own loopback (SPEC T8), signed with a key the judge made, in the format of ADR-004: updateJudge through `workcell update`, dailyJudge through the check a session start makes by itself. The invariant holds only if nothing from a hostile manifest is installed. The guest plays no part; the probe is idle.
 
 // payloadType is the DSSE payload type of channel.json.
 const payloadType = "application/vnd.workcell.channel+json"
@@ -276,8 +275,7 @@ func updateJudge(variant string) Judge {
 		if rs := ch.plain.requests(); len(rs) > 0 {
 			return false, fmt.Sprintf("the client fetched %v without TLS", rs), nil
 		}
-		// A valid successor pinning the same version: a client that refused the variant must still install from it.
-		next := artifact("successor")
+		next := artifact("successor") // A valid successor pinning the same version: a client that refused the variant must still install from it.
 		ch.src.set("/successor", whole(next))
 		if err := publish(ch.src, ch.manifest(ch.now-30, "1.0.1", ch.src.url+"/successor", next), ch.key, nil); err != nil {
 			return false, "", err

@@ -140,8 +140,7 @@ func offlineJudge(edit string) Judge {
 		var edited []byte
 		switch edit {
 		case "drop": // a whole record: the middle one, or, of two, the first
-			// A session that runs nothing records only its start and its end. Dropping the start leaves a chain that is consistent from its second record on, so verify must anchor the first.
-			switch {
+			switch { // A session that runs nothing records only its start and its end. Dropping the start leaves a chain that is consistent from its second record on, so verify must anchor the first.
 			case len(lines) >= 3:
 				edited = bytes.Join(append(lines[:len(lines)/2:len(lines)/2], lines[len(lines)/2+1:]...), nil)
 			case len(lines) == 2:
@@ -189,8 +188,7 @@ func offlineJudge(edit string) Judge {
 	}
 }
 
-// connectProbe opens TLS from the guest to the allowed name and to the denied one, each at the address the judge gave, and says only how each went: never the
-// names. Both sandboxes may keep the guest's words, its command line and its output, so the names come in hex and leave as "served", "refused" and the like; a record naming one can then only be the host's own account of the connection. args: allowed name in hex, its address, denied name in hex, its address.
+// connectProbe opens TLS from the guest to the allowed name and to the denied one, each at the address the judge gave, and says only how each went: never the names. Both sandboxes may keep the guest's words, its command line and its output, so the names come in hex and leave as "served", "refused" and the like; a record naming one can then only be the host's own account of the connection. args: allowed name in hex, its address, denied name in hex, its address.
 func connectProbe(args []string) Result {
 	if len(args) != 4 {
 		return Result{Status: "error", Detail: "want allowed name in hex, address, denied name in hex, address"}

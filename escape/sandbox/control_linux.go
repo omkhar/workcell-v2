@@ -73,8 +73,7 @@ func (c *control) Start(_ context.Context, cfg Config) (string, error) {
 	}
 	c.relay = &naiveRelay{ln: rl}
 	go c.relay.serve()
-	// The guest's resolv.conf names the naive resolver whether or not it could bind: a query goes there or nowhere, never to the host's own (T8, S12).
-	if c.resolver, err = listenNaiveResolver(naiveResolverAddr); err != nil {
+	if c.resolver, err = listenNaiveResolver(naiveResolverAddr); err != nil { // The guest's resolv.conf names the naive resolver whether or not it could bind: a query goes there or nowhere, never to the host's own (T8, S12).
 		fmt.Fprintf(os.Stderr, "escape: control: no naive resolver at %s (%v): the guest's lookups will go unanswered\n", naiveResolverAddr, err)
 	}
 	host, _, _ := net.SplitHostPort(naiveResolverAddr)
@@ -124,8 +123,7 @@ func (c *control) Exec(ctx context.Context, args ...string) (Output, error) {
 	stdout, stderr := &bounded{limit: MaxStdout}, &bounded{limit: MaxStderr}
 	host := &naiveHost{stdout: stdout, stderr: stderr, cancel: cancel}
 	host.wg.Go(func() { host.accept(c.ln) })
-	// The loader makes every mount private in the run's own mount namespace, binds the session's resolv.conf over /etc/resolv.conf, then becomes the payload, or the command the session runs by name from the prefix's PATH.
-	cmd := exec.CommandContext(cctx, "/bin/sh", append([]string{"-c", controlLoader, filepath.Join(c.dir, "resolv.conf"), cmp.Or(c.command, c.payload)}, args...)...)
+	cmd := exec.CommandContext(cctx, "/bin/sh", append([]string{"-c", controlLoader, filepath.Join(c.dir, "resolv.conf"), cmp.Or(c.command, c.payload)}, args...)...) // The loader makes every mount private in the run's own mount namespace, binds the session's resolv.conf over /etc/resolv.conf, then becomes the payload, or the command the session runs by name from the prefix's PATH.
 	cmd.Dir = "/"
 	cmd.Env = c.env
 	cmd.ExtraFiles = []*os.File{end}
@@ -136,9 +134,8 @@ func (c *control) Exec(ctx context.Context, args ...string) (Output, error) {
 		attr.GidMappings = []syscall.SysProcIDMap{{ContainerID: 0, HostID: os.Getgid(), Size: 1}}
 	}
 	cmd.SysProcAttr = attr
-	cmd.WaitDelay = 2 * time.Second // the payload is pid 1 of its namespace: its death takes the rest
-	// A plain container logs everything the guest says, without a cap, after the record of the run itself.
-	if err := c.record("exec " + strings.Join(args, " ")); err != nil {
+	cmd.WaitDelay = 2 * time.Second                                     // the payload is pid 1 of its namespace: its death takes the rest
+	if err := c.record("exec " + strings.Join(args, " ")); err != nil { // A plain container logs everything the guest says, without a cap, after the record of the run itself.
 		return Output{}, err
 	}
 	log, err := os.OpenFile(filepath.Join(c.dir, "log"), os.O_WRONLY|os.O_APPEND, 0o600)
@@ -189,8 +186,7 @@ func (c *control) Pull(ctx context.Context, dest string) error {
 		return errors.New("control: the session has no workspace to pull")
 	}
 	run := func(args ...string) ([]byte, error) {
-		// No proxy: the only addresses a pull may fetch are the test's own (SPEC S12).
-		cmd := exec.CommandContext(ctx, git, append([]string{"-C", c.workspace, "-c", "http.proxy="}, args...)...)
+		cmd := exec.CommandContext(ctx, git, append([]string{"-C", c.workspace, "-c", "http.proxy="}, args...)...) // No proxy: the only addresses a pull may fetch are the test's own (SPEC S12).
 		cmd.Env = append(os.Environ(), "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_NOSYSTEM=1", "GIT_TERMINAL_PROMPT=0", "GIT_AUTHOR_NAME=workcell", "GIT_AUTHOR_EMAIL=workcell@localhost", "GIT_COMMITTER_NAME=workcell", "GIT_COMMITTER_EMAIL=workcell@localhost")
 		return cmd.Output()
 	}
@@ -291,8 +287,7 @@ func (c *control) startHelpers() error {
 func (c *control) Update(_ context.Context, u UpdateConfig) ([]byte, error) {
 	pool := x509.NewCertPool()
 	pool.AppendCertsFromPEM(u.CA)
-	// No proxy: the only addresses an update may fetch are the test's own (SPEC S12).
-	client := &http.Client{Timeout: 5 * time.Second, Transport: &http.Transport{TLSClientConfig: &tls.Config{RootCAs: pool, MinVersion: tls.VersionTLS12}}}
+	client := &http.Client{Timeout: 5 * time.Second, Transport: &http.Transport{TLSClientConfig: &tls.Config{RootCAs: pool, MinVersion: tls.VersionTLS12}}} // No proxy: the only addresses an update may fetch are the test's own (SPEC S12).
 	get := func(url string) ([]byte, error) {
 		resp, err := client.Get(url)
 		if err != nil {

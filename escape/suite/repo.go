@@ -28,15 +28,13 @@ func repoProbe(args []string) Result {
 	}
 	shape, guest, beside, token, extra := args[0], args[1], args[2], args[3], args[4]
 	canary := func(effect string) string { return filepath.Join(beside, "written-"+effect) }
-	// hook is a shell script that makes an effect on the host, then runs tail.
-	hook := func(effect, tail string) []byte {
+	hook := func(effect, tail string) []byte { // hook is a shell script that makes an effect on the host, then runs tail.
 		return []byte("#!/bin/sh\ntouch '" + canary(effect) + "'\n" + tail + "\n")
 	}
 	script := func(path, effect, tail string) error { return os.WriteFile(path, hook(effect, tail), 0o755) }
 	r := repo{guest}
 	// The values are relative to the work tree, so that they hold wherever a pull brings it.
-	err := r.create(map[string]string{
-		"dotdot": "\tbare = true\n", // so that a snapshot of the work tree cannot replace HEAD
+	err := r.create(map[string]string{"dotdot": "\tbare = true\n", // so that a snapshot of the work tree cannot replace HEAD
 		"dotgit": "\tbare = true\n", "config": "\tfsmonitor = .git/fsmonitor\n\thooksPath = .hooks\n[filter \"escape\"]\n\tclean = ./.git/filter\n\trequired = true\n",
 	}[shape])
 	if err == nil {

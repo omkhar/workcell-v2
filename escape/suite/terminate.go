@@ -154,8 +154,7 @@ func serveTwo(ctx context.Context, s Session, keys []tls.EncryptedClientHelloKey
 	return ns, stop, nil
 }
 
-// terminatedProbe is a program in the guest opening TLS to the bound name twice, as programs do: trusting what its environment names (nil roots: the standard library reads SSL_CERT_FILE) and trusting the canary's own authority alone (args[5], PEM in base64). On a terminated connection the first validates a leaf for the name and the second meets a leaf the canary's authority never signed; on a
-// spliced one the second validates. Each that validates asks for /terminated, so that the canary saw it.
+// terminatedProbe is a program in the guest opening TLS to the bound name twice, as programs do: trusting what its environment names (nil roots: the standard library reads SSL_CERT_FILE) and trusting the canary's own authority alone (args[5], PEM in base64). On a terminated connection the first validates a leaf for the name and the second meets a leaf the canary's authority never signed; on a spliced one the second validates. Each that validates asks for /terminated, so that the canary saw it.
 func terminatedProbe(args []string) Result {
 	t, bad := parseTargets(args)
 	if bad.Status != "" {
@@ -200,8 +199,7 @@ func handshake(name, addr string, roots *x509.CertPool) (bool, string, error) {
 	return true, fmt.Sprintf("validated a leaf for %v issued by %q, got %q", leaf.DNSNames, leaf.Issuer.CommonName, strings.TrimSpace(line)), nil
 }
 
-// terminationJudge expects the guest to have validated the bound name with the roots its environment names and not with the canary's authority, and the bound canary to have served the request that came on that connection, in the open and under its own name: the product terminated the connection and reached the upstream as itself. A leaf of the canary's authority in the guest was spliced through;
-// a leaf the guest could validate with neither is one the product set no trust for.
+// terminationJudge expects the guest to have validated the bound name with the roots its environment names and not with the canary's authority, and the bound canary to have served the request that came on that connection, in the open and under its own name: the product terminated the connection and reached the upstream as itself. A leaf of the canary's authority in the guest was spliced through; a leaf the guest could validate with neither is one the product set no trust for.
 func terminationJudge(s Session, bound, other *canary) (bool, string, error) {
 	if _, _, err := roots(); err != nil {
 		return false, "", err

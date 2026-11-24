@@ -25,7 +25,6 @@ static kern_return_t freePages(unsigned long long pages[3]) {
 }
 */
 import "C"
-
 import (
 	"errors"
 	"fmt"

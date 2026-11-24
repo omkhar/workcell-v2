@@ -47,9 +47,7 @@ const deathWait = 2 * time.Second           // how long SIGKILL has to take effe
 const wakeWait = 6 * time.Second            // how long the session has to go away after the death, the run included
 const closeWithin = 2 * time.Second         // how soon after the death the held connection must close
 const settle = 300 * time.Millisecond       // a moment for a late request to show at a canary
-
-// holdProbe is the guest of the I11 rows. It asks its resolver for the allowed name, fetches https://<allowed>/reach, once more after a pause when that fails, holds a second connection open on /stream until the far end closes it or holdFor passes, and then, as a program does after losing a connection,
-// tries again: its resolver for both names and /after at both. args: allowed name, its address, denied name, its address.
+// holdProbe is the guest of the I11 rows. It asks its resolver for the allowed name, fetches https://<allowed>/reach, once more after a pause when that fails, holds a second connection open on /stream until the far end closes it or holdFor passes, and then, as a program does after losing a connection, tries again: its resolver for both names and /after at both. args: allowed name, its address, denied name, its address.
 func holdProbe(args []string) Result {
 	if len(args) != 4 {
 		return Result{Status: "error", Detail: "want allowed name, address, denied name, address"}
@@ -168,8 +166,7 @@ func (st *stream) serve(w http.ResponseWriter, r *http.Request) {
 // canary and no question at the judge's resolver after the kill, and, if the guest could still speak, its resolver answered no name. A guest that held no connection before the kill is an error, not a pass.
 func helperKilled(name string, atStart bool) Judge {
 	return func(ctx context.Context, s Session) (bool, string, error) {
-		// The canaries and the judge's resolver, where the product reaches the test host; the resolver answers both names with the address the canaries listen at.
-		var st stream
+		var st stream // The canaries and the judge's resolver, where the product reaches the test host; the resolver answers both names with the address the canaries listen at.
 		allowed, denied := &canary{name: s.Allow[0], respond: st.serve}, &canary{name: s.Deny[0]}
 		ns, stop, err := serveTwo(ctx, s, nil, allowed, denied)
 		if err != nil {
@@ -177,8 +174,7 @@ func helperKilled(name string, atStart bool) Judge {
 		}
 		defer ns.stop()
 		defer stop()
-		// The guest's run, under a context of this judge's own, so that a run that outlives the helper is cut short before the canaries go.
-		rctx, cancel := context.WithCancel(ctx)
+		rctx, cancel := context.WithCancel(ctx) // The guest's run, under a context of this judge's own, so that a run that outlives the helper is cut short before the canaries go.
 		defer cancel()
 		type outcome struct {
 			out sandbox.Output
@@ -213,8 +209,7 @@ func helperKilled(name string, atStart bool) Judge {
 			}
 			return says(r)
 		}
-		// A helper the product does not have is known before anything is waited for; the pid that is killed is asked for again at the kill.
-		if _, err := s.Helper(ctx, name); err != nil {
+		if _, err := s.Helper(ctx, name); err != nil { // A helper the product does not have is known before anything is waited for; the pid that is killed is asked for again at the kill.
 			return false, "", err
 		}
 		if !atStart {
@@ -263,8 +258,7 @@ func helperKilled(name string, atStart bool) Judge {
 				return false, "", fmt.Errorf("the %s (pid %d) survived SIGKILL", name, pid)
 			}
 		}
-		// The session must go with it: its processes, the held connection and the run.
-		var left []int
+		var left []int // The session must go with it: its processes, the held connection and the run.
 		for time.Since(killAt) < wakeWait {
 			left = survivors(kin, pgid)
 			select {

@@ -44,12 +44,8 @@ func TestParseResult(t *testing.T) {
 		in   string
 		want Result
 		ok   bool
-	}{
-		{"escape-result connected to 127.0.0.1:1\n", Result{"connected", "to 127.0.0.1:1"}, true}, {"escape-result refused \n", Result{"refused", ""}, true},
-		{"escape-result a-1 " + long + "\n", Result{"a-1", long}, true}, {"escape-result a-1 " + long + "x\n", Result{}, false},
-		{"escape-result " + strings.Repeat("s", maxStatus+1) + " \n", Result{}, false}, {"", Result{}, false},
-		{"escape-result connected", Result{}, false}, {"escape-result connected\n", Result{}, false}, {"escape-result  x\n", Result{}, false},
-		{"escape-result Connected x\n", Result{}, false}, {"escape-result ok \x00\n", Result{}, false}, {"escape-result ok \xff\n", Result{}, false},
+	}{{"escape-result connected to 127.0.0.1:1\n", Result{"connected", "to 127.0.0.1:1"}, true}, {"escape-result refused \n", Result{"refused", ""}, true}, {"escape-result a-1 " + long + "\n", Result{"a-1", long}, true}, {"escape-result a-1 " + long + "x\n", Result{}, false}, {"escape-result " + strings.Repeat("s", maxStatus+1) + " \n", Result{}, false}, {"", Result{}, false},
+		{"escape-result connected", Result{}, false}, {"escape-result connected\n", Result{}, false}, {"escape-result  x\n", Result{}, false}, {"escape-result Connected x\n", Result{}, false}, {"escape-result ok \x00\n", Result{}, false}, {"escape-result ok \xff\n", Result{}, false},
 		{"escape-result ok a\nb\n", Result{}, false}, {"noise\nescape-result ok a\n", Result{}, false}, {"escape-result ok a\n\n", Result{}, false}, {strings.Repeat("a", MaxLine+1), Result{}, false},
 	}
 	for _, c := range cases {
