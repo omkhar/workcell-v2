@@ -5525,6 +5525,29 @@ the pull's temp directory is admitted. The auditor's two probes showed holds ret
 holds a recorded VMM directory with a listening socket under a session whose lock is free, and running false while
 fetch was parked. Not S14: cmd/workcell is v2's own, no v1 line. Fix unit: S-F46, below S-1013 in PLAN.md.
 
+C63 FIXED by S-F46, commits d4b462a (the test moved) and 22d60b0 (the fix) (PR #296). fetch in pull_vm.go takes
+the session's lock right after newest finds the session, before the image is looked at, the inodes file is read
+or anything boots, and holds the descriptor until the pull or diff ends. lockSession in session.go, new, opens
+sessions/<id>/lock, flocks it as the caller asks, turns a held lock into the one line "session <id> is running:
+workcell stop <id> first", and only once it holds the lock truncates the file and writes its own pid there, so
+the pid in the file is always the present holder's and stop signals the pull, whose fetch already ends in order
+on a signal. holdSession is lockSession with a blocking LOCK_EX and no O_EXCL, and removeSession takes the lock
+by lockSession too, so rm records its pid while it removes. So during a pull or diff ls shows the session
+running, rm refuses it, holds refuses a mount session of a directory that holds its VMM directory, a second
+pull or diff is refused, and a pull or diff of a session whose run still holds the lock is refused in that one
+line before signal.Notify, any VMM directory and any line in the vmm file; an rm that wins the window between
+newest and the lock leaves the pull failing closed on the missing lock or image. After the pull the file holds
+the pull's pid with no holder, which nothing reads, since supervisor is asked only while running is true. Net 0
+product lines: five in fetch and the helper, paid by running's switch as one if, removeSession's open and switch
+as the helper's call, and the pid write nested in the lock's success branch: product 15000 of 15000, test 28496
+of 28500, no test line. The test moved with its head comment changed, 40 lines; escape/_pending/ is gone.
+Before: the test fails on main, plain and -race (the redteam and the orchestrator on the claim tree, the reviewer
+in a worktree of main). After: it passes at 22d60b0, plain and -race, with cmd/workcell green under -race. The
+reviewer's probes held a pull at the FIFO and showed each clause above with the real functions and, for the held
+run and for stop, a second process. Hosted on 22d60b0: gate (283s), gate-macos, gate-arm64 and guard green, the
+I7 and I8 rows included. bench still boots unrecorded and unlocked (PARKED line 144). Not run: a VM row of a
+pull under rm, since the state is the operator's own on the host side.
+
 The 120 test lines of the three parked tests were paid by 124 comment re-flows in 45 files under escape/ (sandbox
 and suite), made by a tool of the redteam's that joins only full-line comment runs and leaves directives, licence
 headers, lists and indented blocks alone. No token outside a comment changed and every comment keeps its words in
