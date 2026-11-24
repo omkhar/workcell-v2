@@ -39,7 +39,7 @@ func holds(dir string) error {
 	config, _ := xdgDir("XDG_CONFIG_HOME", ".config") // fails only as dataDir does
 	for _, held := range []string{data, config} {
 		if within(dir, held) || within(held, dir) { // neither need exist yet
-			return fmt.Errorf("%s lies inside or holds workcell's own directory %s, which no session may see: use another directory", dir, held)
+			return fmt.Errorf("%q lies inside or holds workcell's own directory %s, which no session may see: use another directory", dir, held)
 		}
 	}
 	l, err := list(filepath.Join(data, "sessions"))
@@ -47,7 +47,7 @@ func holds(dir string) error {
 		b, _ := os.ReadFile(filepath.Join(data, "sessions", s.id, "vmm")) // none before boot
 		for _, tmp := range strings.Split(string(b), "\n") {
 			if s.state == "running" && tmp != "" && within(dir, tmp) {
-				return fmt.Errorf("%s holds %s, the VMM directory of the running session %s, whose sockets no guest may see and no pull may write over: wait for it or workcell stop %s first", dir, tmp, s.id, s.id)
+				return fmt.Errorf("%q holds %s, the VMM directory of the running session %s, whose sockets no guest may see and no pull may write over: wait for it or workcell stop %s first", dir, tmp, s.id, s.id)
 			}
 		}
 	}

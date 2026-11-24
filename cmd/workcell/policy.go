@@ -45,7 +45,7 @@ func loadPolicy(extra []string, stderr io.Writer) (allow *proxy.Allowlist, secre
 	if err != nil {
 		return nil, nil, "", "", err
 	}
-	repo, err := policy.ReadRepo(filepath.Join(cwd, repoFile))
+	repo, err := policy.ReadRepo(repoFile) // this process's own directory, by identity: its error names the file alone, not the directory's spelling, which the guest may have chosen (C61, C62)
 	if errors.Is(err, policy.ErrNotRegular) {
 		fmt.Fprintf(stderr, "workcell: %v: ignored, a policy file must be a regular file\n", err)
 		repo, err = policy.Policy{}, nil
@@ -84,7 +84,7 @@ func loadPolicy(extra []string, stderr io.Writer) (allow *proxy.Allowlist, secre
 		for _, w := range words {
 			for q, up := w, ""; err == nil && (scheme == "file" || scheme == "cmd") && filepath.IsAbs(w) && q != up; q, up = filepath.Dir(q), q { // the spelling and each lexical ancestor, resolved: under --mount the guest may replace any of them
 				if within(cwd, q) {
-					return nil, nil, "", "", fmt.Errorf("%s:%d: secret %q: source %s lies inside the directory %s, which the guest gets as /workspace: keep it outside", file, s.Line, s.Name, w, cwd)
+					return nil, nil, "", "", fmt.Errorf("%s:%d: secret %q: source %s lies inside the directory %q, which the guest gets as /workspace: keep it outside", file, s.Line, s.Name, w, cwd)
 				}
 			}
 		}

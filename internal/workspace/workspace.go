@@ -41,7 +41,7 @@ func Export(ctx context.Context, dir, imagePath string, free int64) (st Stats, e
 	}
 	fd, err := unix.Open(dir, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_CLOEXEC, 0)
 	if err != nil {
-		return st, fmt.Errorf("open %s: %w", root, err)
+		return st, fmt.Errorf("open %q: %w", root, err)
 	}
 	defer unix.Close(fd)
 	img, err := os.OpenFile(imagePath, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0o600)

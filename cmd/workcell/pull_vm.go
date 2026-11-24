@@ -83,7 +83,7 @@ func fetch(dest string, use func(int, *manifest, source) error) (int, error) {
 		return 0, err
 	}
 	if within(dest, os.TempDir()) { // the VMM's sockets, of a session running now or of one begun during the pull, would lie under it, for the guest's tree to swap for a link to any host socket of the operator's (I1, I4, I7)
-		return 0, fmt.Errorf("%s holds the temp directory %s, where the VMM's sockets lie, which no pull may write over: set TMPDIR elsewhere", dest, os.TempDir())
+		return 0, fmt.Errorf("%q holds the temp directory %s, where the VMM's sockets lie, which no pull may write over: set TMPDIR elsewhere", dest, os.TempDir())
 	}
 	if err := named(root, dest); err != nil {
 		return 0, err
@@ -103,7 +103,7 @@ func fetch(dest string, use func(int, *manifest, source) error) (int, error) {
 	image := filepath.Join(session, "workspace.ext4")
 	st, err := os.Stat(image)
 	if errors.Is(err, fs.ErrNotExist) { // a mount session has no image: its work is in the directory itself (ADR-005)
-		return 0, fmt.Errorf("the newest session run in %s was a mount session (--mount): the agent wrote to the directory itself, so there is nothing to bring back", cwd)
+		return 0, fmt.Errorf("the newest session run in %q was a mount session (--mount): the agent wrote to the directory itself, so there is nothing to bring back", cwd)
 	}
 	rec, rerr := os.ReadFile(filepath.Join(session, "inodes")) // how many inodes the export gave the image, before the guest ran
 	inodes, perr := strconv.ParseInt(string(rec), 10, 64)
@@ -152,7 +152,7 @@ func named(dir int, name string) error {
 	var opened, now unix.Stat_t
 	err := cmp.Or(unix.Fstatat(dir, ".", &opened, 0), unix.Stat(name, &now))
 	if err != nil || opened.Dev != now.Dev || opened.Ino != now.Ino { // a name gone for the instant is refused with the rest
-		return fmt.Errorf("%s no longer names the directory it did a moment ago: it was renamed or replaced", name)
+		return fmt.Errorf("%q no longer names the directory it did a moment ago: it was renamed or replaced", name)
 	}
 	return nil
 }
@@ -168,7 +168,7 @@ func newest(sessions, dir string) (string, error) {
 			return filepath.Join(sessions, l[i].id), nil
 		}
 	}
-	return "", fmt.Errorf("no session has run in %s: workcell run one first", dir)
+	return "", fmt.Errorf("no session has run in %q: workcell run one first", dir)
 }
 
 type framed struct {
