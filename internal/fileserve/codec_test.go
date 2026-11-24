@@ -218,8 +218,7 @@ func TestParse(t *testing.T) {
 	}
 }
 
-// FuzzRequest holds the decoder of guest-controlled bytes (T5): it never panics, and what it
-// accepts is consistent with the bytes.
+// FuzzRequest holds the decoder of guest-controlled bytes (T5): it never panics, and what it accepts is consistent with the bytes.
 func FuzzRequest(f *testing.F) {
 	for _, tc := range parseCases {
 		f.Add(tc.b)

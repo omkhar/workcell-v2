@@ -29,6 +29,9 @@ const (
 	maxNodes = 1 << 17
 	// frameLimit is how long one frame may take once it has begun (I12), as on the channel.
 	frameLimit = 5 * time.Second
+	// paceFrames and paceEvery: Serve reads at most paceFrames requests a paceEvery, a quarter of a million a second, as the channel is paced (I10). Honest
+	// traffic is far below: the init carries requests one at a time, each a read of /dev/fuse and a write, and all but FORGET and INTERRUPT wait for a reply.
+	paceFrames, paceEvery = 1 << 14, 64 * time.Millisecond
 	// validity is the entry and attribute timeout the guest kernel caches, as ADR-005 measured.
 	validity = time.Second
 )
@@ -174,7 +177,11 @@ func (s *Server) Serve(st wire.Stream) error {
 	}
 	sem := make(chan struct{}, workers)
 	var inited, destroyed bool
-	for {
+	for n, mark := 1, time.Now(); ; n++ {
+		if n%paceFrames == 0 { // past the pace a faster host only takes a bigger flood (I10)
+			time.Sleep(paceEvery - time.Since(mark))
+			mark = time.Now()
+		}
 		f, err := c.ReadFrame()
 		if err != nil {
 			if errors.Is(err, io.EOF) {
@@ -211,8 +218,11 @@ func (s *Server) Serve(st wire.Stream) error {
 			continue
 		case r.Opcode == opDestroy:
 			destroyed = true
+		case r.Opcode == opInterrupt: // answered with nothing, so settled here, before a slot and a goroutine are taken: a flood of them costs the reader alone (I10)
+		case quiet: // FORGET and BATCH_FORGET: the same, once the lookups are dropped
+			s.forget(r.Forgets)
 		}
-		if e != 0 || r.Opcode == opDestroy {
+		if e != 0 || quiet || r.Opcode == opDestroy {
 			if !quiet {
 				send(Out(r.Unique, e))
 			}
@@ -221,21 +231,14 @@ func (s *Server) Serve(st wire.Stream) error {
 		sem <- struct{}{}
 		wg.Go(func() {
 			defer func() { <-sem }()
-			if b := s.handle(r); b != nil {
-				send(b)
-			}
+			send(s.handle(r))
 		})
 	}
 }
 
-// handle serves one request; nil means no reply.
+// handle serves one request and returns its reply.
 func (s *Server) handle(r request) []byte {
 	switch r.Opcode {
-	case opForget, opBatchForget:
-		s.forget(r.Forgets)
-		return nil
-	case opInterrupt:
-		return nil
 	case opRelease, opReleasedir:
 		return Out(r.Unique, s.release(r.NodeID, r.Fh))
 	case opRename:
@@ -462,10 +465,7 @@ func (s *Server) closeFDLocked(fd int) {
 
 func errno(err error) syscall.Errno {
 	var e syscall.Errno
-	switch {
-	case err == nil:
-		return 0
-	case errors.As(err, &e):
+	if err == nil || errors.As(err, &e) {
 		return e
 	}
 	return syscall.EIO

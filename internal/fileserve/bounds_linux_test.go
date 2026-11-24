@@ -6,6 +6,7 @@
 package fileserve
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"math"
@@ -39,8 +40,7 @@ func started(t *testing.T, export string) (*kern, func() error, int) {
 	return k, stop, before
 }
 
-// TestNodeCap is rows 57 and 61: the table stops at maxNodes with ENOMEM, a negative lookup never grows it, and FORGET gives the room back. READDIRPLUS makes a
-// node per entry, as LOOKUP would, and hands back node 0 for an entry that got none.
+// TestNodeCap is rows 57 and 61: the table stops at maxNodes with ENOMEM, a negative lookup never grows it, and FORGET gives the room back. READDIRPLUS makes a node per entry, as LOOKUP would, and hands back node 0 for an entry that got none.
 func TestNodeCap(t *testing.T) {
 	export := t.TempDir()
 	dir, err := unix.Open(export, unix.O_RDONLY|unix.O_DIRECTORY, 0)
@@ -176,8 +176,7 @@ func TestDescriptorCap(t *testing.T) {
 	}
 }
 
-// TestInflight is rows 20, 27, 55 and 56: 17 requests at once all finish, FIFO opens included; a RENAME racing a LOOKUP in the renamed directory resolves
-// against its descriptor; replies with one unique, or unique 0, do not cross.
+// TestInflight is rows 20, 27, 55 and 56: 17 requests at once all finish, FIFO opens included; a RENAME racing a LOOKUP in the renamed directory resolves against its descriptor; replies with one unique, or unique 0, do not cross.
 func TestInflight(t *testing.T) {
 	fx := newFixture(t)
 	k, stop, _ := started(t, fx.export)
@@ -300,8 +299,7 @@ func TestReaddirPaging(t *testing.T) {
 	}
 }
 
-// TestStreamEnd is row 49 and the clean end: a frame over the wire limit ends Serve with the wire's error, a closed stream ends it with nil, and either way no
-// descriptor stays open.
+// TestStreamEnd is row 49 and the clean end: a frame over the wire limit ends Serve with the wire's error, a closed stream ends it with nil, and either way no descriptor stays open.
 func TestStreamEnd(t *testing.T) {
 	for _, tc := range []struct {
 		name string
@@ -377,8 +375,7 @@ func TestOpen(t *testing.T) {
 }
 
 // TestGrowthCap is I10 on the export: files may grow by the cap in all, and the WRITE or SETATTR that would take them past it is ENOSPC and does nothing,
-// whether the growth is bytes or a hole. An entry costs one block of 4096, so the two creates take 8192 of the cap. Writes in place are free; shrinking
-// gives nothing back.
+// whether the growth is bytes or a hole. An entry costs one block of 4096, so the two creates take 8192 of the cap. Writes in place are free; shrinking gives nothing back.
 func TestGrowthCap(t *testing.T) {
 	fx := newFixture(t)
 	const limit = 100_000
@@ -426,5 +423,19 @@ func TestGrowthCap(t *testing.T) {
 		if st.Size() != want {
 			t.Errorf("%s is %d bytes on the host, want %d", name, st.Size(), want)
 		}
+	}
+}
+
+// TestPace is C64: frames that take no reply, here ones too short to be a request, are read no faster than paceFrames a paceEvery however cheap each is (I10).
+// Sixteen periods' worth, then a request whose reply comes after them, take at least sixteen periods from before Serve began.
+func TestPace(t *testing.T) {
+	t0 := time.Now()
+	k, stop := start(t, t.TempDir())
+	defer stop()
+	k.ok(reqInit(7, 37))
+	_, _ = k.pipe.Write(bytes.Repeat([]byte{wire.Version, FrameType, 0, 0, 0, 4, 1, 2, 3, 4}, 16*paceFrames))
+	k.ok(reqStatfs())
+	if d := time.Since(t0); d < 16*paceEvery {
+		t.Errorf("%d frames read in %v; the pace is %d a %v", 16*paceFrames, d, paceFrames, paceEvery)
 	}
 }

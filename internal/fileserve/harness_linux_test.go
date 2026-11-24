@@ -100,9 +100,10 @@ func (fx *fixture) beside(t *testing.T) []string {
 
 // kern plays the guest kernel: it writes requests and reads replies over a pipe.
 type kern struct {
-	t *testing.T
-	c *wire.Conn
-	n uint64 // the last unique used
+	t    *testing.T
+	c    *wire.Conn
+	pipe net.Conn // the stream under c
+	n    uint64   // the last unique used
 }
 
 type reply struct {
@@ -111,8 +112,7 @@ type reply struct {
 	body   []byte
 }
 
-// start serves fx.export to a new kern, with room to grow by testLimit. stop ends the stream
-// and returns what Serve did.
+// start serves fx.export to a new kern, with room to grow by testLimit. stop ends the stream and returns what Serve did.
 func start(t *testing.T, export string) (*kern, func() error) {
 	t.Helper()
 	return startCapped(t, export, testLimit)
@@ -131,13 +131,11 @@ func startCapped(t *testing.T, export string, limit int64) (*kern, func() error)
 	host, guest := net.Pipe()
 	done := make(chan error, 1)
 	go func() { done <- s.Serve(host) }()
-	k := &kern{t: t, c: wire.New(guest, 5*time.Second)}
+	k := &kern{t: t, c: wire.New(guest, 5*time.Second), pipe: guest}
 	return k, func() error { _ = guest.Close(); return ended(<-done) }
 }
 
-// ended is Serve's result with net.Pipe's quirk removed: after a peer close a real stream's
-// Read says EOF, which Serve reports as nil, while net.Pipe also says io.ErrClosedPipe from
-// SetReadDeadline, which Serve reports as it is, when its loop is between frames.
+// ended is Serve's result with net.Pipe's quirk removed: after a peer close a real stream's Read says EOF, which Serve reports as nil, while net.Pipe also says io.ErrClosedPipe from SetReadDeadline, which Serve reports as it is, when its loop is between frames.
 func ended(err error) error {
 	if errors.Is(err, io.ErrClosedPipe) {
 		return nil
@@ -200,8 +198,7 @@ func (k *kern) ok(b []byte) []byte {
 	return body
 }
 
-// batch sends every request without waiting and returns the replies by unique. The pipe is
-// synchronous, so the replies are drained while the requests go out.
+// batch sends every request without waiting and returns the replies by unique. The pipe is synchronous, so the replies are drained while the requests go out.
 func (k *kern) batch(reqs [][]byte) map[uint64]reply {
 	k.t.Helper()
 	uniques := make([]uint64, len(reqs))
@@ -285,14 +282,12 @@ func reqStatfs() []byte               { return req(opStatfs, 0, 1) }
 
 // Reply readers.
 
-func entryMode(b []byte) uint32  { return le.Uint32(b[40+60:]) & unix.S_IFMT }
-func entryPerm(b []byte) uint32  { return le.Uint32(b[40+60:]) & 0o7777 }
-func entryNlink(b []byte) uint32 { return le.Uint32(b[40+64:]) }
-func attrMode(b []byte) uint32   { return le.Uint32(b[16+60:]) & unix.S_IFMT }
-func attrSize(b []byte) uint64   { return le.Uint64(b[16+8:]) }
-func attrOwner(b []byte) (uint32, uint32) {
-	return le.Uint32(b[16+68:]), le.Uint32(b[16+72:])
-}
+func entryMode(b []byte) uint32           { return le.Uint32(b[40+60:]) & unix.S_IFMT }
+func entryPerm(b []byte) uint32           { return le.Uint32(b[40+60:]) & 0o7777 }
+func entryNlink(b []byte) uint32          { return le.Uint32(b[40+64:]) }
+func attrMode(b []byte) uint32            { return le.Uint32(b[16+60:]) & unix.S_IFMT }
+func attrSize(b []byte) uint64            { return le.Uint64(b[16+8:]) }
+func attrOwner(b []byte) (uint32, uint32) { return le.Uint32(b[16+68:]), le.Uint32(b[16+72:]) }
 
 // dirNames lists the names of a READDIR or READDIRPLUS reply.
 func dirNames(b []byte, plus bool) []string {
@@ -310,7 +305,4 @@ func dirNames(b []byte, plus bool) []string {
 	return out
 }
 
-func exists(path string) bool {
-	_, err := os.Lstat(path)
-	return err == nil
-}
+func exists(path string) bool { _, err := os.Lstat(path); return err == nil }
