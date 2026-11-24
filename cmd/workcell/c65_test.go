@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Omkhar Arasaratnam
 
-// Finding C65 of S-1003 (I1, I7, I9, I13, I14). Fix unit S-F48 first moves this file to cmd/workcell/c65_test.go, as this comment says.
+// Finding C65 of S-1003 (I1, I7, I9, I13, I14). Moved here by fix unit S-F48.
 
 //go:build linux
 
@@ -42,8 +42,8 @@ func TestC65DataDirectoryBindMountedBeneathCwd(t *testing.T) {
 			t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 			data, repo := filepath.Join(os.Getenv("XDG_DATA_HOME"), "workcell"), t.TempDir() // both before the mount: their removal runs after the unmount
 			a, under := c19Data(t, data, repo), filepath.Join(repo, "data")
-			if must(0, os.Mkdir(under, 0o700)); unix.Mount(data, under, "", unix.MS_BIND, "") == unix.EPERM {
-				t.Skip("root without the right to bind mount")
+			if err := unix.Mount(data, must(under, os.Mkdir(under, 0o700)), "", unix.MS_BIND, ""); err == unix.EPERM || must(0, err) != 0 { // EPERM skips; any other failure is the test's own
+				t.Skip("root without the right to bind mount:", err)
 			}
 			t.Cleanup(func() { must(0, unix.Unmount(under, unix.MNT_DETACH)) })
 			t.Chdir(repo)
