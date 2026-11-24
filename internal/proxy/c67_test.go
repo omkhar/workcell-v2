@@ -2,7 +2,7 @@
 // Copyright 2026 Omkhar Arasaratnam
 
 // Finding C67 of S-1005, sweep 3 (I5): a token answer in a media type other than JSON or a form, to a spelling of the token endpoint the match
-// does not claim, reaches the guest unread. This file waits here until fix unit S-F50, which moves it to internal/proxy/c67_test.go unchanged.
+// does not claim, reaches the guest unread. Fix unit S-F50 moved this file here from escape/_pending/S-F50/ unchanged (SPEC S4) and closes it.
 
 package proxy
 
@@ -36,6 +36,8 @@ func TestC67TokenAnswerInAnotherMediaType(t *testing.T) {
 		{"text/plain form", tokenEndpointPath + ".json", "text/plain", "access_token=" + acc + "&refresh_token=" + ref + "&scope=repo&token_type=bearer"},
 		{"no content-type", tokenEndpointPath + ".json", "", js},
 		{"form label over json", tokenEndpointPath + ".json", form, js},
+		{"text/json utf-16le", tokenEndpointPath + ".json", "text/json; charset=utf-16", "\xff\xfe" + strings.Join(strings.Split(js, ""), "\x00") + "\x00"}, // js is ASCII: a NUL after each byte is UTF-16LE
+		{"vnd.api+json utf-16be", tokenEndpointPath + ".json", "application/vnd.api+json; charset=utf-16", "\xfe\xff\x00" + strings.Join(strings.Split(js, ""), "\x00")},
 	}
 	for _, row := range rows {
 		t.Run(row.name, func(t *testing.T) {
@@ -57,7 +59,7 @@ func TestC67TokenAnswerInAnotherMediaType(t *testing.T) {
 			req := must(http.NewRequest(http.MethodPost, login+row.path, strings.NewReader(grant)))
 			req.Header = http.Header{"Content-Type": {form}, "Accept": {cmp.Or(row.ctype, "*/*")}}
 			resp := must(clientVia(listen(t, px, 443), caPool(t, ca)).Do(req))
-			got := string(must(httputil.DumpResponse(resp, true))) // the status line, every header and the body, as the guest reads them
+			got := strings.ReplaceAll(string(must(httputil.DumpResponse(resp, true))), "\x00", "") // the status line, every header and the body, as the guest reads them; NULs dropped so a UTF-16 spelling of a token is read too
 			if strings.Contains(got, acc) || strings.Contains(got, ref) {
 				t.Errorf("POST %s answered in %q: the guest read a real token:\n%s", row.path, row.ctype, got)
 			}

@@ -19,8 +19,7 @@ import (
 	"strings"
 )
 
-// A sign-in flow (I5): a [[secret]] row whose source is "signin:HOST/PATH" has no value of its own. Its token endpoint, PATH on HOST, an allowed name terminated like every other, issues the row's tokens in a JSON body: access_token, which the rule swaps in its header as it would a static secret, and refresh_token, which the guest presents back at the endpoint for new ones.
-// The proxy reads each answer of the endpoint whole before the guest sees a byte, hands the tokens to the broker, which holds them in place of the ones before, and sends the guest the row's placeholder for the access token and a second one for the refresh token: the same two whatever the endpoint issues, so a client that keeps them across a refresh keeps something that still works. A real token the broker holds never appears in an answer, whatever its status, and a placeholder sent anywhere but its own place is refused as a static secret's would be.
+// A sign-in flow (I5): a [[secret]] row whose source is "signin:HOST/PATH" has no value of its own. Its token endpoint, PATH on HOST, an allowed name terminated like every other, issues the row's tokens in a JSON body: access_token, which the rule swaps in its header as it would a static secret, and refresh_token, which the guest presents back at the endpoint for new ones. The proxy reads each answer of the endpoint whole before the guest sees a byte, hands the tokens to the broker, which holds them in place of the ones before, and sends the guest the row's placeholder for the access token and a second one for the refresh token: the same two whatever the endpoint issues, so a client that keeps them across a refresh keeps something that still works. A real token the broker holds never appears in an answer, whatever its status, and a placeholder sent anywhere but its own place is refused as a static secret's would be.
 
 // SignIn is the sign-in flow of a rule: the token endpoint and the refresh placeholder, as NewSignIn mints it.
 type SignIn struct {
@@ -63,8 +62,8 @@ func (p *Proxy) tokenEndpoint(host string, u *url.URL) (TerminateRule, bool) {
 	return TerminateRule{}, false
 }
 
-// params is a ;param suffix of a path segment; sep an encoded slash or backslash.
-var params, sep = regexp.MustCompile(`;[^/]*`), regexp.MustCompile(`(?i)%(2F|5C)`)
+// params is a ;param suffix of a path segment; sep an encoded slash or backslash; tokenName either key of a token answer, in any case, for tokenAnswer.
+var params, sep, tokenName = regexp.MustCompile(`;[^/]*`), regexp.MustCompile(`(?i)%(2F|5C)`), regexp.MustCompile(`(?i)access_token|refresh_token`)
 
 // fold reads a path as sent the way a router that cuts ;params from each segment before it decodes (so a param hides an encoded slash) and again after, takes a backslash for a slash and then resolves dot segments does. PathUnescape cannot fail on a path as sent; were it to, "." matches nothing.
 func fold(escaped string) string {
@@ -75,8 +74,7 @@ func fold(escaped string) string {
 // opaque doubly encodes each encoded separator of a path as sent, so that fold reads it as a router that resolves dot segments before it decodes does (C33).
 func opaque(escaped string) string { return sep.ReplaceAllString(escaped, "%25$1") }
 
-// tokenRequest reads the body of a request to rule's token endpoint and swaps the refresh placeholder in its refresh_token field for the refresh token the broker releases. It returns the body the request now carries and a copy of that refresh token, both for the caller to wipe once the request has gone,
-// and a reason to refuse the request: a body over the bound, a broker that withholds the token, or a placeholder the body still carries anywhere else (I5). Accept-Encoding is dropped so that the answer comes back plain, or gzipped by a server that insists, which tokenResponse undoes.
+// tokenRequest reads the body of a request to rule's token endpoint and swaps the refresh placeholder in its refresh_token field for the refresh token the broker releases. It returns the body the request now carries and a copy of that refresh token, both for the caller to wipe once the request has gone, and a reason to refuse the request: a body over the bound, a broker that withholds the token, or a placeholder the body still carries anywhere else (I5). Accept-Encoding is dropped so that the answer comes back plain, or gzipped by a server that insists, which tokenResponse undoes.
 func (p *Proxy) tokenRequest(r *http.Request, rule TerminateRule) (body, refresh []byte, reason string) {
 	body, err := io.ReadAll(io.LimitReader(r.Body, maxTokenBody+1))
 	if err != nil || len(body) > maxTokenBody {
@@ -142,12 +140,11 @@ type tokenCtx struct {
 	refresh []byte
 }
 
-// tokenResponse rewrites the answer of a token endpoint before the guest reads a byte of it. The whole body is read, gunzipped when the server insisted on gzip, and on a 2xx JSON object the access_token and refresh_token strings go to the broker, which holds them from then on. Then every real token the broker holds for the row, old and new, is hidden behind its placeholder.
-// An answer that cannot be read whole, decoded or recorded is refused: the guest gets a 502 and none of its bytes. A 2xx JSON or form answer of a sign-in host to a request tokenEndpoint did not claim is read whole the same way, since the provider's router may serve the token action under a spelling the match does not read (C55), and refused when it is a token answer; any other answer passes unread.
+// tokenResponse rewrites the answer of a token endpoint before the guest reads a byte of it. The whole body is read, gunzipped when the server insisted on gzip, and on a 2xx JSON object the access_token and refresh_token strings go to the broker, which holds them from then on. Then every real token the broker holds for the row, old and new, is hidden behind its placeholder. An answer that cannot be read whole, decoded or recorded is refused: the guest gets a 502 and none of its bytes. Every 2xx answer of a sign-in host to a request tokenEndpoint did not claim is read whole the same way, whatever its media type, since the provider's router may serve the token action under a spelling the match does not read and in the type the guest asked for (C55, C67), and refused when tokenAnswer takes it for a token answer; any other answer passes unread.
 func (p *Proxy) tokenResponse(resp *http.Response) error {
 	tok, ok := resp.Request.Context().Value(tokenKey{}).(tokenCtx)
 	mediaType, _, _ := mime.ParseMediaType(resp.Header.Get("Content-Type"))
-	if !ok && (resp.StatusCode/100 != 2 || p.signin[resp.Request.Host] == nil || mediaType != "application/json" && mediaType != formType) {
+	if !ok && (resp.StatusCode/100 != 2 || p.signin[resp.Request.Host] == nil) {
 		return nil // resp.Request is the rewritten request, whose Host is the SNI host, canonical, as p.signin is keyed: no spelling of the guest's reaches it
 	}
 	body, err := readToken(resp)
@@ -168,11 +165,14 @@ func (p *Proxy) tokenResponse(resp *http.Response) error {
 	return nil
 }
 
-// tokenAnswer reports whether body, in mediaType, issues a token: a form with an access_token or refresh_token field, a JSON object with either key, or a body that does not read as its type says, which a lenient client could take for one (I5). A JSON value that is not an object, an API host's array, is none.
+// tokenAnswer reports whether body, in mediaType, issues a token: a form with an access_token or refresh_token field, or one that is valid JSON and issues a token read as JSON; a JSON object with either key, or a body that does not read as its type says, which a lenient client could take for one; and in any other type a body that names either key, in any case, NUL bytes dropped first so a UTF-16 or UTF-32 spelling is read too (I5). A JSON value that is not an object, an API host's array, is none.
 func tokenAnswer(mediaType string, body []byte) bool {
 	if mediaType == formType {
 		v, err := url.ParseQuery(string(body))
-		return err != nil || v.Has("access_token") || v.Has("refresh_token")
+		return err != nil || v.Has("access_token") || v.Has("refresh_token") || (json.Valid(body) && tokenAnswer("application/json", body))
+	}
+	if mediaType != "application/json" {
+		return tokenName.Match(bytes.ReplaceAll(body, []byte{0}, nil))
 	}
 	var v any
 	err := json.Unmarshal(body, &v)
