@@ -2,7 +2,7 @@
 // Copyright 2026 Omkhar Arasaratnam
 
 // Finding C67 of S-1005, sweep 3 (I5): a token answer in a media type other than JSON or a form, to a spelling of the token endpoint the match
-// does not claim, reaches the guest unread. This file waits here until fix unit S-F50, which moves it to internal/proxy/c67_test.go unchanged.
+// does not claim, reaches the guest unread. Fix unit S-F50 moved this file here from escape/_pending/S-F50/ unchanged (SPEC S4) and closes it.
 
 package proxy
 
