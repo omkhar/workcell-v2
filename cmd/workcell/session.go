@@ -24,7 +24,7 @@ import (
 // session's image), vmm (the temporary directories of the VMM's sockets and config, one path
 // per line) and lock. The supervisor holds an advisory lock on lock for as long as it lives;
 // the kernel drops it when the process ends, however it ends, so the lock says whether a
-// session is running where a pid file would lie after a crash. No daemon and no registry: everything the verbs below know is in the session directory (A9).
+// session is running where a pid file would lie after a crash. A pull holds the lock too, for its VM's life (C63). No daemon and no registry: everything the verbs below know is in the session directory (A9).
 
 // sessionTime names a session directory by when it began, so that the names sort by time; a random suffix keeps two that began in the same instant apart.
 const sessionTime = "20060102T150405.000000000Z"
@@ -34,15 +34,21 @@ var sessionID = regexp.MustCompile(`^[0-9]{8}T[0-9]{6}\.[0-9]{9}Z-[0-9a-f]{8}$`)
 // validID is true for what newSession makes and for nothing else, so that an id taken from the command line can name no path but a session directory.
 func validID(id string) bool { return sessionID.MatchString(id) }
 
-// holdSession creates the lock file of the session directory dir, locks it for the life of
-// the process and records the process id in it. Closing the file releases the lock.
-func holdSession(dir string) (*os.File, error) {
-	f, err := os.OpenFile(filepath.Join(dir, "lock"), os.O_RDWR|os.O_CREATE|os.O_EXCL, 0o600)
+// holdSession creates the lock file of the session directory dir, locks it for the life of the process and records the process id in it. Closing the file releases the lock. A probe by ls may hold the lock for an instant, which the run waits out.
+func holdSession(dir string) (*os.File, error) { return lockSession(dir, unix.LOCK_EX) }
+
+// lockSession is holdSession with the flock operation given. A pull, and rm, take the lock an ended run left with LOCK_NB: a lock a run still holds is refused at once, in the one line below, and the pid written in place of the run's is this process's, which stop then signals (C63).
+func lockSession(dir string, how int) (*os.File, error) {
+	f, err := os.OpenFile(filepath.Join(dir, "lock"), os.O_RDWR|os.O_CREATE, 0o600)
 	if err != nil {
 		return nil, err
 	}
-	if err = unix.Flock(int(f.Fd()), unix.LOCK_EX); err == nil { // a probe by ls may hold the lock for an instant
-		_, err = f.WriteString(strconv.Itoa(os.Getpid()) + "\n")
+	if err = unix.Flock(int(f.Fd()), how); err == unix.EWOULDBLOCK {
+		err = fmt.Errorf("session %s is running: workcell stop %s first", filepath.Base(dir), filepath.Base(dir))
+	} else if err == nil { // only once the lock is held: until then the pid there is a live process's
+		if err = f.Truncate(0); err == nil {
+			_, err = f.WriteString(strconv.Itoa(os.Getpid()) + "\n")
+		}
 	}
 	if err != nil {
 		f.Close()
@@ -61,14 +67,10 @@ func running(dir string) (bool, error) {
 		return false, err
 	}
 	defer f.Close() // and with it the probe's lock
-	switch err := unix.Flock(int(f.Fd()), unix.LOCK_SH|unix.LOCK_NB); err {
-	case nil:
-		return false, nil
-	case unix.EWOULDBLOCK:
-		return true, nil
-	default:
+	if err := unix.Flock(int(f.Fd()), unix.LOCK_SH|unix.LOCK_NB); err != unix.EWOULDBLOCK {
 		return false, err
 	}
+	return true, nil
 }
 
 // supervisor is the pid the running supervisor of the session recorded.
@@ -137,18 +139,11 @@ func removeSession(sessions, id string) error {
 	} else if err != nil {
 		return err
 	}
-	lock, err := os.Open(filepath.Join(dir, "lock"))
-	switch {
-	case err == nil:
-		defer lock.Close()
-		if err := unix.Flock(int(lock.Fd()), unix.LOCK_EX|unix.LOCK_NB); err == unix.EWOULDBLOCK {
-			return fmt.Errorf("session %s is running: workcell stop %s first", id, id)
-		} else if err != nil {
-			return err
-		}
-	case !errors.Is(err, fs.ErrNotExist):
+	lock, err := lockSession(dir, unix.LOCK_EX|unix.LOCK_NB)
+	if err != nil {
 		return err
 	}
+	defer lock.Close()
 	b, err := os.ReadFile(filepath.Join(dir, "vmm"))
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return err
