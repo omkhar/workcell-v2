@@ -165,14 +165,14 @@ func (p *Proxy) tokenResponse(resp *http.Response) error {
 	return nil
 }
 
-// tokenAnswer reports whether body, in mediaType, issues a token: a form with an access_token or refresh_token field, or one that is valid JSON and issues a token read as JSON; a JSON object with either key, or a body that does not read as its type says, which a lenient client could take for one; and in any other type a body that names either key, in any case (I5). A JSON value that is not an object, an API host's array, is none.
+// tokenAnswer reports whether body, in mediaType, issues a token: a form with an access_token or refresh_token field, or one that is valid JSON and issues a token read as JSON; a JSON object with either key, or a body that does not read as its type says, which a lenient client could take for one; and in any other type a body that names either key, in any case, NUL bytes dropped first so a UTF-16 or UTF-32 spelling is read too (I5). A JSON value that is not an object, an API host's array, is none.
 func tokenAnswer(mediaType string, body []byte) bool {
 	if mediaType == formType {
 		v, err := url.ParseQuery(string(body))
 		return err != nil || v.Has("access_token") || v.Has("refresh_token") || (json.Valid(body) && tokenAnswer("application/json", body))
 	}
 	if mediaType != "application/json" {
-		return tokenName.Match(body)
+		return tokenName.Match(bytes.ReplaceAll(body, []byte{0}, nil))
 	}
 	var v any
 	err := json.Unmarshal(body, &v)
