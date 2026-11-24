@@ -1,10 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Omkhar Arasaratnam
 
-// Finding C53 of S-1005 (I6, through it I5; medium), the sibling of C30: upstreamRoots refuses a relative SSL_CERT_FILE, yet x509.SystemCertPool also reads each entry of
-// SSL_CERT_DIR (certs, ".", or one of a list; a precondition the attacker does not control) against the working directory, so the repository ships certs/ca.pem and a leaf
-// that CA signed, from the network attacker as DNS for an allowed name, verifies, and the real secret is sent to it. This file waited under escape/_pending/S-F36/
-// until fix unit S-F36 moved it here (SPEC S4): it failed before the fix, passes after, and stays in the suite.
+// Finding C53 of S-1005 (I6, through it I5; medium), the sibling of C30: upstreamRoots refuses a relative SSL_CERT_FILE, yet x509.SystemCertPool also reads each entry of SSL_CERT_DIR (certs, ".", or one of a list; a precondition the attacker does not control) against the working directory, so the
+// repository ships certs/ca.pem and a leaf that CA signed, from the network attacker as DNS for an allowed name, verifies, and the real secret is sent to it. This file waited under escape/_pending/S-F36/ until fix unit S-F36 moved it here (SPEC S4): it failed before the fix, passes after, and stays
+// in the suite.
 
 package proxy
 
@@ -18,8 +17,7 @@ import (
 	"time"
 )
 
-// TestRelativeSSLCertDirIsRefused re-runs this test binary once per relative spelling of SSL_CERT_DIR, since Go loads the system pool once per process. The child, in
-// a working directory holding ca.pem and certs/ca.pem, must have Terminate refuse, or withhold the secret from the attacker's upstream.
+// TestRelativeSSLCertDirIsRefused re-runs this test binary once per relative spelling of SSL_CERT_DIR, since Go loads the system pool once per process. The child, in a working directory holding ca.pem and certs/ca.pem, must have Terminate refuse, or withhold the secret from the attacker's upstream.
 func TestRelativeSSLCertDirIsRefused(t *testing.T) {
 	if os.Getenv("C53_CHILD") == "" {
 		for _, dir := range []string{"certs", ".", "/etc/ssl/certs:certs"} {

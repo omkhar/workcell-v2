@@ -58,11 +58,9 @@ func NewPlaceholder() string {
 // IsPlaceholder reports whether text is exactly one placeholder.
 func IsPlaceholder(text string) bool { return placeholderPattern.MatchString(text) }
 
-// Broker is the credential broker as the proxy uses it. Lookup returns the real value of a brokered header; the proxy owns the bytes it gets, wipes them once
-// the request carries the value, and never holds a value between requests. The rest serve a rule's sign-in flow, each for the row bound to (host, header):
-// Issue takes the tokens its endpoint issued, an empty one for a token the answer did not carry, which the broker owns and holds in place of those before;
-// Refresh returns the refresh token it holds, recorded as Lookup records a value; Tokens returns copies of both tokens it holds, nil before a sign-in, which
-// the caller wipes.
+// Broker is the credential broker as the proxy uses it. Lookup returns the real value of a brokered header; the proxy owns the bytes it gets, wipes them once the request carries the value, and never holds a value between requests. The rest serve a rule's sign-in flow, each for the row bound to
+// (host, header): Issue takes the tokens its endpoint issued, an empty one for a token the answer did not carry, which the broker owns and holds in place of those before; Refresh returns the refresh token it holds, recorded as Lookup records a value; Tokens returns copies of both tokens it holds,
+// nil before a sign-in, which the caller wipes.
 type Broker interface {
 	Lookup(ctx context.Context, host, header string) ([]byte, error)
 	Issue(host, header string, access, refresh []byte) error
@@ -70,10 +68,8 @@ type Broker interface {
 	Tokens(host, header string) (access, refresh []byte)
 }
 
-// TerminateRule names a host whose TLS the proxy terminates and the header whose placeholder value it swaps for the brokered value. Method, when set, narrows
-// the swap to requests of that method, and Path to requests under that path prefix; Repos, instead of those, to the git repositories "owner/name" it lists, at
-// /owner/name or /owner/name.git and under either: a placeholder sent any other way to the host is refused. SignIn, when set, is the flow that issues the
-// value (signin.go).
+// TerminateRule names a host whose TLS the proxy terminates and the header whose placeholder value it swaps for the brokered value. Method, when set, narrows the swap to requests of that method, and Path to requests under that path prefix; Repos, instead of those, to the git repositories
+// "owner/name" it lists, at /owner/name or /owner/name.git and under either: a placeholder sent any other way to the host is refused. SignIn, when set, is the flow that issues the value (signin.go).
 type TerminateRule struct {
 	Host        string
 	Header      string
@@ -87,10 +83,8 @@ type TerminateRule struct {
 // repoSegment is one segment of a repository name: lower-case letters, digits, ".", "_" and "-".
 var repoSegment = regexp.MustCompile(`^[a-z0-9._-]+$`)
 
-// NewTerminateRule mints a placeholder for the rule binding header on host, narrowed to method and path when either is not "", or to repos when it has entries.
-// The host comes back canonical and the header lowercase, the forms the broker's grants use; the method is capital letters and the path begins with "/" and
-// holds printable ASCII with no query or fragment, as a request target carries it; a repository is exactly two segments, neither "." or ".." nor ending in
-// ".git", which the path matcher adds itself.
+// NewTerminateRule mints a placeholder for the rule binding header on host, narrowed to method and path when either is not "", or to repos when it has entries. The host comes back canonical and the header lowercase, the forms the broker's grants use; the method is capital letters and the path
+// begins with "/" and holds printable ASCII with no query or fragment, as a request target carries it; a repository is exactly two segments, neither "." or ".." nor ending in ".git", which the path matcher adds itself.
 func NewTerminateRule(host, header, method, path string, repos []string) (TerminateRule, error) {
 	r := TerminateRule{Host: canonicalHost(host), Header: strings.ToLower(header), Placeholder: NewPlaceholder(), Method: method, Path: path, Repos: repos}
 	if _, err := ParseAllowlist(r.Host+":443", "terminate rule"); err != nil {
@@ -116,9 +110,8 @@ func NewTerminateRule(host, header, method, path string, repos []string) (Termin
 	return r, nil
 }
 
-// admits reports whether the rule swaps on a request of method to u: the rule's method when it names one, and a path under its prefix, or within one of its
-// repositories, when it names either. The path is judged as sent and under both folds (see fold), so that neither an encoded slash, a backslash, a ;param nor
-// ".." leads out from under the prefix on any reading.
+// admits reports whether the rule swaps on a request of method to u: the rule's method when it names one, and a path under its prefix, or within one of its repositories, when it names either. The path is judged as sent and under both folds (see fold), so that neither an encoded slash, a backslash,
+// a ;param nor ".." leads out from under the prefix on any reading.
 func (r TerminateRule) admits(method string, u *url.URL) bool {
 	if r.Method != "" && method != r.Method {
 		return false
@@ -134,12 +127,7 @@ func (r TerminateRule) admits(method string, u *url.URL) bool {
 
 // within reports whether p is /repo or /repo.git, or lies under either.
 func within(p, repo string) bool {
-	for _, root := range []string{"/" + repo, "/" + repo + ".git"} {
-		if p == root || strings.HasPrefix(p, root+"/") {
-			return true
-		}
-	}
-	return false
+	return slices.ContainsFunc([]string{"/" + repo, "/" + repo + ".git"}, func(root string) bool { return p == root || strings.HasPrefix(p, root+"/") })
 }
 
 // SessionCA issues leaf certificates for the terminated hosts only. Its key lives only in memory.
@@ -236,9 +224,8 @@ func (ca *SessionCA) issue(host string, key *ecdsa.PrivateKey) (*x509.Certificat
 	}, ca.cert, &key.PublicKey, ca.key)
 }
 
-// Terminate makes p terminate TLS for every host on the SNI allowlist, with a leaf from ca, and swap each rule's placeholder header via broker. A rule's host
-// must be on the SNI allowlist, as must its sign-in host; a host can have one rule per header, and a token endpoint serves one rule. Header names are stored
-// lowercase, the form the credential broker's grants use, since HTTP header names ignore case.
+// Terminate makes p terminate TLS for every host on the SNI allowlist, with a leaf from ca, and swap each rule's placeholder header via broker. A rule's host must be on the SNI allowlist, as must its sign-in host; a host can have one rule per header, and a token endpoint serves one rule. Header
+// names are stored lowercase, the form the credential broker's grants use, since HTTP header names ignore case.
 func (p *Proxy) Terminate(ca *SessionCA, broker Broker, rules []TerminateRule) error {
 	terminate := make(map[string][]TerminateRule, len(p.allow.sni))
 	for host := range p.allow.sni {
@@ -348,13 +335,9 @@ type closeNotifyConn struct {
 	ln *oneConnListener
 }
 
-func (c *closeNotifyConn) Close() error {
-	defer c.ln.Close()
-	return c.Conn.Close()
-}
+func (c *closeNotifyConn) Close() error { defer c.ln.Close(); return c.Conn.Close() }
 
-// sameHost reports whether an HTTP Host or :authority names sni, which is canonical: the same name in any letter case, with or without a trailing dot and the
-// port, :443 or the one the connection came in on, which is 443 too except on a test's listener. As in route, a non-ASCII fold is no match.
+// sameHost reports whether an HTTP Host or :authority names sni, which is canonical: the same name in any letter case, with or without a trailing dot and the port, :443 or the one the connection came in on, which is 443 too except on a test's listener. As in route, a non-ASCII fold is no match.
 func sameHost(host, sni, port string) bool {
 	lower := strings.ToLower(host)
 	if len(lower) != len(host) {
@@ -364,9 +347,8 @@ func sameHost(host, sni, port string) bool {
 	return (!hasPort || p == "443" || p == port) && strings.TrimSuffix(name, ".") == sni
 }
 
-// serveTerminated terminates TLS for host with a session leaf and proxies HTTP/1.1 requests to the real host, swapping the placeholder headers. It refuses a
-// request that names another host than the SNI did (I6), one that sends a placeholder outside the method and path its rule binds it to (I5), and one that still
-// carries a placeholder after the swap.
+// serveTerminated terminates TLS for host with a session leaf and proxies HTTP/1.1 requests to the real host, swapping the placeholder headers. It refuses a request that names another host than the SNI did (I6), one that sends a placeholder outside the method and path its rule binds it to (I5), and
+// one that still carries a placeholder after the swap.
 func (p *Proxy) serveTerminated(client net.Conn, host string, replay []byte) {
 	rules := p.terminate[host]
 	tlsConn := tls.Server(&replayConn{Conn: client, r: io.MultiReader(bytes.NewReader(replay), client)}, &tls.Config{
@@ -457,9 +439,8 @@ func (p *Proxy) serveTerminated(client net.Conn, host string, replay []byte) {
 	_ = srv.Serve(ln)
 }
 
-// placeholderForm reports whether values is exactly one value carrying placeholder in a form the proxy swaps: the placeholder alone, "Bearer " before it, or as
-// the password of a Basic value, which git sends as base64(user:token). It returns the function that puts the real value in the same form; the Basic one wipes
-// the pair it encoded.
+// placeholderForm reports whether values is exactly one value carrying placeholder in a form the proxy swaps: the placeholder alone, "Bearer " before it, or as the password of a Basic value, which git sends as base64(user:token). It returns the function that puts the real value in the same form;
+// the Basic one wipes the pair it encoded.
 func placeholderForm(values []string, placeholder string) (func([]byte) string, bool) {
 	if len(values) != 1 {
 		return nil, false
@@ -485,8 +466,7 @@ func placeholderForm(values []string, placeholder string) (func([]byte) string, 
 // maxBasic bounds the Basic value the proxy decodes: the bytes are the guest's.
 const maxBasic = 4096
 
-// basicDecode is what a Basic authorization value encodes: strict standard base64 of at most maxBasic bytes after the scheme, so that what the proxy re-encodes
-// is the value it matched. Anything else is no Basic value.
+// basicDecode is what a Basic authorization value encodes: strict standard base64 of at most maxBasic bytes after the scheme, so that what the proxy re-encodes is the value it matched. Anything else is no Basic value.
 func basicDecode(value string) ([]byte, bool) {
 	raw, ok := strings.CutPrefix(value, "Basic ")
 	if !ok || len(raw) > maxBasic || strings.ContainsAny(raw, "\r\n") {
@@ -496,9 +476,8 @@ func basicDecode(value string) ([]byte, bool) {
 	return pair, err == nil
 }
 
-// carriesPlaceholder reports whether any header name or value, a Basic value decoded, or the request target raw or percent-decoded, holds a placeholder in any
-// letter case. A target that does not decode counts as a hit, so an escape cannot hide one. A declared request trailer counts as a hit too: its values arrive
-// after the body has already streamed upstream, so they can never be checked here.
+// carriesPlaceholder reports whether any header name or value, a Basic value decoded, or the request target raw or percent-decoded, holds a placeholder in any letter case. A target that does not decode counts as a hit, so an escape cannot hide one. A declared request trailer counts as a hit too:
+// its values arrive after the body has already streamed upstream, so they can never be checked here.
 func carriesPlaceholder(r *http.Request) bool {
 	has := func(text string) bool { return placeholderAnywhere.MatchString(strings.ToLower(text)) }
 	decoded, err := url.PathUnescape(r.RequestURI)

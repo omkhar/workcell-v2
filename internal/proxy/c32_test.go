@@ -1,11 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Omkhar Arasaratnam
 
-// Regression test for C32 (I5, I6), fixed by S-F25. A guest request line "METHOD x:https://HOST/PATH HTTP/1.1"
-// parses to URL{Scheme:"x", Opaque:"https://HOST/PATH", Path:""}, so the token-endpoint
-// matcher (signin.go) and the host check (terminate.go) see no path, but the reverse
-// proxy would send the absolute-form "https://HOST/PATH" that a net/http upstream serves by
-// RFC 9112 3.2.2. The handler now refuses such a target with 400 before any judge runs.
+// Regression test for C32 (I5, I6), fixed by S-F25. A guest request line "METHOD x:https://HOST/PATH HTTP/1.1" parses to URL{Scheme:"x", Opaque:"https://HOST/PATH", Path:""}, so the token-endpoint matcher (signin.go) and the host check (terminate.go) see no path, but the reverse proxy would send
+// the absolute-form "https://HOST/PATH" that a net/http upstream serves by RFC 9112 3.2.2. The handler now refuses such a target with 400 before any judge runs.
 package proxy
 
 import (

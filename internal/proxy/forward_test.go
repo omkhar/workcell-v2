@@ -17,9 +17,7 @@ import (
 	"time"
 )
 
-// TestForwardStaysSplicedBesideTermination: a bare entry is terminated at 443 and a
-// name:port entry is spliced to the upstream byte for byte, the ClientHello included, even
-// for one host allowed both ways; the other port of each is refused.
+// TestForwardStaysSplicedBesideTermination: a bare entry is terminated at 443 and a name:port entry is spliced to the upstream byte for byte, the ClientHello included, even for one host allowed both ways; the other port of each is refused.
 func TestForwardStaysSplicedBesideTermination(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
