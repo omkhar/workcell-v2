@@ -88,6 +88,9 @@ func Hold(path string, onLink bool) int {
 	return 0
 }
 
+// linuxRows are the rows only a Linux host runs, since they need that on-link layout, which the Mac's static lo0 setup cannot hold beside the ordinary one (sandbox.Config.OnLink, refused there): the same neighbour as rebind-host-network-forward, with the host's own address held as a /32 and the prefix around it on-link through a route alone, as a cloud NIC or a DHCP classless route lays it out; no interface prefix holds the neighbour, and it is the host's LAN still (I4).
+var linuxRows = []Test{{ID: "I4", Name: "rebind-on-link-neighbour-forward", Probe: rebindProbe, Host: rebindJudge(rebind{canary: "neighbour"}), Want: rebindingOnLink}}
+
 // loopbackUp brings the interface up, as `ip link set lo up` does.
 func loopbackUp(name string) error {
 	fd, err := unix.Socket(unix.AF_INET, unix.SOCK_DGRAM|unix.SOCK_CLOEXEC, 0)

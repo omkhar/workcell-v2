@@ -27,12 +27,10 @@ type SignIn struct {
 	Host, Path, Refresh string
 }
 
-// maxTokenBody bounds a request to or an answer from a token endpoint, which the proxy reads whole (I10, I12). A token body is a few hundred bytes. formType
-// is the media type of a form: a token request's, and a token answer's at a provider that answers as GitHub does.
+// maxTokenBody bounds a request to or an answer from a token endpoint, which the proxy reads whole (I10, I12). A token body is a few hundred bytes. formType is the media type of a form: a token request's, and a token answer's at a provider that answers as GitHub does.
 const maxTokenBody, formType = 256 << 10, "application/x-www-form-urlencoded"
 
-// NewSignIn parses the source "signin:HOST/PATH" of a [[secret]] row: HOST a bare DNS name, with no port or scheme, which comes back canonical, and PATH an
-// absolute one as NewTerminateRule takes it. The refresh placeholder is fresh.
+// NewSignIn parses the source "signin:HOST/PATH" of a [[secret]] row: HOST a bare DNS name, with no port or scheme, which comes back canonical, and PATH an absolute one as NewTerminateRule takes it. The refresh placeholder is fresh.
 func NewSignIn(source string) (*SignIn, error) {
 	rest, ok := strings.CutPrefix(source, "signin:")
 	host, p, found := strings.Cut(rest, "/")
@@ -68,8 +66,7 @@ func (p *Proxy) tokenEndpoint(host string, u *url.URL) (TerminateRule, bool) {
 // params is a ;param suffix of a path segment; sep an encoded slash or backslash.
 var params, sep = regexp.MustCompile(`;[^/]*`), regexp.MustCompile(`(?i)%(2F|5C)`)
 
-// fold reads a path as sent the way a router that cuts ;params from each segment before it decodes (so a param hides an encoded slash) and again after,
-// takes a backslash for a slash and then resolves dot segments does. PathUnescape cannot fail on a path as sent; were it to, "." matches nothing.
+// fold reads a path as sent the way a router that cuts ;params from each segment before it decodes (so a param hides an encoded slash) and again after, takes a backslash for a slash and then resolves dot segments does. PathUnescape cannot fail on a path as sent; were it to, "." matches nothing.
 func fold(escaped string) string {
 	p, _ := url.PathUnescape(params.ReplaceAllString(escaped, ""))
 	return path.Clean(strings.ReplaceAll(params.ReplaceAllString(p, ""), `\`, "/"))
@@ -239,8 +236,7 @@ type swap struct {
 	placeholder string
 }
 
-// hide replaces every real value of swaps in body with its placeholder, and the spellings swapRefresh sent, which an endpoint may echo: in each string of every
-// JSON value the body starts with, where an escape could respell a value to a client that stops at the first, then in the plain bytes of the whole.
+// hide replaces every real value of swaps in body with its placeholder, and the spellings swapRefresh sent, which an endpoint may echo: in each string of every JSON value the body starts with, where an escape could respell a value to a client that stops at the first, then in the plain bytes of the whole.
 func hide(body []byte, swaps []swap) []byte {
 	for _, s := range swaps {
 		m, _ := json.Marshal(string(s.real)) // the two spellings swapRefresh sends: url-encoded in a form, json-escaped in an object

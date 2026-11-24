@@ -20,10 +20,8 @@ import (
 	"time"
 )
 
-// TestC55TokenEndpointFormatSuffix (I5): the token host's router serves the token action with a format suffix too, as a Rails `(.:format)` route does, so
-// the same code grant sent to /oauth/token.json, .xml or .JSON is answered as /oauth/token. tokenEndpoint claims none of those spellings, tokenResponse
-// relays an answer it did not claim unread, and the guest reads the real access and refresh tokens, where the honest spelling returns the placeholders.
-// The second arm's provider answers in form encoding, as GitHub's does. The provider is a loopback server of the test (T8).
+// TestC55TokenEndpointFormatSuffix (I5): the token host's router serves the token action with a format suffix too, as a Rails `(.:format)` route does, so the same code grant sent to /oauth/token.json, .xml or .JSON is answered as /oauth/token. tokenEndpoint claims none of those spellings,
+// tokenResponse relays an answer it did not claim unread, and the guest reads the real access and refresh tokens, where the honest spelling returns the placeholders. The second arm's provider answers in form encoding, as GitHub's does. The provider is a loopback server of the test (T8).
 func TestC55TokenEndpointFormatSuffix(t *testing.T) {
 	for _, form := range []bool{false, true} {
 		t.Run(map[bool]string{false: "json answer", true: "form answer"}[form], func(t *testing.T) {

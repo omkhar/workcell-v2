@@ -22,13 +22,9 @@ import (
 	"github.com/omkhar/workcell/v2/internal/secret"
 )
 
-// TestGitOverHTTPS is the accept clause of a token scoped to repositories: real git (on the host,
-// since the guest image has none) clones from and pushes to a bare repository that git's own
-// http-backend serves over smart HTTP on a loopback TLS listener of the test's own (T8), through
-// the terminating proxy and the real broker, with the placeholder as the password of its Basic
-// credential, the one form the guest holds. The server sees the real token alone, the clone and
-// git's output never hold it, and the same placeholder is refused for another repository on the
-// same host before the server hears of it.
+// TestGitOverHTTPS is the accept clause of a token scoped to repositories: real git (on the host, since the guest image has none) clones from and pushes to a bare repository that git's own http-backend serves over smart HTTP on a loopback TLS listener of the test's own (T8), through the terminating
+// proxy and the real broker, with the placeholder as the password of its Basic credential, the one form the guest holds. The server sees the real token alone, the clone and git's output never hold it, and the same placeholder is refused for another repository on the same host before the server
+// hears of it.
 func TestGitOverHTTPS(t *testing.T) {
 	git, err := exec.LookPath("git")
 	if err != nil {

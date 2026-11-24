@@ -23,8 +23,7 @@ import (
 	"time"
 )
 
-// The provider layer row (I7, B8). The host installs the agents in layers from an upstream the judge serves (T8), each in its real upstream's shape; root in the guest does what it can to claude's layer (hijack), and a second session must run the versions the host installed from a layer unchanged. In between,
-// bytes whose digest is not the row's must be refused (B8). hijacked is what the guest's own agent, or the mismatched bytes, print.
+// The provider layer row (I7, B8). The host installs the agents in layers from an upstream the judge serves (T8), each in its real upstream's shape; root in the guest does what it can to claude's layer (hijack), and a second session must run the versions the host installed from a layer unchanged. In between, bytes whose digest is not the row's must be refused (B8). hijacked is what the guest's own agent, or the mismatched bytes, print.
 var layers = map[string]string{"claude": "9.9.9", "codex": "8.8.8"}
 
 const layerAgent, hijacked = "claude", "6.6.6"

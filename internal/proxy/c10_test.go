@@ -1,12 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Omkhar Arasaratnam
 
-// S-F5, finding C10 of S-1005 (I5). tokenEndpoint and admits judge a path as sent and as decoded with its dot segments resolved, and sameEndpoint drops a ;param suffix from each segment, but neither
-// resolves the dot segments that dropping a ;param or folding a backslash uncovers. A router that drops ;params before it normalises (Tomcat's
-// CoyoteAdapter: parsePathParameters, then normalize; Jetty and Undertow alike) or reads a backslash as a slash (HTTP.sys, IIS) serves
-// /oauth/x/..;/token as the token endpoint, so its answer carries real tokens to the guest unread (a), and serves /v1/..;/admin as /admin, so a
-// placeholder bound to POST /v1/ or to one repository is swapped for the real secret on a request outside the rule (b). The fake upstream below
-// folds the path as those routers do; that the operator's host sits behind one is a precondition the attacker does not control.
+// S-F5, finding C10 of S-1005 (I5). tokenEndpoint and admits judge a path as sent and as decoded with its dot segments resolved, and sameEndpoint drops a ;param suffix from each segment, but neither resolves the dot segments that dropping a ;param or folding a backslash uncovers. A router that
+// drops ;params before it normalises (Tomcat's CoyoteAdapter: parsePathParameters, then normalize; Jetty and Undertow alike) or reads a backslash as a slash (HTTP.sys, IIS) serves /oauth/x/..;/token as the token endpoint, so its answer carries real tokens to the guest unread (a), and serves
+// /v1/..;/admin as /admin, so a placeholder bound to POST /v1/ or to one repository is swapped for the real secret on a request outside the rule (b). The fake upstream below folds the path as those routers do; that the operator's host sits behind one is a precondition the attacker does not control.
 package proxy
 
 import (
@@ -22,8 +19,7 @@ import (
 	"time"
 )
 
-// foldingFixture is signinFixture with the narrowed rules of terminateFixture, behind an upstream that folds the path as those routers do before it
-// serves it (raw ;params cut up to the next raw slash, then decoded, a backslash taken for a slash, then dot segments resolved): the provider on
+// foldingFixture is signinFixture with the narrowed rules of terminateFixture, behind an upstream that folds the path as those routers do before it serves it (raw ;params cut up to the next raw slash, then decoded, a backslash taken for a slash, then dot segments resolved): the provider on
 // login.example.com, elsewhere an echo of the folded path and the credential header. The broker holds "real-secret".
 func foldingFixture(t *testing.T, prov *provider) *http.Client {
 	t.Helper()
@@ -55,8 +51,7 @@ func foldingFixture(t *testing.T, prov *provider) *http.Client {
 	return clientVia(listen(t, px, 443), caPool(t, ca))
 }
 
-// TestFoldedPathEscapesTheEndpointAndTheRule: (a) a code grant at a spelling the IdP's router folds to the token endpoint must reach the guest with no
-// real token in it (send fails the test on one); (b) a placeholder on a request whose path folds to one outside its rule must be refused, as the
+// TestFoldedPathEscapesTheEndpointAndTheRule: (a) a code grant at a spelling the IdP's router folds to the token endpoint must reach the guest with no real token in it (send fails the test on one); (b) a placeholder on a request whose path folds to one outside its rule must be refused, as the
 // unfolded /v1/../admin is, with the secret withheld.
 func TestFoldedPathEscapesTheEndpointAndTheRule(t *testing.T) {
 	t.Parallel()

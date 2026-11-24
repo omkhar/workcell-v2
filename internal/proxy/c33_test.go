@@ -1,10 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Omkhar Arasaratnam
 
-// Finding C33 of S-1016b (I5): a `path`-narrowed credential must not be released outside its rule's path. fold decodes %2F before path.Clean, so
-// `POST /v1/a%2Fb/../../admin` passes a rule with path `/v1/`, yet a router doing RFC 3986 5.2.4 dot-removal on the still-encoded path (%2F opaque,
-// as path.Clean of EscapedPath) serves /admin. Real terminating Proxy + loopback upstream modelling that router: the %2F and %5C forms with a dot
-// segment are refused 403 and the upstream never sees the real secret outside /v1/; /v1/a%2Fb/c is served as before with the real secret under /v1/.
+// Finding C33 of S-1016b (I5): a `path`-narrowed credential must not be released outside its rule's path. fold decodes %2F before path.Clean, so `POST /v1/a%2Fb/../../admin` passes a rule with path `/v1/`, yet a router doing RFC 3986 5.2.4 dot-removal on the still-encoded path (%2F opaque, as
+// path.Clean of EscapedPath) serves /admin. Real terminating Proxy + loopback upstream modelling that router: the %2F and %5C forms with a dot segment are refused 403 and the upstream never sees the real secret outside /v1/; /v1/a%2Fb/c is served as before with the real secret under /v1/.
 package proxy
 
 import (

@@ -16,3 +16,5 @@ func Bind(network, addr, _ string) int {
 	return 1
 }
 func Hold(string, bool) int { fmt.Fprintln(os.Stderr, "netns: Linux only"); return 1 }
+
+var linuxRows []Test // the rows that need Hold's on-link layout, which this host has no way to lay out (priv_linux.go)

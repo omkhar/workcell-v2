@@ -3,12 +3,9 @@
 
 //go:build linux
 
-// Command workcell-init is PID 1 of the guest (A6): one static binary and no shell (A8). It
-// mounts the pseudo filesystems, dials the host over vsock and runs the commands the host
-// asks for, one at a time, with a PTY or with pipes, relaying bytes and signals and
-// reporting how each ended. It reaps every child, its own and the orphans the kernel hands
-// to PID 1. When the host hangs up, for whatever reason, it kills everything, syncs and
-// powers the guest off. It is a convenience for the host, never a control: nothing in the
+// Command workcell-init is PID 1 of the guest (A6): one static binary and no shell (A8). It mounts the pseudo filesystems, dials the host over vsock and runs the commands the host asks for, one at a
+// time, with a PTY or with pipes, relaying bytes and signals and reporting how each ended. It reaps every child, its own and the orphans the kernel hands to PID 1. When the host hangs up, for
+// whatever reason, it kills everything, syncs and powers the guest off. It is a convenience for the host, never a control: nothing in the
 // guest is trusted (A1), and the host ends the VM from outside when this does not (ADR-001).
 package main
 
@@ -45,10 +42,8 @@ func main() {
 	halt()
 }
 
-// setup mounts what commands expect. A mount that is there already is fine. When the host
-// put root= on the kernel command line, the image it names becomes the root, and a failure
-// to make it so is fatal: the console then says why. Without root= the initramfs stays the
-// root. It returns the kernel command line for what comes after.
+// setup mounts what commands expect. A mount that is there already is fine. When the host put root= on the kernel command line, the image it names becomes the root, and a failure to make it so is
+// fatal: the console then says why. Without root= the initramfs stays the root. It returns the kernel command line for what comes after.
 func setup() (string, error) {
 	for _, d := range []string{"/dev", "/proc", "/sys"} {
 		_ = os.MkdirAll(d, 0o755)
@@ -103,9 +98,8 @@ func mount(src, dir, fs, data string) {
 	}
 }
 
-// dial connects to the host (CID 2) on port. The device may still be probing when the guest
-// starts, so the channel's dial retries for a while; a relayed stream's does not. The socket
-// is non-blocking so that deadlines work on it.
+// dial connects to the host (CID 2) on port. The device may still be probing when the guest starts, so the channel's dial retries for a while; a relayed stream's does not. The socket is non-blocking
+// so that deadlines work on it.
 func dial(port uint32, retry time.Duration) (*os.File, error) {
 	var err error
 	for end := time.Now().Add(retry); ; time.Sleep(20 * time.Millisecond) {
@@ -221,10 +215,8 @@ func serve() error {
 	}
 }
 
-// reaper collects every child that ends. The kernel hands orphans to PID 1, so wait4(-1)
-// must run for all of them, and the status of the one command the init started is passed
-// on by pid. The lock is held from fork to registration, so no status is collected before
-// it has an owner.
+// reaper collects every child that ends. The kernel hands orphans to PID 1, so wait4(-1) must run for all of them, and the status of the one command the init started is passed on by pid. The lock is
+// held from fork to registration, so no status is collected before it has an owner.
 type reaper struct {
 	mu     sync.Mutex
 	pid    int                  // the command that runs, or 0
@@ -259,12 +251,9 @@ func (r *reaper) collect() {
 	}
 }
 
-// halt ends the guest: every other process dies, the disks are synced and the machine
-// restarts, which with reboot=k on the command line ends the VMM. A mounted /workspace is
-// aborted first, since a process waiting on the host there cannot die until it is. POWER_OFF
-// is not used: on a kernel without an ACPI power-off handler it halts the CPUs without
-// exiting, so the VMM would live until the host's deadline. The host does not depend on any
-// of this (A1): its deadline and Kill end the VM from outside.
+// halt ends the guest: every other process dies, the disks are synced and the machine restarts, which with reboot=k on the command line ends the VMM. A mounted /workspace is aborted first, since a
+// process waiting on the host there cannot die until it is. POWER_OFF is not used: on a kernel without an ACPI power-off handler it halts the CPUs without exiting, so the VMM would live until the
+// host's deadline. The host does not depend on any of this (A1): its deadline and Kill end the VM from outside.
 func halt() {
 	abortFUSE()
 	_ = unix.Kill(-1, unix.SIGKILL)

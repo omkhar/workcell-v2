@@ -15,17 +15,11 @@ import (
 	"github.com/omkhar/workcell/v2/internal/resolver"
 )
 
-// The host end of the network path (ADR-003). The guest's init opens one vsock stream to
-// relay.Port for each connection it accepted and names the destination in a 20-byte header.
-// The bytes are the guest's (A1): the host reads exactly the header, under a deadline, before
-// it allocates anything else, and holds a bounded number of streams (I10, I12). A TCP header
-// for a port the policy serves hands the rest of the stream to that port's adapter, a
-// net.Listener the proxy's Serve(adapter, port) takes connections from as it would from any
-// listener: it routes by SNI or by the port's one host, resolves the name on the host and dials
-// the vetted address. The address in the header is never dialled (I4). A UDP header for port 53,
-// whatever its address, carries one framed query, which the host resolver answers from the
-// policy alone with one framed reply (I3): no query leaves the host. Any other header closes the
-// stream with nothing dialled.
+// The host end of the network path (ADR-003). The guest's init opens one vsock stream to relay.Port for each connection it accepted and names the destination in a 20-byte header. The bytes are the
+// guest's (A1): the host reads exactly the header, under a deadline, before it allocates anything else, and holds a bounded number of streams (I10, I12). A TCP header for a port the policy serves
+// hands the rest of the stream to that port's adapter, a net.Listener the proxy's Serve(adapter, port) takes connections from as it would from any listener: it routes by SNI or by the port's one
+// host, resolves the name on the host and dials the vetted address. The address in the header is never dialled (I4). A UDP header for port 53, whatever its address, carries one framed query, which
+// the host resolver answers from the policy alone with one framed reply (I3): no query leaves the host. Any other header closes the stream with nothing dialled.
 const (
 	maxStreams = 1024            // streams held at once; the next one is closed at once
 	headerWait = 5 * time.Second // from accept to the last header byte, or to the end of a DNS exchange
@@ -89,11 +83,9 @@ func (l *adapter) deliver(c net.Conn) {
 	}
 }
 
-// relayConn is one relayed stream as the proxy sees it: the bytes after the header. Its local
-// address is the destination the guest's program dialled, which is where the guest's kernel
-// accepted the connection: a hint for the deny line (U-308), never dialled (I4). Its remote
-// address is the stream's own, the backend's end of the vsock. Closing it releases the
-// stream's slot, so a conn the proxy holds is counted until the proxy lets go of it.
+// relayConn is one relayed stream as the proxy sees it: the bytes after the header. Its local address is the destination the guest's program dialled, which is where the guest's kernel accepted the
+// connection: a hint for the deny line (U-308), never dialled (I4). Its remote address is the stream's own, the backend's end of the vsock. Closing it releases the stream's slot, so a conn the proxy
+// holds is counted until the proxy lets go of it.
 type relayConn struct {
 	net.Conn
 	dst     *net.TCPAddr
@@ -112,10 +104,8 @@ func (c *relayConn) Close() error {
 // denyFunc records one refused attempt: the proxy's Deny.
 type denyFunc func(host string, port uint16, reason string)
 
-// serveRelay takes the guest's relayed streams until the listener closes with the session, then
-// closes every adapter, so that the proxy's Serve loops end with it (A9). Each stream has wait
-// to complete its header; dns answers the UDP 53 streams, and deny records a TCP stream to a
-// port the policy does not serve (I9).
+// serveRelay takes the guest's relayed streams until the listener closes with the session, then closes every adapter, so that the proxy's Serve loops end with it (A9). Each stream has wait to
+// complete its header; dns answers the UDP 53 streams, and deny records a TCP stream to a port the policy does not serve (I9).
 func serveRelay(ln net.Listener, served adapters, dns *resolver.Resolver, deny denyFunc, wait time.Duration) {
 	defer served.closeAll()
 	slots := make(chan struct{}, maxStreams)
@@ -134,11 +124,9 @@ func serveRelay(ln net.Listener, served adapters, dns *resolver.Resolver, deny d
 	}
 }
 
-// stream reads one header: 20 bytes within wait, or the stream is dropped. Version 1, TCP and a
-// served port hand the rest of the stream to that port's adapter, the header consumed and the
-// deadline lifted. Version 1, UDP and port 53 is one DNS exchange under the same deadline, and
-// the stream closes after it. Any other header closes the stream with nothing dialled; a TCP
-// header for a port that is not served is recorded first, as the connection attempt it is.
+// stream reads one header: 20 bytes within wait, or the stream is dropped. Version 1, TCP and a served port hand the rest of the stream to that port's adapter, the header consumed and the deadline
+// lifted. Version 1, UDP and port 53 is one DNS exchange under the same deadline, and the stream closes after it. Any other header closes the stream with nothing dialled; a TCP header for a port that
+// is not served is recorded first, as the connection attempt it is.
 func stream(c *relayConn, served adapters, dns *resolver.Resolver, deny denyFunc, wait time.Duration) {
 	_ = c.SetDeadline(time.Now().Add(wait))
 	var b [relay.HeaderLen]byte

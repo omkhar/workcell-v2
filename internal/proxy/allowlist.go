@@ -2,10 +2,7 @@
 // Copyright 2026 Omkhar Arasaratnam
 // Ported from v1: egressproxy/allowlist.go
 
-// Package proxy is the per-session egress proxy. It admits a TLS
-// connection only when its SNI and port are on an exact allowlist, and it
-// forwards a non-TLS port only to the one host that owns that port. It
-// resolves every host itself and refuses non-public addresses.
+// Package proxy is the per-session egress proxy. It admits a TLS connection only when its SNI and port are on an exact allowlist, and it forwards a non-TLS port only to the one host that owns that port. It resolves every host itself and refuses non-public addresses.
 package proxy
 
 import (
@@ -26,26 +23,19 @@ type Allowlist struct {
 	forward map[uint16]string // each non-443 port to its single host
 }
 
-// canonicalHost lower-cases a host name and drops a trailing dot, so every
-// lookup keyed by host agrees on one spelling.
+// canonicalHost lower-cases a host name and drops a trailing dot, so every lookup keyed by host agrees on one spelling.
 func canonicalHost(host string) string {
 	return strings.TrimSuffix(strings.ToLower(host), ".")
 }
 
-// dnsName reports whether host, already canonical, is a DNS name: dot-separated
-// labels of 1 to 63 letters, digits and inner hyphens, at most 253 bytes, the longest DNS name.
+// dnsName reports whether host, already canonical, is a DNS name: dot-separated labels of 1 to 63 letters, digits and inner hyphens, at most 253 bytes, the longest DNS name.
 func dnsName(host string) bool {
 	if host == "" || len(host) > 253 {
 		return false
 	}
 	for _, label := range strings.Split(host, ".") {
-		if label == "" || len(label) > 63 || label[0] == '-' || label[len(label)-1] == '-' {
+		if label == "" || len(label) > 63 || label[0] == '-' || label[len(label)-1] == '-' || strings.Trim(label, "abcdefghijklmnopqrstuvwxyz0123456789-") != "" {
 			return false
-		}
-		for _, c := range []byte(label) {
-			if (c < 'a' || c > 'z') && (c < '0' || c > '9') && c != '-' {
-				return false
-			}
 		}
 	}
 	return true

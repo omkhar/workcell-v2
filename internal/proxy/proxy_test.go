@@ -11,6 +11,7 @@ import (
 	"crypto/tls"
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"net"
 	"net/netip"
 	"sync"
@@ -52,6 +53,39 @@ func TestBlockedAddr(t *testing.T) {
 	}
 	if !blockedAddr(netip.Addr{}, nil) {
 		t.Error("blockedAddr(zero Addr) = false, want true")
+	}
+}
+
+// TestRoutes feeds routes rows as the kernel prints them (C66, S-F49): kept are the on-link unicast rows of either family, as
+// the /25 on-link beside a /32 on lo in the row rebind-on-link-neighbour-forward; not a gateway, default, local or multicast row.
+func TestRoutes(t *testing.T) {
+	t.Parallel()
+	const header, z = "Iface\tDestination\tGateway \tFlags\tRefCnt\tUse\tMetric\tMask\t\tMTU\tWindow\tIRTT\n", "00000000000000000000000000000000"
+	const v4, v6 = header + "lo\t%s\t%s\t0001\t0\t0\t0\t%s\t0\t0\t0\n", "%s %s " + z + " 00 %s 00000100 00000001 00000000 %s     eth0\n"
+	cases := []struct{ name, text, want string }{
+		{"empty", "", "[]"}, {"header alone", header, "[]"},
+		{"on-link beside a /32 on lo", fmt.Sprintf(v4, "0030AFC0", "00000000", "80FFFFFF"), "[192.175.48.0/25]"},
+		{"interface prefix", fmt.Sprintf(v4, "000200C0", "00000000", "00FFFFFF"), "[192.0.2.0/24]"},
+		{"via gateway", fmt.Sprintf(v4, "000200C0", "010200C0", "00FFFFFF"), "[]"},
+		{"default via gateway", fmt.Sprintf(v4, "00000000", "010200C0", "00000000"), "[]"},
+		{"on-link default (a tunnel)", fmt.Sprintf(v4, "00000000", "00000000", "00000000"), "[]"},
+		{"short row", header + "lo\t0030AFC0\n", "error"},
+		{"not hex", fmt.Sprintf(v4, "0030AFCG", "00000000", "80FFFFFF"), "error"},
+		{"mask not a prefix", fmt.Sprintf(v4, "0030AFC0", "00000000", "FFFF0000"), "error"},
+		{"v6 on-link", fmt.Sprintf(v6, "2620004f8000"+z[12:], "40", z, "00000001"), "[2620:4f:8000::/64]"},
+		{"v6 via gateway", fmt.Sprintf(v6, "20010db80000"+z[12:], "20", "fe80"+z[4:31]+"1", "00000003"), "[]"},
+		{"v6 default via gateway", fmt.Sprintf(v6, z, "00", "fe80"+z[4:31]+"1", "00450003"), "[]"},
+		{"v6 on-link default", fmt.Sprintf(v6, z, "00", z, "00000001"), "[]"},
+		{"v6 local", fmt.Sprintf(v6, "2620004f8000"+z[12:31]+"1", "80", z, "80200001"), "[]"},
+		{"v6 multicast", fmt.Sprintf(v6, "ff00"+z[4:], "08", z, "00000001"), "[]"},
+		{"v6 prefix too long", fmt.Sprintf(v6, z, "81", z, "00000001"), "error"},
+		{"both tables", fmt.Sprintf(v4, "0030AFC0", "00000000", "80FFFFFF") + fmt.Sprintf(v6, "2620004f8000"+z[12:], "40", z, "00000001"), "[192.175.48.0/25 2620:4f:8000::/64]"},
+	}
+	for _, tc := range cases {
+		got, err := routes(tc.text)
+		if (err != nil) != (tc.want == "error") || err == nil && fmt.Sprint(got) != tc.want {
+			t.Errorf("%s: routes = %v, %v; want %s", tc.name, got, err, tc.want)
+		}
 	}
 }
 
@@ -128,8 +162,7 @@ func FuzzPeekSNI(f *testing.F) {
 	})
 }
 
-// testProxy returns a proxy whose resolver maps every host to addrs and whose
-// dialer sends every dial to target, recording the address it was asked for.
+// testProxy returns a proxy whose resolver maps every host to addrs and whose dialer sends every dial to target, recording the address it was asked for.
 func testProxy(t *testing.T, allow string, addrs []netip.Addr, target string) (*Proxy, *recorder, *[]netip.AddrPort) {
 	t.Helper()
 	a := must(ParseAllowlist(allow, "allowlist"))
@@ -177,8 +210,7 @@ func (r *recorder) Note(rec audit.Record) error {
 	return nil
 }
 
-// denyLine is a refusal as the tests compare it: the count of its (host, port, reason) so far and
-// its number among the refusals.
+// denyLine is a refusal as the tests compare it: the count of its (host, port, reason) so far and its number among the refusals.
 type denyLine struct {
 	Host   string
 	Port   uint16
@@ -222,8 +254,7 @@ func TestConnectSharesBudgetAcrossAddresses(t *testing.T) {
 	if _, reason := p.connect("example.com", 443); reason != "dial_failed" {
 		t.Fatalf("reason = %q, want dial_failed", reason)
 	}
-	// Four addresses split the 30 s budget: the first attempt gets a quarter
-	// of it, not the full 10 s, so the fourth address is still reachable.
+	// Four addresses split the 30 s budget: the first attempt gets a quarter of it, not the full 10 s, so the fourth address is still reachable.
 	if len(timeouts) != 4 || timeouts[0] > connectBudget/4 || timeouts[0] < connectBudget/4-time.Second {
 		t.Fatalf("dial timeouts = %v, want 4 attempts and a first share near %v", timeouts, connectBudget/4)
 	}

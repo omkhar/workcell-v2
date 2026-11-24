@@ -1,11 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Omkhar Arasaratnam
 
-// T6 regression test for finding C13 of S-1006 (I10, on the I4 rebind path), fixed in S-F8. Before the fix the transport Terminate built gave the upstream
-// TLS handshake no timeout, and Go's transport dials on a context cut off from the request's (context.WithoutCancel), so once the host resolver answered an
-// allowed name with an address the network attacker runs, one guest request to the terminated host started a dial the guest's close did not end: the relay
-// slot and the proxy slot were released, but the upstream socket, its goroutines and its handshake buffers stayed for as long as the attacker's server
-// accepted and then stayed silent. One request, one host fd, outside the 1024-slot bound.
+// T6 regression test for finding C13 of S-1006 (I10, on the I4 rebind path), fixed in S-F8. Before the fix the transport Terminate built gave the upstream TLS handshake no timeout, and Go's transport dials on a context cut off from the request's (context.WithoutCancel), so once the host resolver
+// answered an allowed name with an address the network attacker runs, one guest request to the terminated host started a dial the guest's close did not end: the relay slot and the proxy slot were released, but the upstream socket, its goroutines and its handshake buffers stayed for as long as the
+// attacker's server accepted and then stayed silent. One request, one host fd, outside the 1024-slot bound.
 package proxy
 
 import (
@@ -17,8 +15,7 @@ import (
 	"time"
 )
 
-// TestUpstreamHandshakeEndsWithTheGuest: guests each send one request to a terminated host whose upstream accepts and never answers the ClientHello, then
-// close. Pass → once no slot is held, every upstream connection ends within the dial timeout and a little. Still held → FAIL (I10).
+// TestUpstreamHandshakeEndsWithTheGuest: guests each send one request to a terminated host whose upstream accepts and never answers the ClientHello, then close. Pass → once no slot is held, every upstream connection ends within the dial timeout and a little. Still held → FAIL (I10).
 func TestUpstreamHandshakeEndsWithTheGuest(t *testing.T) {
 	t.Parallel()
 	tarpit := must(net.Listen("tcp", "127.0.0.1:0")).(*net.TCPListener)

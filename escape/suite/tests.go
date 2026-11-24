@@ -19,7 +19,7 @@ import (
 )
 
 // All is the suite. Add a test by adding an entry; no other plumbing exists. Every canary a Judge starts is an address of the test host itself: its loopback, its own interface address (hostAddr), an address the judge adds to loopback for the test's duration (onLoopback), or one the session's own network holds ("neighbour", sandbox.Neighbour). No packet leaves the host (SPEC T8, S12). The guest gets a literal address, never a name.
-var All = append([]Test{
+var All = append(append([]Test{
 	// The first row runs under a policy that opens one port (forwarded), so that an allowlist is shown to open no other port.
 	{ID: "I2", Name: "raw-ip-odd-port-tcp4", Probe: dialProbe, Host: tcpCanary("tcp4", hostAddr+":0", ""), Want: forwarded}, {ID: "I2", Name: "ipv4-mapped-ipv6-tcp", Probe: dialProbe, Host: tcpCanary("tcp4", hostAddr+":0", "::ffff:"+hostAddr)},
 	{ID: "I2", Name: "udp4-datagram", Probe: udpProbe, Host: udpCanary(hostAddr+":0", lineToken)},
@@ -145,7 +145,7 @@ var All = append([]Test{
 	{ID: "I14", Name: "update-daily-once", Probe: idleProbe, Host: dailyJudge("once")},
 	// The product's own start benchmark, run on the host: twenty warm boots, and the median must be under the hosted budget.
 	{ID: "P1", Name: "warm-start", Probe: idleProbe, Host: benchJudge, Bound: benchBound},
-}, pinSmoke()...) // and B6, a smoke test of each guest pin that changed (smoke.go)
+}, linuxRows...), pinSmoke()...) // the rows a Linux host alone runs (priv_linux.go), and B6, a smoke test of each guest pin that changed (smoke.go)
 
 // hostAddr, in a canary address, stands for where the product reaches the test host (sandbox.Observe.Bind): its first non-loopback IPv4 address, or in a session's own network sandbox.CanaryAddr, which lies on no network of the host's.
 const hostAddr = "host"
