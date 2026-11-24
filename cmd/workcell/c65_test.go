@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Omkhar Arasaratnam
 
-// Finding C65 of S-1003 (I1, I7, I9, I13, I14). Fix unit S-F48 first moves this file to cmd/workcell/c65_test.go, as this comment says.
+// Finding C65 of S-1003 (I1, I7, I9, I13, I14). Moved here by fix unit S-F48.
 
 //go:build linux
 
