@@ -5746,6 +5746,39 @@ a3e2262, on the same pull request); the fuse-flood kind of channelProbe, interru
 the adapters' Files stay live, since nothing runs them without the row; test code stands at 28500 of 28500. Not S14: no
 file involved is ported, and none is someone else's project.
 
+C64 FIXED by S-F47, commits 4d2caec (the test moved), fc93985 (the fix) and 00bc7f8 (the review's fix round) (PR #300).
+Serve in internal/fileserve/serve_linux.go now paces its own loop as output() paces port 5000: it reads at most
+paceFrames (1024) requests a paceEvery (64 ms), 16 thousand a second, and sleeps the rest of the period, whatever the
+frame is: a wrong type, a short payload, a refused request or a served one. An INTERRUPT is settled on the reader with
+nothing, and a FORGET or BATCH_FORGET on the reader by s.forget, before a slot of sem and a goroutine are taken; a
+BATCH_FORGET counts one toward the pace for every perForget (64) entries it carries, so a 64 KiB frame of 4093 entries
+counts as 64 requests. handle lost its two arms that answered nothing and always returns a reply. Paid in product lines
+by folds that change no behaviour (errno's switch as one condition, closeFD on one line, one joined comment): product
+stays at 15000 of 15000. Evidence. T2 on control, the redteam in the cloud session after the move: fail, 11.1 CPU seconds
+in 3.0 s, allowed 4.0. Hosted gate on a real VM, the row I10 mount-cpu-flood: on fc93985 pass, 2.9 CPU seconds in 3.5 s
+of wall time, allowed 4.5, 792089 frames of 54 bytes taken in 3 s; on 00bc7f8 pass, 3.3 CPU seconds in 3.5 s, allowed
+4.5, 52159 frames taken in 3 s, beside cpu-flood and device-cpu-flood at 3.5 and channel-cpu-flood at 2.9; passed 146,
+failed 0, errors 0 on both, the seven mount rows among them; before the fix the same row failed at 5.3 in 3.4 s (774549b).
+The review, one round, found the first fix too narrow, twice, both I10 and low, both measured on the real Serve over a
+unix socketpair with a child process flooding for 3 s: at 256 thousand requests a second the pace bound only frames that
+take no reply, since replied requests (STATFS, GETATTR, ACCESS, drained in bulk) saturate at about 190 thousand a second
+and cost 1.72 cores, as on main; and a maximal BATCH_FORGET was paced by the frame while it costs by the entry, 1.52
+cores at 9 thousand frames a second. The fix round lowered the pace and counted the entries. Server CPU in cores, main,
+then fc93985, then 00bc7f8: INTERRUPT 1.81, 0.08, 0.01; short refused frames 1.25, 0.07, 0.01; BATCH_FORGET 1.80, 1.52,
+0.06; STATFS 1.72, 1.72, 0.17; a refused request answered EINVAL 1.28, 0.68, 0.06; FORGET, fc93985 then 00bc7f8, 0.10,
+0.01. The first two columns are the reviewer's runs and the last the builder's, on the same harness and the same 4-core
+box; no reviewer ran the last column, since R1 allows one round. At 32 thousand a second replied requests still cost
+1.03 to 1.09 CPU seconds in 3.25 s, above the judge's second of slack, so 16 thousand is the highest power of two that
+holds. Honest traffic, by ADR-005's measurements on a VM: 2.2 to 5.7 thousand requests a second (a 10,100-entry walk, a
+serial GETATTR floor of 208 us, a 100 MiB read at 5.7 thousand READs a second). Lowest-level test (T6): TestPace in
+internal/fileserve/bounds_linux_test.go, the auditor's pin: eight periods of ten-byte refused frames, eight periods of
+64 KiB BATCH_FORGETs, then a STATFS, whose reply must not come before 16 periods (1.024 s) have passed, a lower bound
+only; it fails on main's Serve at 19 ms and on fc93985's at 913 ms, and passes at 00bc7f8 at 1.03 s, with -race too.
+FuzzRequest ran 20 s with no crasher, three times. Residual, not shown on a VM: the bound for replied requests,
+BATCH_FORGET and refused frames rests on TestPace and the host-side figures above, because the suite's one row floods
+INTERRUPT alone; a four-vCPU guest running stat calls in parallel could, by ADR-005's floor, reach about 19 thousand
+requests a second and would be held near 16 thousand (PARKED.md, the S-F47 line).
+
 Sweep 3 verdict for this surface: one candidate, confirmed at low (C64), nothing at medium or above. It gets a fix unit
 (S-F47), as the lows of sweeps 1 and 2 did. No model declined and no safeguard re-ran a request in the audit, the redteam
 or the verifier, and no tool permission was refused to any of them.
