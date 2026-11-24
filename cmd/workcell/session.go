@@ -19,12 +19,9 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-// A session is a directory <data>/sessions/<id>/ that the supervisor of `workcell run` makes
-// and holds. It contains repo (the directory the session was run in), workspace.ext4 (a clone
-// session's image), vmm (the temporary directories of the VMM's sockets and config, one path
-// per line) and lock. The supervisor holds an advisory lock on lock for as long as it lives;
-// the kernel drops it when the process ends, however it ends, so the lock says whether a
-// session is running where a pid file would lie after a crash. A pull holds the lock too, for its VM's life (C63). No daemon and no registry: everything the verbs below know is in the session directory (A9).
+// A session is a directory <data>/sessions/<id>/ that the supervisor of `workcell run` makes and holds. It contains repo (the directory the session was run in),
+// workspace.ext4 (a clone session's image), vmm (the temporary directories of the VMM's sockets and config, one path per line) and lock. The supervisor holds an advisory
+// lock on lock for as long as it lives; the kernel drops it when the process ends, however it ends, so the lock says whether a session is running where a pid file would lie after a crash. A pull holds the lock too, for its VM's life (C63). No daemon and no registry: everything the verbs below know is in the session directory (A9).
 
 // sessionTime names a session directory by when it began, so that the names sort by time; a random suffix keeps two that began in the same instant apart.
 const sessionTime = "20060102T150405.000000000Z"
