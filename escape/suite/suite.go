@@ -59,6 +59,7 @@ type Want struct {
 	Allow, Deny              []string
 	Resolver                 string
 	Isolated                 bool // the host side in a network of its own (sandbox.Config.Isolated)
+	OnLink                   bool // that network laid out as a cloud NIC's (sandbox.Config.OnLink)
 	Secret                   bool
 	Header                   string // the header the secret is bound to, when not x-api-key (NewSecret)
 	Narrow                   bool

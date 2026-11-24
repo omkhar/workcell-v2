@@ -62,7 +62,7 @@ func steered(_, resolver string, _, argv []string, _ int) ([]string, error) {
 type holder struct{ pid int }
 
 // isolate checks that shape by what it does, and sends nothing before the route is known to end on lo0 (T8).
-func isolate(string, string) (*holder, error) {
+func isolate(_, _ string, _ bool) (*holder, error) { // unsupported refused OnLink before this
 	if err := shaped(); err != nil {
 		return nil, fmt.Errorf("%w: the Mac needs lo0 aliases %s and %s/32, no interface prefix around %s, a host route for it to lo0, and pf enabled with `rdr pass on lo0 inet proto { tcp, udp } from any to %[4]s -> %s`", err, IsolatedNet, Neighbour, CanaryAddr, landing)
 	}

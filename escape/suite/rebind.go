@@ -16,9 +16,7 @@ import (
 	"time"
 )
 
-// The rebinding rows (I4). The policy allows one name, and the judge is the resolver the host side of the session asks about it (sandbox.Config.Resolver, at judgeResolver port 53): it answers the allowed name with an address the host must never dial, the host's own loopback, a LAN address, the metadata address, in one spelling or another, or, in a network of the session's own, an address on a
-// network the host itself holds (sandbox.Neighbour), with TTL 0, and refuses every other name. The guest connects to the allowed name as a program would, by the forward port or by SNI at 443, twice. A canary listens at the answer. The host must resolve the name itself (a host that never asked vetted nothing: an error, never a pass) and the canary must see nothing. On control the guest resolves
-// and dials for itself, so the canary sees it on every row.
+// The rebinding rows (I4). The policy allows one name, and the judge is the resolver the host side of the session asks about it (sandbox.Config.Resolver, at judgeResolver port 53): it answers the allowed name with an address the host must never dial, the host's own loopback, a LAN address, the metadata address, in one spelling or another, or, in a network of the session's own, an address on a network the host itself holds (sandbox.Neighbour), with TTL 0, and refuses every other name. The guest connects to the allowed name as a program would, by the forward port or by SNI at 443, twice. A canary listens at the answer. The host must resolve the name itself (a host that never asked vetted nothing: an error, never a pass) and the canary must see nothing. On control the guest resolves and dials for itself, so the canary sees it on every row.
 //
 // Missing, and said so in the report: the row where the first answer is an address the host may dial and the second is not, and the row where one answer set holds both. Each needs a global unicast address the test host owns, and every range set aside for that (RFC 5737, 2001:db8::/32, 3fff::/20) is one the host refuses; every other address is someone's.
 
@@ -32,8 +30,7 @@ var rebindingCNAME = Want{Allow: []string{"allowed.escape.test:" + forwardPort},
 var rebindingOwn = Want{Allow: rebinding.Allow, Resolver: judgeResolver, Isolated: true}
 var rebindingOwnSNI = Want{Allow: rebindingSNI.Allow, Resolver: judgeResolver, Isolated: true}
 
-// rebind is one row's answer and canary: the A and AAAA records the allowed name gets, owned by cname when that is set (the allowed name is then an alias of it), the address the canary listens at ("neighbour" standing for an address on a network of the test host's own, as the session's Bind places it; with no record given, the one A record is wherever the canary came to listen), and whether the
-// guest offers TLS with the allowed name as SNI at 443 rather than a line at the forward port.
+// rebind is one row's answer and canary: the A and AAAA records the allowed name gets, owned by cname when that is set (the allowed name is then an alias of it), the address the canary listens at ("neighbour" standing for an address on a network of the test host's own, as the session's Bind places it; with no record given, the one A record is wherever the canary came to listen), and whether the guest offers TLS with the allowed name as SNI at 443 rather than a line at the forward port.
 type rebind struct {
 	a, aaaa       []string
 	cname, canary string
@@ -57,8 +54,7 @@ func (r rebind) answers() string {
 	return strings.Join(out, ", ")
 }
 
-// rebindProbe connects to the allowed name args[0] (name:port) as a program would, through the guest's own resolver, and sends the token args[1] on one line; with args[2] "sni" it offers a TLS ClientHello naming the host instead and, if the handshake completes, sends the token inside TLS as the path of a request for the host, since a host that terminates the connection resolves the name only to
-// forward a request, and waits for the answer, since a host need not forward for a client that has gone. It tries twice, the second time after a pause, and reports both.
+// rebindProbe connects to the allowed name args[0] (name:port) as a program would, through the guest's own resolver, and sends the token args[1] on one line; with args[2] "sni" it offers a TLS ClientHello naming the host instead and, if the handshake completes, sends the token inside TLS as the path of a request for the host, since a host that terminates the connection resolves the name only to forward a request, and waits for the answer, since a host need not forward for a client that has gone. It tries twice, the second time after a pause, and reports both.
 func rebindProbe(args []string) Result {
 	if len(args) != 3 {
 		return Result{Status: "error", Detail: "want name:port, token and line|sni"}

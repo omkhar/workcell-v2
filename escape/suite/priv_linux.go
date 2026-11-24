@@ -4,6 +4,7 @@
 package suite
 
 import (
+	"cmp"
 	"fmt"
 	"github.com/omkhar/workcell/v2/escape/sandbox"
 	"golang.org/x/sys/unix"
@@ -14,8 +15,7 @@ import (
 	"syscall"
 )
 
-// A canary or a resolver on a port below 1024 needs root on the test host, which the suite does not have on a hosted runner, where sudo answers without a password. So the payload binds it as root and hands the descriptor over (sandbox.RootBind): the judge stays what it is, and root ran one bind. The same
-// payload, entered as root into a session's own network namespace, binds the judge's canaries there.
+// A canary or a resolver on a port below 1024 needs root on the test host, which the suite does not have on a hosted runner, where sudo answers without a password. So the payload binds it as root and hands the descriptor over (sandbox.RootBind): the judge stays what it is, and root ran one bind. The same payload, entered as root into a session's own network namespace, binds the judge's canaries there.
 
 // Bind is the payload as root on the test host: it binds network/addr, sends the descriptor to the judge waiting at the unix socket path, and exits 0. Any failure is one line on stderr and exit 1.
 func Bind(network, addr, path string) int {
@@ -52,9 +52,8 @@ func bindFile(network, addr string) (*os.File, error) {
 	return ln.(*net.TCPListener).File()
 }
 
-// Hold is the payload as the holder of a session's own network namespace, started in a fresh one (`unshare -n`) as root: it brings the loopback device up holding sandbox.IsolatedNet, routes sandbox.CanaryAddr to it as a local address on no network of the host's, dials the judge at path, says its pid, and stays until the judge hangs up. The product runs in /proc/<pid>/ns/net meanwhile, and the
-// judge's canaries are bound there through the same payload (sandbox.RootBind).
-func Hold(path string) int {
+// Hold is the payload as the holder of a session's own network namespace, started in a fresh one (`unshare -n`) as root: it brings the loopback device up holding sandbox.IsolatedNet, routes sandbox.CanaryAddr to it as a local address on no network of the host's, dials the judge at path, says its pid, and stays until the judge hangs up. The product runs in /proc/<pid>/ns/net meanwhile, and the judge's canaries are bound there through the same payload (sandbox.RootBind). With onLink the device holds the host's address alone, as a /32, and the prefix around it is on-link through a route in the main table alone, as a cloud NIC's or a DHCP classless route lays it out; sandbox.Neighbour is then the host's through a local route, as the canary is, so a canary can listen there.
+func Hold(path string, onLink bool) int {
 	ip, ipnet, err := net.ParseCIDR(sandbox.IsolatedNet)
 	var lo *net.Interface
 	if err == nil {
@@ -65,7 +64,12 @@ func Hold(path string) int {
 	}
 	if err == nil {
 		bits, _ := ipnet.Mask.Size()
-		err = addrRequest(syscall.RTM_NEWADDR, syscall.NLM_F_CREATE|syscall.NLM_F_EXCL, lo.Index, ip.To4(), bits)
+		if onLink {
+			bits, err = 32, cmp.Or(route(lo.Index, ipnet.IP.To4(), bits, syscall.RT_TABLE_MAIN, syscall.RT_SCOPE_LINK, syscall.RTN_UNICAST), localRoute(lo.Index, net.ParseIP(sandbox.Neighbour).To4()))
+		}
+		if err == nil {
+			err = addrRequest(syscall.RTM_NEWADDR, syscall.NLM_F_CREATE|syscall.NLM_F_EXCL, lo.Index, ip.To4(), bits)
+		}
 	}
 	if err == nil {
 		err = localRoute(lo.Index, net.ParseIP(sandbox.CanaryAddr).To4())

@@ -294,7 +294,7 @@ func (w *workcell) Start(_ context.Context, cfg Config) (string, error) {
 	}
 	w.dir, w.payload, w.cfg = dir, cfg.Payload, cfg
 	if cfg.Isolated {
-		if w.ns, err = isolate(dir, cfg.Payload); err != nil {
+		if w.ns, err = isolate(dir, cfg.Payload, cfg.OnLink); err != nil {
 			os.RemoveAll(dir)
 			return "", fmt.Errorf("workcell: %w", err)
 		}

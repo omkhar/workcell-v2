@@ -16,8 +16,7 @@ import (
 	"strings"
 )
 
-// The I9 probe is root in the guest and knows where the host keeps the session's record, as an attacker who read the product's source does. It goes for the record by that path, through the directory holding it, and through everything the guest writes that the host collects. In the control sandbox the guest's root is the host's, so the path is reachable; in a real guest it is not. The judge reads
-// the record on the host, before and after, and the guest's word counts for nothing.
+// The I9 probe is root in the guest and knows where the host keeps the session's record, as an attacker who read the product's source does. It goes for the record by that path, through the directory holding it, and through everything the guest writes that the host collects. In the control sandbox the guest's root is the host's, so the path is reachable; in a real guest it is not. The judge reads the record on the host, before and after, and the guest's word counts for nothing.
 
 // forgedMarker begins the record the forge probe plants. No judge passes it as an argument, so a record holding it was written by the guest.
 const forgedMarker = "forged-record-"

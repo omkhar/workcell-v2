@@ -79,7 +79,7 @@ func TestIsolatedNetwork(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	h, err := isolate(t.TempDir(), payload)
+	h, err := isolate(t.TempDir(), payload, false)
 	if err != nil {
 		t.Fatal(err)
 	}
