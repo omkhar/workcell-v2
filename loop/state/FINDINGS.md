@@ -6496,3 +6496,31 @@ Sweep 3 verdict for this surface: two candidates, C67 and C68, both confirmed at
 four mediums (C65 and C66, fixed; C67 and C68, open) and one low (C64, fixed). It is the last sweep that S8 allows,
 so S-1017 will mark itself `[!]` and the loop will stop there for the maintainer; the audits before it still run,
 and S7 wants both mediums fixed before cutover.
+
+C67 FIXED by S-F50, commits b2c49ac (the test moved), 3d95817 (the fix) and 9acc6e0 (the review's fix round)
+(PR #309). Not v1 code: signin.go is not ported. tokenResponse in internal/proxy/signin.go no longer asks for a
+media type before it reads: every 2xx answer of a sign-in host to a request tokenEndpoint did not claim is read
+whole by readToken under the 256 KiB bound, identity or gzip, and judged by tokenAnswer. tokenAnswer keeps its
+JSON and form branches; the form branch also refuses a body that is valid JSON and issues a token read as JSON,
+and for any other media type, or none, a body that names access_token or refresh_token in any case is refused,
+with NUL bytes dropped first, so that a UTF-16 or UTF-32 spelling is read too. A refusal is the deny
+token_answer_refused and an empty 502, as in C55. Net product lines: 0, paid by three joined comment pairs in
+signin.go and a third name on the var line of params and sep.
+The review round found the UTF-16 case (I5, the attacker of C67 with an Accept or Accept-Charset header): on the
+first fix a token answer labelled text/json or application/vnd.api+json with charset=utf-16 on /oauth/token.json
+reached the guest in a 200, because every letter of the key names had a NUL beside it; under application/json it
+was refused already as malformed JSON. The fix round is one changed line, and c67_test.go gained two rows
+(text/json utf-16le, vnd.api+json utf-16be) and reads the guest's dump with NULs dropped, since the real token is
+spelled with NULs there too: nine rows now, where the accept line counted seven. With the fix round's test the
+two new rows fail on 3d95817 and all nine pass on 9acc6e0, plain and under -race; with main's signin.go the six
+claim rows and the two new rows fail and the control row passes (the orchestrator ran all three by go test -overlay).
+What it costs an honest provider, wider than the S-F38 line in PARKED.md, as the unit foresaw: every 2xx on an
+unclaimed path of a sign-in host is now held whole before the guest reads a byte, so a streamed answer arrives at
+its end; one over 256 KiB, or in an encoding other than identity or gzip, is answered 502; and a page, script or
+document of that host whose bytes name access_token or refresh_token is answered 502. A host that is a sign-in
+host and also serves large or streamed content loses that content. Paths the endpoint's match claims and hosts
+that are no sign-in host are as before.
+What is left: a spelling of the key names that is neither ASCII, UTF-16 nor UTF-32 (another charset the provider
+would have to offer on request), an answer that carries the token under other key names, and a token in a
+response header or trailer, which hide does not scan (parked at S-1005). None has a reproduction.
+Sweep 3 now stands at four mediums (C65, C66 and C67, fixed; C68, open) and one low (C64, fixed).
