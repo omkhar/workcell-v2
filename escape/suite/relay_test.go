@@ -54,7 +54,6 @@ func TestVerdict(t *testing.T) {
 }
 
 type relayAt struct{ idle } // relayAt is a host whose relay the guest reaches at one address.
-
 func (relayAt) Relay(context.Context) (sandbox.Channel, error) {
 	return sandbox.Channel{Addr: "unix:/nowhere/relay"}, nil
 }

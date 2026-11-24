@@ -20,9 +20,7 @@ import (
 //
 // Missing, and said so in the report: the row where the first answer is an address the host may dial and the second is not, and the row where one answer set holds both. Each needs a global unicast address the test host owns, and every range set aside for that (RFC 5737, 2001:db8::/32, 3fff::/20) is one the host refuses; every other address is someone's.
 
-// judgeResolver is where the judge's resolver listens, at port 53.
-const judgeResolver = "127.5.3.53"
-
+const judgeResolver = "127.5.3.53" // judgeResolver is where the judge's resolver listens, at port 53.
 var rebinding = Want{Allow: []string{"allowed.escape.test:" + forwardPort}, Resolver: judgeResolver}
 var rebindingSNI = Want{Allow: []string{"allowed.escape.test"}, Resolver: judgeResolver}
 var rebindingMapped = Want{Allow: []string{"mapped.escape.test:" + forwardPort}, Resolver: judgeResolver}
@@ -36,8 +34,7 @@ type rebind struct {
 	a, aaaa       []string
 	cname, canary string
 	sni           bool
-	// names are the names answered with the records, as the resolver hears them, with the trailing dot, the first the one rebindJudge's guest connects to; allowedName alone when empty. A denied name among them lets a session whose policy the guest widened reach a canary under it (sandbox.Config.Deny).
-	names []string
+	names         []string // names are the names answered with the records, as the resolver hears them, with the trailing dot, the first the one rebindJudge's guest connects to; allowedName alone when empty. A denied name among them lets a session whose policy the guest widened reach a canary under it (sandbox.Config.Deny).
 }
 
 // answers says what the resolver tells about the allowed name.
@@ -189,7 +186,6 @@ func (ns *nameServer) questions() []string {
 }
 
 var typeNames = map[uint16]string{dnsTypeA: "A", dnsTypeAAAA: "AAAA", dnsTypeCNAME: "CNAME", dnsTypeTXT: "TXT", dnsTypePTR: "PTR", dnsTypeANY: "ANY"} // typeNames names the types a resolver is asked, for the record of it.
-
 // answer is the response to q: for a name of the row's, the CNAME when the row has one and then the row's records of the type asked, NOERROR with no record when it has none of that type; REFUSED for every other name.
 func (r rebind) answer(q dnsQuestion) []byte {
 	names := r.names

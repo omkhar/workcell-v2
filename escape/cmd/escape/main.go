@@ -25,10 +25,7 @@ import (
 
 // Outcomes of one test.
 const Pass, Fail, NotImplemented, Error = "pass", "fail", "not-implemented", "error"
-
-// perTest bounds one test, sandbox start to stop (SPEC: under 20 seconds), unless the test states its own Bound.
-const perTest = 20 * time.Second
-
+const perTest = 20 * time.Second // perTest bounds one test, sandbox start to stop (SPEC: under 20 seconds), unless the test states its own Bound.
 // Report is the JSON the runner prints.
 type Report struct {
 	Sandbox string   `json:"sandbox"`

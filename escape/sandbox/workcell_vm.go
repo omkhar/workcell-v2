@@ -529,7 +529,6 @@ func (w *workcell) Helper(ctx context.Context, name string) (int, error) {
 }
 
 var rows = map[string]string{"claude": "claude-code", "codex": "codex", "copilot": "copilot-cli"} // rows maps a provider to its pin row, as the product's install table does.
-
 // Install builds the product once more with the row l needs in place of the file under pins/, by a build overlay (A11), has it run `workcell update --to <version> <agent>`, and names the image `current` then points at. Runs use that binary.
 func (w *workcell) Install(ctx context.Context, l Layer) (string, error) {
 	name, ok := rows[l.Agent]

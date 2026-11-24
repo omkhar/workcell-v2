@@ -19,9 +19,7 @@ import (
 	"sync"
 )
 
-// ErrNotImplemented is returned by an adapter that cannot do the operation yet. The runner reports it as "not-implemented", which is never a pass.
-var ErrNotImplemented = errors.New("not implemented")
-
+var ErrNotImplemented = errors.New("not implemented") // ErrNotImplemented is returned by an adapter that cannot do the operation yet. The runner reports it as "not-implemented", which is never a pass.
 // Limits on what the runner keeps of the payload's output; the rest is dropped (I12).
 const MaxStdout, MaxStderr = 4096, 1024
 
@@ -37,19 +35,15 @@ type Config struct {
 	Workspace                string // host directory exported into the guest as its workspace; "" exports nothing
 	Mount                    bool   // Mount serves Workspace live (`--mount`, SPEC A5) instead of a clone; control shows it live either way.
 	CPUs, MemoryMiB, DiskMiB int
-	// Allow names the hosts the session policy allows, each resolving to the test host's own address, where the judge's canaries listen (SPEC T8); Deny names hosts it does not, resolved the same way. Control has no policy.
-	Allow, Deny []string
-	Resolver    string // Resolver is the IPv4 address of a DNS server on the test host, port 53, the host side resolves every name with; "" leaves the adapter's own.
-	// Isolated, on Linux, runs the host side in a network namespace of its own with one address and no way out, so nothing leaves the test host (T8, S12). It needs Resolver.
-	Isolated bool
-	// OnLink, with Isolated, lays that network out as a cloud NIC's (Linux only): the host's own address alone on the device, as a /32, with the prefix around it on-link through a route in the main table alone (suite.Hold).
-	OnLink bool
-	Roots  string        // Roots is a PEM bundle the host side trusts upstream, as SSL_CERT_FILE: the suite's own authority.
-	Secret *Secret       // Secret is a credential bound to one allowed name; nil for none.
-	Update *UpdateConfig // Update is the [update] table the session's configuration carries (Channel, CA and Key), so each start makes the daily channel check; nil for none.
-	// Command, when set, is a provider run by name, `workcell run <Command> <args>`, in place of the loader that carries the payload in: the test has installed a layer whose binary is the payload (Install), and stdin stays open and empty, so the guest's first frame is the command's own.
-	Command string
-	Head    bool // Head makes the operator's stdout a reader that goes away after its first read, as `| head -1` does, for every command of the session (I9).
+	Allow, Deny              []string      // Allow names the hosts the session policy allows, each resolving to the test host's own address, where the judge's canaries listen (SPEC T8); Deny names hosts it does not, resolved the same way. Control has no policy.
+	Resolver                 string        // Resolver is the IPv4 address of a DNS server on the test host, port 53, the host side resolves every name with; "" leaves the adapter's own.
+	Isolated                 bool          // Isolated, on Linux, runs the host side in a network namespace of its own with one address and no way out, so nothing leaves the test host (T8, S12). It needs Resolver.
+	OnLink                   bool          // OnLink, with Isolated, lays that network out as a cloud NIC's (Linux only): the host's own address alone on the device, as a /32, with the prefix around it on-link through a route in the main table alone (suite.Hold).
+	Roots                    string        // Roots is a PEM bundle the host side trusts upstream, as SSL_CERT_FILE: the suite's own authority.
+	Secret                   *Secret       // Secret is a credential bound to one allowed name; nil for none.
+	Update                   *UpdateConfig // Update is the [update] table the session's configuration carries (Channel, CA and Key), so each start makes the daily channel check; nil for none.
+	Command                  string        // Command, when set, is a provider run by name, `workcell run <Command> <args>`, in place of the loader that carries the payload in: the test has installed a layer whose binary is the payload (Install), and stdin stays open and empty, so the guest's first frame is the command's own.
+	Head                     bool          // Head makes the operator's stdout a reader that goes away after its first read, as `| head -1` does, for every command of the session (I9).
 }
 
 // Secret is one [[secret]] entry: Value, bound to Host, goes in Header; the guest sees only a placeholder in Env (A4, I5, I6). Method and Path narrow the binding, Repos scopes it to `owner/name` repositories as a git credential is. Source, when set, names the product's own source instead of a file holding Value: `signin:<host><path>` is a sign-in flow. Control stages Value itself, and nothing for a sign-in row.
@@ -83,27 +77,20 @@ type Sandbox interface {
 
 // Observe is the host side of a session as a judge sees it: its record, its helpers and its channel. Everything here is read on the host.
 type Observe interface {
-	Audit(ctx context.Context) (path string, records []string, err error) // Audit returns the host path of the session's record file and its records, oldest first.
-	Verify(ctx context.Context) error                                     // Verify runs the product's verify verb on the record; nil only if intact.
-	// Helper returns the host pid of the session's "proxy", "resolver", "broker" or "supervisor", which may share one process (A9), during an Exec. One the product lacks is ErrNotImplemented.
-	Helper(ctx context.Context, name string) (pid int, err error)
-	Channel(ctx context.Context) (Channel, error) // Channel describes the host-guest channel as the guest reaches it.
-	// Bind opens a listener ("tcp4") or packet socket ("udp4") at addr where the product reaches the test host, "host" standing for its address there. A port that needs root fails with EACCES, and the judge binds it as root.
-	Bind(ctx context.Context, network, addr string) (net.Listener, net.PacketConn, error)
-	// Relay describes the host end of the network relay, one stream per relayed connection behind the header of ADR-003; Files the host end of the file service a `--mount` session's export is served through (ADR-005), the init's one connection to it.
-	Relay(ctx context.Context) (Channel, error)
+	Audit(ctx context.Context) (path string, records []string, err error)                 // Audit returns the host path of the session's record file and its records, oldest first.
+	Verify(ctx context.Context) error                                                     // Verify runs the product's verify verb on the record; nil only if intact.
+	Helper(ctx context.Context, name string) (pid int, err error)                         // Helper returns the host pid of the session's "proxy", "resolver", "broker" or "supervisor", which may share one process (A9), during an Exec. One the product lacks is ErrNotImplemented.
+	Channel(ctx context.Context) (Channel, error)                                         // Channel describes the host-guest channel as the guest reaches it.
+	Bind(ctx context.Context, network, addr string) (net.Listener, net.PacketConn, error) // Bind opens a listener ("tcp4") or packet socket ("udp4") at addr where the product reaches the test host, "host" standing for its address there. A port that needs root fails with EACCES, and the judge binds it as root.
+	Relay(ctx context.Context) (Channel, error)                                           // Relay describes the host end of the network relay, one stream per relayed connection behind the header of ADR-003; Files the host end of the file service a `--mount` session's export is served through (ADR-005), the init's one connection to it.
 	Files(ctx context.Context) (Channel, error)
-	// Update runs the product's update client once, as `workcell update` does with u, and returns Installed for u.Name. What the client keeps between runs is the session's. A refusal is not an error; a client that could not run is.
-	Update(ctx context.Context, u UpdateConfig) (installed []byte, err error)
-	Installed(ctx context.Context, name string) ([]byte, error) // Installed returns the artifact installed for the pin name, read on the host from the current layer; nil when none is.
-	// Install has the host install l for every session of this process, as `workcell update --to <version> <agent>` does, and returns the host path of the layer's image, "" when the adapter keeps none. A refusal is an error.
-	Install(ctx context.Context, l Layer) (image string, err error)
-	Bench(ctx context.Context) (Output, error) // Bench runs `workcell bench start` once with this session's artifacts (P1).
+	Update(ctx context.Context, u UpdateConfig) (installed []byte, err error) // Update runs the product's update client once, as `workcell update` does with u, and returns Installed for u.Name. What the client keeps between runs is the session's. A refusal is not an error; a client that could not run is.
+	Installed(ctx context.Context, name string) ([]byte, error)               // Installed returns the artifact installed for the pin name, read on the host from the current layer; nil when none is.
+	Install(ctx context.Context, l Layer) (image string, err error)           // Install has the host install l for every session of this process, as `workcell update --to <version> <agent>` does, and returns the host path of the layer's image, "" when the adapter keeps none. A refusal is an error.
+	Bench(ctx context.Context) (Output, error)                                // Bench runs `workcell bench start` once with this session's artifacts (P1).
 }
-type Channel struct{ Addr string } // Channel is the host end of the host-guest channel, or of the relay, as the init is connected to it: "unix:<path>" or "vsock:<cid>:<port>". The host answers no guest frame; what a hostile one did shows in the run (I12).
-
+type Channel struct{ Addr string }          // Channel is the host end of the host-guest channel, or of the relay, as the init is connected to it: "unix:<path>" or "vsock:<cid>:<port>". The host answers no guest frame; what a hostile one did shows in the run (I12).
 var Names = []string{"control", "workcell"} // Names lists the adapters, in the order shown to a user.
-
 // New returns a fresh adapter by name.
 func New(name string) (Sandbox, error) {
 	switch name {
@@ -164,7 +151,7 @@ func LoopbackHolds(ip string) error {
 	return fmt.Errorf("%s is not an address of the host's loopback interface, which its setup must hold", ip)
 }
 
-// A session's own network (Config.Isolated) is AS112 space (RFC 7534): global unicast that the product's vetting accepts and no operator's, and nothing sent to it leaves the host (T8, S12). There the test host holds IsolatedNet on its loopback device, so Neighbour lies on a network of the host's own, and the judge's canaries listen at CanaryAddr, outside that prefix, which a local route alone makes the host's: a product that dials only off the host's networks reaches them still.
+// A session's own network (Config.Isolated) is AS112 space (RFC 7534): global unicast that the product's vetting accepts and no operator's, and nothing sent to it leaves the host (T8, S12). There the product's host holds IsolatedNet, so Neighbour lies on a network of the host's own, and the judge's canaries listen at CanaryAddr, outside that prefix: on Linux behind Neighbour, a real neighbour on a link to a second namespace (suite.Hold); on a Mac at an alias of lo0 that a host route alone makes the host's. A product that dials only off the host's networks reaches them still.
 const IsolatedNet, Neighbour, CanaryAddr = "192.175.48.1/25", "192.175.48.2", "192.175.48.129"
 
 // placed is addr with "host" or "neighbour" replaced: where the judge's canaries listen, or an address on a network the test host holds, in the network the product reaches the test host in. In a session's own network (isolated) those are CanaryAddr and Neighbour; in the host's own, both are HostAddr.

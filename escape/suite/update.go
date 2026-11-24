@@ -29,11 +29,8 @@ import (
 
 // The I14 judges run the product's update client on the host against a channel and an upstream the judge serves on the test host's own loopback (SPEC T8), signed with a key the judge made, in the format of ADR-004: updateJudge through `workcell update`, dailyJudge through the check a session start makes by itself. The invariant holds only if nothing from a hostile manifest is installed. The guest plays no part; the probe is idle.
 
-// payloadType is the DSSE payload type of channel.json.
-const payloadType = "application/vnd.workcell.channel+json"
-
-// pinName is the pin every manifest carries: claude's row, which the adapter maps to its agent.
-const pinName = "claude-code"
+const payloadType = "application/vnd.workcell.channel+json" // payloadType is the DSSE payload type of channel.json.
+const pinName = "claude-code"                               // pinName is the pin every manifest carries: claude's row, which the adapter maps to its agent.
 const day = 24 * 60 * 60
 
 // pin is one artifact in a manifest.
@@ -91,7 +88,6 @@ func pins(version, url string, artifact []byte, released int64) map[string]map[s
 	return map[string]map[string]pin{pinName: {runtime.GOARCH: {Version: version, URL: url, SHA256: hex.EncodeToString(sum[:]), Released: released}}}
 }
 func artifact(label string) []byte { return bytes.Repeat([]byte("escape artifact "+label+"\n"), 256) } // artifact is a provider binary as far as the judge cares: bytes naming their label, long enough to cut short.
-
 // upstream is one server on the test host's loopback, HTTPS under cfg or plain HTTP without one, answering each path as set and recording every path asked for.
 type upstream struct {
 	url   string
@@ -154,7 +150,6 @@ func moved(url string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) { http.Redirect(w, r, url, http.StatusFound) }
 }
 func idleProbe([]string) Result { return Result{Status: "idle", Detail: "this test runs on the host"} } // idleProbe is the probe of a test the guest plays no part in.
-
 // channel is a judge's channel: an HTTPS server under the suite's authority serving channel.json and the artifacts it pins, a listener beside it that is not HTTPS, the one key the client trusts, and the honest manifest published first, m, pinning 1.0.0 as the artifact good.
 type channel struct {
 	src, plain *upstream

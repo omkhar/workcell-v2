@@ -65,7 +65,7 @@ func TestCLICancel(t *testing.T) {
 	}
 }
 
-// TestIsolatedNetwork starts the network a session of its own gets (isolate, suite.Hold) and looks from inside it: the loopback device holds IsolatedNet; "host" and "neighbour" bind at CanaryAddr and Neighbour (bind), and a dial inside the namespace reaches both, the first through a local route alone. It needs unshare and root, since the test enters the namespace itself; elsewhere it is skipped.
+// TestIsolatedNetwork starts the network a session of its own gets (isolate, suite.Hold), in both layouts, and looks from inside the product's namespace: its one device besides loopback, wc0, holds IsolatedNet, or the host's address alone as a /32 when on-link; "host" and "neighbour" bind at CanaryAddr and Neighbour (bind) and listen in the far namespace, not the product's, while a loopback address binds in the product's; a dial from the product's side reaches both canaries over the link; and after stop both holders are gone. It needs unshare and root, since the test enters the namespace itself; elsewhere it is skipped.
 func TestIsolatedNetwork(t *testing.T) {
 	if _, err := exec.LookPath("unshare"); err != nil {
 		t.Skip(err)
@@ -77,46 +77,75 @@ func TestIsolatedNetwork(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	h, err := isolate(t.TempDir(), payload, false)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer h.stop()
-	var ifs []net.Interface
-	var held string
-	inside(t, h.pid, func() error {
-		var err error
-		if ifs, err = net.Interfaces(); err == nil {
-			addrs, _ := ifs[0].Addrs()
-			held = fmt.Sprint(addrs)
-		}
-		return err
-	})
-	if len(ifs) != 1 || ifs[0].Name != "lo" || !strings.Contains(held, IsolatedNet) || !strings.Contains(held, "127.0.0.1/8") {
-		t.Fatalf("the namespace holds %d interfaces, lo with %s; want lo alone, holding %s", len(ifs), held, IsolatedNet)
-	}
-	for addr, want := range map[string]string{"host:8443": CanaryAddr, "neighbour:8443": Neighbour} {
-		ln, _, err := h.bind("tcp4", addr)
-		if err != nil {
-			t.Fatalf("bind %s: %v", addr, err)
-		}
-		defer ln.Close()
-		go func() {
-			for c, err := ln.Accept(); err == nil; c, err = ln.Accept() {
-				c.Close()
+	for _, onLink := range []bool{false, true} {
+		t.Run(fmt.Sprint("onLink=", onLink), func(t *testing.T) {
+			h, err := isolate(t.TempDir(), payload, onLink)
+			if err != nil {
+				t.Fatal(err)
 			}
-		}()
-		if got := ln.Addr().String(); got != net.JoinHostPort(want, "8443") {
-			t.Errorf("bind %s listens at %s; want %s", addr, got, want)
-		}
-		inside(t, h.pid, func() error {
-			c, err := net.DialTimeout("tcp4", ln.Addr().String(), 2*time.Second)
-			if err == nil {
-				c.Close()
+			defer func() {
+				h.stop()
+				for _, pid := range []int{h.pid, h.far} {
+					for start := time.Now(); syscall.Kill(pid, 0) == nil && time.Since(start) < 3*time.Second; {
+						time.Sleep(20 * time.Millisecond)
+					}
+					if err := syscall.Kill(pid, 0); err == nil {
+						t.Errorf("after stop, the holder %d is still there", pid)
+					}
+				}
+			}()
+			var ifs []net.Interface
+			var held string
+			inside(t, h.pid, func() error {
+				var err error
+				if ifs, err = net.Interfaces(); err == nil && len(ifs) == 2 {
+					addrs, _ := ifs[1].Addrs()
+					held = fmt.Sprint(addrs)
+				}
+				return err
+			})
+			want := map[bool]string{false: IsolatedNet, true: strings.TrimSuffix(IsolatedNet, "/25") + "/32"}[onLink]
+			if len(ifs) != 2 || ifs[0].Name != "lo" || ifs[1].Name != "wc0" || !strings.Contains(held, want) {
+				t.Fatalf("the namespace holds %d interfaces, the second with %s; want lo and wc0, holding %s", len(ifs), held, want)
 			}
-			return err
+			for addr, want := range map[string]string{"host:8443": CanaryAddr, "neighbour:8443": Neighbour} {
+				ln, _, err := h.bind("tcp4", addr)
+				if err != nil {
+					t.Fatalf("bind %s: %v", addr, err)
+				}
+				defer ln.Close()
+				go func() {
+					for c, err := ln.Accept(); err == nil; c, err = ln.Accept() {
+						c.Close()
+					}
+				}()
+				if got := ln.Addr().String(); got != net.JoinHostPort(want, "8443") {
+					t.Errorf("bind %s listens at %s; want %s", addr, got, want)
+				}
+				inside(t, h.pid, func() error {
+					c, err := net.DialTimeout("tcp4", ln.Addr().String(), 2*time.Second)
+					if err == nil {
+						c.Close()
+					}
+					return err
+				})
+			}
+			_, pc, err := h.bind("udp4", "127.5.3.53:53")
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer pc.Close()
+			if !listens(h.far, "tcp", "20FB") || listens(h.pid, "tcp", "20FB") || !listens(h.pid, "udp", "0035") {
+				t.Errorf("the canaries listen in the far namespace: %v, in the product's: %v; the loopback listener in the product's: %v", listens(h.far, "tcp", "20FB"), listens(h.pid, "tcp", "20FB"), listens(h.pid, "udp", "0035"))
+			}
 		})
 	}
+}
+
+// listens says whether a socket in the network namespace of the process pid listens at the port, in hex, as /proc/<pid>/net/<tcp|udp> lists it.
+func listens(pid int, file, port string) bool {
+	b, _ := os.ReadFile(fmt.Sprintf("/proc/%d/net/%s", pid, file))
+	return strings.Contains(string(b), ":"+port+" 00000000:0000 ")
 }
 
 // inside runs f on a thread moved into the network namespace of the process pid and left there: Go discards a locked thread with its goroutine.

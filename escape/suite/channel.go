@@ -165,9 +165,7 @@ func interrupt(unique uint64) []byte {
 	b = append(b, make([]byte, 16)...)
 	return frame(1, binary.LittleEndian.AppendUint64(b, unique))
 }
-
-// frameFlood and fuseFlood are channelProbe's frame-flood and fuse-flood kinds under the arguments cpuJudge passes: the seconds, then the address (the channel's, then the file service's).
-func frameFlood(args []string) Result { return channelProbe(append([]string{"frame-flood"}, args...)) }
+func frameFlood(args []string) Result { return channelProbe(append([]string{"frame-flood"}, args...)) } // frameFlood and fuseFlood are channelProbe's frame-flood and fuse-flood kinds under the arguments cpuJudge passes: the seconds, then the address (the channel's, then the file service's).
 func fuseFlood(args []string) Result  { return channelProbe(append([]string{"fuse-flood"}, args...)) }
 
 // swarm opens n fresh connections to the host end at once, has each handled by each (which returns a count), holds them for wait, and says how many opened, the counts' sum and the last dial error as a suffix.
@@ -218,8 +216,7 @@ func flood(addr string) Result {
 	return Result{Status: "flooded", Detail: fmt.Sprintf("%d of %d connections opened, the host side took %d MiB%s", opened, floodSize, taken>>20, last)}
 }
 
-// allowed is the exit status each kind lets a sound host report: 0, the command's own, when the host ignored the frame or the connections; 125, a clean refusal of the session; 126, the error path a forged error text reaches. Never the forged code, and never a crash.
-var allowed = map[string][]int{"exit-empty": {0, rawCleanExit}, "ack-short": {0, rawCleanExit}, "unknown-type": {0, rawCleanExit}, "version-2": {0, rawCleanExit}, "exit-text": {rawCleanExit, rawNoStart}, "giant-header": {rawCleanExit}, "slow-drip": {rawCleanExit},
+var allowed = map[string][]int{"exit-empty": {0, rawCleanExit}, "ack-short": {0, rawCleanExit}, "unknown-type": {0, rawCleanExit}, "version-2": {0, rawCleanExit}, "exit-text": {rawCleanExit, rawNoStart}, "giant-header": {rawCleanExit}, "slow-drip": {rawCleanExit}, // allowed is the exit status each kind lets a sound host report: 0, the command's own, when the host ignored the frame or the connections; 125, a clean refusal of the session; 126, the error path a forged error text reaches. Never the forged code, and never a crash.
 	"storm": {0, rawCleanExit}, "storm-flood": {0, rawCleanExit}, "after-exit": {0, rawCleanExit}, "half-close": {rawCleanExit}, "full-shutdown": {rawCleanExit}, "reboot": {rawCleanExit},
 }
 

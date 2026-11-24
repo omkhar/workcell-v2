@@ -25,9 +25,7 @@ func Prepare(ctx context.Context, name, dir string) error {
 	return nil
 }
 
-// prefix is where a plain container installs every provider, as /usr/local: on every session's PATH, writable.
-var prefix string
-
+var prefix string // prefix is where a plain container installs every provider, as /usr/local: on every session's PATH, writable.
 // unsupported says why the CLI cannot honour cfg today, "" when it can: it takes an export, a network policy, a secret, any caps (a zero meaning the CLI's default; one outside its bounds it refuses itself), and on Linux a resolver of the test's own and, with one, a network of its own, laid out as a cloud NIC's only there.
 func unsupported(cfg Config) string {
 	switch {
@@ -41,9 +39,7 @@ func unsupported(cfg Config) string {
 	return ""
 }
 
-// policyFile is where, under the session's config directory, the product reads its policy: `$XDG_CONFIG_HOME/workcell/config.toml`.
-const policyFile = "workcell/config.toml"
-
+const policyFile = "workcell/config.toml" // policyFile is where, under the session's config directory, the product reads its policy: `$XDG_CONFIG_HOME/workcell/config.toml`.
 // policyTOML is the session policy of SPEC section 5 for cfg: a [network] table whose allow array holds each of cfg.Allow (a bare name is port 443 by SNI; `name:port` a forward entry), and, for cfg.Secret, one [[secret]] table binding it to its host and header, with its value in the file source (or the source the entry names, such as a sign-in flow), the guest's placeholder in its variable, and any method, path prefix and repositories. A quote, a backslash or a byte outside printable ASCII would change what the file says, so such an entry is refused. It is written even with no entry, so that nothing under the runner's ~/.config reaches a session. cfg.Deny writes nothing; a name in both lists is a mistake, and refused.
 func policyTOML(cfg Config, source string) ([]byte, error) {
 	for _, name := range cfg.Allow {
@@ -150,10 +146,6 @@ func pad4(b []byte) []byte {
 	}
 	return b
 }
-
-// Channel is where the guest's init dialled the host: AF_VSOCK, the host's CID 2, port 5000. A probe finds the init's connection by that peer and may dial the same port afresh.
-func (*workcell) Channel(context.Context) (Channel, error) { return Channel{Addr: "vsock:2:5000"}, nil }
-
-// Relay is where the guest's init opens one vsock stream per relayed connection (ADR-003): the host's CID 2, port 5001. Files is where it holds the one connection a `--mount` session's export is served on (ADR-005): port 5002.
-func (*workcell) Relay(context.Context) (Channel, error) { return Channel{Addr: "vsock:2:5001"}, nil }
-func (*workcell) Files(context.Context) (Channel, error) { return Channel{Addr: "vsock:2:5002"}, nil }
+func (*workcell) Channel(context.Context) (Channel, error) { return Channel{Addr: "vsock:2:5000"}, nil } // Channel is where the guest's init dialled the host: AF_VSOCK, the host's CID 2, port 5000. A probe finds the init's connection by that peer and may dial the same port afresh.
+func (*workcell) Relay(context.Context) (Channel, error)   { return Channel{Addr: "vsock:2:5001"}, nil } // Relay is where the guest's init opens one vsock stream per relayed connection (ADR-003): the host's CID 2, port 5001. Files is where it holds the one connection a `--mount` session's export is served on (ADR-005): port 5002.
+func (*workcell) Files(context.Context) (Channel, error)   { return Channel{Addr: "vsock:2:5002"}, nil }

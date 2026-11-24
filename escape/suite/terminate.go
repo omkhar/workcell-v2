@@ -31,9 +31,7 @@ import (
 // The I6 rows. A bare allowed name is one the product terminates: the guest is to meet a leaf for the name from a per-session authority whose key is the host's alone, and the host is to carry the request on to the name the SNI gave, verifying the upstream's certificate as itself. Both canaries share one listener at port 443, told apart by SNI; their certificate chains to the suite's own
 // authority, the host side's trust store (sandbox.Config.Roots). A guest that validates a canary's leaf was spliced through, not terminated.
 
-// terminating is the sandbox the rows want: two allowed names, bare, the judge as the host's resolver, and the host side in a network of its own, where the judge holds the one address both names resolve to (SPEC T8).
-var terminating = Want{Allow: []string{"bound.escape.test", "other.escape.test"}, Resolver: judgeResolver, Isolated: true}
-
+var terminating = Want{Allow: []string{"bound.escape.test", "other.escape.test"}, Resolver: judgeResolver, Isolated: true} // terminating is the sandbox the rows want: two allowed names, bare, the judge as the host's resolver, and the host side in a network of its own, where the judge holds the one address both names resolve to (SPEC T8).
 // authority is the suite's certificate authority, made once per process.
 var authority struct {
 	once sync.Once

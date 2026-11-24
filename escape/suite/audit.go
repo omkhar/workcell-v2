@@ -18,9 +18,7 @@ import (
 
 // The I9 probe is root in the guest and knows where the host keeps the session's record, as an attacker who read the product's source does. It goes for the record by that path, through the directory holding it, and through everything the guest writes that the host collects. In the control sandbox the guest's root is the host's, so the path is reachable; in a real guest it is not. The judge reads the record on the host, before and after, and the guest's word counts for nothing.
 
-// forgedMarker begins the record the forge probe plants. No judge passes it as an argument, so a record holding it was written by the guest.
-const forgedMarker = "forged-record-"
-
+const forgedMarker = "forged-record-" // forgedMarker begins the record the forge probe plants. No judge passes it as an argument, so a record holding it was written by the guest.
 // auditProbe does args[0] to the record at args[1]: forge plants a record (also in args[2], the export, when that is set), suppress sends the path to /dev/null, truncate empties it, and noop is a run that only records.
 func auditProbe(args []string) Result {
 	if len(args) < 2 {

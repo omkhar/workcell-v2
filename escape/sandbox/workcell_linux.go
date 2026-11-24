@@ -88,18 +88,15 @@ func hostBuild(ctx context.Context, repo, out, pkg, overlay string) error {
 	return goBuild(ctx, repo, out, pkg, overlay, "CGO_ENABLED=0", "GOOS=linux", "GOARCH="+runtime.GOARCH)
 }
 func sign(context.Context, string, string) error { return nil } // sign does nothing: a Linux binary runs unsigned.
-
-// steersResolver: on Linux the product can be run under a /etc/resolv.conf of the session's own, so a session may name a resolver.
-const steersResolver = true
-
-// holder is a session's own network namespace, whose loopback device holds IsolatedNet and a route to CanaryAddr and nothing else, so that no other address has a route: the payload that made it and holds it, as root, and the connection whose closing lets it go. The product starts inside it (steered); the judge's canaries listen in it (bind).
+const steersResolver = true                      // steersResolver: on Linux the product can be run under a /etc/resolv.conf of the session's own, so a session may name a resolver.
+// holder is a session's own network: two namespaces joined by a link, the product's, whose one device holds IsolatedNet and a route to CanaryAddr via Neighbour and nothing else, so that no other address has a route, and the far one, where Neighbour and CanaryAddr are held (suite.Hold). The payload made both and holds them, as root; closing conn lets them go. The product starts in the first (steered); the judge's canaries listen in the second (bind).
 type holder struct {
-	pid     int
-	payload string
-	conn    *net.UnixConn
+	pid, far int // the processes holding the product's namespace and the far one
+	payload  string
+	conn     *net.UnixConn
 }
 
-// isolate starts the holder: the payload under `unshare -n`, as root (sudo when the suite is not), which sets its loopback device up, as a cloud NIC's when onLink (suite.Hold), dials back at a socket under dir and says its pid.
+// isolate starts the holder: the payload under `unshare -n`, as root (sudo when the suite is not), which lays the network out, as a cloud NIC's when onLink (suite.Hold), dials back at a socket under dir and says both pids. Then it asks the kernel, from the product's namespace, whether the layout is the expected one (suite.Routed), and sends nothing before it is: a local route for CanaryAddr or Neighbour would make the canary an address of the product's own host, and a route to CanaryAddr without a gateway would put no neighbour before it.
 func isolate(dir, payload string, onLink bool) (*holder, error) {
 	path := filepath.Join(dir, "netns")
 	ln, err := net.ListenUnix("unix", &net.UnixAddr{Name: path, Net: "unix"})
@@ -120,19 +117,27 @@ func isolate(dir, payload string, onLink bool) (*holder, error) {
 		return nil, fmt.Errorf("the holder of the session's network namespace did not call back: %v: %s", err, bytes.TrimSpace(stderr.bytes()))
 	}
 	h := &holder{payload: payload, conn: c}
-	if _, err := fmt.Fscanf(c, "pid %d\n", &h.pid); err != nil || h.pid <= 1 {
+	if _, err := fmt.Fscanf(c, "pid %d far %d\n", &h.pid, &h.far); err != nil || h.pid <= 1 || h.far <= 1 {
 		c.Close()
-		return nil, fmt.Errorf("the holder of the session's network namespace said no pid: %v: %s", err, bytes.TrimSpace(stderr.bytes()))
+		return nil, fmt.Errorf("the holder of the session's network namespace said no pids: %v: %s", err, bytes.TrimSpace(stderr.bytes()))
+	}
+	argv = entered(h.pid, payload, "routed")
+	if out, err := exec.Command(argv[0], argv[1:]...).CombinedOutput(); err != nil {
+		c.Close()
+		return nil, fmt.Errorf("the session's network is not laid out as the Internet behind a neighbour: %v: %s", err, bytes.TrimSpace(out))
 	}
 	return h, nil
 }
 
-// bind binds network/addr in the namespace, "host" in addr standing for CanaryAddr, through the payload as root inside it (RootBind).
+// bind binds network/addr through the payload as root (RootBind), entered into the far namespace for "host" and "neighbour", which stand for CanaryAddr and Neighbour there, and into the product's own for any other address, such as the judge's resolver on its loopback device.
 func (h *holder) bind(network, addr string) (net.Listener, net.PacketConn, error) {
-	return RootBind(network, addr, h.payload, h.pid)
+	ns := h.pid
+	if host, _, _ := net.SplitHostPort(addr); host == "host" || host == "neighbour" {
+		ns = h.far
+	}
+	return RootBind(network, addr, h.payload, ns)
 }
-func (h *holder) stop() { h.conn.Close() } // stop hangs up on the holder, which then exits; the namespace goes once nothing runs in it.
-
+func (h *holder) stop() { h.conn.Close() } // stop hangs up on the holder, which then exits, its far holder with it; a namespace goes once nothing runs in it.
 // asRoot is argv through sudo, without a prompt, when the suite is not root.
 func asRoot(argv ...string) []string {
 	if os.Geteuid() != 0 {
@@ -141,14 +146,17 @@ func asRoot(argv ...string) []string {
 	return argv
 }
 func settle() {} // settle has nothing to wait for: the product resolves through the file steered gave it, and nothing on the host caches that.
+// entered is argv as root (asRoot), entered into the network namespace that the process ns holds when ns is set.
+func entered(ns int, argv ...string) []string {
+	if ns > 0 {
+		argv = append([]string{"nsenter", "--net=/proc/" + strconv.Itoa(ns) + "/ns/net"}, argv...)
+	}
+	return asRoot(argv...)
+}
 
 // rootBindArgv is what RootBind runs: the payload's bind verb (suite.Bind) as root, entered into the network namespace that the process ns holds when ns is set.
 func rootBindArgv(network, addr, path, payload string, ns int) []string {
-	var argv []string
-	if ns > 0 {
-		argv = append(argv, "nsenter", "--net=/proc/"+strconv.Itoa(ns)+"/ns/net")
-	}
-	return asRoot(append(argv, payload, "bind", network, addr, path)...)
+	return entered(ns, payload, "bind", network, addr, path)
 }
 
 // EachProcess calls f with the pid, parent and group of every process on the host, as /proc lists them now.
@@ -211,15 +219,11 @@ func steered(dir, resolver string, env, argv []string, ns int) ([]string, error)
 	if err := os.WriteFile(file, []byte("nameserver "+resolver+"\n"), 0o644); err != nil {
 		return nil, fmt.Errorf("write the session's resolv.conf: %w", err)
 	}
-	var out []string
-	if ns > 0 {
-		out = append(out, "nsenter", "--net=/proc/"+strconv.Itoa(ns)+"/ns/net")
-	}
-	out = append(out, "unshare", "-m", "/bin/sh", "-c", resolverLoader, "sh", file, strconv.Itoa(os.Getuid()), strconv.Itoa(os.Getgid()))
+	out := []string{"unshare", "-m", "/bin/sh", "-c", resolverLoader, "sh", file, strconv.Itoa(os.Getuid()), strconv.Itoa(os.Getgid())}
 	for _, kv := range env {
 		if strings.Contains(kv, "=") { // a word without one would be read as the command
 			out = append(out, kv)
 		}
 	}
-	return asRoot(append(out, argv...)...), nil
+	return entered(ns, append(out, argv...)...), nil
 }

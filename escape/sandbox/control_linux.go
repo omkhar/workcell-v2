@@ -43,8 +43,7 @@ type control struct {
 const controlLoader = `mount --make-rprivate / && mount --bind "$0" /etc/resolv.conf || { echo "control: cannot bind the session's resolv.conf over /etc/resolv.conf" >&2; exit 125; }; exec "$@"`
 
 var helperNames = []string{"proxy", "resolver", "broker", "supervisor"} // helperNames are the session's helpers: each a payload that sleeps, started on first use.
-
-func newControl() (Sandbox, error) { return &control{}, nil }
+func newControl() (Sandbox, error)                                      { return &control{}, nil }
 func (c *control) Start(_ context.Context, cfg Config) (string, error) {
 	dir, err := os.MkdirTemp("", "escape-control-")
 	if err != nil {
@@ -261,10 +260,7 @@ func (c *control) Channel(context.Context) (Channel, error) {
 func (c *control) Relay(context.Context) (Channel, error) {
 	return Channel{Addr: "unix:" + c.relay.ln.Addr().String()}, nil
 }
-
-// Files is the channel: a plain container serves the export as the host's own tree, through no connection of its own, so the file service's frames meet the naive host, which skips a type it does not know.
-func (c *control) Files(ctx context.Context) (Channel, error) { return c.Channel(ctx) }
-
+func (c *control) Files(ctx context.Context) (Channel, error) { return c.Channel(ctx) } // Files is the channel: a plain container serves the export as the host's own tree, through no connection of its own, so the file service's frames meet the naive host, which skips a type it does not know.
 // startHelpers starts one payload process per helper name, once.
 func (c *control) startHelpers() error {
 	if c.helpers != nil {

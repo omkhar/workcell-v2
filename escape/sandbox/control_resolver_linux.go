@@ -16,9 +16,7 @@ type naiveResolver struct {
 	wg   sync.WaitGroup
 }
 
-// naiveResolverAddr is where the naive resolver listens: a loopback address of its own, since resolv.conf names no port, and port 53 needs root.
-const naiveResolverAddr = "127.1.0.53:53"
-
+const naiveResolverAddr = "127.1.0.53:53" // naiveResolverAddr is where the naive resolver listens: a loopback address of its own, since resolv.conf names no port, and port 53 needs root.
 func listenNaiveResolver(addr string) (*naiveResolver, error) {
 	pc, err := net.ListenPacket("udp4", addr)
 	if err != nil {

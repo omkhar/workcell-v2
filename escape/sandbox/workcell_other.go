@@ -11,7 +11,6 @@ import (
 )
 
 type workcell struct{} // workcell on another OS: the product has no hypervisor there, so nothing here is implemented.
-
 const steersResolver = false
 
 func prepareWorkcell(context.Context, string) error                    { return ErrNotImplemented }

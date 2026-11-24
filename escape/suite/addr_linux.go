@@ -8,6 +8,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"golang.org/x/sys/unix"
 	"net"
 	"os/exec"
 	"syscall"
@@ -23,7 +24,7 @@ func loopbackAddr(ip net.IP) (func(), error) {
 	if err != nil {
 		return nil, err
 	}
-	err = addrRequest(syscall.RTM_NEWADDR, syscall.NLM_F_CREATE|syscall.NLM_F_EXCL, lo.Index, ip4, 32)
+	err = addrRequest(syscall.RTM_NEWADDR, syscall.NLM_F_CREATE|syscall.NLM_F_EXCL, lo.Index, ip4, 32, syscall.RT_SCOPE_HOST)
 	if errors.Is(err, syscall.EPERM) {
 		if err = ipAddr("add", ip4); err == nil {
 			return func() { ipAddr("del", ip4) }, nil
@@ -32,7 +33,7 @@ func loopbackAddr(ip net.IP) (func(), error) {
 	if err != nil {
 		return nil, fmt.Errorf("add %v to lo: %w ('file exists' means the host already owns it)", ip4, err)
 	}
-	return func() { addrRequest(syscall.RTM_DELADDR, 0, lo.Index, ip4, 32) }, nil
+	return func() { addrRequest(syscall.RTM_DELADDR, 0, lo.Index, ip4, 32, syscall.RT_SCOPE_HOST) }, nil
 }
 
 // ipAddr runs "ip addr <verb> ip4/32 dev lo" through sudo, without a prompt.
@@ -44,23 +45,51 @@ func ipAddr(verb string, ip4 net.IP) error {
 	return nil
 }
 
-// addrRequest sends one RTM_NEWADDR or RTM_DELADDR for ip4/bits on the interface, scope host.
-func addrRequest(typ uint16, flags uint16, index int, ip4 net.IP, bits int) error {
-	body := binary.NativeEndian.AppendUint32([]byte{syscall.AF_INET, byte(bits), 0, syscall.RT_SCOPE_HOST}, uint32(index))
-	return netlink(typ, flags, attr(attr(body, syscall.IFA_LOCAL, ip4), syscall.IFA_ADDRESS, ip4))
+// addrRequest sends one RTM_NEWADDR or RTM_DELADDR for ip4/bits on the interface, of that scope.
+func addrRequest(typ, flags uint16, index int, ip4 net.IP, bits int, scope byte) error {
+	body := binary.NativeEndian.AppendUint32([]byte{syscall.AF_INET, byte(bits), 0, scope}, uint32(index))
+	_, err := netlink(typ, flags, attr(attr(body, syscall.IFA_LOCAL, ip4), syscall.IFA_ADDRESS, ip4))
+	return err
 }
 
-// localRoute adds ip4/32 to the local table as a local route out of the interface, as `ip route add local <ip4> dev lo` does: every packet to it is the host's own, as to one of its addresses, while no interface holds a prefix it lies in.
-func localRoute(index int, ip4 net.IP) error {
-	return route(index, ip4, 32, syscall.RT_TABLE_LOCAL, syscall.RT_SCOPE_HOST, syscall.RTN_LOCAL)
-}
-
-// route adds dst/bits to the table as a route of that scope and type out of the interface, as `ip route add [local] <dst>/<bits> dev lo [scope link]` does.
-func route(index int, dst net.IP, bits int, table, scope, typ byte) error {
+// route adds dst/bits to the table as a route of that scope and type out of the interface, through the gateway gw when one is given, as `ip route add <dst>/<bits> dev <if> [scope link] [via <gw>]` does.
+func route(index int, dst net.IP, bits int, table, scope, typ byte, gw net.IP) error {
 	rtm := []byte{syscall.AF_INET, byte(bits), 0, 0, table, syscall.RTPROT_BOOT, scope, typ}
 	body := binary.NativeEndian.AppendUint32(rtm, 0) // then the flags
 	body = attr(attr(body, syscall.RTA_DST, dst), syscall.RTA_OIF, binary.NativeEndian.AppendUint32(nil, uint32(index)))
-	return netlink(syscall.RTM_NEWROUTE, syscall.NLM_F_CREATE|syscall.NLM_F_EXCL, body)
+	if gw != nil {
+		body = attr(body, syscall.RTA_GATEWAY, gw)
+	}
+	_, err := netlink(syscall.RTM_NEWROUTE, syscall.NLM_F_CREATE|syscall.NLM_F_EXCL, body)
+	return err
+}
+
+// routed asks the kernel how a packet to ip4 leaves this namespace, as `ip route get` does: the table and type of the route it would take, and its gateway, nil when it has none.
+func routed(ip4 net.IP) (table, typ byte, gw net.IP, err error) {
+	rtm := append([]byte{syscall.AF_INET}, make([]byte, syscall.SizeofRtMsg-1)...)
+	data, err := netlink(syscall.RTM_GETROUTE, 0, attr(rtm, syscall.RTA_DST, ip4))
+	if err == nil && len(data) < syscall.SizeofRtMsg {
+		err = errors.New("no route came back from netlink")
+	}
+	if err != nil {
+		return 0, 0, nil, err
+	}
+	attrs, err := syscall.ParseNetlinkRouteAttr(&syscall.NetlinkMessage{Header: syscall.NlMsghdr{Type: syscall.RTM_NEWROUTE}, Data: data})
+	for _, a := range attrs {
+		if a.Attr.Type == syscall.RTA_GATEWAY {
+			gw = net.IP(a.Value)
+		}
+	}
+	return data[4], data[7], gw, err
+}
+
+// veth makes a veth pair, as `ip link add <name> type veth peer name <peer> netns <pid>` does: name here, peer in the network namespace of the process pid.
+func veth(name, peer string, pid int) error {
+	info := make([]byte, syscall.SizeofIfInfomsg)
+	far := attr(attr(append([]byte(nil), info...), syscall.IFLA_IFNAME, []byte(peer+"\x00")), syscall.IFLA_NET_NS_PID, binary.NativeEndian.AppendUint32(nil, uint32(pid)))
+	link := attr(attr(nil, unix.IFLA_INFO_KIND, []byte("veth")), unix.IFLA_INFO_DATA, attr(nil, 1, far)) // 1: VETH_INFO_PEER
+	_, err := netlink(syscall.RTM_NEWLINK, syscall.NLM_F_CREATE|syscall.NLM_F_EXCL, attr(attr(info, syscall.IFLA_IFNAME, []byte(name+"\x00")), syscall.IFLA_LINKINFO, link))
+	return err
 }
 
 // attr appends one route attribute of type t holding data to b, padded to four bytes.
@@ -71,11 +100,11 @@ func attr(b []byte, t uint16, data []byte) []byte {
 	return append(append(b, data...), make([]byte, (4-n%4)%4)...)
 }
 
-// netlink sends one request of type typ with flags, holding body, over a route netlink socket and returns the kernel's answer.
-func netlink(typ, flags uint16, body []byte) error {
+// netlink sends one request of type typ with flags, holding body, over a route netlink socket and returns the kernel's answer: the body of the message it sent back, or none for a bare acknowledgement.
+func netlink(typ, flags uint16, body []byte) ([]byte, error) {
 	fd, err := syscall.Socket(syscall.AF_NETLINK, syscall.SOCK_RAW|syscall.SOCK_CLOEXEC, syscall.NETLINK_ROUTE)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer syscall.Close(fd)
 	syscall.SetsockoptTimeval(fd, syscall.SOL_SOCKET, syscall.SO_RCVTIMEO, &syscall.Timeval{Sec: 2})
@@ -85,24 +114,27 @@ func netlink(typ, flags uint16, body []byte) error {
 	le.PutUint16(msg[6:], syscall.NLM_F_REQUEST|syscall.NLM_F_ACK|flags)
 	le.PutUint32(msg[8:], 1) // sequence
 	if err := syscall.Sendto(fd, append(msg, body...), 0, &syscall.SockaddrNetlink{Family: syscall.AF_NETLINK}); err != nil {
-		return err
+		return nil, err
 	}
 	buf := make([]byte, 4096)
 	n, _, err := syscall.Recvfrom(fd, buf, 0)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	msgs, err := syscall.ParseNetlinkMessage(buf[:n])
 	if err != nil {
-		return err
+		return nil, err
 	}
 	for _, m := range msgs {
-		if m.Header.Type == syscall.NLMSG_ERROR && len(m.Data) >= 4 {
+		if m.Header.Type != syscall.NLMSG_ERROR {
+			return m.Data, nil
+		}
+		if len(m.Data) >= 4 {
 			if code := int32(le.Uint32(m.Data)); code != 0 {
-				return syscall.Errno(-code)
+				return nil, syscall.Errno(-code)
 			}
-			return nil
+			return nil, nil
 		}
 	}
-	return errors.New("no acknowledgement from netlink")
+	return nil, errors.New("no acknowledgement from netlink")
 }

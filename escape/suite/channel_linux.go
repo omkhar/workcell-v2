@@ -14,8 +14,7 @@ import (
 )
 
 type rawConn struct{ fd int } // rawConn is one end of the channel as a raw descriptor. The duplicate of the init's connection shares its file description, so nothing here changes a flag on it; every write polls first and gives up after a wait.
-
-func (c *rawConn) close() { unix.Close(c.fd) }
+func (c *rawConn) close()     { unix.Close(c.fd) }
 
 // write sends b, waiting at most wait for the peer to take it, and returns how much it took; less than all of it is an error.
 func (c *rawConn) write(b []byte, wait time.Duration) (int, error) {

@@ -8,7 +8,6 @@ package suite
 /*
 #include <mach/mach.h>
 #include <mach/mach_host.h>
-
 // freePages fills pages with the host's free, speculative and purgeable page counts: what it can hand out at once, as MemAvailable is on Linux. The port that mach_host_self hands out is given back, since the judges sample often.
 static kern_return_t freePages(unsigned long long pages[3]) {
 	vm_statistics64_data_t s;
@@ -51,9 +50,7 @@ func hostFiles() (int64, error)    { return 0, errLinuxOnly }
 func hostBusy() (int64, error)     { return 0, errLinuxOnly }
 func hostDiskFree() (int64, error) { return 0, errLinuxOnly }
 
-// szomb is the state of a process that exited and has not been reaped (sys/proc.h SZOMB).
-const szomb = 5
-
+const szomb = 5 // szomb is the state of a process that exited and has not been reaped (sys/proc.h SZOMB).
 // processGroup is the process group of pid.
 func processGroup(pid int) (int, error) {
 	kp, err := unix.SysctlKinfoProc("kern.proc.pid", pid)

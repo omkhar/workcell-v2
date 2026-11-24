@@ -14,39 +14,25 @@ import (
 )
 
 type Result struct{ Status, Detail string } // Result is what a probe reports: a short token such as "connected" and one line of printable ASCII, both bounded and sanitised by Format.
-
 const maxStatus, maxDetail, prefix = 32, 256, "escape-result "
-
-// MaxLine bounds one formatted result, newline included.
-const MaxLine = len(prefix) + maxStatus + 1 + maxDetail + 1
-
-// Probe runs inside the guest with the arguments the host chose.
-type Probe func(args []string) Result
-
-// Run executes the test's probe inside the sandbox with the arguments.
-type Run func(args ...string) (Result, error)
-
+const MaxLine = len(prefix) + maxStatus + 1 + maxDetail + 1 // MaxLine bounds one formatted result, newline included.
+type Probe func(args []string) Result                       // Probe runs inside the guest with the arguments the host chose.
+type Run func(args ...string) (Result, error)               // Run executes the test's probe inside the sandbox with the arguments.
 // Session is one running sandbox, as the host knows it.
 type Session struct {
-	Run Run
-	// Exec runs the test's probe as Run does, but gives back the run itself, exit status and streams unparsed, under ctx (I12); a non-zero status is a result.
-	Exec      func(ctx context.Context, args ...string) (sandbox.Output, error)
-	Workspace string // Workspace is the host directory exported into the guest, "" for none; its parent is the test's alone, so a judge may plant files beside it.
-	Guest     string // where the guest sees Workspace
-	// Allow and Secret are the session's policy as the runner made it from Want: the allowed names, and the credential bound to the first, with its real value, which the guest must never hold.
-	Allow   []string
-	Deny    []string // names that resolve for the session but no policy allows
-	Secret  sandbox.Secret
-	Payload string                  // Payload is the host path of the payload binary: the probe, and the helper a judge runs through sudo for what needs root on the test host.
-	Pull    func(dest string) error // Pull brings the guest's workspace back to the host directory dest, as the product's pull does.
-	// Another starts a second session with the same Want, its own export and, when update is not nil, that [update] table. The runner stops it with the first.
-	Another         func(update *sandbox.UpdateConfig) (Session, error)
-	sandbox.Observe // Observe is the host side of the session: its record, its helpers and its channel.
+	Run             Run
+	Exec            func(ctx context.Context, args ...string) (sandbox.Output, error) // Exec runs the test's probe as Run does, but gives back the run itself, exit status and streams unparsed, under ctx (I12); a non-zero status is a result.
+	Workspace       string                                                            // Workspace is the host directory exported into the guest, "" for none; its parent is the test's alone, so a judge may plant files beside it.
+	Guest           string                                                            // where the guest sees Workspace
+	Allow           []string                                                          // Allow and Secret are the session's policy as the runner made it from Want: the allowed names, and the credential bound to the first, with its real value, which the guest must never hold.
+	Deny            []string                                                          // names that resolve for the session but no policy allows
+	Secret          sandbox.Secret
+	Payload         string                                              // Payload is the host path of the payload binary: the probe, and the helper a judge runs through sudo for what needs root on the test host.
+	Pull            func(dest string) error                             // Pull brings the guest's workspace back to the host directory dest, as the product's pull does.
+	Another         func(update *sandbox.UpdateConfig) (Session, error) // Another starts a second session with the same Want, its own export and, when update is not nil, that [update] table. The runner stops it with the first.
+	sandbox.Observe                                                     // Observe is the host side of the session: its record, its helpers and its channel.
 }
-
-// Judge runs on the host. It may start canaries (on loopback only, SPEC T8), run the probe through s.Run, and says whether the invariant held.
-type Judge func(ctx context.Context, s Session) (pass bool, detail string, err error)
-
+type Judge func(ctx context.Context, s Session) (pass bool, detail string, err error) // Judge runs on the host. It may start canaries (on loopback only, SPEC T8), run the probe through s.Run, and says whether the invariant held.
 // Want is the sandbox a test needs: an export, live (`--mount`, A5) or a clone, the caps (zero: the adapter's default), the names the policy allows and the names it does not, the resolver the host side uses, whether a fresh secret is bound to the first allowed name (NewSecret), and the repo-local policy the hostile repository brings (PlantPolicy).
 type Want struct {
 	Workspace, Mount         bool
