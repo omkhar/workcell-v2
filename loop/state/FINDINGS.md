@@ -6223,3 +6223,27 @@ tunnel's on-link default would be refused. And on a Mac the adapter answers the 
 the static lo0 layout of the maintainer's setup cannot also hold a /32 with an on-link route: the fix unit gives
 the row a Mac shape or a place among the Linux-only rows. Sweep 3 now stands at two mediums (C65, fixed; C66,
 open) and one low (C64, fixed).
+
+C66 FIXED by S-F49, commits 8888bab (the row moved back) and 325c477 (the fix) (PR #307). also in v1 main:
+egressproxy/proxy.go, so the maintainer sends the same fix to v1. nets() in internal/proxy/proxy.go is now hostNets():
+the interface prefixes as before, plus the host's on-link unicast prefixes read on every connection from
+/proc/net/route and /proc/net/ipv6_route by routes(), a pure parser with the table-driven TestRoutes beside it. A row
+is kept when it has no gateway, a prefix longer than 0 bits, no RTF_LOCAL flag and a destination that is not
+multicast: so the local table, the default route and an on-link default are left out, lo is not skipped, and the
+suite's canary address 192.175.48.129 stays dialable. A file that does not exist adds nothing (a host with no IPv6
+has no ipv6_route, and a Mac has no /proc, so off Linux the vetting is what it was); any other read error or a
+malformed row refuses the connection with blocked_address, as an unreadable interface list does. No build tag and no
+new file. The row I4 rebind-on-link-neighbour-forward is back in the suite in the Linux build only (linuxRows beside
+Hold in escape/suite/priv_linux.go, an empty stub in priv_other.go), because every I4 row must pass on the Mac gate
+and the maintainer's static lo0 layout cannot hold a /32 with an on-link route; a Mac shape needs a Darwin route
+reader and is left for a unit of its own. escape/_pending/S-F49/ is gone. Paid by joined comment lines in
+internal/proxy, cmd/workcell-init/main.go and cmd/workcell/relay.go and by three one-to-one code folds (dnsName in
+allowlist.go, within() and closeNotifyConn.Close in terminate.go): product 14994 of 15000, test 28488 of 28491.
+Proof: the row fails on control (the guest reached the canary and delivered its token, twice) and passes in the
+hosted gate on a real VM at 325c477 (passed 147, failed 0, errors 0; all 13 I2, 17 I4 and 4 I11 rows pass). In a
+network namespace with the row's layout the unfixed nets() gave 127.0.0.1/8 and 192.175.48.1/32 and did not block
+192.175.48.2; the fixed one adds 192.175.48.0/25, blocks .2 and still allows .129. IPv6 is proven by the parser's
+table alone, since the cloud session's kernel has none. Known price, parked under R3: an on-link route that covers
+public space without being the default (0.0.0.0/1 on a tunnel device, or 2000::/3 on a tun device as an OpenVPN
+IPv6 redirect installs it) now refuses every public address behind it, where it was dialled before. Sweep 3 now
+stands at two mediums (C65, fixed; C66, fixed) and one low (C64, fixed).
