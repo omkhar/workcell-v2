@@ -290,8 +290,7 @@ func fill(f *os.File, mib int) string {
 	return detail
 }
 
-// mountDiskProbe is diskProbe for a live export: in the export at args[0] it grows a file to args[2] GiB without writing it, by ftruncate and then by a byte at the end, then writes args[1] MiB to a
-// second file, syncs, holds both for the judge's samples, and removes them. The growth comes first so that it is judged on its own, not as what a byte count of the writes left.
+// mountDiskProbe is diskProbe for a live export: in the export at args[0] it grows a file to args[2] GiB without writing it, by ftruncate and then by a byte at the end, then writes args[1] MiB to a second file, syncs, holds both for the judge's samples, and removes them. The growth comes first so that it is judged on its own, not as what a byte count of the writes left.
 func mountDiskProbe(args []string) Result {
 	if len(args) != 3 {
 		return Result{Status: "error", Detail: "want export, MiB and GiB"}

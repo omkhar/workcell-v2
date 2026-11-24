@@ -94,8 +94,7 @@ func sign(context.Context, string, string) error { return nil }
 // steersResolver: on Linux the product can be run under a /etc/resolv.conf of the session's own, so a session may name a resolver.
 const steersResolver = true
 
-// holder is a session's own network namespace, whose loopback device holds IsolatedNet and a route to CanaryAddr and nothing else, so that no other address has a route: the payload that made it and
-// holds it, as root, and the connection whose closing lets it go. The product starts inside it (steered); the judge's canaries listen in it (bind).
+// holder is a session's own network namespace, whose loopback device holds IsolatedNet and a route to CanaryAddr and nothing else, so that no other address has a route: the payload that made it and holds it, as root, and the connection whose closing lets it go. The product starts inside it (steered); the judge's canaries listen in it (bind).
 type holder struct {
 	pid     int
 	payload string
@@ -186,8 +185,7 @@ func EachProcess(f func(pid, ppid, pgid int)) error {
 	return nil
 }
 
-// productProcess finds the product's own process under root, the process the adapter started for a run: root itself, or the deepest of its descendants, whose executable is bin (under steering root is
-// sudo; a product that forked a supervisor of its own is found below itself). A process between fork and exec still shows its parent's executable, so a caller that finds nothing asks again.
+// productProcess finds the product's own process under root, the process the adapter started for a run: root itself, or the deepest of its descendants, whose executable is bin (under steering root is sudo; a product that forked a supervisor of its own is found below itself). A process between fork and exec still shows its parent's executable, so a caller that finds nothing asks again.
 func productProcess(root int, bin string) (int, bool) {
 	children := map[int][]int{}
 	if EachProcess(func(pid, ppid, _ int) { children[ppid] = append(children[ppid], pid) }) != nil {
@@ -214,8 +212,7 @@ func productProcess(root int, bin string) (int, bool) {
 // over /etc/resolv.conf, becomes the user the suite runs as ($2, $3; the loader runs as root, since binding needs that), and becomes the product with exactly the environment the suite gives it (the K=V words after the ids, then the command), which then resolves every name with that file's resolver.
 const resolverLoader = `mount --make-rprivate / && mount --bind "$1" /etc/resolv.conf || { echo "workcell adapter: cannot bind the session's resolv.conf over /etc/resolv.conf" >&2; exit 125; }; u=$2 g=$3; shift 3; exec setpriv --reuid="$u" --regid="$g" --init-groups -- env -i "$@"`
 
-// steered returns the argv that runs argv under a /etc/resolv.conf naming resolver, with env as its whole environment: the loader above in a new mount namespace, through sudo when the suite is not
-// root, as a hosted runner grants without a password, and inside the network namespace that the process ns holds when ns is set. The resolv.conf is written under dir.
+// steered returns the argv that runs argv under a /etc/resolv.conf naming resolver, with env as its whole environment: the loader above in a new mount namespace, through sudo when the suite is not root, as a hosted runner grants without a password, and inside the network namespace that the process ns holds when ns is set. The resolv.conf is written under dir.
 func steered(dir, resolver string, env, argv []string, ns int) ([]string, error) {
 	file := filepath.Join(dir, "resolv.conf")
 	if err := os.WriteFile(file, []byte("nameserver "+resolver+"\n"), 0o644); err != nil {

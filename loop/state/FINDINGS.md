@@ -5782,3 +5782,203 @@ requests a second and would be held near 16 thousand (PARKED.md, the S-F47 line)
 Sweep 3 verdict for this surface: one candidate, confirmed at low (C64), nothing at medium or above. It gets a fix unit
 (S-F47), as the lows of sweeps 1 and 2 did. No model declined and no safeguard re-ran a request in the audit, the redteam
 or the verifier, and no tool permission was refused to any of them.
+
+## S-1003, sweep 3: VM configuration and device model, Linux and macOS backends (I1, I4, A7), as built at main 2843fad
+
+Sweep 3 (S8), the last the SPEC allows, fresh context (S3), the whole surface read as built after S-F1 to S-F47, not a
+diff. Auditor on the top tier in the cloud session, which has no hypervisor; nothing of this audit needed a VM. The
+auditor wrote its own trust boundary before it opened any earlier record.
+
+Trust boundary. Attacker bytes enter this surface by five routes. (1) The guest's use of the devices the host hands it:
+virtio-blk requests to the root drive (read-only), the workspace image (read-write, the session's own), layer drives
+(read-only) and cache drives (read-only, or read-write by the operator's `--cache NAME:rw`); AF_VSOCK connects to CID 2
+at any port, which Firecracker turns into connect(2) on `<Dir>/vsock_<port>` (only 5000, 5001 and 5002 exist, and 5000
+and 5002 take one connection through `once`) and vz into a registered listener; bytes on the serial console, read
+through a paced blocking pipe into a 4 KiB tail and printed only sanitised when a boot fails; the guest's reboot, panic
+and halt (reboot=k and panic=-1 end Firecracker; a 2 s Ping ends a restarted vz guest). (2) The guest-written images the
+host attaches again later: workspace.ext4 to the pull guest, read-write caches to later guests by the operator's own
+flag; the host never mounts or parses either. (3) The repository the operator runs in: its names, links, hard links,
+FIFOs, sockets and sizes enter workspace.Export (clone) by a descriptor walk and the file service (mount) by its
+(handle, name) grammar, and the pull's tree enters write and put through openat2 RESOLVE_BENEATH and RESOLVE_NO_SYMLINKS
+beneath the destination. (4) Host-written inputs the guest cannot touch: firecracker.json (0600 in a 0700 MkdirTemp
+directory), the kernel command line (integers, fixed words, compiled-in provider names, cache names of a fixed alphabet,
+uint16 ports), the drive paths under the data directory and sessions/<id>/, the markers, lock, repo, vmm and inodes
+files. (5) The operator's environment (TMPDIR, XDG_*, HOME, flags): trusted, but the product refuses layouts that would
+show its own state to a guest (holds, the TMPDIR rules), and the earlier verifiers treated an operator-made second name
+of such a directory as a precondition the attacker does not control (C52). Authority: the supervisor runs as the
+operator's uid with write access to the data directory, TMPDIR and cwd, execs `<data>/firecracker` by absolute path with
+Pdeathsig SIGKILL, Setpgid and the forking thread's CPU mask cut to --cpus, and holds the export's descriptors and the
+proxy; the Firecracker child (same uid, default seccomp, no jailer, no rlimit) holds the drive files and the sockets; on
+macOS the VM runs inside the entitled supervisor and Apple's helper. Invariants held up here: I1 and I4 (sockets and
+drives), I7 (per-session directories, locks, cleanup, read-only layers), I9 and I13 (the data and config directories
+kept out of every export), I10 (affinity, mem_size_mib, image size, console pacing, connection caps), I12 (console
+bytes, the 20 s boot limit), A2, A7 (six methods), A9. No file of this surface carries `// Ported from v1`, and nothing
+here is a weakness in someone else's project, so nothing falls under S14.
+
+Lenses (S9). Parsing and resources: no parser of guest bytes lies on this surface (encode is json.Marshal of host
+strings; the init parses the host-written /proc/cmdline, tested in root_test.go; the console goes to a bounded tail; the
+vz state is an enum). CPU is bounded on Linux by pin() (TestPin) and on the console by the paced blocking pipe; on vz
+the console copy is unpaced and I10 is not enforced there (already parked, unchanged). Memory is mem_size_mib plus
+Firecracker's bounded vsock buffers (1023 connections) and the relay's 1024 slots; disk is the fixed sparse image (tree
+plus --disk) and the file service's charged growth. A probe confirmed by execution what two earlier records only
+reasoned: os.MkdirTemp hands TMPDIR to the kernel uncleaned while filepath.Join cleans `link/..`, so the socket path of
+a TMPDIR through a link and `..` names a directory that does not exist and the boot fails closed. Logic and state: drive
+order and the init's letters agree on both backends (encode and configure against layerArgs and cacheArgs; TestConfig,
+TestLayerArgsAndPath, TestCacheArgsAndEnv); `once` takes one connection and unlinks (TestOnceTakesOneConnection);
+findLayers refuses a marker that is not a bare name; openCaches stats, locks, creates under a temporary name and
+renames; Firecracker's is_root_device adds a second `root=/dev/vda ro`, which the init's last-wins value() reads the
+same. Concurrency and check-to-use: Listen before Start under the mutex; the Pdeathsig thread is locked for the child's
+life; the operator-timed window between another session's MkdirTemp and its recordBoot is unchanged; the direction that
+S-F35's inode walk does not cover, the data directory's inode beneath the working directory, is C65 below. Cryptography
+and identity: none by design; the vsock peer is the VMM by the 0700 directory and the per-VM device; CID 3 on every VM
+is harmless. Failure modes: every exit from boot runs closeAll; an export failure removes the session directory; Start
+refuses when the affinity cannot be read; vz Close waits on exited only after a Stop the guest cannot make fail; nothing
+fails open, and C65 is a check that no code performs rather than one that fails. Downgrade, rollback and replay: not
+applicable to the device model; the markers are host-written; the pull guest boots the image with no network, layers or
+caches. Interaction between surfaces: C19, C28, C29, C52, C56, C61 and C63 traced again in the code as built, with their
+tests green; pull's openat2 masks lack RESOLVE_NO_XDEV, so a bind mount beneath the destination is crossed, and the file
+service's child() opens directories with a plain Openat (both part of C65's chain); vz storage attachments pass readOnly
+straight to the framework (read in the module cache, as data).
+
+Refuted by the auditor before any candidate was raised: a TMPDIR through a link and `..` (fails closed, now by
+execution: MkdirTemp makes the directory at the kernel's path while Listen, encode's uds_path and firecracker.json are
+joined at the cleaned path, which does not exist, so Start fails and closeAll removes what was made; on vz the attach
+socket's Listen fails the same way); the vz console copy (parked, I10 is not enforced on macOS); Go runtime threads
+cloned from the pinned thread inheriting the --cpus mask (it only tightens the bound; no invariant); the window between
+MkdirTemp and recordBoot (operator-timed); the second `root=` argument (last wins); a command line cut short by many
+--cache flags or ports (operator-controlled, Firecracker refuses an overlong one closed); drive letters past z (the init
+mounts less, never more); the findLayers markers `.`, `..` and a link (they need a writer in the data directory, which
+only C65's layout gives, so they are part of its chain); vz Close blocking after a failed Stop (the guest cannot cause
+it); console floods on Firecracker (the pipe fills and the guest's own vCPU blocks); CID 3, no entropy device on
+Firecracker and no rlimits on the child (as the earlier records left them; the bounds are Firecracker's own limits and
+the pin); reflinked workspace images (copy-on-write, the repository's blocks are never written); the export of a
+repository that holds another running session's VMM directory (holds() refuses it by the vmm record); a pull guest with
+a nil audit log (append and Close take a nil receiver); attach dialling the first vmm line after a pull appended a
+second (no invariant).
+
+Coverage. Read in full: internal/vmm/vmm.go; internal/vmm/firecracker/{firecracker,doc}.go with firecracker_test,
+init_test, mount_test, run_test and testdata/{guest,probe}/main.go; internal/vmm/vz/{vz,args,doc}.go with vz_test and
+args_test;
+cmd/workcell/{run_vm,session,caps,backend_linux,backend_darwin,layer,cache,cache_vm,mount_linux,mount_darwin,data,main,run_other,bench,bench_vm,term_vm,term_linux,term_darwin,pull,pull_vm,pull_linux,pull_darwin,relay,explain,policy,update}.go
+and the tests run_vm, caps, session, layer, cache, cache_vm, data, bench, c19 to c22, c28, c29, c34, c43, c44, c50, c52,
+c54 and c56 to c63; cmd/workcell-init/{main,mount,root,exec,net,pull}.go and root_test; internal/workspace/workspace.go
+and its four tests; internal/rootfs/{build,ext4,ext4file,layer,oci,tree}.go and the tests ext4, ext4file, build and
+tree; cmd/mkimage/main.go and its test; internal/provider/provider.go and its four TOML files; pins/pins.go and
+pins/debian.json; internal/guest/{guest,trust}.go; internal/wire/wire.go;
+internal/fileserve/{serve_linux,ops_linux,codec}.go;
+escape/sandbox/{sandbox,workcell,workcell_vm,workcell_linux,workcell_darwin}.go;
+escape/suite/{device,layer,files,files_linux,floods,floods_linux,lifecycle,priv_linux,host_linux,host_darwin,rollback,tests,suite,helpers,repo,gitdir,channel_linux}.go;
+escape/cmd/{escape,payload}/main.go; both enforced lists; docs/adr/accepted/001 and 002, docs/adr/003, 004 and 005,
+docs/threat-model.md, docs/benchmarks.md; loop/SPEC.md, loop/gate.sh, the ci workflow, scripts/install.sh,
+CONTRIBUTING.md, go.mod; the records of this surface in sweeps 1 and 2, the sweep 2 verdict and S-1002's sweep 3 record
+in this file; PARKED.md in full; Code-Hex/vz v3.8.0 storage.go, socket.go Listen and virtualization.go Stop from the
+module cache, as data. Skimmed: cmd/workcell/pull_vm_test.go; the S-1003, S-F3, S-F24 and S-F35 lines of PLAN.md. Not
+opened: internal/rootfs/oci_test.go; the internal/fileserve tests; internal/guest/walk.go; the bodies of internal/proxy,
+relay, resolver, secret, audit, policy, channel, pins, artifact and sigstore; cmd/workcell/{log,ocsf}.go and the tests
+verify, update, policy, explain, pull, relay and log; the escape/suite files of other surfaces;
+escape/sandbox/control_*; spikes/; _legacy/; docs/policy.md, providers.md and migrating-from-v1.md; README.md. Ran: go
+vet and go test -count=1 of internal/vmm/..., cmd/workcell, cmd/workcell-init, internal/workspace, internal/rootfs and
+cmd/mkimage (all pass; the tests that boot a VM skip without /dev/kvm); the MkdirTemp against Join probe; the C65
+overlay probe and a fix-shape overlay; one bind mount made and detached in scratch directories the probe itself made
+(S12, T8). Not run by the auditor: any VM row, the escape suite, any macOS path, fuzzing (no parser of guest bytes lies
+on this surface; the targets T5 owes belong to S-1002 and S-1008). No tool permission was refused to the auditor and no
+request was declined.
+
+Evidence gaps, not findings (PARKED.md holds what a retro must weigh, R3). No row proves from inside a guest that a
+Firecracker layer drive is attached read-only. The vz console copy is unpaced and I10 is unmeasured on the Mac. ADR-001
+names rlimits on the VMM child and the backend sets none. No code path installs or verifies vmlinux, initrd.cpio,
+root.ext4 or firecracker into the data directory, and `doctor` says that `workcell update` fills it. The reboot
+flavours, an O_DIRECT and O_SYNC flood on the workspace drive, many /dev/vd? at once and a virtio-rng loop on vz remain
+unmeasured. The host-disk bound of the workspace image rests on run_test.go's workspace-cap alone, as S-1002 noted.
+
+### S-1003 candidates, sweep 3
+
+C65. ID I7, I9 and I13 through the holds() rule of C19 and C29 (S-F12, S-F21, S-F35); I1 in mount mode; I14 and A6
+through the VMM binary and the layer markers. It is the variant of C52 that S-F35's reviewer found and that sweep 2
+deferred to this audit for a test and a verifier of its own (S1, S4). Attacker: guest root, by hostile model output or a
+malicious repository's hook running as the agent, in a clone session followed by the operator's `workcell pull`, or in a
+`--mount` session; the precondition it does not control is the operator's layout. Where: cmd/workcell/data.go holds()
+and within(), called by session() in run_vm.go and by fetch() in pull_vm.go for the destination; within() relates the
+data directory's ancestors to the working directory by spelling and by inode and never finds the data directory's inode
+beneath the working directory. The readers that then cross the mount: internal/workspace/workspace.go, whose walk
+descends by Openat and skips only the image's own inode; internal/fileserve/serve_linux.go child(), a plain Openat with
+O_NOFOLLOW; cmd/workcell/pull_linux.go, whose openat2 masks hold RESOLVE_BENEATH and RESOLVE_NO_SYMLINKS and not
+RESOLVE_NO_XDEV. Input: the operator's layout has the data directory bind-mounted beneath the working directory (`mount
+--bind "$XDG_DATA_HOME/workcell" /repo/data`, by fstab, a dev-container volume or sudo; bindfs gives the same without
+root), then `cd /repo && workcell run -- <agent>`. A bind mount is not a symlink, so holds() passes. Clone mode: the
+guest reads /workspace/data/audit.key, every sessions/<id>/audit.log and the images, and leaves a tree that holds
+data/firecracker (its own program), data/sessions/<id>/audit.log (rewritten and sealed with the key) and
+data/layers/<agent>/current naming an image of its own; the operator runs `workcell pull`, whose put() opens `data`
+beneath the destination and replaces each file. Mount mode: the guest writes the same files live. Effect claimed: the
+guest reads the audit key and every other session's record and image (I7, I9), rewrites records that `verify` still
+accepts (I9), replaces the layer markers and images a later session boots from (I7, I14, A6) and, through pull or
+--mount, replaces the VMM binary that the next `workcell run` execs as the operator; the config directory aliased the
+same way gives the guest the next session's policy (I13). Auditor's evidence, without a VM: an overlay probe of the real
+session(), holds() and write() with c19_test.go's dummy artifacts, both arms, in 0.03 s; and a fix-shape overlay
+(RESOLVE_NO_XDEV in the three masks of pull_linux.go and in the export walker's directory open) under which the clone
+and pull arms are refused with EXDEV and every other cmd/workcell and workspace test stays green. Severity claimed:
+medium by S6's letter and the standard C52 was confirmed at, with the auditor's own caveat that the layout is rarer than
+C52's and that an operator who mounts the product's state directory inside a repository could be read as having put it
+there, which would make it low; the ruling was left to the verifier.
+
+Reproducing test: TestC65DataDirectoryBindMountedBeneathCwd, a cmd/workcell package test (tag linux, 72 lines) written
+by the redteam from the claim alone and parked at escape/_pending/S-F48/c65_test.go (commit 535cab8 on the unit's pull
+request). Where the process is not root it re-runs itself under sudo -n as c52_test.go does and skips only where sudo
+asks for a password; root is used once, for the bind mount that models the operator's layout. Two arms, clone and mount:
+c19Data's artifacts under a fresh XDG_DATA_HOME, the data directory bound at repo/data, a chdir into repo, then
+session(); each arm wants a refusal that names the data directory, nothing made in the data directory (c19Untouched), no
+vmm record and no workspace.ext4 that holds the other session's record or the key's bytes; then write() beneath repo
+with a judged guest tree that names data/firecracker and data/sessions/<the other id>/audit.log, and both host files
+must be unchanged. It calls the pull writer directly, since fetch cannot reach it without a VM. On the current tree, by
+go test -overlay as root in the cloud session, plain and with -race, run by the redteam, by the orchestrator (the saved
+logs) and by the verifier: both arms fail. Clone: "session returned start firecracker: invalid argument, want a refusal
+naming .../001/workcell, of which .../003/data is a second name"; audit.key minted and a session directory made inside
+the directory the guest gets; "the session reached boot: .../vmm was written"; "workspace.ext4, the guest's /workspace,
+holds the other session's audit log or the bytes of .../audit.key (I7, I9)"; "after the pull writer (<nil>),
+.../workcell/firecracker holds "GUEST" ... not "dummy firecracker"" and the same for the other session's audit.log.
+Mount: the same lines without the image. This run on the unfixed tree is the test's T2 showing: a package test has no
+control adapter. No mount and no scratch directory was left behind. The 72 lines were paid by 70 joined comment lines in
+33 files under escape/suite, escape/sandbox and escape/cmd/payload (every changed line is a `// ` line; tests.go is
+untouched; the list of rows is main's 146); test code stands at 28491 of 28500 and product at 15000 of 15000.
+
+Outcome: CONFIRMED at medium by the verifier, who ran the test as root on 535cab8 (both arms fail in 0.07 s, as in the
+saved logs) and traced the real pull path, since the test calls write() directly: in fetch(), holds(dest) passes exactly
+as the session arm shows; the TMPDIR rule does not fire for a data directory under the home directory; named() passes;
+the guest's /workspace holds data/ because the export walk skips only the image's own inode and descends into the bind
+mount; checkPath refuses only absolute and empty names, `.`, `..` and a `.git` component, so data/firecracker and
+data/sessions/<id>/audit.log pass the judge (the test applies the same add); put() opens `data` by openat2 without
+RESOLVE_NO_XDEV, unlinks the host's file and creates the guest's. No manifest or digest check guards the VMM binary on
+this path, so I14 falls as a consequence and the next `workcell run` execs the guest's bytes as the operator. The mount
+arm proves only that the session reaches boot; the live view crossing the mount is from the code (child()'s Openat has
+no mount check), the standard C52 was confirmed at; fetch() refuses a mount session, so the pull half is clone mode's
+alone, as claimed. The test takes no power the attacker lacks: the forged entries and bytes are guest root's own, and
+the direct call to write() skips nothing that would refuse this layout. Scope: section 2 excludes host root as the
+attacker and malware as the operator, not the operator's own mount tooling; the precondition is of the class of C19, C28
+and C52, all confirmed at medium. Not high: the layout is the operator's and rare. Not low: I7 and I9 are shown broken
+(another session's record overwritten; the key in the guest image lets it seal a rewritten log), and holds() exists to
+refuse this class. Not S14: data.go, pull_vm.go, pull_linux.go, workspace.go and serve_linux.go are v2's own, nothing
+ported, and no other project's weakness is involved.
+
+Fix unit: S-F48, below S-1003 in PLAN.md. The test asks for two things. First, session() must refuse the layout before
+anything is made in the data directory, with an error that names the data directory: a check in holds() that finds a
+mount point beneath the directory, by /proc/self/mountinfo on Linux (the reviewer's and the auditor's option; refusing
+every mount point beneath cwd also refuses a benign one such as a tmpfs node_modules, so the builder weighs refusing
+only a mount whose root is the same file as the data or config directory, one of its ancestors or, by the mount's device
+and root field, something beneath it). Second, the pull writer must not cross a mount point beneath the destination:
+RESOLVE_NO_XDEV in the masks of pull_linux.go, which costs no new line and was probed. The same mask on the export
+walker's directory open and on the file service's child() would also close a mount made after holds() judged, at about 8
+and 3 lines; the auditor probed the walker and reasoned the file service. macOS has no unprivileged mechanism that gives
+a directory a second name beneath another, and its firmlink direction is S-F35's, so vz stays as it is. An identity
+check of (device, inode) in the walker alone would miss bindfs, whose device differs. Variants not expressed (redteam
+and auditor; budget): the config directory aliased beneath cwd, where pull rewrites config.toml (I13); `workcell pull
+<dest>` and `workcell diff` where the destination holds the alias and is not cwd; the reverse, cwd bind-mounted inside
+the data directory; a running mount session's VMM or TMPDIR directory bind-mounted beneath cwd, where holds() reads the
+vmm record's spelling only; a bindfs, overlayfs or FUSE alias whose inodes differ per mount; the layer markers `.`, `..`
+and a link written through the alias; a mount made by a second process after holds() judged and before Export walks; the
+macOS forms, which need the Mac.
+
+Sweep 3 verdict for this surface: one candidate, C65, confirmed at medium. So sweep 3 has confirmed a finding at medium
+or above, and S-1017 will mark itself `[!]` and stop the loop for the maintainer (S8); the fix unit S-F48 stands all the
+same, since S7 wants every medium fixed before cutover. Sweep 3 so far: one medium (C65, open) and one low (C64, fixed).
+No model declined and no safeguard re-ran a request in the auditor, the redteam or the verifier, and no tool permission
+was refused to any of them.

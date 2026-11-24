@@ -9,8 +9,7 @@ package suite
 #include <mach/mach.h>
 #include <mach/mach_host.h>
 
-// freePages fills pages with the host's free, speculative and purgeable page counts: what it can hand out at once, as MemAvailable is on Linux.
-// The port that mach_host_self hands out is given back, since the judges sample often.
+// freePages fills pages with the host's free, speculative and purgeable page counts: what it can hand out at once, as MemAvailable is on Linux. The port that mach_host_self hands out is given back, since the judges sample often.
 static kern_return_t freePages(unsigned long long pages[3]) {
 	vm_statistics64_data_t s;
 	mach_msg_type_number_t n = HOST_VM_INFO64_COUNT;

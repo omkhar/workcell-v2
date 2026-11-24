@@ -16,9 +16,8 @@ import (
 	"strings"
 )
 
-// The I9 probe is root in the guest and knows where the host keeps the session's record, as an attacker who read the product's source does. It goes for the record by
-// that path, through the directory holding it, and through everything the guest writes that the host collects. In the control sandbox the guest's root is the host's, so
-// the path is reachable; in a real guest it is not. The judge reads the record on the host, before and after, and the guest's word counts for nothing.
+// The I9 probe is root in the guest and knows where the host keeps the session's record, as an attacker who read the product's source does. It goes for the record by that path, through the directory holding it, and through everything the guest writes that the host collects. In the control sandbox the guest's root is the host's, so the path is reachable; in a real guest it is not. The judge reads
+// the record on the host, before and after, and the guest's word counts for nothing.
 
 // forgedMarker begins the record the forge probe plants. No judge passes it as an argument, so a record holding it was written by the guest.
 const forgedMarker = "forged-record-"
@@ -72,8 +71,7 @@ func auditProbe(args []string) Result {
 	return Result{Status: "error", Detail: "unknown verb " + verb}
 }
 
-// auditJudge reads the record, has the guest attack it as verb says, runs the guest once more, and reads the record again. Every record seen before must still be there,
-// in order, verify must still accept the record, a run recorded before the attack must still be recorded after it, and no record may hold what the guest planted.
+// auditJudge reads the record, has the guest attack it as verb says, runs the guest once more, and reads the record again. Every record seen before must still be there, in order, verify must still accept the record, a run recorded before the attack must still be recorded after it, and no record may hold what the guest planted.
 func auditJudge(verb string) Judge {
 	return func(ctx context.Context, s Session) (bool, string, error) {
 		path, before, err := s.Audit(ctx)
@@ -119,8 +117,7 @@ func auditJudge(verb string) Judge {
 	}
 }
 
-// offlineJudge edits the record on the host after the fact, as edit says, and expects verify to reject it. Every edit works on a record of two lines, a session's start and its end, which is all a run
-// that does nothing leaves. First the record, with one run in it, must pass verify as the product wrote it, so that a verify which checks nothing cannot pass by having nothing to check.
+// offlineJudge edits the record on the host after the fact, as edit says, and expects verify to reject it. Every edit works on a record of two lines, a session's start and its end, which is all a run that does nothing leaves. First the record, with one run in it, must pass verify as the product wrote it, so that a verify which checks nothing cannot pass by having nothing to check.
 func offlineJudge(edit string) Judge {
 	return func(ctx context.Context, s Session) (bool, string, error) {
 		path, _, err := s.Audit(ctx)
@@ -216,8 +213,7 @@ func connectProbe(args []string) Result {
 	return Result{Status: status, Detail: strings.Join(out, " ")}
 }
 
-// recordedJudge serves a canary for the allowed name and one for the denied name, has the guest try both, and expects the records the run added to name each: a connection attempt the host let through
-// and one it refused are both recorded (I9). The names reach the guest in hex and come back as verdicts, so a record naming one is the host's, not the guest's echo.
+// recordedJudge serves a canary for the allowed name and one for the denied name, has the guest try both, and expects the records the run added to name each: a connection attempt the host let through and one it refused are both recorded (I9). The names reach the guest in hex and come back as verdicts, so a record naming one is the host's, not the guest's echo.
 func recordedJudge(ctx context.Context, s Session) (bool, string, error) {
 	allowed, denied := &canary{name: s.Allow[0]}, &canary{name: s.Deny[0]}
 	ns, stop, err := serveTwo(ctx, s, nil, allowed, denied)

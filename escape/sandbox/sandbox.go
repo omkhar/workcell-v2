@@ -72,8 +72,7 @@ type UpdateConfig struct {
 	Name, Version string
 }
 
-// Layer is one provider layer installed as `workcell update <agent>` does: the artifact the row's digest names, in a shape a real upstream serves (a bare executable, or a tar with the binary at its
-// root or under bin/), at a URL the judge serves (T8). With no Artifact, URL is a real pin's and Digest its hex SHA-256, fetched by the host's own network and trust (B8).
+// Layer is one provider layer installed as `workcell update <agent>` does: the artifact the row's digest names, in a shape a real upstream serves (a bare executable, or a tar with the binary at its root or under bin/), at a URL the judge serves (T8). With no Artifact, URL is a real pin's and Digest its hex SHA-256, fetched by the host's own network and trust (B8).
 type Layer struct {
 	Agent, Version, URL, Digest string
 	Artifact                    []byte
@@ -183,9 +182,8 @@ func LoopbackHolds(ip string) error {
 	return fmt.Errorf("%s is not an address of the host's loopback interface, which its setup must hold", ip)
 }
 
-// A session's own network (Config.Isolated) is AS112 space (RFC 7534): global unicast that the product's vetting accepts and no operator's, and nothing sent to it leaves
-// the host (T8, S12). There the test host holds IsolatedNet on its loopback device, so Neighbour lies on a network of the host's own, and the judge's canaries listen at
-// CanaryAddr, outside that prefix, which a local route alone makes the host's: a product that dials only off the host's networks reaches them still.
+// A session's own network (Config.Isolated) is AS112 space (RFC 7534): global unicast that the product's vetting accepts and no operator's, and nothing sent to it leaves the host (T8, S12). There the test host holds IsolatedNet on its loopback device, so Neighbour lies on a network of the host's own, and the judge's canaries listen at CanaryAddr, outside that prefix, which a local route alone
+// makes the host's: a product that dials only off the host's networks reaches them still.
 const IsolatedNet, Neighbour, CanaryAddr = "192.175.48.1/25", "192.175.48.2", "192.175.48.129"
 
 // placed is addr with "host" or "neighbour" replaced: where the judge's canaries listen, or an address on a network the test host holds, in the network the product reaches the test host in. In a session's own network (isolated) those are CanaryAddr and Neighbour; in the host's own, both are HostAddr.

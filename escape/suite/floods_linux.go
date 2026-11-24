@@ -14,9 +14,8 @@ import (
 	"unsafe"
 )
 
-// forkProbe runs itself again as a child that forks args[1] processes at once, holds them, and reaps them, so that a guest which kills the child still reports. The child marks itself, and so every
-// process it forks, as the first to kill when memory runs out, so that the parent survives to report. Each forked process waits for one byte on a pipe and exits, with raw system calls only, since a
-// forked copy of a Go process can call nothing else safely. Such a copy costs the kernel about 190 KiB, mostly page tables, which is what bounds the count.
+// forkProbe runs itself again as a child that forks args[1] processes at once, holds them, and reaps them, so that a guest which kills the child still reports. The child marks itself, and so every process it forks, as the first to kill when memory runs out, so that the parent survives to report. Each forked process waits for one byte on a pipe and exits, with raw system calls only, since a forked
+// copy of a Go process can call nothing else safely. Such a copy costs the kernel about 190 KiB, mostly page tables, which is what bounds the count.
 func forkProbe(args []string) Result {
 	if len(args) != 2 {
 		return Result{Status: "error", Detail: "want parent|child and count"}
@@ -81,8 +80,7 @@ func memoryBacked(dir string) bool {
 	return false
 }
 
-// emulationProbe loads, for args[0] seconds at once, what a VMM serves off the vCPU thread: the first virtio block device, read with O_DIRECT a MiB a request; the host end of the relay at args[1], by
-// connect-then-close, each a vsock request and an accept and a header read on the host; and, as the arm the cap does hold, the serial console, whose every byte is an exit of the vCPU itself. Off the
+// emulationProbe loads, for args[0] seconds at once, what a VMM serves off the vCPU thread: the first virtio block device, read with O_DIRECT a MiB a request; the host end of the relay at args[1], by connect-then-close, each a vsock request and an accept and a header read on the host; and, as the arm the cap does hold, the serial console, whose every byte is an exit of the vCPU itself. Off the
 // product's VM, which the harness names by a vsock address, a file on disk and /dev/null stand in for the device and the console: the session's own are not the test's (S12). Each arm runs to the deadline on its own; one that blocks is left behind, so the report is on time.
 func emulationProbe(args []string) Result {
 	if len(args) != 2 {

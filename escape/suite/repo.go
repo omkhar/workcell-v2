@@ -17,11 +17,9 @@ import (
 	"syscall"
 )
 
-// The I8 probes are a hostile repository. Root in the guest shapes its workspace so that a pull which runs git in it, trusts its configuration, or writes its tree by name acts on the host: every
-// shape aims an effect at a file beside the export (written-*) or at a listener the judge started. The judge pulls, then looks. Nothing the guest says counts.
+// The I8 probes are a hostile repository. Root in the guest shapes its workspace so that a pull which runs git in it, trusts its configuration, or writes its tree by name acts on the host: every shape aims an effect at a file beside the export (written-*) or at a listener the judge started. The judge pulls, then looks. Nothing the guest says counts.
 //
-// The guest has no git, so each shape writes .git itself (gitdir.go), from a fresh .git, as each run starts from a fresh copy of the export. A shape is given
-// where the guest sees its export, the host directory beside the export (an attacker knows the host's layout), a token, and for the submodule shape its URL.
+// The guest has no git, so each shape writes .git itself (gitdir.go), from a fresh .git, as each run starts from a fresh copy of the export. A shape is given where the guest sees its export, the host directory beside the export (an attacker knows the host's layout), a token, and for the submodule shape its URL.
 
 // repoProbe makes the shape args[0] in the guest's workspace.
 func repoProbe(args []string) Result {
@@ -290,8 +288,7 @@ var (
 // repoPolicy is w with the repository's policy in the shape.
 func repoPolicy(w Want, shape, policy string) Want { w.Shape, w.Policy = shape, policy; return w }
 
-// PlantPolicy puts the repository's policy in the export ws before the session starts, in the shape w.Shape names: "" a plain file, "link" a symbolic link to a file beside the export (where the host,
-// not the guest, can follow it), "fifo" a named pipe no one writes. The host must start, or refuse, within the test's time whatever the shape (SPEC I13, I10).
+// PlantPolicy puts the repository's policy in the export ws before the session starts, in the shape w.Shape names: "" a plain file, "link" a symbolic link to a file beside the export (where the host, not the guest, can follow it), "fifo" a named pipe no one writes. The host must start, or refuse, within the test's time whatever the shape (SPEC I13, I10).
 func PlantPolicy(ws string, w Want) error {
 	path := filepath.Join(ws, "workcell.toml")
 	switch w.Shape {

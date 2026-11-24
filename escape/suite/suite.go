@@ -52,8 +52,7 @@ type Session struct {
 // Judge runs on the host. It may start canaries (on loopback only, SPEC T8), run the probe through s.Run, and says whether the invariant held.
 type Judge func(ctx context.Context, s Session) (pass bool, detail string, err error)
 
-// Want is the sandbox a test needs: an export, live (`--mount`, A5) or a clone, the caps (zero: the adapter's default), the names the policy allows and the names it does not, the resolver the host
-// side uses, whether a fresh secret is bound to the first allowed name (NewSecret), and the repo-local policy the hostile repository brings (PlantPolicy).
+// Want is the sandbox a test needs: an export, live (`--mount`, A5) or a clone, the caps (zero: the adapter's default), the names the policy allows and the names it does not, the resolver the host side uses, whether a fresh secret is bound to the first allowed name (NewSecret), and the repo-local policy the hostile repository brings (PlantPolicy).
 type Want struct {
 	Workspace, Mount         bool
 	CPUs, MemoryMiB, DiskMiB int

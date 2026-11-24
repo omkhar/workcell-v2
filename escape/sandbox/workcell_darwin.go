@@ -34,11 +34,9 @@ func hostReady() error {
 	return nil
 }
 
-// A Mac has no namespaces to give a session a network and a resolver of its own. The maintainer set this host up instead, once, as root; the adapter relies on it, checks for it and never changes it:
-// lo0 holds landing, Neighbour and the judge's addresses as aliases, so nothing bound at one is reached from off the host (SPEC T8); CanaryAddr is no interface's and in no prefix of one, since the
-// product dials nothing inside a network of the host's, and as macOS binds no socket at such an address a host route keeps it on lo0, where pf hands it to landing; /etc/resolver/<judgeDomain> sends
-// every question for a name under it to the judge's resolver, as `scutil --dns` shows, the product resolving through the system as any program would; and bindHelper, root-owned, which sudo runs for
-// the suite's user without a password, binds a port below 1024 at an alias of lo0 and hands the descriptor over as suite.Bind does. No other sudo exists.
+// A Mac has no namespaces to give a session a network and a resolver of its own. The maintainer set this host up instead, once, as root; the adapter relies on it, checks for it and never changes it: lo0 holds landing, Neighbour and the judge's addresses as aliases, so nothing bound at one is reached from off the host (SPEC T8); CanaryAddr is no interface's and in no prefix of one, since the
+// product dials nothing inside a network of the host's, and as macOS binds no socket at such an address a host route keeps it on lo0, where pf hands it to landing; /etc/resolver/<judgeDomain> sends every question for a name under it to the judge's resolver, as `scutil --dns` shows, the product resolving through the system as any program would; and bindHelper, root-owned, which sudo runs for the
+// suite's user without a password, binds a port below 1024 at an alias of lo0 and hands the descriptor over as suite.Bind does. No other sudo exists.
 const steersResolver, judgeDomain, bindHelper = true, "escape.test", "/usr/local/libexec/workcell-escape/workcell-bind"
 const landing = "192.175.48.1" // the host's address in IsolatedNet
 
