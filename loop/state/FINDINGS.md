@@ -5464,6 +5464,30 @@ export; that is a plausible layout and matters only above low. R2 holds by the p
 would be wrong, since nothing that an invariant guards is crossed. Not S14: cmd/workcell and internal/workspace are
 v2's own, no v1 line. Fix unit: S-F45, below S-1013 in PLAN.md.
 
+C62 FIXED by S-F45, commits d479e32 (the test moved) and 04160f8 (the fix) (PR #295). The name is quoted wherever
+ls, explain, pull, run and diff print it. shown() of cmd/workcell/pull.go, which quotes only a name that Quote
+changes, so a plain name prints as before, at the two sites that are not errors: ls in session.go and both
+lines of explanation in explain.go. %q in the errors: the mount-session and no-session messages of pull_vm.go,
+the TMPDIR refusal and the copy error of run_vm.go, both messages of holds in data.go, and the open error of
+Export in internal/workspace/workspace.go. Four more sites of the same class, inside the accept's second clause,
+take %q as well: named in pull_vm.go (S-F44's message), the pull destination in fetch's TMPDIR refusal, the
+recorded repo of a running mount session in boot's TMPDIR message in run_vm.go, and the directory at the end of
+the secret-source refusal in policy.go. One change is more than a format verb: loadPolicy now reads workcell.toml
+by policy.ReadRepo(repoFile), relative to the process's own directory, and no longer by the name joined to cwd,
+because ReadRepo's errors carried that path raw and one of them is a bare PathError that no verb at the caller
+can quote; the file is the same by identity for every honest layout, as the export and the mount have taken "."
+since C61, and its errors now read "workcell.toml:N:" without the directory. The operator's own strings stay %s:
+os.TempDir(), the XDG directory in holds, the recorded VMM directory and the config file's path. Net 0 product
+lines, sixteen one-line replacements over seven files and no fold: product 15000 of 15000, test 28496 of 28500,
+no test line. The test moved by git mv with its head comment changed, 35 lines; escape/_pending/S-F45/ is gone.
+Before: the test fails on main in all four rows, plain and -race (the redteam on the claim tree, and the reviewer
+in a worktree of main). After: it passes at 04160f8, plain and -race, with cmd/workcell, internal/workspace,
+internal/guest and internal/policy green under -race. The reviewer's probe drove every message site of those
+five verbs with a directory named with ESC, OSC, BEL and CSI bytes, and found no byte below 0x20 but newlines.
+Hosted on 04160f8: gate, gate-macos, gate-arm64 and guard green. The second half of the record above, the keying
+of sessions by the name's spelling, is not fixed here and stays parked. Not run: a VM row, since the name reaches
+the operator's terminal on the host side only.
+
 C63. ID I1 and I4 by the mechanism of C56 (a guest replaces a live VMM socket by a link and the VMM connects by
 path), with I7's rm clause and I12 for the effect; the second order of S-F39 and the lockless boot of PARKED line
 24. ATTACKER: guest root of a mount session that the operator starts while a `workcell pull` or diff runs, in a
