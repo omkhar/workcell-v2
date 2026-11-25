@@ -7695,3 +7695,81 @@ round came from the hosted gate and not from the review, and was not reviewed ag
 Sweep 3 now stands at two highs (C76 fixed, C77 open, fix unit S-F61), ten mediums (C65, C66, C67, C68, C69,
 C71, C72, C73, C74 and C75, all fixed) and two lows (C64 and C70, both fixed). The next candidate number is C78
 and the next fix unit S-F62.
+
+C77 FIXED by S-F61, commits 6c0ccce (the test moved, and a second arm), 943d9f2 (the fix) and 66df578 (the fix
+round, after the review) (PR #328).
+The shape is neither of the unit line's two as written, and the orchestrator chose it before the redteam ran,
+as a contract of behaviour: before the host writes, a WRITE is charged for how far it extends the length, as
+before, and for the part of its range that lies in a hole below the length, in whole blocks of the host's
+filesystem, since the host allocates whole blocks. grow() in internal/fileserve/serve_linux.go now takes the
+write's offset: one lseek with SEEK_HOLE from the offset rounded down to a block (st.Blksize of the Fstat it
+already made), and if that hole begins below both the write's end rounded up and the length, the charge runs
+from the hole to the lesser of the two. A WRITE whose charge does not fit is refused whole with ENOSPC, as
+before; a WRITE into data is charged nothing, as before; nothing is given back. ENXIO from the lseek means no
+hole below the length; any other error refuses the request with that errno. SETATTR size passes no range, makes
+no lseek and is charged by length as before.
+Why not the two shapes of the line. The shorter one, the whole of len(r.Data) when a hole lies in the range,
+under-charges small writes: one byte into each of 200 blocks of a hole is 200 bytes charged and 819,200 bytes
+of host blocks, which is the second arm the redteam added to the test. The longer one, a walk of the range by
+SEEK_HOLE and SEEK_DATA, makes one frame over a file of alternating blocks cost hundreds of system calls
+whether it is accepted or refused, which is C76's class (work of one frame that the pace does not count). One
+lseek is constant work; its price is an over-charge when data follows the first hole inside one write's range
+(builder's probe: 15 alternating blocks, 7 of them holes, a WRITE of 61,440 bytes at 0 charged 14 blocks;
+reviewer's: hole then data, 12,288 charged for 8,192 allocated), the safe side.
+The three things the line asked to weigh. Two writers racing into one hole are both charged: each charges
+before its own pwrite and as if alone. A file that an earlier session's guest truncated up and left empty is
+now charged when a later session fills it, since the fill is into a hole. A file whose blocks are fewer than
+its length for another cause, reflinked or compressed extents, is NOT closed: SEEK_HOLE does not show it, and
+to charge it would be to charge every overwrite in place, which the accept line forbids. It needs a host
+filesystem that the attacker does not choose, and what it can take is bounded by the apparent size of the files
+that lay in the tree before the session. It is parked with the other notes.
+Cost to honest use. On ext4 the lseek is in the noise: 20000 WRITEs of 4096 bytes in place into a dense file,
+one in flight, 61.8 to 62.1 us each against 61.7 to 61.9 on main. A file grown by SETATTR size and then filled
+below that length is charged twice, once for the length and once for the hole, since the charge keeps no state
+per file (builder's probe, cap 100,000: SETATTR to 90,000 and then 64 WRITEs of 4096, 1 accepted and 63
+refused, where main took 23). So a program that sets its output's length first and then fills it, as some
+linkers and a copy that keeps holes do, gets half the cap for that file. A hole in an unwritten, preallocated
+extent and a filesystem whose st_blksize is far above its allocation unit (a network filesystem) are charged
+more than they take. All of it is the safe side for I10 and none of it is free to an honest guest.
+Review: one round, one valid finding (I10, host CPU, guest root in a --mount session, medium: it needs the
+export on tmpfs or another filesystem whose SEEK_HOLE walks the page cache). The first fix made every WRITE and
+SETATTR size pay that lseek, and on tmpfs it costs the length of the dense data from the offset on: 5.3 ms of
+CPU for a one-byte WRITE at 0 of a dense file of 1 GiB against 30 us on main, and with 16 files of 63 MiB made
+by the guest inside the cap and 16 one-byte WRITEs in flight, 3.26 host cores of 4 against 0.26 on main, all at
+one unit of pace a frame. The fix round (66df578) charges the time the lseek took to the pace, in points of
+0.75 us, and makes no lseek for a SETATTR. The same flood then takes 0.47 cores (builder, reviewer's probe on a
+scratch copy; 3.38 measured there on 943d9f2), and a flood on one dense file of 1 GiB 0.50 cores with one
+request in flight and 0.23 with 16. This is the charge by time that C76's record called a design and not a
+constant, taken here for one system call only: it also charges a wait, so a cold extent tree paces a guest for
+a moment. Cost on a tmpfs export, for the maintainer: a rewrite in place low in a large dense file pays the
+walk on every WRITE (440 us at 64 MiB, 4.5 ms at 1 GiB) and is paced by it, about a hundred such WRITEs a
+second at 1 GiB; an append pays nothing, since its offset is at the end. To skip the lseek when the file's
+blocks cover its length would spare honest dense files, but the reviewer showed that it is no bound alone (a
+tail hole made by one SETATTR brings the walk back), so it would be a saving beside the charge and not in its
+place; it was not built in the freeze (S1). No test holds the review's finding: a steady one needs about 19
+lines and tmpfs, test has 3 lines of room, and a bound on CPU judged under -race is what S-F60 found thin. Its
+evidence is the reviewer's and the builder's probes on the real Server, not kept in the tree. The fix round was
+not reviewed again (R1).
+Evidence. TestC77WritesIntoHoles in internal/fileserve/c77_test.go, two arms over one body, judged by st.Blocks
+after FSYNC against the cap plus two blocks: on main it fails in both (2,461,696 bytes with 40 of 40 writes of
+60000 accepted; 819,200 bytes with 200 of 200 writes of one byte accepted, against 100,000), plain and under
+-race, seen by the redteam and again by the reviewer on an archive of main. On the fix it passes without
+skipping, five of five plain and under -race on 943d9f2 and three of three on 66df578, on ext4. The package
+passes under -race on 66df578, TestGrowthCap (its row "overwrite in place" still 0), TestGrowthCapAppend,
+TestGrowthCapEntries, TestPace and TestC76WorkOfOneFrame included. Hosted, on 943d9f2: gate green in 289 s
+with gate-macos, gate-arm64 and guard, 147 rows passed on a real VM and none failed, mount-disk-flood (the host
+lost 63 MiB under a cap of 64), mount-cpu-flood (3.4 CPU seconds in 3.5 s) and the six I1 mount rows among
+them. The hosted result on 66df578 is in LOG.md, in this unit's entry, since this record is pushed with it.
+No VM row holds C77: mount-disk-flood writes past the end and into no hole that was there before the session,
+the unit line asked for none, and test has no lines for one.
+The words. The doc of grown and limit now names the hole charge, so "the host loses at most limit however the
+guest mixes them" holds for what the server can see, to within a block of slack a file (reviewer: a write into
+a hole in the last, partial block is charged only its bytes inside the length) and not for extents that
+SEEK_HOLE does not show. cmd/workcell/caps.go and docs/policy.md say nothing that the fix made false and are
+unchanged. Folds: net zero product lines in both rounds, paid by joining lines of the docs of maxNodes, node,
+setattr, rename, readdir and the package (product 15000 of 15000). The second arm cost 3 test lines (test 28497
+of 28500).
+
+Sweep 3 now stands at two highs (C76 and C77, both fixed), ten mediums (C65, C66, C67, C68, C69, C71, C72, C73,
+C74 and C75, all fixed) and two lows (C64 and C70, both fixed). The next candidate number is C78 and the next
+fix unit S-F62.
