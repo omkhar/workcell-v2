@@ -417,8 +417,7 @@ func swapJudge(specs ...string) func(s Session, bound, other *canary) (bool, str
 			if e.name == "other" {
 				c = other
 			}
-			got, admitted := e.at(c), e.admitted(s.Secret)
-			want := e.credential(s.Secret.Value)
+			got, admitted, want := e.at(c), e.admitted(s.Secret), e.credential(s.Secret.Value)
 			switch {
 			case !admitted && len(got) > 0:
 				return false, fmt.Sprintf("exchange %d (%s), which the binding does not admit, reached %s %d times%s", i, spec, c.name, len(got), say), nil

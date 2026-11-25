@@ -23,8 +23,7 @@ import (
 	"time"
 )
 
-const Pass, Fail, NotImplemented, Error = "pass", "fail", "not-implemented", "error" // Outcomes of one test.
-const perTest = 20 * time.Second                                                     // perTest bounds one test, sandbox start to stop (SPEC: under 20 seconds), unless the test states its own Bound.
+const Pass, Fail, NotImplemented, Error, perTest = "pass", "fail", "not-implemented", "error", 20 * time.Second // Outcomes of one test; perTest bounds one test, sandbox start to stop (SPEC: under 20 seconds), unless the test states its own Bound.
 // Report is the JSON the runner prints.
 type Report struct {
 	Sandbox string   `json:"sandbox"`
@@ -47,8 +46,7 @@ func main() { os.Exit(app()) }
 
 // app is main without os.Exit, so that the deferred cleanup runs.
 func app() int {
-	name, list := flag.String("sandbox", "", "adapter: control or workcell"), flag.Bool("list", false, "list the tests and exit")
-	only := flag.String("only", "", "run only the tests for these invariant IDs, comma-separated")
+	name, list, only := flag.String("sandbox", "", "adapter: control or workcell"), flag.Bool("list", false, "list the tests and exit"), flag.String("only", "", "run only the tests for these invariant IDs, comma-separated")
 	flag.Parse()
 	tests, err := suite.Select(*only)
 	if err != nil {

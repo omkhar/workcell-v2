@@ -38,13 +38,7 @@ func privileged(network, addr, payload string) (net.Listener, net.PacketConn, er
 	return sandbox.RootBind(network, addr, payload, 0)
 }
 
-const holdFor = 5 * time.Second             // how long the guest holds its connection open, for the kill to land
-const attemptWait = 1500 * time.Millisecond // what one attempt after the hold may take
-const bootWait = 8 * time.Second            // how long the guest has to boot and hold a connection
-const deathWait = 2 * time.Second           // how long SIGKILL has to take effect
-const wakeWait = 6 * time.Second            // how long the session has to go away after the death, the run included
-const closeWithin = 2 * time.Second         // how soon after the death the held connection must close
-const settle = 300 * time.Millisecond       // a moment for a late request to show at a canary
+const holdFor, attemptWait, bootWait, deathWait, wakeWait, closeWithin, settle = 5 * time.Second, 1500 * time.Millisecond, 8 * time.Second, 2 * time.Second, 6 * time.Second, 2 * time.Second, 300 * time.Millisecond // holdFor: how long the guest holds its connection open, for the kill to land; attemptWait: what one attempt after the hold may take; bootWait: how long the guest has to boot and hold a connection; deathWait: how long SIGKILL has to take effect; wakeWait: how long the session has to go away after the death, the run included; closeWithin: how soon after the death the held connection must close; settle: a moment for a late request to show at a canary
 // holdProbe is the guest of the I11 rows. It asks its resolver for the allowed name, fetches https://<allowed>/reach, once more after a pause when that fails, holds a second connection open on /stream until the far end closes it or holdFor passes, and then, as a program does after losing a connection, tries again: its resolver for both names and /after at both. args: allowed name, its address, denied name, its address.
 func holdProbe(args []string) Result {
 	if len(args) != 4 {
@@ -238,8 +232,7 @@ func helperKilled(name string, atStart bool) Judge {
 		if err != nil {
 			return false, "", err
 		}
-		served, asked := len(allowed.requests()), len(ns.questions())
-		killAt := time.Now()
+		served, asked, killAt := len(allowed.requests()), len(ns.questions()), time.Now()
 		if err := syscall.Kill(pid, syscall.SIGKILL); err != nil {
 			return false, "", fmt.Errorf("kill -9 %d (the %s): %w", pid, name, err)
 		}

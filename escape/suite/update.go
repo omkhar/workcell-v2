@@ -29,9 +29,7 @@ import (
 
 // The I14 judges run the product's update client on the host against a channel and an upstream the judge serves on the test host's own loopback (SPEC T8), signed with a key the judge made, in the format of ADR-004: updateJudge through `workcell update`, dailyJudge through the check a session start makes by itself. The invariant holds only if nothing from a hostile manifest is installed. The guest plays no part; the probe is idle.
 
-const payloadType = "application/vnd.workcell.channel+json" // payloadType is the DSSE payload type of channel.json.
-const pinName = "claude-code"                               // pinName is the pin every manifest carries: claude's row, which the adapter maps to its agent.
-const day = 24 * 60 * 60
+const payloadType, pinName, day = "application/vnd.workcell.channel+json", "claude-code", 24 * 60 * 60 // payloadType is the DSSE payload type of channel.json; pinName is the pin every manifest carries: claude's row, which the adapter maps to its agent.
 
 // pin is one artifact in a manifest.
 type pin struct {

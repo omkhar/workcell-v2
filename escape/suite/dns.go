@@ -98,8 +98,7 @@ func parseDNSReply(b []byte) (dnsReply, bool) {
 		return dnsReply{}, false
 	}
 	r := dnsReply{ID: binary.BigEndian.Uint16(b), Rcode: uint16(b[3] & 0x0F)}
-	qd, an := int(binary.BigEndian.Uint16(b[4:])), int(binary.BigEndian.Uint16(b[6:]))
-	i := 12
+	qd, an, i := int(binary.BigEndian.Uint16(b[4:])), int(binary.BigEndian.Uint16(b[6:])), 12
 	for range qd {
 		if i = skipName(b, i); i < 0 || i+4 > len(b) {
 			return dnsReply{}, false

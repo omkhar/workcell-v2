@@ -13,11 +13,10 @@ import (
 	"time"
 )
 
-type Result struct{ Status, Detail string } // Result is what a probe reports: a short token such as "connected" and one line of printable ASCII, both bounded and sanitised by Format.
-const maxStatus, maxDetail, prefix = 32, 256, "escape-result "
-const MaxLine = len(prefix) + maxStatus + 1 + maxDetail + 1 // MaxLine bounds one formatted result, newline included.
-type Probe func(args []string) Result                       // Probe runs inside the guest with the arguments the host chose.
-type Run func(args ...string) (Result, error)               // Run executes the test's probe inside the sandbox with the arguments.
+type Result struct{ Status, Detail string }                                                                          // Result is what a probe reports: a short token such as "connected" and one line of printable ASCII, both bounded and sanitised by Format.
+const maxStatus, maxDetail, prefix, MaxLine = 32, 256, "escape-result ", len(prefix) + maxStatus + 1 + maxDetail + 1 // MaxLine bounds one formatted result, newline included.
+type Probe func(args []string) Result                                                                                // Probe runs inside the guest with the arguments the host chose.
+type Run func(args ...string) (Result, error)                                                                        // Run executes the test's probe inside the sandbox with the arguments.
 // Session is one running sandbox, as the host knows it.
 type Session struct {
 	Run             Run

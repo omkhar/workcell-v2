@@ -23,19 +23,12 @@ import (
 
 type lookup struct{ label, spec, want string } // A lookup is one question a judge has the guest ask, and what the invariant demands of the answer: "addr", an address; "refused", a DNS answer with no address (REFUSED, NXDOMAIN, or NOERROR and no record), or "answered", any DNS answer at all. Each must come within fast.
 // The spec a judge hands the probe for one question: "type:name", where type is A, AAAA, TXT, PTR or ANY, "+edns" after it adds an OPT record, and TOKEN in the name stands for the run's token.
-const fast = 2 * time.Second                   // a refusal or an answer must come within this
-const lookupWait = fast + 500*time.Millisecond // the probe's deadline, past fast so that slow is told from silent
-const garbageWait = 500 * time.Millisecond     // how long a hostile datagram is given to get an answer
-const resolvConf = "resolv.conf"               // the target that means the guest's own configured resolver
-const burstSize, allowedName, deniedName = 200, "allowed.escape.test.", "denied.escape.test."
+const fast, lookupWait, garbageWait, resolvConf, burstSize, allowedName, deniedName = 2 * time.Second, fast + 500*time.Millisecond, 500 * time.Millisecond, "resolv.conf", 200, "allowed.escape.test.", "denied.escape.test." // fast: a refusal or an answer must come within this; lookupWait: the probe's deadline, past fast so that slow is told from silent; garbageWait: how long a hostile datagram is given to get an answer; resolvConf: the target that means the guest's own configured resolver
 
 // The lookups the rows ask. The allowed name must resolve however it is spelled; every other name, every other type for it, and the allowed name under a policy that allows nothing must be refused. The allowed row asks one denied name too: a resolver that answers everything, the control sandbox's, is then no pass (SPEC T2), and "only for allowed names" is shown on the one resolver that answered.
-var allowedLookups = []lookup{{"a", "A:" + allowedName, "addr"}, {"u", "A:" + strings.ToUpper(allowedName), "addr"}, {"m", "A:aLlOwEd.EsCaPe.TeSt.", "addr"}, {"e", "A+edns:" + allowedName, "addr"}, {"q", "AAAA:" + allowedName, "answered"}, {"t", "TXT:" + allowedName, "answered"}, {"d", "A:" + deniedName, "refused"}}
-var deniedLookups = []lookup{{"d", "A:" + deniedName, "refused"}, {"i", "A:TOKEN.invalid.", "refused"}, {"s", "A:sub." + allowedName, "refused"}, {"p", "A:evil" + allowedName, "refused"}, {"x", "A:" + allowedName + "TOKEN.invalid.", "refused"}, {"6", "AAAA:" + deniedName, "refused"}, {"t", "TXT:" + deniedName, "refused"}, {"y", "ANY:" + deniedName, "refused"}, {"r", "PTR:1.0.0.127.in-addr.arpa.", "refused"}, {"e", "A+edns:" + deniedName, "refused"}}
-var bothLookups = []lookup{allowedLookups[0], deniedLookups[0], deniedLookups[1]}
-var nothingLookups = []lookup{{"a", "A:" + allowedName, "refused"}, {"d", "A:" + deniedName, "refused"}}
-var reachable = Want{Allow: []string{"allowed.escape.test"}, Deny: []string{"denied.escape.test"}} // reachable is the sandbox the resolver rows want: one allowed name and one denied, both of which the host resolver is to know of.
-var queryTypes = map[string]uint16{"A": dnsTypeA, "AAAA": dnsTypeAAAA, "TXT": dnsTypeTXT, "PTR": dnsTypePTR, "ANY": dnsTypeANY}
+var allowedLookups, deniedLookups = []lookup{{"a", "A:" + allowedName, "addr"}, {"u", "A:" + strings.ToUpper(allowedName), "addr"}, {"m", "A:aLlOwEd.EsCaPe.TeSt.", "addr"}, {"e", "A+edns:" + allowedName, "addr"}, {"q", "AAAA:" + allowedName, "answered"}, {"t", "TXT:" + allowedName, "answered"}, {"d", "A:" + deniedName, "refused"}}, []lookup{{"d", "A:" + deniedName, "refused"}, {"i", "A:TOKEN.invalid.", "refused"}, {"s", "A:sub." + allowedName, "refused"}, {"p", "A:evil" + allowedName, "refused"}, {"x", "A:" + allowedName + "TOKEN.invalid.", "refused"}, {"6", "AAAA:" + deniedName, "refused"}, {"t", "TXT:" + deniedName, "refused"}, {"y", "ANY:" + deniedName, "refused"}, {"r", "PTR:1.0.0.127.in-addr.arpa.", "refused"}, {"e", "A+edns:" + deniedName, "refused"}}
+var bothLookups, nothingLookups = []lookup{allowedLookups[0], deniedLookups[0], deniedLookups[1]}, []lookup{{"a", "A:" + allowedName, "refused"}, {"d", "A:" + deniedName, "refused"}}
+var reachable, queryTypes = Want{Allow: []string{"allowed.escape.test"}, Deny: []string{"denied.escape.test"}}, map[string]uint16{"A": dnsTypeA, "AAAA": dnsTypeAAAA, "TXT": dnsTypeTXT, "PTR": dnsTypePTR, "ANY": dnsTypeANY} // reachable is the sandbox the resolver rows want: one allowed name and one denied, both of which the host resolver is to know of.
 
 // resolverAddr turns the target the judge named into an address: the first nameserver of the guest's /etc/resolv.conf at port 53, or a literal.
 func resolverAddr(target string) (string, error) {

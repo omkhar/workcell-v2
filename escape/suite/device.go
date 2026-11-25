@@ -19,8 +19,7 @@ import (
 
 // deviceJudge binds a host block device (a loop device) to an image holding the token, tells the guest its numbers, and fails if the guest reads the token through a device node it makes. The attacker knows the host's device numbers; the invariant must hold anyway.
 func deviceJudge(ctx context.Context, s Session) (bool, string, error) {
-	token := newToken()
-	img := filepath.Join(filepath.Dir(s.Workspace), "disk.img")
+	token, img := newToken(), filepath.Join(filepath.Dir(s.Workspace), "disk.img")
 	if err := os.WriteFile(img, append([]byte(token+"\n"), make([]byte, 1<<20)...), 0o644); err != nil {
 		return false, "", err
 	}
