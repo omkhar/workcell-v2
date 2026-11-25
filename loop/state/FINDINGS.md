@@ -7065,3 +7065,100 @@ that the program resolves itself, and a bind mount beneath the directory.
 Sweep 3 now stands at seven mediums (C65, C66, C67, C68, C69, C71 and C72, all fixed) and two lows (C64 and
 C70, both fixed), with two unconfirmed candidates parked (the JSON residue of C71 and the list-word residue of
 C72). No fix unit is open; the next candidate number is C73 and the next fix unit S-F57.
+
+## S-1020, sweep 3: one brought candidate of the secrets surface, and the row it was allowed (I5), as built at main 84468bc
+
+S-1020 is a unit that R-3 made from PARKED.md, so no auditor ran (PLAN.md): the redteam wrote each test from the
+claim in the unit line alone, the orchestrator ran each by go test -overlay against the real package, plain and
+under -race, and one verifier per candidate, in a fresh context and with no one's reasoning, tried to refute it.
+Nothing here needed a VM. The unit line allowed one more row, for a residue that S-F51 parked with no reproduction;
+it reproduced, so it is a candidate of its own, C74. Nothing is private (S14): each precondition is a documented
+feature of a framework or of PHP, no defect of theirs, and terminate.go is ported from v1's unreleased main.
+
+### S-1020 candidates, sweep 3
+
+C73. ID I5 ("A placeholder is useless at any destination other than the one it is bound to"), for a rule narrowed
+by method. It is the residue of C71, as C71 was of C68: found by S-F55's reviewer, outside that unit's accept text,
+parked for want of a confirmation under S4. Attacker: guest root or hostile model output, choosing the Content-Type
+and the body of its own request. Precondition it does not control: the bound host's framework takes the method from
+the top level of a JSON POST body. Where: internal/proxy/terminate.go: admits refuses a form body alone under a
+method rule (application/x-www-form-urlencoded, multipart/*, or a body with no parsable type); a JSON type is
+neither, no override name stands among the header and query names, so the placeholder is swapped and the
+ReverseProxy streams the body unread. also in v1 main: egressproxy/terminate.go. Input: a rule {Host, Header:
+x-api-key, Method: POST, Path: /v1/}; the guest sends POST /v1/x with the placeholder and the body
+{"_method":"DELETE"} under application/json, or {"_method":"PUT"} under application/vnd.api+json. Effect: an
+upstream that honours the name serves DELETE or PUT /v1/x with the real secret, where the plain DELETE with the
+placeholder gets 403 binding_mismatch; no refusal is recorded.
+
+Reproducing test: TestC73JSONMethodOverride, package proxy, 55 lines, escape/_pending/S-F57/c73_test.go, on the
+fixture of c71_test.go; its fake upstream is a loopback TLS server that, on a POST whose Content-Type holds "/json"
+or "+json", decodes the body and takes the upper-cased top-level `_method` as the method. Six rows: a bare POST and
+a POST with the JSON body {"a":1} must be served as "POST /v1/x real-secret", a plain DELETE must be refused, and
+three override rows fail when the answer names the method outside the rule together with the real secret. Log of
+the orchestrator's run, the same lines plain and under -race, and the same the redteam and the verifier saw:
+
+    c73_test.go:52: POST application/json "{\"_method\":\"DELETE\"}": got (200, "DELETE /v1/x real-secret")
+    c73_test.go:52: POST application/vnd.api+json "{\"_method\":\"PUT\"}": got (200, "PUT /v1/x real-secret")
+    c73_test.go:52: POST APPLICATION/JSON; charset=utf-8 "{\"a\":1,\"_method\":\"delete\"}": got (200, "DELETE /v1/x real-secret")
+    --- FAIL: TestC73JSONMethodOverride
+
+The three control rows pass. Outcome: CONFIRMED at medium by the verifier, which ran the test, printed every row by
+a probe of its own (the bare POST and the plain JSON POST served; the plain DELETE, the form body and
+`?_method=DELETE` answered 403 with the broker not called and one deny record; the JSON `_method` rows served with
+the broker called once and no deny record), so the JSON body is the only difference between a refusal and a served
+request, and traced the real path, which never looks at the body. Its ruling on the upstream, the question the unit
+line put first: real, from its memory of the source and not fetched again, by its own estimate 85 to 90 in 100:
+Laravel's Request::capture calls enableHttpMethodParameterOverride, createFromBase replaces the request parameters
+with the decoded JSON when the request is JSON, and Symfony's getMethod then reads `_method` from them on a POST
+with no override header and upper-cases it; routing reads the method after that. Rack::MethodOverride and Spring's
+HiddenHttpMethodFilter read form fields only, so the class is Laravel and the Symfony applications that enable the
+override. One over-reach of the fixture: Laravel's own test for JSON is case-sensitive, so the row in capitals
+(APPLICATION/JSON; charset=utf-8) would not be JSON to Laravel; the two rows in lower case are faithful and
+suffice. Not intended and not accepted: docs/policy.md promises any other request a 403 with the value unread and
+tells the operator to send JSON, which this defeats, and docs/adr/accepted/ holds nothing on overrides. Not a
+duplicate: C71's record parks it as an unconfirmed residue. Not high, since a host without such a framework is not
+affected; not low, since the break is shown on the real package.
+
+What the fix costs, for the maintainer (S8): three shapes, none chosen here. Refusing a JSON media type under a
+method rule costs no parser, but most API posts are JSON and the test's own served JSON row would turn. Reading the
+body under a bound and refusing a top-level `_method` buffers and parses guest bytes (I10, I12, a fuzz target by
+T5) at lines the budget lacks. Saying in docs/policy.md that `method` judges the request line alone leaves the test
+failing, so under S4 and S7 only the maintainer can take it. Fix unit S-F57 says the same.
+
+C74. ID I5, the same sentence, for a rule narrowed by method. It is a residue of C68 that S-F51's fix round parked
+with no reproduction. Attacker: guest root or hostile model output, choosing the query string of its own request.
+Precondition it does not control: the bound host is PHP behind Symfony's HttpFoundation with the parameter override
+enabled, as Laravel always enables it. Where: internal/proxy/terminate.go: cgiName lower-cases a name and folds "-"
+to "_" only, so admits does not find `.method` in the overrides list, and the Rewrite of the ReverseProxy sends the
+query on untouched. also in v1 main: egressproxy/terminate.go. Input: the same rule; the guest sends POST
+/v1/x?.method=DELETE, or ?a=b&.method=put, with the placeholder. Effect: PHP stores the name as `_method` in $_GET,
+the framework serves DELETE or PUT /v1/x with the real secret, and no refusal is recorded, where `?_method=DELETE`
+gets 403.
+
+Reproducing test: TestC74DotMethodQuery, package proxy, 50 lines, escape/_pending/S-F58/c74_test.go; its fake
+upstream is a loopback TLS server that, on a POST, takes as the method the upper-cased value of a query parameter
+whose name is `_method` once "." is read as "_". Five rows: a plain POST must be served as "POST /v1/x
+real-secret", a plain DELETE and `?_method=DELETE` must be refused, and two `.method` rows fail when the answer
+names the method outside the rule together with the real secret. Log of the orchestrator's run, the same lines
+plain and under -race, and the same the redteam and the verifier saw:
+
+    c74_test.go:47: POST ?.method=DELETE: got (200, "DELETE /v1/x real-secret")
+    c74_test.go:47: POST ?a=b&.method=put: got (200, "PUT /v1/x real-secret")
+    --- FAIL: TestC74DotMethodQuery
+
+The three control rows pass, so the spelling of the name is the only difference between a refusal and a served
+request. Outcome: CONFIRMED at medium by the verifier, which ran the test, traced the path (url.ParseQuery yields
+`.method`, cgiName does not fold it, admits returns true, the broker is asked, the query crosses), and ran a
+fix-shaped overlay kept outside the repository, cgiName folding "." as well, one changed token: this test and those
+of C68 and C71 then pass. Its ruling on the upstream: real, with high confidence. The session's own PHP 8.3.6, with
+no configuration file, on loopback: parse_str gives `_method` for `.method=DELETE`, and $_GET of POST
+/s.php?.method=DELETE&a=b holds `_method` with the request method POST; Symfony's getMethod falls back to the query
+for `_method` on a POST where the override is enabled, and Laravel enables it on every request. Not intended, not
+accepted, and not a duplicate of C68, whose record lists this reading as left with no reproduction. Not high, since
+a host that is not PHP behind such a framework is not affected; not low, since the break is shown. The same probe
+found that a leading space in a name is trimmed and an unmatched "[" drops the parameter on that PHP, so neither
+reaches `_method` there; an older PHP was not probed. Fix unit S-F58.
+
+Sweep 3 now stands at nine mediums (C65, C66, C67, C68, C69, C71 and C72, fixed; C73 and C74, open) and two lows
+(C64 and C70, both fixed), with one unconfirmed candidate still a unit (S-1021, the list-word residue of C72). The
+fix units are S-F57 (C73) and S-F58 (C74); the next candidate number is C75 and the next fix unit S-F59.
