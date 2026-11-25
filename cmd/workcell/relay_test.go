@@ -25,10 +25,7 @@ func TestPortsArg(t *testing.T) {
 		in   []uint16
 		want string
 	}{
-		{"none", nil, "workcell.ports="},
-		{"one", []uint16{443}, "workcell.ports=443"},
-		{"many, in the order given", []uint16{443, 80, 8443}, "workcell.ports=443,80,8443"},
-		{"the largest", []uint16{65535}, "workcell.ports=65535"},
+		{"none", nil, "workcell.ports="}, {"one", []uint16{443}, "workcell.ports=443"}, {"many, in the order given", []uint16{443, 80, 8443}, "workcell.ports=443,80,8443"}, {"the largest", []uint16{65535}, "workcell.ports=65535"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -39,8 +36,7 @@ func TestPortsArg(t *testing.T) {
 	}
 }
 
-// dial opens a stream through l, which stands in for the backend's relay listener: the stream
-// is a net.Pipe, and dial returns the guest's end once the relay has accepted the host's.
+// dial opens a stream through l, which stands in for the backend's relay listener: the stream is a net.Pipe, and dial returns the guest's end once the relay has accepted the host's.
 func dial(t *testing.T, l *adapter) net.Conn {
 	t.Helper()
 	g, h := net.Pipe()
@@ -105,16 +101,11 @@ func TestStreamDemultiplexes(t *testing.T) {
 		local  string // the LocalAddr the adapter's conn reports; "" when the stream must close
 		denied string // the deny the closed stream leaves, "" for none
 	}{
-		{"a served port", header(1, 6, "203.0.113.5:8443"), "203.0.113.5:8443", ""},
-		{"a served port over IPv6", header(1, 6, "[2001:db8::1]:8443"), "[2001:db8::1]:8443", ""},
-		{"an unserved port", header(1, 6, "203.0.113.5:80"), "", ":80 port_not_allowed"},
-		{"port 443, not served by this policy", header(1, 6, "203.0.113.5:443"), "", ":443 port_not_allowed"},
-		{"UDP on a served port", header(1, 17, "203.0.113.5:8443"), "", ""},
-		{"UDP on an unserved port", header(1, 17, "203.0.113.5:5353"), "", ""},
-		{"version 2", header(2, 6, "203.0.113.5:8443"), "", ""},
-		{"version 0", header(0, 6, "203.0.113.5:8443"), "", ""},
-		{"proto 0", header(1, 0, "203.0.113.5:8443"), "", ""},
-		{"proto 1", header(1, 1, "203.0.113.5:8443"), "", ""},
+		{"a served port", header(1, 6, "203.0.113.5:8443"), "203.0.113.5:8443", ""}, {"a served port over IPv6", header(1, 6, "[2001:db8::1]:8443"), "[2001:db8::1]:8443", ""},
+		{"an unserved port", header(1, 6, "203.0.113.5:80"), "", ":80 port_not_allowed"}, {"port 443, not served by this policy", header(1, 6, "203.0.113.5:443"), "", ":443 port_not_allowed"},
+		{"UDP on a served port", header(1, 17, "203.0.113.5:8443"), "", ""}, {"UDP on an unserved port", header(1, 17, "203.0.113.5:5353"), "", ""},
+		{"version 2", header(2, 6, "203.0.113.5:8443"), "", ""}, {"version 0", header(0, 6, "203.0.113.5:8443"), "", ""},
+		{"proto 0", header(1, 0, "203.0.113.5:8443"), "", ""}, {"proto 1", header(1, 1, "203.0.113.5:8443"), "", ""},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -128,8 +119,7 @@ func TestStreamDemultiplexes(t *testing.T) {
 			defer guest.Close()
 			go func() { _, _ = guest.Write(append(tc.header, "payload"...)) }()
 			if tc.local == "" {
-				// The host closed the stream without delivering it: a delivered stream is held
-				// open by the proxy, not closed, so the EOF alone proves it went nowhere.
+				// The host closed the stream without delivering it: a delivered stream is held open by the proxy, not closed, so the EOF alone proves it went nowhere.
 				readEOF(t, guest, "the guest's end")
 				got := ""
 				select {
@@ -166,10 +156,7 @@ func dnsQuery(name string) []byte {
 	return append(b, 0, 0, 1, 0, 1)
 }
 
-// TestStreamAnswersDNS drives whole DNS streams through the dispatcher as the init sends them:
-// header, framed query, and reads the framed reply. An allowed name gets an address, a refused
-// name and a subdomain REFUSED, a garbage frame FORMERR, and a header-only datagram nothing;
-// each stream is closed after its one exchange, and UDP 53 at any address is the resolver's.
+// TestStreamAnswersDNS drives whole DNS streams through the dispatcher as the init sends them: header, framed query, and reads the framed reply. An allowed name gets an address, a refused name and a subdomain REFUSED, a garbage frame FORMERR, and a header-only datagram nothing; each stream is closed after its one exchange, and UDP 53 at any address is the resolver's.
 func TestStreamAnswersDNS(t *testing.T) {
 	tests := []struct {
 		name  string
@@ -178,14 +165,10 @@ func TestStreamAnswersDNS(t *testing.T) {
 		rcode int // -1 for no reply
 		addr  string
 	}{
-		{"an allowed name", "127.0.0.1:53", dnsQuery("allowed.example."), 0, "127.0.0.1"},
-		{"an allowed name in mixed case", "127.0.0.1:53", dnsQuery("AlLoWeD.eXaMpLe"), 0, "127.0.0.1"},
-		{"a refused name", "127.0.0.1:53", dnsQuery("denied.example."), 5, ""},
-		{"a subdomain", "127.0.0.1:53", dnsQuery("sub.allowed.example."), 5, ""},
-		{"a garbage frame", "127.0.0.1:53", []byte{0x42, 0x42, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0xC0, 12, 0, 1, 0, 1}, 1, ""},
-		{"one byte", "127.0.0.1:53", []byte{0x55}, -1, ""},
-		{"UDP 53 at the host's address", "203.0.113.5:53", dnsQuery("allowed.example."), 0, "127.0.0.1"},
-		{"UDP 53 at a LAN address, refused", "[fd00::1]:53", dnsQuery("denied.example."), 5, ""},
+		{"an allowed name", "127.0.0.1:53", dnsQuery("allowed.example."), 0, "127.0.0.1"}, {"an allowed name in mixed case", "127.0.0.1:53", dnsQuery("AlLoWeD.eXaMpLe"), 0, "127.0.0.1"},
+		{"a refused name", "127.0.0.1:53", dnsQuery("denied.example."), 5, ""}, {"a subdomain", "127.0.0.1:53", dnsQuery("sub.allowed.example."), 5, ""},
+		{"a garbage frame", "127.0.0.1:53", []byte{0x42, 0x42, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0xC0, 12, 0, 1, 0, 1}, 1, ""}, {"one byte", "127.0.0.1:53", []byte{0x55}, -1, ""},
+		{"UDP 53 at the host's address", "203.0.113.5:53", dnsQuery("allowed.example."), 0, "127.0.0.1"}, {"UDP 53 at a LAN address, refused", "[fd00::1]:53", dnsQuery("denied.example."), 5, ""},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -220,8 +203,7 @@ func TestStreamAnswersDNS(t *testing.T) {
 	}
 }
 
-// TestRelayHoldsAtMostMaxStreams: the 1024th stream is held, the 1025th is closed at once, and
-// a slot is released when the guest ends a stream, or when the proxy closes a delivered one.
+// TestRelayHoldsAtMostMaxStreams: the 1024th stream is held, the 1025th is closed at once, and a slot is released when the guest ends a stream, or when the proxy closes a delivered one.
 func TestRelayHoldsAtMostMaxStreams(t *testing.T) {
 	ln := newAdapters([]uint16{0})[0]
 	served := newAdapters([]uint16{8443})
@@ -278,8 +260,7 @@ func TestRelayDropsAnIncompleteHeader(t *testing.T) {
 	}
 }
 
-// TestRelayCloseEndsAdapters: closing the relay listener ends every adapter's Accept with
-// net.ErrClosed, which is what the proxy's Serve returns on, and leaves no goroutine behind.
+// TestRelayCloseEndsAdapters: closing the relay listener ends every adapter's Accept with net.ErrClosed, which is what the proxy's Serve returns on, and leaves no goroutine behind.
 func TestRelayCloseEndsAdapters(t *testing.T) {
 	before := runtime.NumGoroutine()
 	ln := newAdapters([]uint16{0})[0]
@@ -311,13 +292,10 @@ func TestRelayCloseEndsAdapters(t *testing.T) {
 	}
 }
 
-// TestStreamAfterAdaptersClosed: a stream whose header completes after the relay has ended
-// (I11) is closed, not queued behind a Serve loop that has returned, for every port and for a
-// stream that is delivered by a goroutine that began before the end.
+// TestStreamAfterAdaptersClosed: a stream whose header completes after the relay has ended (I11) is closed, not queued behind a Serve loop that has returned, for every port and for a stream that is delivered by a goroutine that began before the end.
 func TestStreamAfterAdaptersClosed(t *testing.T) {
 	for _, tc := range []struct{ name, dst string }{
-		{"served port", "203.0.113.5:443"},
-		{"other served port", "203.0.113.5:8443"},
+		{"served port", "203.0.113.5:443"}, {"other served port", "203.0.113.5:8443"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			served := newAdapters([]uint16{443, 8443})
