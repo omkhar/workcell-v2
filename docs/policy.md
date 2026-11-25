@@ -36,7 +36,9 @@ that one TCP port as it is. IP addresses are refused. With no entry, the guest h
   can be bound once.
 - `env` is the guest variable that holds the placeholder. Leave it out and the guest gets no variable.
 - `method` and `path` narrow the swap to requests with that method, under that path prefix. Any other
-  request gets a 403, and the value is not read.
+  request gets a 403, and the value is not read. A `method` rule also refuses a request whose body a web
+  framework could read the method from: `application/x-www-form-urlencoded`, any `multipart/*`, or a body
+  with no readable `Content-Type`. Send JSON, or leave `method` out.
 - `repos` is a list of `owner/name` repositories. It narrows the swap to git requests for them, and
   cannot be combined with `method` or `path`.
 
