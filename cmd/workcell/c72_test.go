@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Omkhar Arasaratnam
 
-// Finding C72 of S-1007, sweep 3 (I5): a cmd: source whose program lies outside cwd, but one of whose option words names a file under cwd spelled inside the word (--key=<cwd>/... or -k<cwd>/...). Fix unit S-F56 moves this file to cmd/workcell/c72_test.go.
+// Finding C72 of S-1007, sweep 3 (I5): a cmd: source whose program lies outside cwd, but one of whose option words names a file under cwd spelled inside the word (--key=<cwd>/... or -k<cwd>/...). Fixed by unit S-F56.
 
 //go:build linux || (darwin && arm64 && cgo)
 
