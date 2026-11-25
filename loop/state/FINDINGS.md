@@ -7014,3 +7014,25 @@ unit S-F56. The redteam's variants that no arm expresses are in PARKED.md.
 Sweep 3 now stands at seven mediums (C65, C66, C67, C68 and C69, fixed; C71 and C72, open) and two lows (C64
 and C70, both fixed). The fix units are S-F55 (C71) and S-F56 (C72); the next candidate number is C73 and the
 next fix unit S-F57.
+
+C71 FIXED by S-F55, commits 8b49223 (the test moved) and 51a64fd (the fix) (PR #318). also in v1 main:
+egressproxy/terminate.go. admits in internal/proxy/terminate.go now takes the request, and a rule that names a
+method refuses with 403 binding_mismatch, before the broker is asked and with a deny record, a request whose body
+a framework reads as a form: a media type (mime.ParseMediaType, so capitals and parameters do not matter) of
+application/x-www-form-urlencoded or any multipart/*, or a body whose Content-Type is missing or does not parse.
+A request with no body is judged as before, and so is every request under a rule that names no method. The body
+is not read. The 403 text of a method rule now ends "with no form body", and docs/policy.md says what a method
+rule refuses. The builder chose the refusal over reading the body: no buffering and no new parser of guest bytes
+(I10, I12), two product lines and an import, paid by six one-line doc comments folded onto their declarations.
+TestC71FormMethodOverride (internal/proxy/c71_test.go, one row widened in place by the redteam to capitals with
+a charset parameter) fails on main in its four form rows and passes on the fix, plain and under -race; the
+reviewer saw both by overlay. Hosted gate on 51a64fd, a real VM: passed 147, failed 0, errors 0.
+Residue, not fixed here: the reviewer reproduced the same override in a JSON body (`{"_method":"DELETE"}` under
+Content-Type application/json or +json, served as DELETE by an upstream that reads the method from a JSON body,
+as the reviewer says Laravel does). It is outside this unit's accept text, which keeps the JSON POST as a served
+control, and it is not confirmed under S4, so nothing lands for it under S1. It stands in PARKED.md as a
+candidate with its reproduction, for R-3 to turn into a unit. Without a reproduction, also parked: two
+Content-Type headers of which admits judges the first, and a text/plain body.
+Sweep 3 now stands at seven mediums (C65, C66, C67, C68, C69 and C71, fixed; C72, open) and two lows (C64 and
+C70, both fixed), with one unconfirmed candidate parked (the JSON residue of C71). The open fix unit is S-F56
+(C72); the next candidate number is C73 and the next fix unit S-F57.

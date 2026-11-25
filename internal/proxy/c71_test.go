@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Omkhar Arasaratnam
 
-// Finding C71 of S-1007, sweep 3 (I5). Fix unit S-F55 moves this file to internal/proxy/c71_test.go (SPEC S4). A placeholder bound to POST /v1/ is swapped for the real secret on a POST whose form body moves the method outside the rule: a _method field (Rack::MethodOverride,
+// Finding C71 of S-1007, sweep 3 (I5), fixed by S-F55, which moved this file here from escape/_pending/S-F55/ (SPEC S4). A placeholder bound to POST /v1/ is swapped for the real secret on a POST whose form body moves the method outside the rule: a _method field (Rack::MethodOverride,
 // Laravel) or an X-HTTP-Method-Override field (ASP.NET MVC), urlencoded or multipart, where C68 judged the override only as a header or a query parameter. That the operator's host sits behind such a framework is a precondition the attacker does not control; the fake upstream below
 // honours the fields as those frameworks do, the value upper-cased as Rack does. A plain POST with a JSON body is served with the secret and the plain DELETE such a POST reaches is refused; no row carrying an override gets the secret served for the method the override reaches.
 package proxy
@@ -31,7 +31,7 @@ func TestC71FormMethodOverride(t *testing.T) {
 		{"POST", "application/json", `{"a":1}`, "POST /v1/x real-secret", ""},
 		{"DELETE", "application/json", "", "", "DELETE /v1/x"},
 		{"POST", "application/x-www-form-urlencoded", "_method=DELETE&a=b", "", "DELETE /v1/x"},
-		{"POST", "application/x-www-form-urlencoded", "a=b&_method=put", "", "PUT /v1/x"},
+		{"POST", "APPLICATION/X-WWW-FORM-URLENCODED; charset=utf-8", "a=b&_method=put", "", "PUT /v1/x"}, // the media type in capitals with a parameter, as Rack and mime.ParseMediaType both read it
 		{"POST", "application/x-www-form-urlencoded", "X-HTTP-Method-Override=PATCH", "", "PATCH /v1/x"},
 		{"POST", "multipart/form-data; boundary=b", "--b\r\nContent-Disposition: form-data; name=\"_method\"\r\n\r\nDELETE\r\n--b--\r\n", "", "DELETE /v1/x"},
 	}

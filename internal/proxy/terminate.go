@@ -23,6 +23,7 @@ import (
 	"log"
 	"maps"
 	"math/big"
+	"mime"
 	"net"
 	"net/http"
 	"net/http/httputil"
@@ -36,8 +37,7 @@ import (
 	"time"
 )
 
-// MaxCALifetime caps the session CA lifetime.
-const MaxCALifetime = 24 * time.Hour
+const MaxCALifetime = 24 * time.Hour // MaxCALifetime caps the session CA lifetime.
 
 var discardLog = log.New(io.Discard, "", 0)
 
@@ -116,14 +116,16 @@ func cgiName(n string) string { return strings.ReplaceAll(strings.ToLower(n), "-
 // overrides are the routing overrides a framework honours instead of the request line, as cgiName spells them: the method from the first three as a header on a POST (Rack::MethodOverride, ASP.NET MVC, Google's API front end) and from the first or the last as a query parameter (ASP.NET MVC, Spring, Symfony), the path from the others (IIS URL Rewrite, Symfony HttpFoundation). A rule that narrows refuses a request carrying any of them as a header or a query parameter (C68).
 var overrides = []string{"x_http_method_override", "x_http_method", "x_method_override", "x_original_url", "x_rewrite_url", "_method"}
 
-// admits reports whether the rule swaps on a request of method to u with headers h: the rule's method when it names one, and a path under its prefix, or within one of its repositories, when it names either, and then none of overrides named by a header or a query parameter, with any value or none. The path is judged as sent and under both folds (see fold), so that neither an encoded slash, a backslash, a ;param nor ".." leads out from under the prefix on any reading.
-func (r TerminateRule) admits(method string, u *url.URL, h http.Header) bool {
-	params, _ := url.ParseQuery(strings.ReplaceAll(u.RawQuery, ";", "&")) // the parameter names as they decode; a pair holding ";" would otherwise be dropped unjudged, though a framework reads it
-	names := slices.AppendSeq(slices.Collect(maps.Keys(h)), maps.Keys(params))
-	if r.Method != "" && method != r.Method || (r.Method != "" || r.Path != "" || len(r.Repos) > 0) && slices.ContainsFunc(names, func(n string) bool { return slices.Contains(overrides, cgiName(n)) }) {
+// admits reports whether the rule swaps on the request req: the rule's method when it names one, and a path under its prefix, or within one of its repositories, when it names either, and then none of overrides named by a header or a query parameter, with any value or none. A rule that names a method also refuses a body a framework reads as a form, since a form field moves the method as a header or a parameter does (C71): a media type of application/x-www-form-urlencoded or multipart/*, or a Content-Type missing or unparsed, which Rack reads as a form on a POST. The path is judged as sent and under both folds (see fold), so that neither an encoded slash, a backslash, a ;param nor ".." leads out from under the prefix on any reading.
+func (r TerminateRule) admits(req *http.Request) bool {
+	params, _ := url.ParseQuery(strings.ReplaceAll(req.URL.RawQuery, ";", "&")) // the parameter names as they decode; a pair holding ";" would otherwise be dropped unjudged, though a framework reads it
+	names := slices.AppendSeq(slices.Collect(maps.Keys(req.Header)), maps.Keys(params))
+	mediaType, _, err := mime.ParseMediaType(req.Header.Get("Content-Type"))
+	form := req.Body != http.NoBody && (err != nil || mediaType == formType || strings.HasPrefix(mediaType, "multipart/")) // the server hands a request with no body NoBody, so a GET or a Content-Length: 0 POST needs no Content-Type
+	if r.Method != "" && (req.Method != r.Method || form) || (r.Method != "" || r.Path != "" || len(r.Repos) > 0) && slices.ContainsFunc(names, func(n string) bool { return slices.Contains(overrides, cgiName(n)) }) {
 		return false
 	}
-	sent := u.EscapedPath()
+	sent := req.URL.EscapedPath()
 	clean, raw := fold(sent), fold(opaque(sent))
 	if r.Path != "" {
 		under := func(p string) bool { return strings.HasPrefix(p, r.Path) || p+"/" == r.Path }
@@ -303,16 +305,14 @@ func upstreamRoots(certFile string) (*x509.CertPool, error) {
 	return pool, err
 }
 
-// replayConn yields the replayed ClientHello bytes before the rest of the client stream.
-type replayConn struct {
+type replayConn struct { // replayConn yields the replayed ClientHello bytes before the rest of the client stream.
 	net.Conn
 	r io.Reader
 }
 
 func (c *replayConn) Read(b []byte) (int, error) { return c.r.Read(b) }
 
-// oneConnListener hands out one connection, then blocks until it closes.
-type oneConnListener struct {
+type oneConnListener struct { // oneConnListener hands out one connection, then blocks until it closes.
 	conn chan net.Conn
 	done chan struct{}
 	once sync.Once
@@ -331,8 +331,7 @@ func (l *oneConnListener) Accept() (net.Conn, error) {
 func (l *oneConnListener) Close() error   { l.once.Do(func() { close(l.done) }); return nil }
 func (l *oneConnListener) Addr() net.Addr { return l.addr }
 
-// closeNotifyConn closes its listener when the HTTP server closes it.
-type closeNotifyConn struct {
+type closeNotifyConn struct { // closeNotifyConn closes its listener when the HTTP server closes it.
 	net.Conn
 	ln *oneConnListener
 }
@@ -349,7 +348,7 @@ func sameHost(host, sni, port string) bool {
 	return (!hasPort || p == "443" || p == port) && strings.TrimSuffix(name, ".") == sni
 }
 
-// serveTerminated terminates TLS for host with a session leaf and proxies HTTP/1.1 requests to the real host, swapping the placeholder headers. It refuses a request that names another host than the SNI did (I6), one that sends a placeholder outside the method and path its rule binds it to or with a routing override beside it (I5), and one that still carries a placeholder after the swap.
+// serveTerminated terminates TLS for host with a session leaf and proxies HTTP/1.1 requests to the real host, swapping the placeholder headers. It refuses a request that names another host than the SNI did (I6), one that sends a placeholder outside the method and path its rule binds it to, with a routing override beside it or, under a method rule, in a form body (I5), and one that still carries a placeholder after the swap.
 func (p *Proxy) serveTerminated(client net.Conn, host string, replay []byte) {
 	rules := p.terminate[host]
 	tlsConn := tls.Server(&replayConn{Conn: client, r: io.MultiReader(bytes.NewReader(replay), client)}, &tls.Config{
@@ -371,8 +370,7 @@ func (p *Proxy) serveTerminated(client net.Conn, host string, replay []byte) {
 			r.Out.URL.Scheme, r.Out.URL.Host, r.Out.Host = "https", host, host
 		},
 	}
-	// ponytail: no idle timeout, like splice; a peer that never closes holds the conn.
-	srv := &http.Server{
+	srv := &http.Server{ // ponytail: no idle timeout, like splice; a peer that never closes holds the conn.
 		ReadHeaderTimeout:            peekTimeout,
 		MaxHeaderBytes:               64 << 10, // a client needs a few KiB; this bounds what a held slot pins (I10, C11)
 		ErrorLog:                     discardLog,
@@ -400,10 +398,13 @@ func (p *Proxy) serveTerminated(client net.Conn, host string, replay []byte) {
 				if !ok {
 					continue
 				}
-				if !rule.admits(r.Method, r.URL, r.Header) {
+				if !rule.admits(r) {
 					scope := fmt.Sprintf("method %s under path %s", cmp.Or(rule.Method, "*"), cmp.Or(rule.Path, "/"))
-					if len(rule.Repos) > 0 {
+					switch {
+					case len(rule.Repos) > 0:
 						scope = "repositories " + strings.Join(rule.Repos, ", ")
+					case rule.Method != "":
+						scope += ", with no form body"
 					}
 					p.Deny(host, tlsPort, "binding_mismatch")
 					http.Error(w, "the credential in "+rule.Header+" is bound to "+scope, http.StatusForbidden)
@@ -464,8 +465,7 @@ func placeholderForm(values []string, placeholder string) (func([]byte) string, 
 	return nil, false
 }
 
-// maxBasic bounds the Basic value the proxy decodes: the bytes are the guest's.
-const maxBasic = 4096
+const maxBasic = 4096 // maxBasic bounds the Basic value the proxy decodes: the bytes are the guest's.
 
 // basicDecode is what a Basic authorization value encodes: strict standard base64 of at most maxBasic bytes after the scheme, so that what the proxy re-encodes is the value it matched. Anything else is no Basic value.
 func basicDecode(value string) ([]byte, bool) {
