@@ -29,11 +29,11 @@ const (
 	maxNodes = 1 << 17
 	// frameLimit is how long one frame may take once it has begun (I12), as on the channel.
 	frameLimit = 5 * time.Second
-	// paceFrames and paceEvery: Serve reads at most paceFrames units of work a paceEvery, 16 thousand a second (I10). A frame is a unit, as are perForget entries
-	// of a BATCH_FORGET, and the work a frame asks for is charged on top in points, unit to the unit, a point being about 0.75 us of host CPU: two for a link of a
-	// node's chain checked (at), one for 24 bytes of a directory listed (readdir), and plusEntry for a READDIRPLUS entry made, what one costs beside fifteen other
-	// workers on a slow host. A frame alone costs the host about 10 us, so cheap frames take a sixth of a core and the costliest about half, within the one vCPU plus
-	// a second the gate allows a guest. Honest traffic stays far below: ADR-005 measured 2 to 6 thousand requests a second, and at 60 KiB a READ or WRITE the transport caps a stream lower.
+	// paceFrames and paceEvery: Serve reads at most paceFrames units of work a paceEvery, 16 thousand a second (I10). A frame is a unit, as are perForget entries of a
+	// BATCH_FORGET, and the work a frame asks for is charged on top in points, unit to the unit, a point being about 0.75 us of host CPU: two for a link of a node's chain
+	// checked (at), one for 24 bytes of a directory listed (readdir), plusEntry for a READDIRPLUS entry made, what one costs beside fifteen other workers on a slow host,
+	// and the time a WRITE's search for a hole takes (grow). A frame alone costs the host about 10 us, so cheap frames take a sixth of a core and the costliest about half, within
+	// the one vCPU plus a second the gate allows a guest. Honest traffic stays far below: ADR-005 measured 2 to 6 thousand requests a second, and at 60 KiB a READ or WRITE the transport caps a stream lower.
 	paceFrames, paceEvery, unit, plusEntry = 1 << 10, 64 * time.Millisecond, 40, 40
 	// perForget: an entry the host does not know costs it about a 250th of a request; at 64 an honest guest shedding the whole table of maxNodes waits an eighth of a second.
 	perForget = 64
@@ -125,9 +125,13 @@ func Open(dir string, limit int64) (*Server, error) {
 // length, found by one SEEK_HOLE from off: a hole that begins below both is charged to the lesser, the safe side when data follows it. A write in flight beside another on the same file charges as if alone.
 func (s *Server) grow(fd int, off, end int64) syscall.Errno {
 	st, e := stat(loc{fd: fd})
-	bs, n := max(int64(st.Blksize), 512), max(0, end-st.Size)
-	hole, err := unix.Seek(fd, off/bs*bs, unix.SEEK_HOLE) // ENXIO: off is at or past the end, so no hole lies below the length
-	if to := min(st.Size, (end+bs-1)/bs*bs); off < end && err == nil && hole < to {
+	bs, n, t0 := max(int64(st.Blksize), 512), max(0, end-st.Size), time.Now()
+	if off >= end { // SETATTR: no range, so no hole to look for
+		return s.charge(e, n)
+	}
+	hole, err := unix.Seek(fd, off/bs*bs, unix.SEEK_HOLE)       // ENXIO: off is at or past the end, so no hole lies below the length
+	s.work.Add(int64(time.Since(t0) / (750 * time.Nanosecond))) // the search is host work (I10): tmpfs walks its page cache to the next hole, so a dense file there costs its length
+	if to := min(st.Size, (end+bs-1)/bs*bs); err == nil && hole < to {
 		n += to - hole
 	} else if e == 0 && err != nil && err != unix.ENXIO {
 		e = errno(err)

@@ -362,10 +362,9 @@ func (s *Server) setattr(r request) ([]byte, syscall.Errno) {
 	return attrReply(l, e)
 }
 
-// readdir lists from the handle's own descriptor, positioned at the offset the kernel gives back, which is the cookie of the entry after the last one it took.
-// Nothing is cached, so a directory of any size costs one 8 KiB buffer per call; the bytes read and the nodes made are charged to the pace (I10). READDIRPLUS
-// makes a node per entry, as a LOOKUP would; an entry that cannot get one (cap reached) goes out with node 0, so the listing stays complete and the kernel's own
-// LOOKUP reports the error.
+// readdir lists from the handle's own descriptor, positioned at the offset the kernel gives back, which is the cookie of the entry after the last one it took. Nothing
+// is cached, so a directory of any size costs one 8 KiB buffer per call; the bytes read and the nodes made are charged to the pace (I10). READDIRPLUS makes a node per
+// entry, as a LOOKUP would; an entry that cannot get one (cap reached) goes out with node 0, so the listing stays complete and the kernel's own LOOKUP reports the error.
 func (s *Server) readdir(r request) ([]byte, syscall.Errno) {
 	h, e := s.fh(r.NodeID, r.Fh)
 	if e != 0 {
