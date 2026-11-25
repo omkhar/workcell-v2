@@ -19,12 +19,7 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-// TestC65DataDirectoryBindMountedBeneathCwd (I7, I9, I13; I1 in mount mode; I14): the operator's data directory bind-mounted beneath the working directory (`mount --bind
-// $XDG_DATA_HOME/workcell repo/data; cd repo`) is a layout holds() does not refuse: within() looks for the data directory's inode among the working directory's ancestors, and the other
-// way round, and a bind mount is neither a symlink nor an ancestor. So a clone session's image carries the audit key and every other session's record, a mount session reaches boot with
-// the data directory in its live view, and the pull writer, given a guest tree that names data/<vmm> and data/sessions/<id>/audit.log, puts the guest's bytes over the host's VMM binary
-// and the other session's record: put opens "data" beneath the destination, and openat2 crosses the mount. Root is used once, for the bind mount that models the operator's own layout:
-// the test re-runs itself through sudo -n, as c52 does, and skips only where that asks for a password. The rest is the product's own functions with dummy artifacts, and no VM.
+// TestC65DataDirectoryBindMountedBeneathCwd (I7, I9, I13; I1 in mount mode; I14): the operator's data directory bind-mounted beneath the working directory (`mount --bind $XDG_DATA_HOME/workcell repo/data; cd repo`) is a layout holds() does not refuse: within() looks for the data directory's inode among the working directory's ancestors, and the other way round, and a bind mount is neither a symlink nor an ancestor. So a clone session's image carries the audit key and every other session's record, a mount session reaches boot with the data directory in its live view, and the pull writer, given a guest tree that names data/<vmm> and data/sessions/<id>/audit.log, puts the guest's bytes over the host's VMM binary and the other session's record: put opens "data" beneath the destination, and openat2 crosses the mount. Root is used once, for the bind mount that models the operator's own layout: the test re-runs itself through sudo -n, as c52 does, and skips only where that asks for a password. The rest is the product's own functions with dummy artifacts, and no VM.
 func TestC65DataDirectoryBindMountedBeneathCwd(t *testing.T) {
 	if os.Geteuid() != 0 {
 		if err := exec.Command("sudo", "-n", "true").Run(); err != nil {

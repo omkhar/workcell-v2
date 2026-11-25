@@ -179,10 +179,7 @@ func TestAllowlistFlags(t *testing.T) {
 	}
 }
 
-// TestProviderPolicy loads a real config file the way `workcell run` does: a [[secret]] row that
-// names only the provider's secret takes its host, header and env, the guest's environment holds
-// the placeholder and never the key, and the host stays the user's grant (I13), from the file or
-// --allow, or the load fails naming it. It holds for every adapter.
+// TestProviderPolicy loads a real config file the way `workcell run` does: a [[secret]] row that names only the provider's secret takes its host, header and env, the guest's environment holds the placeholder and never the key, and the host stays the user's grant (I13), from the file or --allow, or the load fails naming it. It holds for every adapter.
 func TestProviderPolicy(t *testing.T) {
 	const key = "sk-real-0123456789"
 	providers := []struct{ secret, host, header, env string }{

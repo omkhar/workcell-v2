@@ -22,11 +22,7 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-// TestC56PullRewiresALiveSessionsRelaySocket (I1, I4, I7, I8): the operator's temp directory lies under the repository (TMPDIR from an
-// allowed .envrc, or `cd /tmp`), so a running session B keeps its VMM directory and relay listener inside the tree. (a) A clone session A
-// exports that directory, so A's guest learns B's random name and leaves a symlink in the listener's place, aimed at a host socket of the
-// operator's uid outside every export; `workcell pull` unlinks B's live listener, plants the link, and the VMM's next connect for B's
-// guest follows it. (b) A mount session run from a shell whose temp directory is elsewhere serves B's directory live, and is not refused.
+// TestC56PullRewiresALiveSessionsRelaySocket (I1, I4, I7, I8): the operator's temp directory lies under the repository (TMPDIR from an allowed .envrc, or `cd /tmp`), so a running session B keeps its VMM directory and relay listener inside the tree. (a) A clone session A exports that directory, so A's guest learns B's random name and leaves a symlink in the listener's place, aimed at a host socket of the operator's uid outside every export; `workcell pull` unlinks B's live listener, plants the link, and the VMM's next connect for B's guest follows it. (b) A mount session run from a shell whose temp directory is elsewhere serves B's directory live, and is not refused.
 func TestC56PullRewiresALiveSessionsRelaySocket(t *testing.T) {
 	work, out := must(os.MkdirTemp("", "c56")), must(os.MkdirTemp("", "c56")) // out: outside every export. Both hold unix sockets, whose path has 104 bytes on macOS, and t.TempDir() carries this test's name
 	t.Cleanup(func() { os.RemoveAll(work); os.RemoveAll(out) })

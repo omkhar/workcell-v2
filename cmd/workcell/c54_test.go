@@ -17,11 +17,7 @@ import (
 	"testing"
 )
 
-// TestC54SecretSourceUnderTheWorkspace (I5): the operator's key file, or the program that prints the key, lies under cwd. Neither loadPolicy nor session
-// compares a source path with cwd, so the session starts and the guest gets the file as part of /workspace: in the clone image, or live under --mount, where it
-// can also rewrite the program the host runs for every later lookup. The session must be refused before a session directory or an export exists, as a cwd that
-// holds the data directory is (C19), or at least the key bytes must not reach the image. The VMM is a dummy: a session not refused fails at boot, after both.
-// The same holds when only an argument of a cmd: source lies under cwd (the program runs it), and when the spelling does but the target does not: under --mount the guest owns every link in cwd.
+// TestC54SecretSourceUnderTheWorkspace (I5): the operator's key file, or the program that prints the key, lies under cwd. Neither loadPolicy nor session compares a source path with cwd, so the session starts and the guest gets the file as part of /workspace: in the clone image, or live under --mount, where it can also rewrite the program the host runs for every later lookup. The session must be refused before a session directory or an export exists, as a cwd that holds the data directory is (C19), or at least the key bytes must not reach the image. The VMM is a dummy: a session not refused fails at boot, after both. The same holds when only an argument of a cmd: source lies under cwd (the program runs it), and when the spelling does but the target does not: under --mount the guest owns every link in cwd.
 func TestC54SecretSourceUnderTheWorkspace(t *testing.T) {
 	const key = "sk-ant-c54-real-key-0123456789"
 	for _, tc := range []struct {

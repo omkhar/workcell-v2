@@ -38,11 +38,7 @@ func c34Load(t *testing.T, repo string) (reachable, rewritten bool, err error) {
 	return reachable, rewritten, err
 }
 
-// TestC34SignInRowDropped is finding C34 (I5, through I13): a repository's workcell.toml may only narrow, yet by dropping the user's sign-in
-// [[secret]] row and keeping its token host it takes away the one rule that hides the token endpoint's answers, so the real tokens of a sign-in the
-// operator completes in that session would reach the guest as issued. A session must be refused, or lose the token host, or keep the rewriting. This
-// stops at the effective policy the session hands the proxy, not at the wire. It fails until fix unit S-F27 lands and waits in
-// escape/_pending/S-F27/; that unit moves it to cmd/workcell/c34_test.go.
+// TestC34SignInRowDropped is finding C34 (I5, through I13): a repository's workcell.toml may only narrow, yet by dropping the user's sign-in [[secret]] row and keeping its token host it takes away the one rule that hides the token endpoint's answers, so the real tokens of a sign-in the operator completes in that session would reach the guest as issued. A session must be refused, or lose the token host, or keep the rewriting. This stops at the effective policy the session hands the proxy, not at the wire. It fails until fix unit S-F27 lands and waits in escape/_pending/S-F27/; that unit moves it to cmd/workcell/c34_test.go.
 func TestC34SignInRowDropped(t *testing.T) {
 	if reachable, rewritten, err := c34Load(t, ""); err != nil || !reachable || !rewritten {
 		t.Fatalf("without a repository file: token host reachable %v, answers rewritten %v, %v; want true, true, nil", reachable, rewritten, err)
