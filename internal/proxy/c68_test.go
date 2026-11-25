@@ -1,11 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Omkhar Arasaratnam
 
-// Finding C68 of S-1005, sweep 3 (I5). Fix unit S-F51 moved this file here from escape/_pending/S-F51/ (SPEC S4) and closes it; its fix round added the last two rows. A placeholder bound
-// to POST /v1/ or to one repository is swapped for the real secret on a request whose line sits inside the rule while a routing-override header moves it outside:
-// the method from X-HTTP-Method-Override on a POST (Rack::MethodOverride, ASP.NET MVC, Google's API front end), the path from X-Original-URL or X-Rewrite-URL (IIS
-// URL Rewrite, Symfony HttpFoundation). That the operator's host sits behind such a framework is a precondition the attacker does not control; the fake upstream below honours those headers as they do, the
-// underscore spelling as a CGI-style server reads it (RFC 3875 4.1.18 maps "-" to "_", so X_HTTP_Method_Override is the same variable), and a _method query parameter as Spring and Symfony do.
+// Finding C68 of S-1005, sweep 3 (I5). Fix unit S-F51 moved this file here from escape/_pending/S-F51/ (SPEC S4) and closes it; its fix round added the last two rows. A placeholder bound to POST /v1/ or to one repository is swapped for the real secret on a request whose line
+// sits inside the rule while a routing-override header moves it outside: the method from X-HTTP-Method-Override on a POST (Rack::MethodOverride, ASP.NET MVC, Google's API front end), the path from X-Original-URL or X-Rewrite-URL (IIS URL Rewrite, Symfony HttpFoundation). That the
+// operator's host sits behind such a framework is a precondition the attacker does not control; the fake upstream below honours those headers as they do, the underscore spelling as a CGI-style server reads it (RFC 3875 4.1.18 maps "-" to "_", so X_HTTP_Method_Override is the same variable), and a _method query parameter as Spring and Symfony do.
 package proxy
 
 import (
@@ -20,8 +18,7 @@ import (
 	"time"
 )
 
-// TestC68RoutingOverrideHeaders: a plain request inside the rule is served with the secret and a plain one outside is refused; no request that carries an override
-// header gets the secret served for the method, path or repository the override reaches. Refusing it or forwarding it without the override both pass.
+// TestC68RoutingOverrideHeaders: a plain request inside the rule is served with the secret and a plain one outside is refused; no request that carries an override header gets the secret served for the method, path or repository the override reaches. Refusing it or forwarding it without the override both pass.
 func TestC68RoutingOverrideHeaders(t *testing.T) {
 	t.Parallel()
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
