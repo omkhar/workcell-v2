@@ -6790,3 +6790,17 @@ only, since no kernel at hand had IPv6; a dump that the host's own root changes 
 again; and the reader refuses more than before where a table reached only through a rule holds a local default
 (a TPROXY set-up) or where a route's gateway sits in a nexthop object, both toward refusal (PARKED.md weighs them).
 Sweep 3 now stands at five mediums (C65, C66, C67, C68 and C69, all fixed) and two lows (C64, fixed; C70, open).
+
+C70 FIXED by S-F53, commit 380fd3d (the fix, with the test folded into place) (PR #316). also in v1 main:
+egressproxy/proxy.go. blockedPrefixes in internal/proxy/proxy.go holds one more row, 192.80.8.124/32, the metadata
+address of Equinix Metal (formerly Packet), beside Azure's 168.63.129.16/32; blockedAddr unmaps first, so the one row
+refuses the IPv4-mapped spelling too, and connect answers blocked_address for both. The rows of TestC70EquinixMetadata
+are folded into TestBlockedAddr in internal/proxy/proxy_test.go as one line (192.80.8.124 and ::ffff:192.80.8.124
+refused, 192.0.3.1 allowed, all with no host prefixes; the parked row 168.63.129.16 stood there already), no earlier
+row changed, and escape/_pending/S-F53/ is gone, so escape/_pending/ is empty. On main's product the test fails with
+exactly the two Equinix rows ("blockedAddr(...) = false, want true") and passes on the fix, plain and under -race, by
+the redteam, the builder and the reviewer, the reviewer in a worktree of main with the new test. The /32 is tight:
+192.80.8.123, 192.80.8.125, 192.80.7.124 and 192.80.9.124 stay dialable, plain and mapped. Nothing was sent to the
+address or to any third party (S12). Product 15000 of 15000, test 28484 of 28500. Hosted on 380fd3d: gate on a real
+VM passed 147, failed 0, errors 0, the eleven I4 rebind rows among them; gate-macos, gate-arm64 and guard green.
+Sweep 3 now stands at five mediums (C65, C66, C67, C68 and C69, all fixed) and two lows (C64 and C70, both fixed).

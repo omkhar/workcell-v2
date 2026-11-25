@@ -39,6 +39,7 @@ var blockedPrefixes = []netip.Prefix{
 	netip.MustParsePrefix("100.64.0.0/10"),    // CGNAT; holds the 100.100.100.200 metadata address
 	netip.MustParsePrefix("192.0.0.0/24"),     // IETF assignments; holds the 192.0.0.192 metadata address
 	netip.MustParsePrefix("168.63.129.16/32"), // Azure platform virtual IP (WireServer) metadata address
+	netip.MustParsePrefix("192.80.8.124/32"),  // Equinix Metal (formerly Packet) metadata address
 	netip.MustParsePrefix("2001::/23"),        // IETF protocol assignments: Teredo, benchmarking, ORCHID
 	netip.MustParsePrefix("2002::/16"),        // 6to4
 	netip.MustParsePrefix("192.0.2.0/24"),     // documentation (TEST-NET-1)
