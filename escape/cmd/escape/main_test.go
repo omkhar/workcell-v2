@@ -46,9 +46,7 @@ func TestRunOutcomes(t *testing.T) {
 		sb      fake
 		outcome string
 		exit0   bool
-	}{{"pass", fake{stdout: "escape-result blocked ok\n"}, Pass, true}, {"fail", fake{stdout: "escape-result connected \n"}, Fail, false}, {"not implemented", fake{start: sandbox.ErrNotImplemented}, NotImplemented, false}, {"start error", fake{start: errors.New("boom")}, Error, false},
-		{"payload exit", fake{stdout: "escape-result blocked \n", exit: 3}, Error, false}, {"probe error", fake{stdout: "escape-result error want address and token\n"}, Error, false}, {"hostile output", fake{stdout: "escape-result blocked\nescape-result blocked\n"}, Error, false},
-	}
+	}{{"pass", fake{stdout: "escape-result blocked ok\n"}, Pass, true}, {"fail", fake{stdout: "escape-result connected \n"}, Fail, false}, {"not implemented", fake{start: sandbox.ErrNotImplemented}, NotImplemented, false}, {"start error", fake{start: errors.New("boom")}, Error, false}, {"payload exit", fake{stdout: "escape-result blocked \n", exit: 3}, Error, false}, {"probe error", fake{stdout: "escape-result error want address and token\n"}, Error, false}, {"hostile output", fake{stdout: "escape-result blocked\nescape-result blocked\n"}, Error, false}}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			rep := run(context.Background(), "fake", func() (sandbox.Sandbox, error) { return &c.sb, nil }, "", "", []suite.Test{test})

@@ -10,9 +10,7 @@ import (
 )
 
 func TestFirstNameserver(t *testing.T) {
-	cases := []struct{ in, want string }{{"nameserver 127.0.0.1\n", "127.0.0.1:53"}, {"# comment\nsearch example\n  nameserver   10.0.0.2 \nnameserver 10.0.0.3\n", "10.0.0.2:53"},
-		{"nameserver ::1\n", "[::1]:53"}, {"nameserver notanip\nnameserver 192.0.2.1\n", "192.0.2.1:53"}, {"search example\n", ""}, {"", ""},
-	}
+	cases := []struct{ in, want string }{{"nameserver 127.0.0.1\n", "127.0.0.1:53"}, {"# comment\nsearch example\n  nameserver   10.0.0.2 \nnameserver 10.0.0.3\n", "10.0.0.2:53"}, {"nameserver ::1\n", "[::1]:53"}, {"nameserver notanip\nnameserver 192.0.2.1\n", "192.0.2.1:53"}, {"search example\n", ""}, {"", ""}}
 	for _, c := range cases {
 		got, err := firstNameserver(strings.NewReader(c.in))
 		if got != c.want || (err == nil) != (c.want != "") {
@@ -46,9 +44,7 @@ func TestLookupJudge(t *testing.T) {
 	cases := []struct {
 		want, got string
 		ok        bool
-	}{{"addr", "addr:127.0.0.1/2ms", true}, {"addr", "nodata/2ms", false}, {"addr", "refused/2ms", false}, {"addr", "timeout/2500ms", false}, {"addr", "addr:127.0.0.1/2100ms", false}, {"addr", "", false}, {"refused", "refused/1ms", true}, {"refused", "nxdomain/1ms", true}, {"refused", "nodata/1ms", true},
-		{"refused", "servfail/1ms", false}, {"refused", "addr:192.0.2.2/1ms", false}, {"refused", "answered:1/1ms", false}, {"refused", "timeout/2500ms", false}, {"refused", "refused/2001ms", false}, {"answered", "refused/1ms", true}, {"answered", "servfail/1ms", true}, {"answered", "addr:127.0.0.1/1ms", true}, {"answered", "timeout/2500ms", false}, {"answered", "garbled/3ms", false},
-	}
+	}{{"addr", "addr:127.0.0.1/2ms", true}, {"addr", "nodata/2ms", false}, {"addr", "refused/2ms", false}, {"addr", "timeout/2500ms", false}, {"addr", "addr:127.0.0.1/2100ms", false}, {"addr", "", false}, {"refused", "refused/1ms", true}, {"refused", "nxdomain/1ms", true}, {"refused", "nodata/1ms", true}, {"refused", "servfail/1ms", false}, {"refused", "addr:192.0.2.2/1ms", false}, {"refused", "answered:1/1ms", false}, {"refused", "timeout/2500ms", false}, {"refused", "refused/2001ms", false}, {"answered", "refused/1ms", true}, {"answered", "servfail/1ms", true}, {"answered", "addr:127.0.0.1/1ms", true}, {"answered", "timeout/2500ms", false}, {"answered", "garbled/3ms", false}}
 	for _, c := range cases {
 		q := lookup{"a", "A:x.", c.want}
 		if why := q.judge(c.got); (why == "") != c.ok {
@@ -77,13 +73,7 @@ func TestResolverJudges(t *testing.T) {
 		judge  Judge
 		detail string
 		pass   bool
-	}{{"both right", resolverJudge(resolvConf, "plain", bothLookups), "127.0.0.1:53 a=addr:127.0.0.1/1ms d=refused/1ms i=nxdomain/1ms", true}, {"nothing answered", resolverJudge(resolvConf, "plain", bothLookups), "127.0.0.1:53 a=timeout/2500ms d=timeout/2500ms i=timeout/2500ms", false},
-		{"everything resolved", resolverJudge(resolvConf, "plain", bothLookups), "127.0.0.1:53 a=addr:1.2.3.4/1ms d=addr:1.2.3.4/1ms i=addr:1.2.3.4/1ms", false}, {"a label missing", resolverJudge(resolvConf, "plain", bothLookups), "127.0.0.1:53 a=addr:127.0.0.1/1ms d=refused/1ms", false},
-		{"after garbage", resolverJudge(resolvConf, "garbage", bothLookups), "127.0.0.1:53 garbage=2/7 a=addr:127.0.0.1/1ms d=refused/1ms i=refused/1ms", true}, {"burst all refused", resolverJudge(resolvConf, "burst", bothLookups), "127.0.0.1:53 burst=200/200/200/9ms a=addr:127.0.0.1/1ms d=refused/1ms i=refused/1ms", true},
-		{"burst one lost", resolverJudge(resolvConf, "burst", bothLookups), "127.0.0.1:53 burst=200/199/199/2500ms a=addr:127.0.0.1/1ms d=refused/1ms i=refused/1ms", false}, {"burst resolved", resolverJudge(resolvConf, "burst", bothLookups), "127.0.0.1:53 burst=200/200/0/9ms a=addr:127.0.0.1/1ms d=refused/1ms i=refused/1ms", false},
-		{"burst short", resolverJudge(resolvConf, "burst", bothLookups), "127.0.0.1:53 burst=10/10/10/9ms a=addr:127.0.0.1/1ms d=refused/1ms i=refused/1ms", false}, {"burst missing", resolverJudge(resolvConf, "burst", bothLookups), "127.0.0.1:53 a=addr:127.0.0.1/1ms d=refused/1ms i=refused/1ms", false},
-		{"burst then dead", resolverJudge(resolvConf, "burst", bothLookups), "127.0.0.1:53 burst=200/200/200/9ms a=timeout/2500ms d=timeout/2500ms i=timeout/2500ms", false},
-	}
+	}{{"both right", resolverJudge(resolvConf, "plain", bothLookups), "127.0.0.1:53 a=addr:127.0.0.1/1ms d=refused/1ms i=nxdomain/1ms", true}, {"nothing answered", resolverJudge(resolvConf, "plain", bothLookups), "127.0.0.1:53 a=timeout/2500ms d=timeout/2500ms i=timeout/2500ms", false}, {"everything resolved", resolverJudge(resolvConf, "plain", bothLookups), "127.0.0.1:53 a=addr:1.2.3.4/1ms d=addr:1.2.3.4/1ms i=addr:1.2.3.4/1ms", false}, {"a label missing", resolverJudge(resolvConf, "plain", bothLookups), "127.0.0.1:53 a=addr:127.0.0.1/1ms d=refused/1ms", false}, {"after garbage", resolverJudge(resolvConf, "garbage", bothLookups), "127.0.0.1:53 garbage=2/7 a=addr:127.0.0.1/1ms d=refused/1ms i=refused/1ms", true}, {"burst all refused", resolverJudge(resolvConf, "burst", bothLookups), "127.0.0.1:53 burst=200/200/200/9ms a=addr:127.0.0.1/1ms d=refused/1ms i=refused/1ms", true}, {"burst one lost", resolverJudge(resolvConf, "burst", bothLookups), "127.0.0.1:53 burst=200/199/199/2500ms a=addr:127.0.0.1/1ms d=refused/1ms i=refused/1ms", false}, {"burst resolved", resolverJudge(resolvConf, "burst", bothLookups), "127.0.0.1:53 burst=200/200/0/9ms a=addr:127.0.0.1/1ms d=refused/1ms i=refused/1ms", false}, {"burst short", resolverJudge(resolvConf, "burst", bothLookups), "127.0.0.1:53 burst=10/10/10/9ms a=addr:127.0.0.1/1ms d=refused/1ms i=refused/1ms", false}, {"burst missing", resolverJudge(resolvConf, "burst", bothLookups), "127.0.0.1:53 a=addr:127.0.0.1/1ms d=refused/1ms i=refused/1ms", false}, {"burst then dead", resolverJudge(resolvConf, "burst", bothLookups), "127.0.0.1:53 burst=200/200/200/9ms a=timeout/2500ms d=timeout/2500ms i=timeout/2500ms", false}}
 	for _, c := range cases {
 		pass, detail, err := c.judge(context.Background(), session(c.detail))
 		if err != nil || pass != c.pass {

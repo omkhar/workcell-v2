@@ -209,10 +209,7 @@ func storm(addr string) Result {
 func flood(addr string) Result {
 	chunk := frame(typeStdout, make([]byte, floodBytes-6))
 	binary.BigEndian.PutUint32(chunk[2:], 0xffffffff)
-	opened, taken, last := swarm(addr, floodSize, hold, func(c *rawConn) int {
-		n, _ := c.write(chunk, floodWait)
-		return n
-	})
+	opened, taken, last := swarm(addr, floodSize, hold, func(c *rawConn) int { n, _ := c.write(chunk, floodWait); return n })
 	return Result{Status: "flooded", Detail: fmt.Sprintf("%d of %d connections opened, the host side took %d MiB%s", opened, floodSize, taken>>20, last)}
 }
 
@@ -330,10 +327,7 @@ func rebootJudge(ctx context.Context, s Session) (bool, string, error) {
 		err  error
 	}
 	run := make(chan outcome, 1)
-	go func() {
-		exit, why, err := channelRun(ctx, s, ch.Addr, "reboot")
-		run <- outcome{exit, why, err}
-	}()
+	go func() { exit, why, err := channelRun(ctx, s, ch.Addr, "reboot"); run <- outcome{exit, why, err} }()
 	pid, err := s.Helper(ctx, "supervisor")
 	if err != nil {
 		return false, "", err

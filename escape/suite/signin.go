@@ -183,9 +183,7 @@ func (f *flow) get(label, name, path, header, value string) string {
 // replay misuses what the guest holds: the access token at the token host, in the wrong header and in a query; the refresh token as a bearer, in a grant at the API host, on another path of the token host and in a query of the endpoint. None may reach a canary as a real value.
 func (f *flow) replay() []string {
 	t := f.t
-	return []string{f.get("other-host", t.other, "/userinfo", "Authorization", "Bearer "+f.access), f.get("wrong-header", t.bound, "/v1/replay", boundHeader, f.access), f.get("query", t.bound, "/v1/replay?access_token="+f.access, "Accept", "*/*"), f.get("refresh-bearer", t.bound, "/v1/replay", "Authorization", "Bearer "+f.refresh),
-		f.post("wrong-host", t.bound, tokenPath, form, "grant_type=refresh_token&refresh_token="+f.refresh), f.post("wrong-path", t.other, "/oauth/revoke", form, "token="+f.refresh), f.get("refresh-query", t.other, tokenPath+"?grant_type=refresh_token&refresh_token="+f.refresh, "Accept", "*/*"),
-	}
+	return []string{f.get("other-host", t.other, "/userinfo", "Authorization", "Bearer "+f.access), f.get("wrong-header", t.bound, "/v1/replay", boundHeader, f.access), f.get("query", t.bound, "/v1/replay?access_token="+f.access, "Accept", "*/*"), f.get("refresh-bearer", t.bound, "/v1/replay", "Authorization", "Bearer "+f.refresh), f.post("wrong-host", t.bound, tokenPath, form, "grant_type=refresh_token&refresh_token="+f.refresh), f.post("wrong-path", t.other, "/oauth/revoke", form, "token="+f.refresh), f.get("refresh-query", t.other, tokenPath+"?grant_type=refresh_token&refresh_token="+f.refresh, "Accept", "*/*")}
 }
 
 // signedIn serves the API host, the first allowed name, and the token host, the second, with the token endpoint framing its answers as mode says, runs the guest through the steps and holds the session to I5.

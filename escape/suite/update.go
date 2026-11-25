@@ -67,10 +67,7 @@ func pae(payload []byte) []byte {
 }
 
 // keyID is the hex SHA-256 of the public key, as ADR-004 derives it.
-func keyID(pub ed25519.PublicKey) string {
-	h := sha256.Sum256(pub)
-	return hex.EncodeToString(h[:])
-}
+func keyID(pub ed25519.PublicKey) string { h := sha256.Sum256(pub); return hex.EncodeToString(h[:]) }
 
 // sign wraps m in an envelope with one signature by key.
 func sign(m manifest, key ed25519.PrivateKey) (envelope, error) {
@@ -128,11 +125,7 @@ func (u *upstream) set(path string, h http.HandlerFunc) {
 	defer u.mu.Unlock()
 	u.paths[path] = h
 }
-func (u *upstream) requests() []string {
-	u.mu.Lock()
-	defer u.mu.Unlock()
-	return slices.Clone(u.seen)
-}
+func (u *upstream) requests() []string { u.mu.Lock(); defer u.mu.Unlock(); return slices.Clone(u.seen) }
 
 // whole serves b; cut promises all of b, sends half and hangs up; moved sends the client on to url.
 func whole(b []byte) http.HandlerFunc {
