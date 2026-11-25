@@ -7162,3 +7162,36 @@ reaches `_method` there; an older PHP was not probed. Fix unit S-F58.
 Sweep 3 now stands at nine mediums (C65, C66, C67, C68, C69, C71 and C72, fixed; C73 and C74, open) and two lows
 (C64 and C70, both fixed), with one unconfirmed candidate still a unit (S-1021, the list-word residue of C72). The
 fix units are S-F57 (C73) and S-F58 (C74); the next candidate number is C75 and the next fix unit S-F59.
+
+C73 FIXED by S-F57, commits 8003d8b (the test moved), e9f8301 (the fix) and f26f004 (the fix round) (PR #322).
+also in v1 main: egressproxy/terminate.go. The shape is the first of the three: a rule that names a method refuses,
+with 403 binding_mismatch, before the broker is asked and with a deny record, a request that has a body and whose
+Content-Type holds "json" anywhere in any of its values, in any letter case, as it refuses a form (C71). The test
+is on the raw header and not on the parsed media type, since Laravel reads the raw header for "/json" or "+json",
+so a parameter that holds the word and a second value are refused too. The body is never read: no buffer and no
+parser of guest bytes was added (I10, I12). The orchestrator chose the shape before the redteam wrote its rows,
+for three reasons: this is the last sweep, so a new reader of guest bytes would land with no audit after it; the
+second shape needs lines the budget lacks and a fuzz target; and S-F55 chose the same refusal for forms.
+
+The fix round, from the one finding of the review (I5, medium, guest root choosing its own headers; R2 held, every
+step run): a request with Content-Type: text/plain beside Content_Type: application/json was served, since Go keeps
+the second name as a header of its own, the proxy forwards both with Content-Type first, and PHP's built-in server
+folds the second onto CONTENT_TYPE, a documented behaviour and no defect. admits now also refuses, under a method
+rule, any body sent beside a header that cgiName spells content_type other than Content-Type itself. That closes
+the same spelling for the form branch of C71.
+
+Honest cost: a method rule serves no JSON body at all, so for an API that takes JSON the operator narrows by path
+alone, and docs/policy.md says so in place of "Send JSON". Also refused under a method rule, though no JSON to
+Laravel: APPLICATION/JSON, application/x-ndjson, a parameter that holds the word json, and any body beside a second
+spelling of the header. A request with no body, a body of another type (text/plain, XML, octet-stream) and every
+rule that names no method are as before. The 403 text of a method rule ends "with no form or JSON body". The test:
+TestC73JSONMethodOverride in internal/proxy/c73_test.go, ten rows; on main's terminate.go six fail (the plain JSON
+body, the three override rows, the chunked one and the two-header one), on e9f8301 the two-header row alone, on
+f26f004 none, plain and under -race. Its control rows: a bare POST, a JSON type with no body and a text/plain body
+are served with the secret, and the plain DELETE gets the 403. The JSON control row of c71_test.go, which this
+shape refuses, became a text/plain row. As S-F55's record holds, a rule on the method is not made whole by listing
+what an upstream might read; this fix lists one more reading and the maintainer may still prefer the third shape.
+
+Sweep 3 now stands at nine mediums (C65, C66, C67, C68, C69, C71, C72 and C73, fixed; C74, open) and two lows (C64
+and C70, both fixed), with one unconfirmed candidate still a unit (S-1021, the list-word residue of C72). The open
+fix unit is S-F58 (C74); the next candidate number is C75 and the next fix unit S-F59.
