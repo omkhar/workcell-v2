@@ -106,8 +106,7 @@ type flow struct {
 	got             []string
 }
 
-// signinProbe is an agent signing in. args: the API name and address, the token host's name and address, "-", the export path, the credential variable, then the steps: signin (POST a code grant), refresh and refresh-json (POST the refresh token it holds, as a form or as JSON), refresh-bad (the same with a scope the provider refuses), api (GET the API with the access token it holds as a bearer),
-// replay (misuse both tokens), scan (persist what it got and hunt for real tokens as secretProbe does). It reports every token value it was given and each step's status, or the scan's findings.
+// signinProbe is an agent signing in. args: the API name and address, the token host's name and address, "-", the export path, the credential variable, then the steps: signin (POST a code grant), refresh and refresh-json (POST the refresh token it holds, as a form or as JSON), refresh-bad (the same with a scope the provider refuses), api (GET the API with the access token it holds as a bearer), replay (misuse both tokens), scan (persist what it got and hunt for real tokens as secretProbe does). It reports every token value it was given and each step's status, or the scan's findings.
 func signinProbe(args []string) Result {
 	t, bad := parseTargets(args)
 	if bad.Status != "" {

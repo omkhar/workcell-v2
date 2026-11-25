@@ -26,8 +26,7 @@ import (
 	"time"
 )
 
-// control is the plain container of SPEC T2: new mount, pid, uts and ipc namespaces, the host's network and root shared, no cap on what it logs. Its channel is a unix socket served by naiveHost for each run; the command, pid 1 of its namespace, holds the guest end as descriptor 3. Every escape test must fail here.
-type control struct {
+type control struct { // control is the plain container of SPEC T2: new mount, pid, uts and ipc namespaces, the host's network and root shared, no cap on what it logs. Its channel is a unix socket served by naiveHost for each run; the command, pid 1 of its namespace, holds the guest end as descriptor 3. Every escape test must fail here.
 	dir, payload, workspace string
 	env                     []string // what a naive sandbox exports to the guest: the real secret
 	command                 string   // the provider a run starts by name, instead of the payload (Config.Command)
@@ -39,11 +38,9 @@ type control struct {
 	update                  *UpdateConfig     // the channel a naive start installs from, every start
 }
 
-// controlLoader runs as pid 1 of the run's namespaces: $0 the session's resolv.conf, $1 the command, then its arguments.
-const controlLoader = `mount --make-rprivate / && mount --bind "$0" /etc/resolv.conf || { echo "control: cannot bind the session's resolv.conf over /etc/resolv.conf" >&2; exit 125; }; exec "$@"`
-
-var helperNames = []string{"proxy", "resolver", "broker", "supervisor"} // helperNames are the session's helpers: each a payload that sleeps, started on first use.
-func newControl() (Sandbox, error)                                      { return &control{}, nil }
+const controlLoader = `mount --make-rprivate / && mount --bind "$0" /etc/resolv.conf || { echo "control: cannot bind the session's resolv.conf over /etc/resolv.conf" >&2; exit 125; }; exec "$@"` // controlLoader runs as pid 1 of the run's namespaces: $0 the session's resolv.conf, $1 the command, then its arguments.
+var helperNames = []string{"proxy", "resolver", "broker", "supervisor"}                                                                                                                            // helperNames are the session's helpers: each a payload that sleeps, started on first use.
+func newControl() (Sandbox, error)                                                                                                                                                                 { return &control{}, nil }
 func (c *control) Start(_ context.Context, cfg Config) (string, error) {
 	dir, err := os.MkdirTemp("", "escape-control-")
 	if err != nil {

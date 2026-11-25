@@ -17,9 +17,7 @@ import (
 	"time"
 )
 
-// The pinned arm64 guest: Firecracker's CI kernel, which boots under Virtualization.framework (measured in U-102). The product drives the framework in-process, so there is no hypervisor binary to fetch, and the binary that does it must carry the virtualization entitlement.
-const guestArch, vmlinuxURL, vmlinuxSum = "arm64", "https://s3.amazonaws.com/spec.ccfc.min/firecracker-ci/v1.14/aarch64/vmlinux-6.1.155", "61baeae1ac6197be4fc5c71fa78df266acdc33c54570290d2f611c2b42c105be"
-
+const guestArch, vmlinuxURL, vmlinuxSum = "arm64", "https://s3.amazonaws.com/spec.ccfc.min/firecracker-ci/v1.14/aarch64/vmlinux-6.1.155", "61baeae1ac6197be4fc5c71fa78df266acdc33c54570290d2f611c2b42c105be" // The pinned arm64 guest: Firecracker's CI kernel, which boots under Virtualization.framework (measured in U-102). The product drives the framework in-process, so there is no hypervisor binary to fetch, and the binary that does it must carry the virtualization entitlement.
 // entitlements is the one entitlement a process needs to start a VM.
 const entitlements = `<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd"><plist version="1.0"><dict><key>com.apple.security.virtualization</key><true/></dict></plist>`
 
@@ -34,9 +32,7 @@ func hostReady() error {
 	return nil
 }
 
-// A Mac has no namespaces to give a session a network and a resolver of its own. The maintainer set this host up instead, once, as root; the adapter relies on it, checks for it and never changes it: lo0 holds landing, Neighbour and the judge's addresses as aliases, so nothing bound at one is reached from off the host (SPEC T8); CanaryAddr is no interface's and in no prefix of one, since the
-// product dials nothing inside a network of the host's, and as macOS binds no socket at such an address a host route keeps it on lo0, where pf hands it to landing; /etc/resolver/<judgeDomain> sends every question for a name under it to the judge's resolver, as `scutil --dns` shows, the product resolving through the system as any program would; and bindHelper, root-owned, which sudo runs for the
-// suite's user without a password, binds a port below 1024 at an alias of lo0 and hands the descriptor over as suite.Bind does. No other sudo exists.
+// A Mac has no namespaces to give a session a network and a resolver of its own. The maintainer set this host up instead, once, as root; the adapter relies on it, checks for it and never changes it: lo0 holds landing, Neighbour and the judge's addresses as aliases, so nothing bound at one is reached from off the host (SPEC T8); CanaryAddr is no interface's and in no prefix of one, since the product dials nothing inside a network of the host's, and as macOS binds no socket at such an address a host route keeps it on lo0, where pf hands it to landing; /etc/resolver/<judgeDomain> sends every question for a name under it to the judge's resolver, as `scutil --dns` shows, the product resolving through the system as any program would; and bindHelper, root-owned, which sudo runs for the suite's user without a password, binds a port below 1024 at an alias of lo0 and hands the descriptor over as suite.Bind does. No other sudo exists.
 const steersResolver, judgeDomain, bindHelper = true, "escape.test", "/usr/local/libexec/workcell-escape/workcell-bind"
 const landing = "192.175.48.1" // the host's address in IsolatedNet
 // steered checks that every question for judgeDomain reaches resolver and nowhere else (T8).
@@ -58,7 +54,6 @@ func steered(_, resolver string, _, argv []string, _ int) ([]string, error) {
 }
 
 type holder struct{ pid int } // holder is a session's own network on a Mac: the host's own, in the shape isolate checks; pid is the suite's own.
-
 // isolate checks that shape by what it does, and sends nothing before the route is known to end on lo0 (T8).
 func isolate(_, _ string, _ bool) (*holder, error) { // unsupported refused OnLink before this
 	if err := shaped(); err != nil {
@@ -123,7 +118,6 @@ func rootBindArgv(network, addr, path, _ string, _ int) []string {
 func productProcess(root int, _ string) (int, bool) { return root, true }
 
 func hypervisor(context.Context, string) error { return nil } // hypervisor fetches nothing: Virtualization.framework is part of the OS.
-
 // hostBuild compiles pkg for this Mac, with cgo, which the framework needs, under the build overlay file named when one is.
 func hostBuild(ctx context.Context, repo, out, pkg, overlay string) error {
 	return goBuild(ctx, repo, out, pkg, overlay, "CGO_ENABLED=1", "GOOS=darwin", "GOARCH=arm64")

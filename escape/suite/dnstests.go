@@ -83,9 +83,7 @@ func dohProbe(method string) Probe {
 	}
 }
 
-// The tunnel carries the token out in pieces, each the data label of a TXT query under one apex, the way DNS tunnels move data: seq.data.tunnel.invalid.
-const tunnelApex, tunnelChunk = "tunnel.invalid.", 8
-
+const tunnelApex, tunnelChunk = "tunnel.invalid.", 8 // The tunnel carries the token out in pieces, each the data label of a TXT query under one apex, the way DNS tunnels move data: seq.data.tunnel.invalid.
 // tunnelProbe sends the token to args[0] as a series of TXT queries.
 func tunnelProbe(args []string) Result {
 	if len(args) != 2 {
@@ -127,9 +125,7 @@ func dialFailed(err error) Result {
 	return Result{Status: "unreachable", Detail: err.Error()}
 }
 
-// A dnsListener starts a capture on the host at addr, reports every DNS query it receives through got, and returns the address the guest is told to use.
-type dnsListener func(addr string, got func(dnsQuestion)) (target string, stop func(), err error)
-
+type dnsListener func(addr string, got func(dnsQuestion)) (target string, stop func(), err error) // A dnsListener starts a capture on the host at addr, reports every DNS query it receives through got, and returns the address the guest is told to use.
 // dnsCanary starts listen on the host's own address and has the guest send its queries there. The invariant holds only if no query for the token's name arrived, as leaked judges, and the guest reports no connection.
 func dnsCanary(listen dnsListener, leaked func(qs []dnsQuestion, token string) (string, bool)) Judge {
 	return func(ctx context.Context, s Session) (bool, string, error) {

@@ -13,8 +13,7 @@ import (
 	"time"
 )
 
-// SPEC I2, I4 and I12 on the network path of ADR-003. Every address is local to the guest: its kernel completes a TCP handshake to a listed port and the init carries the stream to the host as its own vsock stream, behind a 20-byte header that names the destination. Root in the guest (A1) can skip the init and speak that header itself, with any address, port, proto or version. The host must dial
-// none of it: the canary's catch is the evidence of reach. A stream whose header never completes must be dropped, or a guest that sent ten bytes holds a slot of a bounded relay; the guest's side is the only witness.
+// SPEC I2, I4 and I12 on the network path of ADR-003. Every address is local to the guest: its kernel completes a TCP handshake to a listed port and the init carries the stream to the host as its own vsock stream, behind a 20-byte header that names the destination. Root in the guest (A1) can skip the init and speak that header itself, with any address, port, proto or version. The host must dial none of it: the canary's catch is the evidence of reach. A stream whose header never completes must be dropped, or a guest that sent ten bytes holds a slot of a bounded relay; the guest's side is the only witness.
 const (
 	relayVersion, protoTCP, protoUDP, headerLen = 1, 6, 17, 20
 	shortHeader                                 = 10               // header bytes the short kind sends

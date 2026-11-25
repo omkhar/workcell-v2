@@ -17,9 +17,7 @@ func TestRelayHeader(t *testing.T) {
 	cases := []struct {
 		ip   string
 		want []byte // the 16 address bytes
-	}{{"192.0.2.2", []byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xff, 0xff, 192, 0, 2, 2}}, {"::ffff:192.0.2.2", []byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xff, 0xff, 192, 0, 2, 2}},
-		{"2001:db8::7", []byte{0x20, 1, 0xd, 0xb8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 7}}, {"", make([]byte, 16)},
-	}
+	}{{"192.0.2.2", []byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xff, 0xff, 192, 0, 2, 2}}, {"::ffff:192.0.2.2", []byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xff, 0xff, 192, 0, 2, 2}}, {"2001:db8::7", []byte{0x20, 1, 0xd, 0xb8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 7}}, {"", make([]byte, 16)}}
 	for _, c := range cases {
 		h := relayHeader(relayVersion, protoTCP, net.ParseIP(c.ip), 443)
 		if len(h) != headerLen || h[0] != 1 || h[1] != 6 || h[2] != 1 || h[3] != 0xbb || !bytes.Equal(h[4:], c.want) {
@@ -42,9 +40,7 @@ func TestVerdict(t *testing.T) {
 		name         string
 		got          [][]byte
 		stream, pass bool
-	}{{"nothing on a stream canary", nil, true, true}, {"nothing on a datagram canary", nil, false, true}, {"the token on a stream canary", [][]byte{[]byte("tok\n")}, true, false}, {"the token on a datagram canary", [][]byte{[]byte("x"), []byte("tok\n")}, false, false},
-		{"a connection without the token", [][]byte{[]byte("")}, true, false}, {"a stray datagram", [][]byte{[]byte("x\n")}, false, true},
-	}
+	}{{"nothing on a stream canary", nil, true, true}, {"nothing on a datagram canary", nil, false, true}, {"the token on a stream canary", [][]byte{[]byte("tok\n")}, true, false}, {"the token on a datagram canary", [][]byte{[]byte("x"), []byte("tok\n")}, false, false}, {"a connection without the token", [][]byte{[]byte("")}, true, false}, {"a stray datagram", [][]byte{[]byte("x\n")}, false, true}}
 	for _, c := range cases {
 		pass, detail := verdict(c.got, lineToken, want, "127.0.0.1:1", c.stream, "guest says x")
 		if pass != c.pass || detail == "" {

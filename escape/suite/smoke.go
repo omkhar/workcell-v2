@@ -25,8 +25,7 @@ import (
 	"time"
 )
 
-// The pin smoke rows (B6), one per provider that installs a binary. The judge serves a fake Messages API under the provider's first host (SPEC T8) and has the host install a fixture agent from its own loopback: it prints its version, and the probe makes the session's call itself, the guest having no curl. The host must refuse bytes whose digest is not the row's, which a naive sandbox does not.
-// Then, if the provider's row under pins/ differs from the base branch's (GATE_BASE, else origin/main), the host installs that artifact from upstream by URL and digest (B8) and the real agent runs in the guest: --version, then the smoke command below with the placeholder in the provider's variable. Only the real key makes the fake answer. A provider with no command is smoked by --version and the probe's own call, as the fixture is.
+// The pin smoke rows (B6), one per provider that installs a binary. The judge serves a fake Messages API under the provider's first host (SPEC T8) and has the host install a fixture agent from its own loopback: it prints its version, and the probe makes the session's call itself, the guest having no curl. The host must refuse bytes whose digest is not the row's, which a naive sandbox does not. Then, if the provider's row under pins/ differs from the base branch's (GATE_BASE, else origin/main), the host installs that artifact from upstream by URL and digest (B8) and the real agent runs in the guest: --version, then the smoke command below with the placeholder in the provider's variable. Only the real key makes the fake answer. A provider with no command is smoked by --version and the probe's own call, as the fixture is.
 var smokeCommands = map[string][]string{"claude": {"-p", "hi", "--output-format", "text"}}
 
 const smokeVersion = "5.5.5"

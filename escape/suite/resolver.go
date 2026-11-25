@@ -19,12 +19,9 @@ import (
 	"time"
 )
 
-// The resolver tests (I3) ask the resolver named in the guest's /etc/resolv.conf what it does with a name: an allowed name must come back with an address, and every other name must be refused, promptly, with a DNS answer that carries no address. A resolver that answers nothing passes the leak tests above and fails here: the invariant says the host resolver answers. The probe speaks the wire
-// format itself (dns.go), so nothing in the guest's libc stands between it and the resolver; a response that never came is a failure too. The control sandbox (SPEC T2) names a naive resolver that answers every name, so every row here fails there.
+// The resolver tests (I3) ask the resolver named in the guest's /etc/resolv.conf what it does with a name: an allowed name must come back with an address, and every other name must be refused, promptly, with a DNS answer that carries no address. A resolver that answers nothing passes the leak tests above and fails here: the invariant says the host resolver answers. The probe speaks the wire format itself (dns.go), so nothing in the guest's libc stands between it and the resolver; a response that never came is a failure too. The control sandbox (SPEC T2) names a naive resolver that answers every name, so every row here fails there.
 
-// A lookup is one question a judge has the guest ask, and what the invariant demands of the answer: "addr", an address; "refused", a DNS answer with no address (REFUSED, NXDOMAIN, or NOERROR and no record), or "answered", any DNS answer at all. Each must come within fast.
-type lookup struct{ label, spec, want string }
-
+type lookup struct{ label, spec, want string } // A lookup is one question a judge has the guest ask, and what the invariant demands of the answer: "addr", an address; "refused", a DNS answer with no address (REFUSED, NXDOMAIN, or NOERROR and no record), or "answered", any DNS answer at all. Each must come within fast.
 // The spec a judge hands the probe for one question: "type:name", where type is A, AAAA, TXT, PTR or ANY, "+edns" after it adds an OPT record, and TOKEN in the name stands for the run's token.
 const fast = 2 * time.Second                   // a refusal or an answer must come within this
 const lookupWait = fast + 500*time.Millisecond // the probe's deadline, past fast so that slow is told from silent
@@ -134,8 +131,7 @@ func outcome(r dnsReply) string {
 	return "nodata"
 }
 
-// lookupProbe asks the resolver args[0] names, every "label=spec" in args[3:], all at once, and reports "label=outcome/ms" for each. args[1] is the token. First, as args[2] says, it sends nothing ("plain"), the hostile datagrams of garbage ("garbage"), each given garbageWait for an answer (the host must survive them, I12, and answer and refuse as before), or a burst of burstSize queries from one
-// socket ("burst"), counting what came back within lookupWait; the burst is reported as one more field, "burst=sent/answered/refused/ms". Every question goes at once so that the run stays short when the resolver answers nothing.
+// lookupProbe asks the resolver args[0] names, every "label=spec" in args[3:], all at once, and reports "label=outcome/ms" for each. args[1] is the token. First, as args[2] says, it sends nothing ("plain"), the hostile datagrams of garbage ("garbage"), each given garbageWait for an answer (the host must survive them, I12, and answer and refuse as before), or a burst of burstSize queries from one socket ("burst"), counting what came back within lookupWait; the burst is reported as one more field, "burst=sent/answered/refused/ms". Every question goes at once so that the run stays short when the resolver answers nothing.
 func lookupProbe(args []string) Result {
 	if len(args) < 4 {
 		return Result{Status: "error", Detail: "want target, token, plain|garbage|burst and label=spec..."}

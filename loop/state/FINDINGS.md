@@ -6804,3 +6804,213 @@ the redteam, the builder and the reviewer, the reviewer in a worktree of main wi
 address or to any third party (S12). Product 15000 of 15000, test 28484 of 28500. Hosted on 380fd3d: gate on a real
 VM passed 147, failed 0, errors 0, the eleven I4 rebind rows among them; gate-macos, gate-arm64 and guard green.
 Sweep 3 now stands at five mediums (C65, C66, C67, C68 and C69, all fixed) and two lows (C64 and C70, both fixed).
+
+## S-1007, sweep 3: secrets: sources, placeholders, sign-in token swap, git credentials, logs, crash output (I5), as built at main 0b725e0
+
+Sweep 3 (S8), the last the SPEC allows, fresh context (S3), the whole surface read as built after S-F1 to S-F54,
+not a diff. Auditor on the top tier in the cloud session, which has no hypervisor; nothing of this audit needed
+a VM. The auditor wrote its own trust boundary before it opened any earlier record.
+
+Trust boundary. Guest root and hostile model output own every byte of a terminated HTTP/1.1 request once
+S-1005's parser has it: method, request target, header names and values (the header that carries the
+placeholder, Basic values, Content-Type, Accept-Encoding, Host), the body (read whole only at a claimed token
+endpoint, 256 KiB; otherwise streamed unread), and the count, rate and timing of requests. They own the guest's
+environment, disk and memory, where only placeholders arrive: wcph- plus 32 hex digits, 16 bytes of crypto/rand
+per rule and per sign-in row, minted per session by bindings in cmd/workcell/policy.go and handed to the guest
+through guest.Exec.Env alone. The repository owns the working directory and workcell.toml, which can only
+narrow, and under --mount it writes the directory live; the export follows no symlink. The network attacker owns
+no byte here: an upstream is verified against the system pool, plus an absolute SSL_CERT_FILE, for the SNI
+host; an allowed provider's answer shape, router and framework are preconditions and not attacks. The operator,
+out of scope, owns the [[secret]] rows and the helper programs. Entry points, in order: the handler of
+serveTerminated (opaque target 400, TRACE and CONNECT 405, sameHost 421, then per rule placeholderForm, admits
+403 and broker.Lookup; tokenEndpoint, then tokenRequest and swapRefresh 502; carriesPlaceholder 502), the
+ReverseProxy rewritten to the SNI host, and tokenResponse, readToken, learn, hide and tokenAnswer on the answer.
+Authority: the supervisor at the operator's uid reads a value per use (a file open, or a child at a fixed or
+operator-named absolute path with a scrubbed environment, cwd /, stdin /dev/null and no shell), writes it into
+one outgoing header or token body, holds sign-in tokens for one generation in broker memory, holds the session
+CA key, and writes the fsynced ledger. From this surface the ledger receives config-derived bytes only (the
+canonical allowlisted host, the rule's lower-cased header, the row's name, constant results). Nothing of the
+guest's reaches `explain`, which prints config; `log` prints JSON-escaped lines; the guest gets back 400, 403,
+405, 421 and 502 texts that name the header and scope from config and quote its own Host.
+
+Lenses (S9). Parsing and resources: file: wants an absolute path and a regular file, reads one line into one
+buffer of 64 KiB plus one, and refuses a CR; cmd: is strings.Fields of the operator's text, an absolute program,
+no shell, a 2 minute timeout and a 1 s WaitDelay whose expiry withholds, and its stderr is kept where %v never
+prints it; secret-tool and security run at fixed paths (both absent in the session, so only their fail-closed
+arms ran). A placeholder is matched by an exact pattern over 128 bits. Bounds: header block 64 KiB (431), token
+body and answer 256 KiB plus one before and after gzip (br, zstd and deflate refused), Basic 4 KiB of strict
+base64, ledger line 4 KiB, 1024 slots; hide's JSON pass and its replacements are linear in 256 KiB. The rate
+limit is 300 grants and 300 recorded denials per fixed minute, each a durable fsync. Fuzz, 20 s each, no
+crasher: FuzzCarriesPlaceholder (326274 runs), FuzzSwapRefresh (495332), FuzzHide (232957), FuzzParse (974961),
+FuzzEachLine (913; its seeds hold a 16 KiB line). No panic reachable from guest bytes was found, and net/http
+recovers a handler panic per connection into the discarded ErrorLog. Logic and state: placeholderForm swaps
+the bare, the "Bearer " and the Basic-password forms only, one value; admits judges the path on three readings
+(C10, C33) and refuses the six override names as header or query names (C68); tokenEndpoint claims on three
+readings; learn takes a 2xx only as one JSON object and hides the broker's tokens, the carried refresh token
+and what the answer issues, in plain, URL-encoded and JSON-escaped spellings; every 2xx of a sign-in host on an
+unclaimed path is read whole and judged by tokenAnswer (C55, C67). What no code does became the candidates:
+nothing reads a form body for the method override that every framework honouring X-HTTP-Method-Override also
+reads there (C71), and the check of C54 judges whole absolute words only, so a path spelled inside an option
+word is not judged (C72). Concurrency and check-to-use: the grant and token maps are fixed after NewBroker; held
+and Issue run under the mutex and hand out clones; Lookup's value goes into the header in the same goroutine;
+record follows Resolve, and a failed record zeroes and withholds; the carried refresh token covers the rotation
+race (C15); the proxy's write-once fields are set in Terminate before Serve. Cryptography and identity:
+placeholder entropy; a P-256 session CA of at most 24 h with critical name constraints and every IP range
+excluded, one leaf per allowed name; the upstream verified with the SNI host as ServerName, TLS 1.2 or later,
+HTTP/1.1, no client session cache; the ledger's seal is S-1010's. Failure modes: every error path answers 403,
+405, 421 or 502 or closes; a bad scheme, a missing tool, an unreadable file, a timeout or a WaitDelay expiry is
+a per-use broker_denied whose text the proxy drops; a closed, failing or nil ledger withholds every value; a
+ModifyResponse error is an empty 502; nothing fails open but the unread body of C71 and the unjudged option
+word of C72. Downgrade, rollback and replay: ALPN http/1.1 only; placeholders are fresh per session and refused
+anywhere else, so a persisted one is dead in the next session; the guest never holds a real refresh token; one
+generation is held and the replaced one zeroed; a replayed code grant gains nothing. Interaction between
+surfaces: audit records carry Event, Host, Header, Name and Result only, and the tests assert that no value is
+among them; `workcell log` prints the raw secret line and ocsfLine maps the same fields; `explain` prints name,
+header, host, narrowing, sign-in endpoint and variable, never a source; start-up and session errors name file,
+line, host, source path and directory, never a value; the guest's Exec environment is PATH, HOME, LANG, the
+trust and cache variables, the placeholders and TERM, and the init never logs it; loadPolicy's checks of C34,
+C54 and C58 and the narrowing of I13 hold as built (a row whose host is narrowed away goes, a sign-in row whose
+token host is narrowed away refuses the session, and --allow does not restore a dropped row).
+
+Earlier fixes on this surface, traced again in the code as built, all hold: C10 (S-F5), C11 (S-F6), C12
+(S-F7), C13 (S-F8), C15 (S-F9: tokenRequest clones the released refresh token before swapRefresh clears it,
+and learn seeds its swaps with it), C23 and C24 (S-F16), C27 (S-F19), C30 and C53 (S-F22, S-F36), C32 (S-F25),
+C33 (S-F26), C34 (S-F27), C35 (S-F28), C54 and C58 (S-F37, S-F41: the source loop over every user row, whole
+absolute words, ancestors resolved; its recorded residue is C72), C55 (S-F38) and C67 (S-F50), C68 (S-F51:
+overrides by header and by decoded query name; its recorded residue is C71). C16 (low, the helper process per
+use) is as it was. The tests of internal/secret, provider, audit, policy and proxy and of cmd/workcell are
+green on the unchanged tree, and go vet is clean.
+
+Coverage. Read in full: internal/secret (source.go, broker.go and every test); internal/proxy (terminate.go,
+signin.go, proxy.go, allowlist.go, routes_linux.go, routes_other.go and every test file, c10 to c69 included);
+internal/provider/provider.go, its test and the four TOML files; internal/policy/policy.go; internal/audit
+(audit.go, key.go, lines.go and audit_test.go); internal/guest (guest.go, trust.go); internal/wire/wire.go;
+cmd/workcell/{main,session,policy,explain,log,ocsf,run_vm,data,relay,caps,layer,cache,cache_vm}.go with
+policy_test.go, explain_test.go, log_test.go, verify_test.go, run_vm_test.go and the tests of C19, C54, C56 and
+C58; cmd/workcell-init/{main,exec,net}.go; escape/suite/{secrets,signin,https}.go and secrets_test.go;
+escape/enforced.txt; loop/SPEC.md; this file's map and its records of S-1005 in sweeps 1 and 3 and of S-1007
+in sweeps 1 and 2; PARKED.md whole. By search only: internal/workspace/workspace.go for its symlink and
+hard-link handling, and the head comments of the other c-tests of cmd/workcell. Not opened: internal/resolver,
+fileserve, vmm, rootfs and relay; cmd/workcell/{update,pull,pull_vm}.go and the bench, term and mount files;
+cmd/workcell-init/{mount,pull,root}.go; escape/sandbox and the rest of escape/suite; docs/; the sources of
+net/http and httputil, taken as the earlier records read them and confirmed by probe where a claim rested on
+them. Ran, from a scratch directory with the tree unchanged at the end: go test of the six packages, go vet
+of three, four probes by go test -overlay, three fix-shaped overlays and the five fuzz bursts. Every listener
+was a loopback socket that the probe itself started; no packet left the session and no provider was touched
+(S12, T8). Not run by the auditor: anything on a real VM, the escape suite, the gate, the macOS keychain path,
+secret-tool and security themselves, any real provider CLI, the four-hour fuzz of S10. No model declined a
+request, no safeguard re-ran one and no tool permission was refused to the auditor.
+
+Evidence gaps and notes, not findings (PARKED.md holds what a retro must weigh, R3). basicDecode and
+carriesPlaceholder take the scheme `Basic ` in that letter case alone, so a lower-case `basic` crosses
+unswapped: the upstream sees the placeholder and never the secret, so nothing leaks. At a claimed token
+endpoint an id_token and a nested access_token of a 2xx object still reach the guest as U-403 left them; no new
+lever. A cmd: helper inherits the supervisor's controlling terminal; no known helper reads it. A denial record
+carries host and header and no row name. FuzzEachLine runs about 45 inputs a second because of its 16 KiB seed.
+
+### S-1007 candidates, sweep 3
+
+C71. ID I5 ("A placeholder is useless at any destination other than the one it is bound to"), for a rule
+narrowed by method, as the product's own 403 text reads such a rule ("the credential in x-api-key is bound to
+method POST under path /v1/"). It is the residue that C68's record and the parked S-F51 line left "with no
+reproduction", now reproduced. Attacker: guest root or hostile model output, choosing the Content-Type and
+the body of its own request. Precondition it does not control: the bound host's framework takes the method
+from a form field of a POST body, a documented feature and not a defect of theirs: `_method` in
+Rack::MethodOverride (the default middleware of a Rails application that is not API-only), in Laravel and in
+Spring's HiddenHttpMethodFilter where enabled, and X-HTTP-Method-Override as a form field in ASP.NET MVC.
+Where: internal/proxy/terminate.go: admits judges r.Method, r.URL and the names of headers and query
+parameters; the rule loop of serveTerminated's handler then swaps the placeholder, and the ReverseProxy streams
+the body unread. also in v1 main: egressproxy/terminate.go. Input: a rule {Host, Header: x-api-key, Method:
+POST, Path: /v1/} with a known real secret; the guest sends POST /v1/x with the placeholder in X-Api-Key and a
+body of type application/x-www-form-urlencoded (`_method=DELETE&a=b`, `a=b&_method=put`,
+`X-HTTP-Method-Override=PATCH`) or multipart/form-data with one field `_method` = DELETE. Effect claimed: an
+upstream that honours the field serves DELETE, PUT or PATCH /v1/x with the real secret, where the plain DELETE
+/v1/x with the placeholder is answered 403 binding_mismatch with the secret withheld; no refusal is recorded.
+Auditor's evidence: a probe by go test -overlay on the package's own fixture: both control rows as expected
+and all four form rows served outside the rule with the real secret; under a fix-shaped overlay the four rows
+are 403 and the package is green under -race. Severity claimed: medium by S6, the class and grade of C68.
+
+Reproducing test: TestC71FormMethodOverride, package proxy, 45 lines, written by the redteam from the claim
+alone on the fixture of c68_test.go; its fake upstream is a loopback server that reads `_method` and
+X-HTTP-Method-Override from the POST form of the body, as Rack reads req.POST, and upper-cases it. Six rows: a
+plain POST with a JSON body must be served as "POST /v1/x real-secret" (a whole-body match, so a missing route
+or a fixture error fails the test), a plain DELETE must be refused, and four form rows fail when the request is
+served as a method outside the rule with the real secret. Run by go test -overlay against the real package,
+plain and under -race, by the redteam and again by the orchestrator, with the same four lines: (200, "DELETE
+/v1/x real-secret") for `_method=DELETE&a=b`, (200, "PUT /v1/x real-secret") for `a=b&_method=put`, (200,
+"PATCH /v1/x real-secret") for the X-HTTP-Method-Override field, and (200, "DELETE /v1/x real-secret") for
+the multipart field; the control rows pass. No VM was needed.
+
+Outcome: CONFIRMED at medium by the verifier, which ran the test itself, saw the same four lines and both
+control rows pass, so the form body is the only difference between a 403 and a served request, and traced the
+real path: listener, serveTerminated, admits (which judges method, URL and header and query names only), then
+the ReverseProxy with the secret swapped in and the body untouched. The fixture models the precondition as the
+fixtures of C68 and C10 did; the attacker is in scope and the test takes no power it lacks. Not intended and
+not accepted: docs/policy.md promises that any other request gets a 403 and that the value is not read, no
+accepted decision speaks of body overrides, and the residue was parked for want of a reproduction alone; C71
+is a sibling of C68 as C33 was of C10, not a duplicate. Not high, since a host without such a framework is not
+affected; not low, since the break is shown.
+
+What the fix costs, for the maintainer (S8): the auditor's smallest shape is two product lines in admits: parse
+the Content-Type with mime.ParseMediaType and, for a rule that narrows the method, refuse 403 binding_mismatch
+a request whose body is application/x-www-form-urlencoded or multipart/form-data, before the broker is asked.
+Its cost is honest and visible: a form-encoded POST under a method-narrowed rule is refused, so an operator
+who needs form posts drops `method`. The precise alternative reads the form body under the token bound and
+refuses only a field named in the override list, about eight lines, and it buffers bodies. Fix unit S-F55
+weighs the two. The redteam's variants that no row expresses are in PARKED.md.
+
+C72. ID I5 ("Real credential bytes never exist in guest memory, disk, environment, arguments or logs"), the
+class of C54 and C58. It is the residue that S-F37's parked line left with no reproduction ("a path inside an
+argument", which "the next S-1007 audit may take as a candidate"), now reproduced. Attacker: guest root or
+hostile model output, reading /workspace in clone mode or the live tree under --mount. Precondition it does
+not control: the operator's [[secret]] row has a cmd: source whose program lies outside the working directory
+and one of whose option words names a file under it, spelled inside the word: `--key=<cwd>/.secrets/x`,
+`-k<cwd>/.secrets/x`, a project-local key or kubeconfig handed to a helper. Where: cmd/workcell/policy.go,
+loadPolicy, the source loop: for cmd: the words are strings.Fields of the text, and a word is held against the
+working directory only when filepath.IsAbs of the whole word is true, so an option word that carries the path
+is never judged; internal/secret/source.go hands every word to the program as spelled. also in v1 main:
+credbroker/cli.go, as C54's record has it. Input: a user config that allows api.anthropic.com, with [[secret]]
+name "anthropic" and source `cmd:/bin/sh <outside>/get-key.sh --key=<cwd>/.secrets/anthropic.key` (or the -k
+spelling), the key file under the working directory, and `workcell run` there, clone or --mount. Effect
+claimed: loadPolicy accepts the row and mints a binding, where the same path as a bare word is refused with
+"source ... lies inside the directory ..., which the guest gets as /workspace: keep it outside"; the session
+goes past the export, so in clone mode workspace.ext4 holds the real key bytes while the guest is handed a
+placeholder for the same key, and under --mount the tree is served live, where the guest may also rewrite the
+file the helper reads (C54's chain). Auditor's evidence: a probe by go test -overlay in the pattern of
+c54_test.go: the bare word refused, loadPolicy nil for both option spellings, the key in the clone export and
+the mount session started; under a one-line overlay of policy.go the probe and the tests of C54, C58, bindings
+and the provider policy pass. Severity claimed: medium by the letter of S6 and the precedent of C54.
+
+Reproducing test: TestC72SecretPathInsideAnOptionWord, package main of cmd/workcell, 49 lines, written by the
+redteam from the claim alone with the helpers of c54_test.go (c19Data's dummy artifacts, loadPolicy, then
+session with a VMM that cannot start, so a session that was not refused fails at boot, after its export). Five
+arms: clone and mount for `--key=`, clone and mount for `-k`, and a control with the path as a bare word. An
+arm fails when a session other than the fixture's own exists and, in clone mode, its workspace.ext4 holds the
+key, or, under --mount, the session was made at all. Run by go test -overlay against the real package, plain
+and under -race, by the redteam and again by the orchestrator: the four option-word arms fail ("I5: session
+<id> started for cmd:/bin/sh OUT/get-key.sh --key=WORK/.secrets/anthropic.key ...", and the -k twin), each
+after "session: start firecracker: invalid argument", and the control arm passes. No VM was needed.
+
+Outcome: CONFIRMED at medium by the verifier, which ran the test itself with the same result and looked hard at
+the control arm, since that arm passes silently: its own probe saw the bare word refused by C54's line itself
+with no binding, and both option spellings return a nil error with one binding, so loadPolicy mints a
+placeholder for a key that it is about to export. The clone arms fail on the key's bytes in the image alone;
+the mount arms fail by mechanism, as C54's were graded. The attacker is in scope, and the test takes only the
+operator's step, the pattern of C54 and C58. Not intended and not accepted: the check exists to refuse this
+class, docs/policy.md never tells the operator to keep a source outside the working directory, and the parked
+line records a residue for this audit, not a ruling. An operator's row is the precondition of S6, not the
+exclusion of section 2, which is about malware and host root. Not low, because the clone arms show the break;
+not high, because a keychain or a config-directory source is not affected. Not someone else's project:
+policy.go is v2's own.
+
+What the fix costs, for the maintainer (S8): the auditor's shape is one product line in the source loop, before
+the ancestor walk: cut each word at its first slash (`w = w[max(strings.IndexByte(w, '/'), 0):]`), so that
+`--key=/x` and `-k/x` are judged as `/x`, a word with no slash or with a leading slash is as before, and a
+relative `a/b` becomes `/b`, which lies inside the working directory only when that directory is a root that
+holds() refuses already. Still not judged after it, as before: a program that reaches the working directory by
+its own logic, a relative path that the program resolves itself, and a bind mount beneath the directory. Fix
+unit S-F56. The redteam's variants that no arm expresses are in PARKED.md.
+
+Sweep 3 now stands at seven mediums (C65, C66, C67, C68 and C69, fixed; C71 and C72, open) and two lows (C64
+and C70, both fixed). The fix units are S-F55 (C71) and S-F56 (C72); the next candidate number is C73 and the
+next fix unit S-F57.

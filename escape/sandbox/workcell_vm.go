@@ -31,9 +31,7 @@ import (
 const maxDownload = 256 << 20 // more than any pinned download; a runaway body stops here
 const module = "github.com/omkhar/workcell/v2"
 
-// loader runs inside the guest: it takes the payload from stdin and runs it with the test's arguments.
-const loader = `cat >/tmp/p && chmod 755 /tmp/p && exec /tmp/p "$@"`
-
+const loader = `cat >/tmp/p && chmod 755 /tmp/p && exec /tmp/p "$@"` // loader runs inside the guest: it takes the payload from stdin and runs it with the test's arguments.
 // RootBind binds network/addr as root on the test host, by a helper that hands the socket back over a unix socket (rootBindArgv), in the session's own network when ns is set, "host" and "neighbour" in addr standing for the test host's addresses there (placed). A socket handed over dead is bound again.
 func RootBind(network, addr, payload string, ns int) (net.Listener, net.PacketConn, error) {
 	addr, err := placed(addr, ns != 0)
@@ -114,15 +112,13 @@ func handedOver(argv []string, network, where string) (*os.File, error) {
 	return os.NewFile(uintptr(fds[0]), network), nil
 }
 
-// prepared is what Prepare made, once per process, for every session.
-var prepared struct {
+var prepared struct { // prepared is what Prepare made, once per process, for every session.
 	bin  string // the workcell binary
 	xdg  string // XDG_DATA_HOME holding workcell/{vmlinux,initrd.cpio,root.ext4} and, on Linux, firecracker
 	repo string // the module's directory, for a build the product's rows are swapped in (Install)
 }
 
-// workcell is one session of the product: a directory holding its policy, its secret and its cwd, the payload and the caps. A VM lives only as long as one Exec or one Pull.
-type workcell struct {
+type workcell struct { // workcell is one session of the product: a directory holding its policy, its secret and its cwd, the payload and the caps. A VM lives only as long as one Exec or one Pull.
 	dir, payload string
 	bin          string // the product with the suite's row compiled in, once Install ran; "" is prepared.bin
 	cfg          Config

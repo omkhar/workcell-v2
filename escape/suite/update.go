@@ -278,8 +278,7 @@ func updateJudge(variant string) Judge {
 	}
 }
 
-// dailyJudge is I14 at the installer's second entry: the channel check a session start makes by itself, once a day, and the install the next start makes from what it kept, in a session of its own carrying the [update] table. Under a hostile variant the channel serves only that manifest, pinning 1.0.1: the first start must ask for channel.json (a client that never checks proves nothing), and after
-// a second nothing may be installed nor the pinned artifact fetched. Under "once" it serves the honest manifest: after three starts the layer must hold the honest artifact, exactly the digest pinned, and channel.json was asked for once.
+// dailyJudge is I14 at the installer's second entry: the channel check a session start makes by itself, once a day, and the install the next start makes from what it kept, in a session of its own carrying the [update] table. Under a hostile variant the channel serves only that manifest, pinning 1.0.1: the first start must ask for channel.json (a client that never checks proves nothing), and after a second nothing may be installed nor the pinned artifact fetched. Under "once" it serves the honest manifest: after three starts the layer must hold the honest artifact, exactly the digest pinned, and channel.json was asked for once.
 func dailyJudge(variant string) Judge {
 	return func(ctx context.Context, s Session) (bool, string, error) {
 		ch, err := openChannel()
