@@ -33,8 +33,7 @@ func repoProbe(args []string) Result {
 	}
 	script, r := func(path, effect, tail string) error { return os.WriteFile(path, hook(effect, tail), 0o755) }, repo{guest}
 	err := r.create(map[string]string{"dotdot": "\tbare = true\n", // The values are relative to the work tree, so that they hold wherever a pull brings it. dotdot: so that a snapshot of the work tree cannot replace HEAD
-		"dotgit": "\tbare = true\n", "config": "\tfsmonitor = .git/fsmonitor\n\thooksPath = .hooks\n[filter \"escape\"]\n\tclean = ./.git/filter\n\trequired = true\n",
-	}[shape])
+		"dotgit": "\tbare = true\n", "config": "\tfsmonitor = .git/fsmonitor\n\thooksPath = .hooks\n[filter \"escape\"]\n\tclean = ./.git/filter\n\trequired = true\n"}[shape])
 	if err == nil {
 		err = os.WriteFile(filepath.Join(guest, "work"), []byte(token+"\n"), 0o644)
 	}

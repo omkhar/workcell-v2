@@ -8279,3 +8279,181 @@ candidate number is C83 and the next fix unit S-F67.
 After S-F66: sweep 3 stands at two highs (C76 and C77, both fixed), fourteen mediums (C65, C66, C67, C68, C69, C71,
 C72, C73, C74, C75, C78, C80, C81 and C82, all fixed) and three lows (C64, C70 and C79, all fixed). Nothing waits
 under escape/_pending/. The next candidate number is C83 and the next fix unit S-F67.
+
+## S-1010, sweep 3: audit log, seal, key storage, `verify` (I9), as built at main 162ca36
+
+Sweep 3 (S8), the last the SPEC allows, fresh context (S3), the whole surface read in full as built after S-F1
+to S-F66, not a diff, at the claim commit 64029ee. One auditor run on the top tier, finished without a stop: no
+model declined and no safeguard re-ran a request. No hypervisor in the cloud session, and nothing on this surface
+needed a VM: every probe ran by go test -overlay, plain and under -race, on go1.27.4, against files and processes
+the probe itself made (S12). Result: one candidate, C83 (I9, low), given to the redteam as a claim only, run by
+the orchestrator, and ruled on by a verifier who saw the test and its logs and no one's reasoning; the record is
+below. Nothing was fixed (S1). The ported files of this surface (lines.go, proxy.go, terminate.go, allowlist.go,
+broker.go, source.go) hold nothing new, and run_vm.go is v2's own, so no v1 line is owed. Nothing is someone
+else's project (S14).
+
+Trust boundary. Guest root's bytes reach a record as: the raw SNI of a refused 443 connection (any bytes but a
+trailing dot, within a 16 KiB hello), the lower-cased name of a refused DNS query, the port of a relay header to
+an unserved port (a uint16, 0 admitted), the one byte of the exit status in session_end, and the rate and timing
+of attempts. The malicious repository, and guest root of an earlier --mount session, decide the shape of the tree
+that the export walks, and so whether session() reaches boot or removes the session directory: the one place an
+in-scope actor removes a record and does not add bytes to one (C83). Hostile model output arrives only through
+the guest. The network attacker reaches no record: dial_failed, resolve_failed and blocked_address are constants
+with the canonical host. Every other field is a constant, an allowlist key, or the operator's own config. All
+writers pass one audit.Log under one mutex: proxy.Deny and the Allowed record before a dial or a served request,
+the relay's port_not_allowed and the resolver's name_not_allowed through the one closure in boot, the broker's
+durable record, and the supervisor's session_start and session_end. The seal is ed25519 over a domain string, the
+session id and the SHA-256 chain head, 194 bytes rewritten in place after every line, under <data>/audit.key
+(0600, minted O_EXCL on first use). The readers are audit.Verify, ParseLine and the ported eachLine, and the log
+verb's feed, denyMessage and ocsfLine, which pass the one free-form field through SafeHost. Pull and bench boots
+pass a nil log, every Note and Record of which returns ErrClosed, and have no listeners.
+
+Parsing and resources. Probe TestProbeHostileFieldsThroughLogVerbs (package main): 18 hostile hosts (a newline
+with a forged session_end object, OSC, C1 CSI, U+202E, U+2028, U+0085, NUL, 300 bytes of 0xFF, 200 e-acute, the
+Kelvin sign, quotes, 16 KiB of x, `-mount`, `--allow`, `..`, empty, a trailing dot, punycode), each as
+sni_not_allowed, name_not_allowed and host_mismatch, through the real audit.Create, the log verb in text and in
+--format ocsf, and verify: 56 lines, the longest 860 bytes, no raw byte below 0x20 in the file, no control, C1,
+bidi or replacement rune in either output, verify exit 0. Probe TestProbeFullRealLogRefusesConnections (package
+proxy): 23,373 refusals with 253-byte hosts fill the 8 MiB in 0.76 s, about 32 microseconds each, so the fill is
+cheaper with long names than sweep 2 measured, and still ends at SoftLimit. FuzzEachLine ran 30 s with no
+crasher, but the engine reported 1,869 executions, so that run proves little (see the notes).
+
+Logic and state. The full, failed and closed states of append were traced again. New, by execution: after the
+log_full marker, append reads l.full only inside its overflow branch (audit.go, about line 129), so a record
+shorter than the one that tripped the marker still fits the slack, is written, and its connection is served; in
+the probe the marker was line 23375 of 23378, the next record was an allowed connect that was dialled, and the
+one after got ErrFull and EOF with no dial. Nothing is served unrecorded, so this is a note and not a candidate:
+the marker is not the last connection record, as the comment in audit.go and the sentence of the log verb say.
+Lifecycle records pass both limits; a failed write fails every later record, session_end included, which S-F16
+prints and S-F17 reports as incomplete.
+
+Concurrency and check-to-use gaps. Probe TestProbeNoteRacesSessionEnd (package audit): a goroutine spinning on
+Note while Record(session_end) and Close run as session()'s defer does: in 300 rounds no record landed after
+session_end, Verify was nil and the last record was session_end every time; had one landed, the verb would say
+incomplete, a false alarm and never a false intact. Probe TestProbeVerifyIntactWhileLockHeld: a session with no
+session_end is incomplete (exit 1) unlocked and intact (exit 0) while the session lock is held, which is what
+fetch() does for a pull since S-F46. No in-scope attacker can hold the lock, or make the supervisor die without
+its end record, so this is a note.
+
+Cryptography and identity. The seal binds the host key, the session id and the chain head; the id holds no
+space, so the domain string is unambiguous; the head is a fixed-width prefix of each hash input, so there is no
+split ambiguity; a session has one complete state, so every earlier (log, seal) pair is refused as incomplete
+(sweep 2's probe), and another host's key and a renamed sibling are refused (existing tests). Probe
+TestProbeSealTrailingBytes: bytes after the seal's two hex tokens are ignored and verify says intact; the
+signature still covers the head, so nothing is gained. LoadKey takes exactly 64 hex bytes and refuses any group
+or other mode bit. holds() keeps the key out of an export by spelling, by inode (S-F35) and by mount point
+(S-F48); the key is read into memory only.
+
+Failure modes. Every error path on the write side fails closed: ErrFull and a failed write both make handle
+close with EOF and dial nothing, the refusal sites refuse whatever their Note returned, and the broker
+withholds. One failure path removes a record: session() on a failed export, or a failed write of `inodes`,
+removes a session directory that already holds session_start and its seal. That is C83.
+
+Downgrade, rollback and replay. Only the v2 seal string is accepted; rollback pairs are refused by
+completeness; the update path moves provider layers only; updates.log is outside the chain and, since S-F1 and
+S-F43, carries no in-scope bytes but a once-per-session failed line for a provider this start installed.
+
+Interaction between surfaces. I5: no record carries a value, a placeholder or a guest Host header. I6: allowed
+hosts are canonical. I7: rm removes the record, by design. I10: SoftLimit and HardLimit bound the volume;
+durable records are 300 a minute through the broker's window, plus Issue at the provider's pace. I11: a full or
+failed log refuses every new connection (S-F16). I12: the audit package parses no guest bytes. I13: the deny
+line's remedy widens only by the operator's own act. Probe TestProbeResolverRefusalsUnrecorded: a refused name
+with class IN leaves one record; the same name with class CH, with opcode IQUERY or with QR set, and an allowed
+name with class CH, are refused or unanswered with no record, because the resolver refuses those shapes before
+it reads the name. The guest learns and reaches nothing more than with IN, so this is a note (PARKED's line on
+refused DNS shapes, now shown by execution).
+
+The fixes since sweep 2, asked for their second order. S-F44, S-F56, S-F59 and S-F62 to S-F66 refuse before
+newSession, and a refused start leaves no record, by design. S-F45 changed only how the holds, fetch and session
+messages quote the directory. S-F46: running() is now true during a pull, so the completeness rule of S-F17 is
+suspended while a session is pulled (the lock probe above). S-F48: more starts are refused before any record,
+and the key is kept out of one more class of export. S-F49 and S-F52 to S-F54: more blocked_address refusals
+with canonical hosts, bounded by SoftLimit; a failed route dump refuses every connect, with a record. S-F50,
+S-F51, S-F55, S-F57 and S-F58: the same two refusal reasons at the same Deny sites, and no new guest bytes in a
+record. S-F47, S-F60 and S-F61 touch no record. S-F43: fail returns before any marker when this start installed
+nothing. S-F16 and S-F17 hold as built: unrecorded_test.go is green and every Deny caller was traced again; the
+stub recorder of S-F16's test differs from a real log only at the slack after the marker.
+
+The parked lines of this surface, each tried again and ruled on, none with an in-scope break behind it: the
+seal rewritten per append, pull's nil log and updates.log outside the chain (a crash between append and seal
+fails closed); the S-1010 observations (trailing seal bytes and raw C1 and bidi runes in the file, both shown
+again); no VM row floods audit.log (S-F16's Go test and the real-log probe are the evidence, and R5 forbids
+asking for a row); the relay's reset where EOF was expected (wording); the log verb's sentence after log_full
+(now wrong twice: later connections are refused, and up to one record's slack is still recorded); the S-F17
+notes; the shed window of S-F8; an allowed connect with no outcome record (the record is the attempt); a
+granted ledger line before carriesPlaceholder refuses (a record too many); CPU per recorded refusal (measured,
+bounded by the fill); names that still resolve after log_full (design); the S-F46 notes (the second order
+above is added); sessions keyed by the spelling of the directory (reasoned only).
+
+Coverage. Read in full: internal/audit (audit.go, key.go, the ported lines.go, audit_test.go); in cmd/workcell
+log.go, ocsf.go, verify_test.go, log_test.go, run_vm.go, session.go, relay.go, data.go, main.go, pull_vm.go,
+bench_vm.go, policy.go and c19_test.go; in internal/proxy the ported proxy.go, terminate.go and allowlist.go,
+signin.go, routes_linux.go and unrecorded_test.go; the ported internal/secret/broker.go and source.go;
+internal/relay/relay.go; internal/resolver/resolver.go; internal/rootfs/ext4file.go; escape/suite/audit.go and
+lifecycle.go; parts of escape/sandbox/control_linux.go and workcell_vm.go; PARKED.md whole; the map, both
+earlier records of this surface and every sweep 3 passage that names the log, the seal, verify or the
+recorder; the diff of every surface file since sweep 2. Skimmed or by grep: internal/workspace/workspace.go,
+internal/rootfs/tree.go and ext4.go, Narrow in internal/policy, the Exit encoding in internal/guest, the
+record and fail functions of update.go, caps.go, the I9 rows of escape/suite/tests.go, the I9 block of
+docs/threat-model.md. Not opened: internal/vmm, internal/fileserve (the verifier read its mkdir path for C83),
+cmd/workcell-init, internal/wire, the rest of internal/rootfs and internal/policy, the other tests, and
+_legacy/; none of them writes or reads a record. Run: the five probe files by overlay, plain and under -race;
+the existing tests of internal/audit, cmd/workcell, internal/proxy, internal/secret, internal/relay and
+internal/resolver under -race, all green; FuzzEachLine for 30 s. No VM row, no macOS path, no end-to-end run of
+the binary. The probes were not kept as tests: none but C83's failed, and the test budget has no room.
+
+### S-1010 candidates, sweep 3
+
+C83. ID I9 (every lifecycle event is recorded on the host; the guest cannot suppress a record): the
+session_start record of a session whose workspace export fails. ATTACKER: guest root of an earlier --mount
+session of the same directory, by the product's own path: the file service makes a directory by Mkdirat on the
+parent's handle and bounds one name to 255 bytes, with no bound on depth or on the whole path, so 60 components
+of 100 bytes cost a few dozen mkdirs. The claim also named the malicious repository; the verifier found that
+half overstated, since git checks out by a path relative to the worktree and meets ENAMETOOLONG itself, and
+only a tool that extracts by component delivers such a tree. SEVERITY: low (S6: hardening, with no break of
+what I9 exists to account for). WHERE: cmd/workcell/run_vm.go, session(): newSession makes sessions/<id>/,
+takes the lock and records session_start with its seal; when workspace.Export then fails, or the write of
+`inodes` after it, session() runs os.RemoveAll on the directory and returns; the deferred session_end is then
+written through descriptors that are still open into the unlinked files, succeeds, and prints nothing. The
+export fails in internal/rootfs/ext4file.go, where the file is opened by its whole relative path. INPUT: a
+working directory that holds one non-empty file whose path below it passes PATH_MAX; then `workcell run` there
+in clone mode, the default. EFFECT: the operator sees one line, `copy ... file name too long`, and the host
+holds no session directory, no audit.log and no seal, so ls, log and verify show no trace of the start, where a
+start that fails at boot keeps session_start and session_end with result failed and verifies intact.
+Reproducing test, by the redteam from the claim alone: TestC83ExportFailureKeepsTheSessionRecord, package main
+of cmd/workcell, linux, 42 lines, parked at escape/_pending/S-F67/c83_test.go. Two arms share one body: the
+export arm makes the deep tree one component at a time and starts a session with dummy artifacts; the control
+arm starts one in a shallow directory, which fails at boot. Each wants an error, exactly one new session
+directory, a log with session_start and session_end with result failed, and verify exit 0. Run by the
+orchestrator by overlay, plain and under -race, logs saved: the export arm fails with "the session failed with
+copy ... file name too long and left 0 session directories besides the earlier one", and the control passes.
+Outcome: CONFIRMED at low by the verifier, who repeated both runs, traced the removal and the silent deferred
+write, and showed the mount guest's path through internal/fileserve. Not medium or higher: the export precedes
+boot, so no guest code ran, no connection was tried and no secret was released; mount mode never exports; the
+failure is printed to the operator; and the guest of the earlier session cannot touch its own session's record
+this way. Not a mere note: R2 is met, and a record that the product wrote is then destroyed without a word,
+which the invariant's wording forbids. This corrects two earlier rulings of the same gap (S-1008 and S-1013
+of sweep 1), which said no record was owed and that no in-scope attacker could trigger it: the mount guest
+can. The verifier's strongest argument against its own ruling: every refusal before boot (holds, named, a
+failed newSession) is "no session, no record", the C19 tests assert that, and the export is only the last such
+refusal; on that reading nothing is owed. For the fix unit: the export arm does not assert that the error is
+the export's own, so a change that only makes the deep path exportable would pass it through the boot
+failure; the test asks for the kept directory, so a fix that records session_start only after the export needs
+its want rewritten; a kept directory has no image and no `inodes`, so pull and diff in that directory would
+pick it as the newest session. S7 lists a low finding and does not demand its fix; the loop adds the unit as
+it did for C64, C70 and C79, and the maintainer may strike it. Not S14: run_vm.go, internal/workspace and
+internal/fileserve are v2's own, nothing ported, no v1 line. Fix unit: S-F67, below S-1010 in PLAN.md.
+
+The 42 lines of the parked test were paid by 42 lines of layout folds in nine files under escape/ (table rows
+and literals joined in https_test.go, tests.go, secrets_test.go, bench_test.go, channel_test.go, channel.go,
+smoke.go, repo.go and sandbox/workcell_linux.go, the comments of joined rows kept in row order at the end of
+the line): no test, row, arm or assertion removed. One join had first put the I10 row mount-disk-flood behind
+the comment mark of the row before it, which a count of text matches did not show; the orchestrator's
+comparison of each file's code with its comments stripped caught it before any commit, the redteam restored
+the row, and showed by go/ast and by the compiled tables, on HEAD and on this tree, that every joined literal
+has the same number of elements (All holds 147 rows with the same IDs and names in the same order). Product
+15000 of 15000, test 28500 of 28500.
+
+After S-1010: sweep 3 stands at two highs (C76 and C77, both fixed), fourteen mediums (C65, C66, C67, C68, C69,
+C71, C72, C73, C74, C75, C78, C80, C81 and C82, all fixed) and four lows (C64, C70 and C79, fixed; C83, open).
+C83's test waits under escape/_pending/S-F67/. The next candidate number is C84 and the next fix unit S-F68.

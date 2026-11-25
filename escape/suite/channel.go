@@ -193,9 +193,7 @@ func flood(addr string) Result {
 	return Result{Status: "flooded", Detail: fmt.Sprintf("%d of %d connections opened, the host side took %d MiB%s", opened, floodSize, taken>>20, last)}
 }
 
-var allowed = map[string][]int{"exit-empty": {0, rawCleanExit}, "ack-short": {0, rawCleanExit}, "unknown-type": {0, rawCleanExit}, "version-2": {0, rawCleanExit}, "exit-text": {rawCleanExit, rawNoStart}, "giant-header": {rawCleanExit}, "slow-drip": {rawCleanExit}, // allowed is the exit status each kind lets a sound host report: 0, the command's own, when the host ignored the frame or the connections; 125, a clean refusal of the session; 126, the error path a forged error text reaches. Never the forged code, and never a crash.
-	"storm": {0, rawCleanExit}, "storm-flood": {0, rawCleanExit}, "after-exit": {0, rawCleanExit}, "half-close": {rawCleanExit}, "full-shutdown": {rawCleanExit}, "reboot": {rawCleanExit},
-}
+var allowed = map[string][]int{"exit-empty": {0, rawCleanExit}, "ack-short": {0, rawCleanExit}, "unknown-type": {0, rawCleanExit}, "version-2": {0, rawCleanExit}, "exit-text": {rawCleanExit, rawNoStart}, "giant-header": {rawCleanExit}, "slow-drip": {rawCleanExit}, "storm": {0, rawCleanExit}, "storm-flood": {0, rawCleanExit}, "after-exit": {0, rawCleanExit}, "half-close": {rawCleanExit}, "full-shutdown": {rawCleanExit}, "reboot": {rawCleanExit}} // allowed is the exit status each kind lets a sound host report: 0, the command's own, when the host ignored the frame or the connections; 125, a clean refusal of the session; 126, the error path a forged error text reaches. Never the forged code, and never a crash.
 
 // channelRun runs kind against the session's channel and holds the host end to what every kind demands. It returns the run's exit status, or the reason the host end fell short, "" when it did not.
 func channelRun(ctx context.Context, s Session, addr, kind string) (int, string, error) {
