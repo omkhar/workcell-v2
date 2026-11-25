@@ -119,8 +119,7 @@ func TestStreamDemultiplexes(t *testing.T) {
 			defer guest.Close()
 			go func() { _, _ = guest.Write(append(tc.header, "payload"...)) }()
 			if tc.local == "" {
-				// The host closed the stream without delivering it: a delivered stream is held open by the proxy, not closed, so the EOF alone proves it went nowhere.
-				readEOF(t, guest, "the guest's end")
+				readEOF(t, guest, "the guest's end") // the host closed the stream without delivering it: a delivered stream is held open by the proxy, not closed, so the EOF alone proves it went nowhere
 				got := ""
 				select {
 				case got = <-denied:
@@ -221,8 +220,7 @@ func TestRelayHoldsAtMostMaxStreams(t *testing.T) {
 	held(t, guests[maxStreams-1], "the 1024th stream")
 	readEOF(t, dial(t, ln), "the 1025th stream")
 
-	// dialHeld dials until a stream is held: the release of a slot is asynchronous.
-	dialHeld := func(what string) net.Conn {
+	dialHeld := func(what string) net.Conn { // dials until a stream is held: the release of a slot is asynchronous
 		t.Helper()
 		for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); {
 			g := dial(t, ln)

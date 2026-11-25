@@ -8443,6 +8443,34 @@ its want rewritten; a kept directory has no image and no `inodes`, so pull and d
 pick it as the newest session. S7 lists a low finding and does not demand its fix; the loop adds the unit as
 it did for C64, C70 and C79, and the maintainer may strike it. Not S14: run_vm.go, internal/workspace and
 internal/fileserve are v2's own, nothing ported, no v1 line. Fix unit: S-F67, below S-1010 in PLAN.md.
+C83 FIXED by S-F67, commits 563c5eb (the test moved, with its export arm asking for the contract) and da7ff4c (the
+fix) (PR #340). The orchestrator chose the unit line's first shape before the redteam ran and wrote it as a
+contract: after a start that fails at the export, or at the write of `inodes` after it, session() returns that
+step's own error; the session directory stays, so the deferred session_end records failed into the real log and
+verify calls it intact; the directory holds no workspace.ext4 on either path; newest() still picks that session,
+as it picks a boot-failed one, and pull and diff refuse it in one line with their exit codes 1 and 2, boot
+nothing, and say what is true of both kinds of session that have no image, a --mount one and a start that failed
+before its copy was made; rm takes the directory wholly; a start that fails at boot and a --mount start are as on
+main. Why the first shape: the product had already written the start, I9 asks for every lifecycle event, and the
+fix is two product lines fewer; the second shape would have moved the start record out of newSession and left
+the mount guest able to make every later start fail with no trace on the host. The fix: the two RemoveAll lines
+of session() in cmd/workcell/run_vm.go are gone; workspace.Export takes its own image away on every error (read
+and shown by run), and the `inodes` arm returns its error joined with os.Remove of the image; the refusal of
+fetch() in cmd/workcell/pull_vm.go for a session with no image now names the session, both causes and
+`workcell rm <id>`. Proved: the test fails with main's product code in its export arm (no new directory) and
+passes on da7ff4c, plain and under -race, its control arm passing on both (redteam and orchestrator on 563c5eb,
+the reviewer by overlay of main's run_vm.go and pull_vm.go). The export arm now also asks that the error begins
+with `copy `, that no image is left, that fetch refuses without the words `mount session`, and both arms that
+removeSession takes the directory. The builder and the reviewer drove the built binary through a tree of 60
+components of 100 bytes: run prints the export's line and exits 125, the directory holds audit.log, audit.seal,
+lock and repo, ls says exited, verify says intact, pull and diff print the one line and exit 1 and 2 with nothing
+booted, rm leaves nothing; the builder made the `inodes` write fail on a tmpfs with 14 inodes and saw the same
+directory with no image. Review: one round, no finding. Cost to honest use: each start that fails at its export
+leaves a directory of about 600 bytes until rm, and pull or diff reaches an older clone session of the same
+directory only after rm of the failed one, which the line names. Product 14998 of 15000; the test limit follows
+product, so test is 28497 of 28497: the test grew from 42 lines to 45 and six lines were paid, by joined comment
+lines in c61_test.go, pull_test.go, relay_test.go and verify_test.go and one blank line of session_test.go; the
+reviewer compared the five files with main by go/ast, comments stripped, and no statement differs.
 
 The 42 lines of the parked test were paid by 42 lines of layout folds in nine files under escape/ (table rows
 and literals joined in https_test.go, tests.go, secrets_test.go, bench_test.go, channel_test.go, channel.go,
@@ -8457,3 +8485,7 @@ has the same number of elements (All holds 147 rows with the same IDs and names 
 After S-1010: sweep 3 stands at two highs (C76 and C77, both fixed), fourteen mediums (C65, C66, C67, C68, C69,
 C71, C72, C73, C74, C75, C78, C80, C81 and C82, all fixed) and four lows (C64, C70 and C79, fixed; C83, open).
 C83's test waits under escape/_pending/S-F67/. The next candidate number is C84 and the next fix unit S-F68.
+
+After S-F67: sweep 3 stands at two highs (C76 and C77, both fixed), fourteen mediums (C65, C66, C67, C68, C69, C71,
+C72, C73, C74, C75, C78, C80, C81 and C82, all fixed) and four lows (C64, C70, C79 and C83, all fixed). Nothing
+waits under escape/_pending/. The next candidate number is C84 and the next fix unit S-F68.

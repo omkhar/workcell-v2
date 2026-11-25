@@ -151,8 +151,7 @@ func TestOCSF(t *testing.T) {
 	if strings.Contains(first, `"unmapped":{"event"`) {
 		t.Errorf("a known record kind came out as a base event: %s", first)
 	}
-	// determinism: the same log gives the same bytes
-	var again bytes.Buffer
+	var again bytes.Buffer // determinism: the same log gives the same bytes
 	logs([]string{"--format=ocsf", testID}, &again, &again)
 	if again.String() != first {
 		t.Errorf("a second export differs:\n%s\n%s", first, again.String())

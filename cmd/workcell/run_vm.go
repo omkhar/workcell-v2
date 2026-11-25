@@ -116,12 +116,10 @@ func session(argv []string, caps limits, mount bool, a artifacts, allow *proxy.A
 	image, live := filepath.Join(dir, "workspace.ext4"), ""
 	if mount {
 		image, live = "", "." // the record alone: the work lands in the directory itself
-	} else if st, err := workspace.Export(context.Background(), ".", image, caps.disk()); err != nil {
-		os.RemoveAll(dir)
+	} else if st, err := workspace.Export(context.Background(), ".", image, caps.disk()); err != nil { // Export takes its image away; the session directory stays, for its failed end to be recorded (I9, C83)
 		return result{err: fmt.Errorf("copy %q for the guest: %w", cwd, err)}
 	} else if err = os.WriteFile(filepath.Join(dir, "inodes"), []byte(strconv.FormatUint(uint64(st.Inodes), 10)), 0o600); err != nil { // the most entries the image can ever hold, for pull (I10): written before the guest runs, so nothing it does grows it
-		os.RemoveAll(dir)
-		return result{err: err}
+		return result{err: errors.Join(err, os.Remove(image))} // an image without its count is not kept: pull would boot it
 	}
 	b, code, err := boot(a, caps, sigs, dir, log, image, live, allow, secrets)
 	if b == nil {

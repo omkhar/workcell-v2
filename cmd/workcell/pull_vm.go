@@ -107,8 +107,8 @@ func fetch(dest string, use func(int, *manifest, source) error) (int, error) {
 	defer lock.Close()
 	image := filepath.Join(session, "workspace.ext4")
 	st, err := os.Stat(image)
-	if errors.Is(err, fs.ErrNotExist) { // a mount session has no image: its work is in the directory itself (ADR-005)
-		return 0, fmt.Errorf("the newest session run in %q was a mount session (--mount): the agent wrote to the directory itself, so there is nothing to bring back", cwd)
+	if errors.Is(err, fs.ErrNotExist) { // a mount session has no image, its work being in the directory itself (ADR-005), and neither has a start that failed before its copy was made (C83)
+		return 0, fmt.Errorf("the newest session run in %q, %s, has no copy to bring back: it ran with --mount, so the agent wrote to the directory itself, or it failed before its copy was made (workcell rm %s drops it)", cwd, filepath.Base(session), filepath.Base(session))
 	}
 	rec, rerr := os.ReadFile(filepath.Join(session, "inodes")) // how many inodes the export gave the image, before the guest ran
 	inodes, perr := strconv.ParseInt(string(rec), 10, 64)

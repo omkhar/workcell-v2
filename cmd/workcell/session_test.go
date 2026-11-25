@@ -62,7 +62,6 @@ func TestListStateAndOrder(t *testing.T) {
 	defer lock.Close()
 	os.Mkdir(filepath.Join(sessions, "stray"), 0o700)
 	os.WriteFile(filepath.Join(sessions, idNew[:5]), nil, 0o600)
-
 	want := []listing{{idOld, "running", "/r/old"}, {idNew, "exited", "/r/new"}}
 	got := must(list(sessions))
 	if len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
