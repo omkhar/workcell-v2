@@ -36,7 +36,9 @@ that one TCP port as it is. IP addresses are refused. With no entry, the guest h
   can be bound once.
 - `env` is the guest variable that holds the placeholder. Leave it out and the guest gets no variable.
 - `method` and `path` narrow the swap to requests with that method, under that path prefix. Any other
-  request gets a 403, and the value is not read. A `method` rule also refuses a request whose body a web
+  request gets a 403, and the value is not read; so does one carrying a method or path override such as
+  `X-HTTP-Method-Override` or `_method` as a header or query parameter, in any spelling a server folds
+  to it (letter case, `-` or `.` for `_`). A `method` rule also refuses a request whose body a web
   framework could read the method from: `application/x-www-form-urlencoded`, any `multipart/*`, a body
   with no readable `Content-Type`, one whose `Content-Type` holds `json` in any letter case, or any body
   sent beside a second spelling of that header, such as `Content_Type`, which some servers read instead.

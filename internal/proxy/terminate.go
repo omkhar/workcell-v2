@@ -59,8 +59,7 @@ func NewPlaceholder() string {
 func IsPlaceholder(text string) bool { return placeholderPattern.MatchString(text) }
 
 // Broker is the credential broker as the proxy uses it. Lookup returns the real value of a brokered header; the proxy owns the bytes it gets, wipes them once the request carries the value, and never holds a value between requests. The rest serve a rule's sign-in flow, each for the row bound to
-// (host, header): Issue takes the tokens its endpoint issued, an empty one for a token the answer did not carry, which the broker owns and holds in place of those before; Refresh returns the refresh token it holds, recorded as Lookup records a value; Tokens returns copies of both tokens it holds,
-// nil before a sign-in, which the caller wipes.
+// (host, header): Issue takes the tokens its endpoint issued, an empty one for a token the answer did not carry, which the broker owns and holds in place of those before; Refresh returns the refresh token it holds, recorded as Lookup records a value; Tokens returns copies of both tokens it holds, nil before a sign-in, which the caller wipes.
 type Broker interface {
 	Lookup(ctx context.Context, host, header string) ([]byte, error)
 	Issue(host, header string, access, refresh []byte) error
@@ -68,8 +67,7 @@ type Broker interface {
 	Tokens(host, header string) (access, refresh []byte)
 }
 
-// TerminateRule names a host whose TLS the proxy terminates and the header whose placeholder value it swaps for the brokered value. Method, when set, narrows the swap to requests of that method, and Path to requests under that path prefix; Repos, instead of those, to the git repositories
-// "owner/name" it lists, at /owner/name or /owner/name.git and under either: a placeholder sent any other way to the host is refused. SignIn, when set, is the flow that issues the value (signin.go).
+// TerminateRule names a host whose TLS the proxy terminates and the header whose placeholder value it swaps for the brokered value. Method, when set, narrows the swap to requests of that method, and Path to requests under that path prefix; Repos, instead of those, to the git repositories "owner/name" it lists, at /owner/name or /owner/name.git and under either: a placeholder sent any other way to the host is refused. SignIn, when set, is the flow that issues the value (signin.go).
 type TerminateRule struct {
 	Host        string
 	Header      string
@@ -110,8 +108,10 @@ func NewTerminateRule(host, header, method, path string, repos []string) (Termin
 	return r, nil
 }
 
-// cgiName is a header or query parameter name as a CGI-style server spells a header (RFC 3875 4.1.18 maps "-" to "_"), in lower case: one variable whatever the letter case and the mix of "-" and "_" the request used.
-func cgiName(n string) string { return strings.ReplaceAll(strings.ToLower(n), "-", "_") }
+// cgiName is a header or query parameter name as a CGI-style server spells a header (RFC 3875 4.1.18 maps "-" to "_") and as PHP stores a variable in $_GET (it maps "." to "_", so `.method` is `_method` to Symfony, C74), in lower case: one variable whatever the letter case and the mix of "-", "." and "_" the request used.
+func cgiName(n string) string { return cgiFold.Replace(strings.ToLower(n)) }
+
+var cgiFold = strings.NewReplacer("-", "_", ".", "_") // what cgiName folds to "_"
 
 // overrides are the routing overrides a framework honours instead of the request line, as cgiName spells them: the method from the first three as a header on a POST (Rack::MethodOverride, ASP.NET MVC, Google's API front end) and from the first or the last as a query parameter (ASP.NET MVC, Spring, Symfony), the path from the others (IIS URL Rewrite, Symfony HttpFoundation). A rule that narrows refuses a request carrying any of them as a header or a query parameter (C68).
 var overrides = []string{"x_http_method_override", "x_http_method", "x_method_override", "x_original_url", "x_rewrite_url", "_method"}
