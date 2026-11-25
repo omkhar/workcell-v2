@@ -22,10 +22,7 @@ import (
 	"time"
 )
 
-const (
-	testRefreshPlaceholder = "wcph-00000000000000000000000000000001"
-	tokenEndpointPath      = "/oauth/token"
-)
+const testRefreshPlaceholder, tokenEndpointPath = "wcph-00000000000000000000000000000001", "/oauth/token"
 
 func TestNewSignIn(t *testing.T) {
 	t.Parallel()
@@ -33,15 +30,10 @@ func TestNewSignIn(t *testing.T) {
 		source     string
 		host, path string // "" host: refused
 	}{
-		{"signin:login.example.com/oauth/token", "login.example.com", "/oauth/token"},
-		{"signin:LOGIN.example.com./oauth/token", "login.example.com", "/oauth/token"},
-		{"signin:login.example.com/", "login.example.com", "/"},
-		{"login.example.com/oauth/token", "", ""}, {"file:/oauth/token", "", ""}, {"signin:", "", ""},
-		{"signin:login.example.com", "", ""}, {"signin:/oauth/token", "", ""},
-		{"signin:login.example.com:8443/oauth/token", "", ""}, {"signin:login.example.com:443/oauth/token", "", ""},
-		{"signin:https://login.example.com/oauth/token", "", ""}, {"signin:192.0.2.1/oauth/token", "", ""},
-		{"signin:login.example.com/oauth/token?x=1", "", ""}, {"signin:login.example.com/oauth/token#f", "", ""},
-		{"signin:login.example.com/oauth/tokén", "", ""}, {"signin:lögin.example/oauth/token", "", ""},
+		{"signin:login.example.com/oauth/token", "login.example.com", "/oauth/token"}, {"signin:LOGIN.example.com./oauth/token", "login.example.com", "/oauth/token"}, {"signin:login.example.com/", "login.example.com", "/"},
+		{"login.example.com/oauth/token", "", ""}, {"file:/oauth/token", "", ""}, {"signin:", "", ""}, {"signin:login.example.com", "", ""}, {"signin:/oauth/token", "", ""},
+		{"signin:login.example.com:8443/oauth/token", "", ""}, {"signin:login.example.com:443/oauth/token", "", ""}, {"signin:https://login.example.com/oauth/token", "", ""}, {"signin:192.0.2.1/oauth/token", "", ""},
+		{"signin:login.example.com/oauth/token?x=1", "", ""}, {"signin:login.example.com/oauth/token#f", "", ""}, {"signin:login.example.com/oauth/tokén", "", ""}, {"signin:lögin.example/oauth/token", "", ""},
 		{"signin:login.example.com/oauth/ token", "", ""}, {"signin:login.example.com/oauth/token\n", "", ""},
 	}
 	for _, tc := range cases {
@@ -63,19 +55,13 @@ func TestSwapRefresh(t *testing.T) {
 		name, mediaType, body, real, want string
 		asked                             bool
 	}{
-		{"form", form, "grant_type=refresh_token&refresh_token=" + ph, "sk-r", "grant_type=refresh_token&refresh_token=sk-r", true},
-		{"form, escaped value", form, "refresh_token=" + ph + "&scope=x", "a+b/c=", "refresh_token=a%2Bb%2Fc%3D&scope=x", true},
-		{"form, other field", form, "code=" + ph, "sk-r", "code=" + ph, false},
-		{"form, suffixed", form, "refresh_token=" + ph + "x", "sk-r", "refresh_token=" + ph + "x", false},
+		{"form", form, "grant_type=refresh_token&refresh_token=" + ph, "sk-r", "grant_type=refresh_token&refresh_token=sk-r", true}, {"form, escaped value", form, "refresh_token=" + ph + "&scope=x", "a+b/c=", "refresh_token=a%2Bb%2Fc%3D&scope=x", true},
+		{"form, other field", form, "code=" + ph, "sk-r", "code=" + ph, false}, {"form, suffixed", form, "refresh_token=" + ph + "x", "sk-r", "refresh_token=" + ph + "x", false},
 		{"form, encoded key", form, "refresh%5Ftoken=" + ph, "sk-r", "refresh%5Ftoken=" + ph, false},
-		{"json", js, `{"grant_type":"refresh_token","refresh_token":"` + ph + `"}`, "sk-r", `{"grant_type":"refresh_token","refresh_token":"sk-r"}`, true},
-		{"json, spaced", js, `{ "refresh_token" : "` + ph + `" }`, `a"b`, `{"refresh_token":"a\"b"}`, true},
-		{"json, other field", js, `{"code":"` + ph + `"}`, "sk-r", `{"code":"` + ph + `"}`, false},
-		{"json, nested", js, `{"a":{"refresh_token":"` + ph + `"}}`, "sk-r", `{"a":{"refresh_token":"` + ph + `"}}`, false},
-		{"json, array", js, `["` + ph + `"]`, "sk-r", `["` + ph + `"]`, false},
-		{"json, not json", js, "refresh_token=" + ph, "sk-r", "refresh_token=" + ph, false},
-		{"text", "text/plain", "refresh_token=" + ph, "sk-r", "refresh_token=" + ph, false},
-		{"no type", "", `{"refresh_token":"` + ph + `"}`, "sk-r", `{"refresh_token":"` + ph + `"}`, false},
+		{"json", js, `{"grant_type":"refresh_token","refresh_token":"` + ph + `"}`, "sk-r", `{"grant_type":"refresh_token","refresh_token":"sk-r"}`, true}, {"json, spaced", js, `{ "refresh_token" : "` + ph + `" }`, `a"b`, `{"refresh_token":"a\"b"}`, true},
+		{"json, other field", js, `{"code":"` + ph + `"}`, "sk-r", `{"code":"` + ph + `"}`, false}, {"json, nested", js, `{"a":{"refresh_token":"` + ph + `"}}`, "sk-r", `{"a":{"refresh_token":"` + ph + `"}}`, false},
+		{"json, array", js, `["` + ph + `"]`, "sk-r", `["` + ph + `"]`, false}, {"json, not json", js, "refresh_token=" + ph, "sk-r", "refresh_token=" + ph, false},
+		{"text", "text/plain", "refresh_token=" + ph, "sk-r", "refresh_token=" + ph, false}, {"no type", "", `{"refresh_token":"` + ph + `"}`, "sk-r", `{"refresh_token":"` + ph + `"}`, false},
 	}
 	for _, tc := range cases {
 		asked := 0
@@ -94,15 +80,11 @@ func TestHide(t *testing.T) {
 	t.Parallel()
 	swaps := []swap{{[]byte("sk-acc/1"), testPlaceholder}, {[]byte("sk-ref-1"), testRefreshPlaceholder}, {nil, "wcph-none"}}
 	cases := []struct{ name, body, want string }{
-		{"json", `{"access_token":"sk-acc/1","token_type":"Bearer","expires_in":3600,"refresh_token":"sk-ref-1"}`,
-			`{"access_token":"` + testPlaceholder + `","expires_in":3600,"refresh_token":"` + testRefreshPlaceholder + `","token_type":"Bearer"}`},
+		{"json", `{"access_token":"sk-acc/1","token_type":"Bearer","expires_in":3600,"refresh_token":"sk-ref-1"}`, `{"access_token":"` + testPlaceholder + `","expires_in":3600,"refresh_token":"` + testRefreshPlaceholder + `","token_type":"Bearer"}`},
 		{"escaped", `{"t":"sk-acc\/1","u":"sk-ref-1"}`, `{"t":"` + testPlaceholder + `","u":"` + testRefreshPlaceholder + `"}`},
 		{"nested, inside a string", `{"a":[{"b":"x sk-ref-1 y"}],"c":"&"}`, `{"a":[{"b":"x ` + testRefreshPlaceholder + ` y"}],"c":"&"}`},
-		{"in a key", `{"sk-ref-1":1}`, `{"` + testRefreshPlaceholder + `":1}`},
-		{"big number", `{"n":12345678901234567890}`, `{"n":12345678901234567890}`},
-		{"text", "error=sk-ref-1&x=sk-acc/1", "error=" + testRefreshPlaceholder + "&x=" + testPlaceholder},
-		{"not json, no token", "{x", "{x"},
-		{"empty", "", ""},
+		{"in a key", `{"sk-ref-1":1}`, `{"` + testRefreshPlaceholder + `":1}`}, {"big number", `{"n":12345678901234567890}`, `{"n":12345678901234567890}`},
+		{"text", "error=sk-ref-1&x=sk-acc/1", "error=" + testRefreshPlaceholder + "&x=" + testPlaceholder}, {"not json, no token", "{x", "{x"}, {"empty", "", ""},
 	}
 	for _, tc := range cases {
 		if got := hide([]byte(tc.body), swaps); string(got) != tc.want {
@@ -111,9 +93,7 @@ func TestHide(t *testing.T) {
 	}
 }
 
-// TestTokenEndpoint: a path a case-folding router, or one that drops a ;param suffix from a segment, would serve as the endpoint is the endpoint; another path
-// is not. Match only the exact spelling → the guest reads the unrewritten answer of /OAUTH/TOKEN → FAIL (I5).
-func TestTokenEndpoint(t *testing.T) {
+func TestTokenEndpoint(t *testing.T) { // a path a case-folding router, or one that drops a ;param suffix from a segment, would serve as the endpoint is the endpoint; another path is not. Match only the exact spelling → the guest reads the unrewritten answer of /OAUTH/TOKEN → FAIL (I5).
 	t.Parallel()
 	rule := TerminateRule{Host: "api.example.com", SignIn: &SignIn{Host: "login.example.com", Path: tokenEndpointPath}}
 	p := &Proxy{signin: map[string][]TerminateRule{"login.example.com": {rule}}}
@@ -135,9 +115,7 @@ func TestTokenEndpoint(t *testing.T) {
 	}
 }
 
-// TestLearn: a 2xx that is not a JSON object, as encoding/json reads one, is refused whole and the broker is not asked, while a 2xx object goes to the broker
-// and a non-2xx is only hidden. Pass a 2xx through after hiding → a BOM before the object carries both tokens to the guest → FAIL (I5).
-func TestLearn(t *testing.T) {
+func TestLearn(t *testing.T) { // a 2xx that is not a JSON object, as encoding/json reads one, is refused whole and the broker is not asked, while a 2xx object goes to the broker and a non-2xx is only hidden. Pass a 2xx through after hiding → a BOM before the object carries both tokens to the guest → FAIL (I5).
 	t.Parallel()
 	pair := `{"access_token":"sk-acc-1","refresh_token":"sk-ref-1"}`
 	cases := []struct {
@@ -146,18 +124,10 @@ func TestLearn(t *testing.T) {
 		want       string // "" is refused
 		issued     bool
 	}{
-		{"object", pair, 200, `{"access_token":"` + testPlaceholder + `","refresh_token":"` + testRefreshPlaceholder + `"}`, true},
-		{"object, 201", pair, 201, `{"access_token":"` + testPlaceholder + `","refresh_token":"` + testRefreshPlaceholder + `"}`, true},
-		{"bom", "\ufeff" + pair, 200, "", false},
-		{"trailing comma", `{"access_token":"sk-acc-1","refresh_token":"sk-ref-1",}`, 200, "", false},
-		{"comment", "/*x*/" + pair, 200, "", false},
-		{"nan", `{"access_token":"sk-acc-1","n":NaN}`, 200, "", false},
-		{"two values", pair + pair, 200, "", false},
-		{"array", `[` + pair + `]`, 200, "", false},
-		{"string", `"sk-acc-1"`, 200, "", false},
-		{"empty", "", 200, "", false},
-		{"empty, 204", "", 204, "", false},
-		{"form", "access_token=sk-acc-1", 200, "", false},
+		{"object", pair, 200, `{"access_token":"` + testPlaceholder + `","refresh_token":"` + testRefreshPlaceholder + `"}`, true}, {"object, 201", pair, 201, `{"access_token":"` + testPlaceholder + `","refresh_token":"` + testRefreshPlaceholder + `"}`, true},
+		{"bom", "\ufeff" + pair, 200, "", false}, {"trailing comma", `{"access_token":"sk-acc-1","refresh_token":"sk-ref-1",}`, 200, "", false}, {"comment", "/*x*/" + pair, 200, "", false},
+		{"nan", `{"access_token":"sk-acc-1","n":NaN}`, 200, "", false}, {"two values", pair + pair, 200, "", false}, {"array", `[` + pair + `]`, 200, "", false}, {"string", `"sk-acc-1"`, 200, "", false},
+		{"empty", "", 200, "", false}, {"empty, 204", "", 204, "", false}, {"form", "access_token=sk-acc-1", 200, "", false},
 		{"error, not json", "error=invalid_grant&refresh_token=sk-ref-0", 400, "error=invalid_grant&refresh_token=" + testRefreshPlaceholder, false},
 		{"error, bom", "\ufeff" + `{"refresh_token":"sk-ref-0"}`, 400, "\ufeff" + `{"refresh_token":"` + testRefreshPlaceholder + `"}`, false},
 	}
@@ -175,8 +145,7 @@ func TestLearn(t *testing.T) {
 	}
 }
 
-// tokenBroker holds one row's tokens, as the credential broker does.
-type tokenBroker struct {
+type tokenBroker struct { // holds one row's tokens, as the credential broker does
 	mu              sync.Mutex
 	access, refresh []byte
 	calls           []string
@@ -227,11 +196,8 @@ func (b *tokenBroker) Tokens(string, string) ([]byte, []byte) {
 	return bytes.Clone(b.access), bytes.Clone(b.refresh)
 }
 
-// provider is a fake token endpoint on login.example.com and API on api.example.com:
-// a code grant or the current refresh token gets a new pair, another grant
-// 400 with the refresh token echoed; the API echoes Authorization. mode
-// frames a pair: "chunked" splits it inside a token, "gzip" compresses it,
-// "escaped" spells the tokens with JSON escapes, "big" pads it past the bound.
+// provider is a fake token endpoint on login.example.com and API on api.example.com: a code grant or the current refresh token gets a new pair, another grant 400 with the refresh token echoed; the API echoes Authorization.
+// mode frames a pair: "chunked" splits it inside a token, "gzip" compresses it, "escaped" spells the tokens with JSON escapes, "big" pads it past the bound.
 type provider struct {
 	mu     sync.Mutex
 	mode   string
@@ -285,8 +251,7 @@ func (p *provider) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// signinFixture terminates api.example.com, where the rule binds the access token as a bearer, and login.example.com, the token host, both served by p.
-func signinFixture(t *testing.T, p *provider, broker Broker) (*http.Client, TerminateRule, *Proxy, *recorder) {
+func signinFixture(t *testing.T, p *provider, broker Broker) (*http.Client, TerminateRule, *Proxy, *recorder) { // terminates api.example.com, where the rule binds the access token as a bearer, and login.example.com, the token host, both served by p
 	t.Helper()
 	server := httptest.NewTLSServer(p)
 	t.Cleanup(server.Close)
@@ -300,8 +265,7 @@ func signinFixture(t *testing.T, p *provider, broker Broker) (*http.Client, Term
 	return clientVia(listen(t, px, 443), caPool(t, ca)), rule, px, log
 }
 
-// send returns the status and body of one request, and fails the test on a body that carries a real token: the guest never reads one (I5).
-func send(t *testing.T, c *http.Client, method, target, ctype, body string, header ...string) (int, string) {
+func send(t *testing.T, c *http.Client, method, target, ctype, body string, header ...string) (int, string) { // the status and body of one request; fails the test on a body that carries a real token: the guest never reads one (I5)
 	t.Helper()
 	req := must(http.NewRequest(method, target, strings.NewReader(body)))
 	if ctype != "" {
@@ -317,10 +281,8 @@ func send(t *testing.T, c *http.Client, method, target, ctype, body string, head
 	return code, got
 }
 
-// TestSignInFlow: before a sign-in the access placeholder is refused; a sign-in's answer reaches the guest with the two placeholders in place of the tokens and
-// a fresh Content-Length; the access placeholder then goes out as the real access token, the refresh placeholder in a form or a JSON grant as the real refresh
-// token, and after a refresh the same access placeholder is the new token; a 400 that echoes the refresh token is hidden too; and either placeholder anywhere
-// else is refused or passed as it is. Drop tokenResponse → the guest reads a real token → FAIL.
+// TestSignInFlow: before a sign-in the access placeholder is refused; a sign-in's answer reaches the guest with the two placeholders in place of the tokens and a fresh Content-Length; the access placeholder then goes out as the real access token, the refresh placeholder in a form or a JSON grant as the
+// real refresh token, and after a refresh the same access placeholder is the new token; a 400 that echoes the refresh token is hidden too; and either placeholder anywhere else is refused or passed as it is. Drop tokenResponse → the guest reads a real token → FAIL.
 func TestSignInFlow(t *testing.T) {
 	t.Parallel()
 	p := &provider{}
@@ -374,9 +336,7 @@ func TestSignInFlow(t *testing.T) {
 	}
 }
 
-// TestTokenAnswerFramings: a pair split inside a token across chunks, under a media type with a charset, one gzipped, and one spelt with JSON escapes all reach
-// the guest as placeholders; an answer over the bound, and one the broker cannot record, are refused whole.
-func TestTokenAnswerFramings(t *testing.T) {
+func TestTokenAnswerFramings(t *testing.T) { // a pair split inside a token across chunks, under a media type with a charset, one gzipped, and one spelt with JSON escapes all reach the guest as placeholders; an answer over the bound, and one the broker cannot record, are refused whole
 	t.Parallel()
 	for _, mode := range []string{"chunked", "gzip", "escaped", "big", "unrecorded"} {
 		t.Run(mode, func(t *testing.T) {
@@ -412,9 +372,8 @@ func TestTerminateRefusesBadSignIn(t *testing.T) {
 		return TerminateRule{Host: "api.example.com", Header: "authorization", Placeholder: testPlaceholder, SignIn: &SignIn{Host: host, Path: path, Refresh: testRefreshPlaceholder}}
 	}
 	for name, rules := range map[string][]TerminateRule{
-		"off allowlist": {rule("login.example.com", "/t")},
-		"plain port":    {rule("db.example", "/t")},
-		"twice":         {rule("api.example.com", "/t"), {Host: "api.example.com", Header: "x-api-key", Placeholder: testAuthPlaceholder, SignIn: &SignIn{Host: "api.example.com", Path: "/t", Refresh: testRefreshPlaceholder}}},
+		"off allowlist": {rule("login.example.com", "/t")}, "plain port": {rule("db.example", "/t")},
+		"twice": {rule("api.example.com", "/t"), {Host: "api.example.com", Header: "x-api-key", Placeholder: testAuthPlaceholder, SignIn: &SignIn{Host: "api.example.com", Path: "/t", Refresh: testRefreshPlaceholder}}},
 	} {
 		if err := p.Terminate(nil, nil, rules); err == nil {
 			t.Errorf("%s: Terminate succeeded, want refusal", name)
@@ -422,9 +381,7 @@ func TestTerminateRefusesBadSignIn(t *testing.T) {
 	}
 }
 
-// FuzzSwapRefresh: a body the guest wrote never makes swapRefresh panic; one that does not carry the placeholder in its own field comes back as it was, with
-// the token not asked for, and one that does carries the token.
-func FuzzSwapRefresh(f *testing.F) {
+func FuzzSwapRefresh(f *testing.F) { // a body the guest wrote never makes swapRefresh panic; one that does not carry the placeholder in its own field comes back as it was, with the token not asked for, and one that does carries the token
 	f.Add(0, "grant_type=refresh_token&refresh_token="+testRefreshPlaceholder)
 	f.Add(1, `{"refresh_token":"`+testRefreshPlaceholder+`"}`)
 	f.Add(1, `{"a":[1,"`+testRefreshPlaceholder+`"],"refresh_token":null}`)
@@ -438,9 +395,7 @@ func FuzzSwapRefresh(f *testing.F) {
 	})
 }
 
-// FuzzHide: whatever the token endpoint answers, no real value is left in the bytes the guest reads, nor in any string a JSON reading of them holds, in its
-// own spelling or either one swapRefresh sends, url-encoded in a form or json-escaped in an object (C12).
-func FuzzHide(f *testing.F) {
+func FuzzHide(f *testing.F) { // whatever the token endpoint answers, no real value is left in the bytes the guest reads, nor in any string a JSON reading of them holds, in its own spelling or either one swapRefresh sends, url-encoded in a form or json-escaped in an object (C12)
 	f.Add(`{"access_token":"sk-acc\/1","refresh_token":"sk-ref+1=&","n":1e400}`)
 	f.Add("sk-acc/1 sk-ref+1=&")
 	f.Add(`"sk-acc\/1"0`)                                                                              // a first value a lenient client reads, then what is not JSON

@@ -56,8 +56,7 @@ func TestBlockedAddr(t *testing.T) {
 	}
 }
 
-// clientHello returns the bytes a TLS client sends first for serverName.
-func clientHello(t testing.TB, serverName string) []byte {
+func clientHello(t testing.TB, serverName string) []byte { // the bytes a TLS client sends first for serverName
 	t.Helper()
 	client, server := net.Pipe()
 	go func() {
@@ -72,8 +71,7 @@ func clientHello(t testing.TB, serverName string) []byte {
 	return bytes.Clone(rec.buf.Bytes())
 }
 
-// feed returns a conn whose reads yield data then EOF.
-func feed(data []byte) net.Conn {
+func feed(data []byte) net.Conn { // a conn whose reads yield data then EOF
 	client, server := net.Pipe()
 	go func() { _, _ = client.Write(data); _ = client.Close() }()
 	return server
@@ -90,10 +88,7 @@ func TestPeekSNI(t *testing.T) {
 
 	record := append([]byte{0x16, 3, 3, 0x40, 0, 1, 1, 0, 0}, make([]byte, 16380)...) // a full-size record opening a 64 KiB hello
 	for name, data := range map[string][]byte{
-		"empty":                   nil,
-		"plaintext":               []byte("GET / HTTP/1.1\r\nHost: api.example.com\r\n\r\n"),
-		"truncated":               hello[:len(hello)/2],
-		"no sni":                  clientHello(t, ""),
+		"empty": nil, "plaintext": []byte("GET / HTTP/1.1\r\nHost: api.example.com\r\n\r\n"), "truncated": hello[:len(hello)/2], "no sni": clientHello(t, ""),
 		"unfinished 64 KiB hello": bytes.Repeat(record, 4), // stops 4 bytes short of the hello; the peek must give up within 16 KiB (I10)
 	} {
 		conn := feed(data)
@@ -122,8 +117,7 @@ func FuzzPeekSNI(f *testing.F) {
 	})
 }
 
-// testProxy returns a proxy whose resolver maps every host to addrs and whose dialer sends every dial to target, recording the address it was asked for.
-func testProxy(t *testing.T, allow string, addrs []netip.Addr, target string) (*Proxy, *recorder, *[]netip.AddrPort) {
+func testProxy(t *testing.T, allow string, addrs []netip.Addr, target string) (*Proxy, *recorder, *[]netip.AddrPort) { // a proxy whose resolver maps every host to addrs and whose dialer sends every dial to target, recording the address it was asked for
 	t.Helper()
 	a := must(ParseAllowlist(allow, "allowlist"))
 	log := &recorder{}
@@ -140,16 +134,14 @@ func testProxy(t *testing.T, allow string, addrs []netip.Addr, target string) (*
 	return p, log, &dialed
 }
 
-// testLedger is a real session log in a new directory, for a broker to write to.
-func testLedger(t *testing.T) *audit.Log {
+func testLedger(t *testing.T) *audit.Log { // a real session log in a new directory, for a broker to write to
 	t.Helper()
 	l := must(audit.Create(t.TempDir(), ed25519.NewKeyFromSeed(make([]byte, ed25519.SeedSize)), time.Now))
 	t.Cleanup(func() { l.Close() })
 	return l
 }
 
-// listen serves p on a loopback listener for port and returns its address.
-func listen(t *testing.T, p *Proxy, port uint16) string {
+func listen(t *testing.T, p *Proxy, port uint16) string { // serves p on a loopback listener for port and returns its address
 	t.Helper()
 	ln := must(net.Listen("tcp", "127.0.0.1:0"))
 	t.Cleanup(func() { _ = ln.Close() })
@@ -157,8 +149,7 @@ func listen(t *testing.T, p *Proxy, port uint16) string {
 	return ln.Addr().String()
 }
 
-// recorder collects what the proxy notes. Its mutex also guards the dials the tests record.
-type recorder struct {
+type recorder struct { // collects what the proxy notes. Its mutex also guards the dials the tests record.
 	mu   sync.Mutex
 	recs []audit.Record
 }
@@ -170,8 +161,7 @@ func (r *recorder) Note(rec audit.Record) error {
 	return nil
 }
 
-// denyLine is a refusal as the tests compare it: the count of its (host, port, reason) so far and its number among the refusals.
-type denyLine struct {
+type denyLine struct { // a refusal as the tests compare it: the count of its (host, port, reason) so far and its number among the refusals
 	Host   string
 	Port   uint16
 	Reason string
@@ -179,8 +169,7 @@ type denyLine struct {
 	Seq    uint64
 }
 
-// denies are the refusals noted so far; a connection that went through is not one.
-func denies(t *testing.T, p *Proxy, log *recorder) []denyLine {
+func denies(t *testing.T, p *Proxy, log *recorder) []denyLine { // the refusals noted so far; a connection that went through is not one
 	t.Helper()
 	log.mu.Lock()
 	defer log.mu.Unlock()
@@ -217,8 +206,7 @@ func TestConnectSharesBudgetAcrossAddresses(t *testing.T) {
 	}
 }
 
-// withExtension returns a ClientHello record with one more empty extension.
-func withExtension(t *testing.T, hello []byte, typ uint16) []byte {
+func withExtension(t *testing.T, hello []byte, typ uint16) []byte { // a ClientHello record with one more empty extension
 	t.Helper()
 	off := 5 + 4 + 2 + 32
 	off += 1 + int(hello[off])                           // session id
@@ -261,17 +249,11 @@ func TestConnectVetsEveryAnswerOnEveryConnection(t *testing.T) {
 		netsErr error          // the error reading them
 		reasons []string
 	}{
-		{"public and private mixed", [][]netip.Addr{{a("8.8.8.8"), a("10.255.255.254")}}, nil, nil, []string{"blocked_address"}},
-		{"private listed first", [][]netip.Addr{{a("10.255.255.254"), a("8.8.8.8")}}, nil, nil, []string{"blocked_address"}},
-		{"mapped loopback", [][]netip.Addr{{a("::ffff:127.0.0.1")}}, nil, nil, []string{"blocked_address"}},
-		{"unspecified", [][]netip.Addr{{a("0.0.0.0")}}, nil, nil, []string{"blocked_address"}},
-		{"metadata", [][]netip.Addr{{a("169.254.169.254")}}, nil, nil, []string{"blocked_address"}},
-		{"lookup error", [][]netip.Addr{nil}, nil, nil, []string{"resolve_failed"}},
-		{"empty answer", [][]netip.Addr{{}}, nil, nil, []string{"resolve_failed"}},
-		{"answer changes to loopback", [][]netip.Addr{{a("8.8.8.8")}, {a("127.0.0.1")}}, nil, nil, []string{"", "blocked_address"}},
-		{"answer changes to public", [][]netip.Addr{{a("127.0.0.1")}, {a("8.8.8.8")}}, nil, nil, []string{"blocked_address", ""}},
-		{"public inside a host network", [][]netip.Addr{{a("::ffff:192.175.48.1")}}, home, nil, []string{"blocked_address"}},
-		{"public outside the host networks", [][]netip.Addr{{a("192.175.48.129")}}, home, nil, []string{""}},
+		{"public and private mixed", [][]netip.Addr{{a("8.8.8.8"), a("10.255.255.254")}}, nil, nil, []string{"blocked_address"}}, {"private listed first", [][]netip.Addr{{a("10.255.255.254"), a("8.8.8.8")}}, nil, nil, []string{"blocked_address"}},
+		{"mapped loopback", [][]netip.Addr{{a("::ffff:127.0.0.1")}}, nil, nil, []string{"blocked_address"}}, {"unspecified", [][]netip.Addr{{a("0.0.0.0")}}, nil, nil, []string{"blocked_address"}},
+		{"metadata", [][]netip.Addr{{a("169.254.169.254")}}, nil, nil, []string{"blocked_address"}}, {"lookup error", [][]netip.Addr{nil}, nil, nil, []string{"resolve_failed"}}, {"empty answer", [][]netip.Addr{{}}, nil, nil, []string{"resolve_failed"}},
+		{"answer changes to loopback", [][]netip.Addr{{a("8.8.8.8")}, {a("127.0.0.1")}}, nil, nil, []string{"", "blocked_address"}}, {"answer changes to public", [][]netip.Addr{{a("127.0.0.1")}, {a("8.8.8.8")}}, nil, nil, []string{"blocked_address", ""}},
+		{"public inside a host network", [][]netip.Addr{{a("::ffff:192.175.48.1")}}, home, nil, []string{"blocked_address"}}, {"public outside the host networks", [][]netip.Addr{{a("192.175.48.129")}}, home, nil, []string{""}},
 		{"host networks unreadable", [][]netip.Addr{{a("8.8.8.8")}}, nil, errors.New("netlink"), []string{"blocked_address"}},
 	}
 	for _, tc := range cases {
