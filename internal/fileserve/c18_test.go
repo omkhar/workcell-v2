@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Omkhar Arasaratnam
 
-// Finding C18 of S-1008 (I10). Fix unit S-F11 first moves this file to
-// internal/fileserve/c18_test.go, as this comment says.
+// Finding C18 of S-1008 (I10). Fix unit S-F11 first moves this file to internal/fileserve/c18_test.go, as this comment says.
 
 //go:build linux
 
@@ -17,8 +16,7 @@ import (
 	"testing"
 )
 
-// TestGrowthCapEntries is I10 on the export through entries: SYMLINK, MKDIR and CREATE each cost a host block
-// and inode, so against a cap of limit bytes at most limit/4096 plus slack may be accepted.
+// TestGrowthCapEntries is I10 on the export through entries: SYMLINK, MKDIR and CREATE each cost a host block and inode, so against a cap of limit bytes at most limit/4096 plus slack may be accepted.
 func TestGrowthCapEntries(t *testing.T) {
 	const limit, tries, slack = 100_000, 200, 2
 	most, target := limit/4096+slack, strings.Repeat("x", 4000)

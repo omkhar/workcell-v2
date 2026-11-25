@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Omkhar Arasaratnam
 
-// S-F6, finding C11 of S-1005 (I10, with I12's hang). A client needs a few KiB of headers, and ADR-003 budgets 69 KiB for an idle terminated keep-alive, so a header block of 100 KiB is answered 431 before any handler runs and the connection closed. Otherwise a guest holding the 1024-connection cap
-// with 1 MiB blocks and a declared, withheld body pins about 1 GiB of the proxy's heap for as long as it likes. Every connection is the test's own, on loopback (T8, S12).
+// S-F6, finding C11 of S-1005 (I10, with I12's hang). A client needs a few KiB of headers, and ADR-003 budgets 69 KiB for an idle terminated keep-alive, so a header block of 100 KiB is answered 431 before any handler runs and the connection closed. Otherwise a guest holding the 1024-connection cap with 1 MiB blocks and a declared, withheld body pins about 1 GiB of the proxy's heap for as long as it likes. Every connection is the test's own, on loopback (T8, S12).
 package proxy
 
 import (
@@ -21,8 +20,7 @@ import (
 	"time"
 )
 
-// TestOversizedHeaderBlockRefused: a 100 KiB header block on a raw TLS connection to the token endpoint of a sign-in row, body declared and withheld, and to a plain terminated host, is answered "HTTP/1.1 431" and the connection then closed. Unfixed, the token endpoint answers 100 Continue and holds
-// the block live while it waits for the body; the terminated host forwards the block upstream.
+// TestOversizedHeaderBlockRefused: a 100 KiB header block on a raw TLS connection to the token endpoint of a sign-in row, body declared and withheld, and to a plain terminated host, is answered "HTTP/1.1 431" and the connection then closed. Unfixed, the token endpoint answers 100 Continue and holds the block live while it waits for the body; the terminated host forwards the block upstream.
 func TestOversizedHeaderBlockRefused(t *testing.T) {
 	c, _, _, _ := signinFixture(t, &provider{}, &tokenBroker{})
 	tr := c.Transport.(*http.Transport)

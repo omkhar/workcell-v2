@@ -15,8 +15,7 @@ import (
 )
 
 // TestC29RefusesACwdInsideTheDataDirectory (I7, I9, I13): a session run from, or a pull into, a directory strictly
-// inside the data directory (sessions/, layers/<agent>/) is refused, naming both, before a session directory, key or
-// boot record is made. Today it runs on, and a mount session lets guest root rewrite every other session's record.
+// inside the data directory (sessions/, layers/<agent>/) is refused, naming both, before a session directory, key or boot record is made. Today it runs on, and a mount session lets guest root rewrite every other session's record.
 func TestC29RefusesACwdInsideTheDataDirectory(t *testing.T) {
 	for _, tc := range [][2]string{{"clone", "sessions"}, {"mount", "sessions"}, {"mount", "layers/agent"}} {
 		t.Run(tc[0]+" in "+tc[1], func(t *testing.T) {

@@ -69,8 +69,7 @@ func TestAllowlist(t *testing.T) {
 	}
 }
 
-// TestBindings: a [[secret]] row becomes a grant and a rule with a fresh placeholder, and explain
-// names it without its source; a row the proxy or the allowlist refuses is refused with its line.
+// TestBindings: a [[secret]] row becomes a grant and a rule with a fresh placeholder, and explain names it without its source; a row the proxy or the allowlist refuses is refused with its line.
 func TestBindings(t *testing.T) {
 	allow := must(allowlist(policy.Policy{Allow: []policy.Entry{{Text: "a.example", Line: 2}, {Text: "db.example:5432", Line: 2}, {Text: "api.anthropic.com", Line: 3}}}, "config.toml"))
 	row := policy.Secret{Name: "k", Source: "file:/s", Host: "A.example.", Header: "X-Api-Key", Line: 5}
@@ -229,8 +228,7 @@ func TestProviderPolicy(t *testing.T) {
 	}
 }
 
-// TestRepoPolicy loads the user's grants and a workcell.toml in the current directory: the
-// repository can only narrow, and --allow typed on the host widens after it (I13).
+// TestRepoPolicy loads the user's grants and a workcell.toml in the current directory: the repository can only narrow, and --allow typed on the host widens after it (I13).
 func TestRepoPolicy(t *testing.T) {
 	const user = "[network]\nallow = [\"bound.test\", \"other.test\"]\n"
 	tests := []struct {

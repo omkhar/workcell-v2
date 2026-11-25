@@ -23,8 +23,7 @@ import (
 )
 
 // TestC67TokenAnswerInAnotherMediaType (I5): the token host's router serves the token action with a format suffix too, as C55's does, and answers the
-// code grant in the media type the guest's Accept header names. Whatever the type, no byte of a real token the provider issued may reach the guest:
-// refused or swapped for the placeholders, either is fine. The control row, the honest spelling with a JSON answer, gets the two placeholders today. The provider is a loopback server of the test (T8).
+// code grant in the media type the guest's Accept header names. Whatever the type, no byte of a real token the provider issued may reach the guest: refused or swapped for the placeholders, either is fine. The control row, the honest spelling with a JSON answer, gets the two placeholders today. The provider is a loopback server of the test (T8).
 func TestC67TokenAnswerInAnotherMediaType(t *testing.T) {
 	const login, grant, form, acc, ref = "https://login.example.com", "grant_type=authorization_code&code=c0de", "application/x-www-form-urlencoded", "sk-acc-REAL", "sk-ref-REAL"
 	js := `{"access_token":"` + acc + `","token_type":"bearer","scope":"repo","refresh_token":"` + ref + `"}`

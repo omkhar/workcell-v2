@@ -55,8 +55,7 @@ func TestTailIsBounded(t *testing.T) {
 	}
 }
 
-// TestOnceTakesOneConnection is the regression test for the channel connect flood (I12): once the init's connection is in, a later connection to the port is
-// refused rather than queued on the host with whatever the guest writes on it, and the first one goes on working.
+// TestOnceTakesOneConnection is the regression test for the channel connect flood (I12): once the init's connection is in, a later connection to the port is refused rather than queued on the host with whatever the guest writes on it, and the first one goes on working.
 func TestOnceTakesOneConnection(t *testing.T) {
 	addr := filepath.Join(t.TempDir(), "vsock_5000")
 	raw := must(net.Listen("unix", addr))
@@ -92,8 +91,7 @@ func TestOnceTakesOneConnection(t *testing.T) {
 	}
 }
 
-// TestOutput drives output with the guest's frames: how the command ended comes from its Exit, and an Exit with Err qualifies for fail (first) only as the
-// guest's first frame, since the init's exec failure comes before anything else and a forged one needs a running process, which spoke before it (I12, A1).
+// TestOutput drives output with the guest's frames: how the command ended comes from its Exit, and an Exit with Err qualifies for fail (first) only as the guest's first frame, since the init's exec failure comes before anything else and a forged one needs a running process, which spoke before it (I12, A1).
 func TestOutput(t *testing.T) {
 	noexec := guest.Exit{Err: "no such file"}
 	tests := []struct {
@@ -131,8 +129,7 @@ func TestOutput(t *testing.T) {
 	}
 }
 
-// TestSeat: output with nobody attached is dropped; a client sees the output and its Stdin and Resize frames reach the guest side, anything else it sends does
-// not; the next client turns the first out and gets the output instead; a client that has gone costs the seat, not the session.
+// TestSeat: output with nobody attached is dropped; a client sees the output and its Stdin and Resize frames reach the guest side, anything else it sends does not; the next client turns the first out and gets the output instead; a client that has gone costs the seat, not the session.
 func TestSeat(t *testing.T) {
 	s := &seat{window: make(chan struct{}, 4), in: make(chan wire.Frame, 4)}
 	out := func(text string) wire.Frame { return wire.Frame{Type: guest.TypeStdout, Payload: []byte(text)} }
@@ -177,8 +174,7 @@ func TestSeat(t *testing.T) {
 	}
 }
 
-// TestClientEndsAsADetach: the client ends with code 0 and the terminal restored when its connection closes with no Exit frame (a session that ended in error, I12:
-// the supervisor waits for it, so it must not hang) and when the reader of its stdout is gone (`| head -1`, C3 of S-1002, I9): not the SIGPIPE death that skipped session_end.
+// TestClientEndsAsADetach: the client ends with code 0 and the terminal restored when its connection closes with no Exit frame (a session that ended in error, I12: the supervisor waits for it, so it must not hang) and when the reader of its stdout is gone (`| head -1`, C3 of S-1002, I9): not the SIGPIPE death that skipped session_end.
 func TestClientEndsAsADetach(t *testing.T) {
 	saved, _ := unix.Dup(unix.Stdout) // fd 1 becomes a pipe whose reader is gone, for the whole test
 	r, w, _ := os.Pipe()

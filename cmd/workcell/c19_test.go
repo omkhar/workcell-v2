@@ -15,8 +15,7 @@ import (
 	"testing"
 )
 
-// c19Data fills data as a data directory before a session: dummy artifacts and an earlier session of
-// repo with a marked audit log and workspace image, and no audit key. It returns the artifacts.
+// c19Data fills data as a data directory before a session: dummy artifacts and an earlier session of repo with a marked audit log and workspace image, and no audit key. It returns the artifacts.
 func c19Data(t *testing.T, data, repo string) artifacts {
 	t.Helper()
 	must(0, os.MkdirAll(data, 0o700))
@@ -50,8 +49,7 @@ func c19Untouched(t *testing.T, data string) {
 
 func exists(p string) bool { _, err := os.Lstat(p); return err == nil }
 
-// TestC19RunRefusesAWorkspaceThatHoldsTheDataDirectory (I7, I9, I13, I14): a workspace that holds the
-// data or the config directory is refused, naming it, before a session directory, key or export is made.
+// TestC19RunRefusesAWorkspaceThatHoldsTheDataDirectory (I7, I9, I13, I14): a workspace that holds the data or the config directory is refused, naming it, before a session directory, key or export is made.
 func TestC19RunRefusesAWorkspaceThatHoldsTheDataDirectory(t *testing.T) {
 	for _, tc := range []struct {
 		name                string
@@ -91,8 +89,7 @@ func TestC19RunRefusesAWorkspaceThatHoldsTheDataDirectory(t *testing.T) {
 	}
 }
 
-// TestC19PullRefusesADestinationThatHoldsTheDataDirectory (I8, I9, I14): a pull destination that holds
-// the data directory is refused in one line, naming it, before anything boots.
+// TestC19PullRefusesADestinationThatHoldsTheDataDirectory (I8, I9, I14): a pull destination that holds the data directory is refused in one line, naming it, before anything boots.
 func TestC19PullRefusesADestinationThatHoldsTheDataDirectory(t *testing.T) {
 	dest := t.TempDir()
 	data, repo := filepath.Join(dest, "workcell"), filepath.Join(dest, "repo")

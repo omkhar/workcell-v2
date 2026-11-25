@@ -20,8 +20,7 @@ import (
 	"github.com/omkhar/workcell/v2/internal/secret"
 )
 
-// TestScriptedProviderSession runs each adapter's requests against a fake of its API on a loopback listener of the test's own (T8), through the terminating proxy and the real broker, with the rule built as cmd/workcell builds it (internal/provider imports this package, so the data files are read by
-// the tests of internal/provider and cmd/workcell). The fake answers only for the real key.
+// TestScriptedProviderSession runs each adapter's requests against a fake of its API on a loopback listener of the test's own (T8), through the terminating proxy and the real broker, with the rule built as cmd/workcell builds it (internal/provider imports this package, so the data files are read by the tests of internal/provider and cmd/workcell). The fake answers only for the real key.
 func TestScriptedProviderSession(t *testing.T) {
 	const key = "REAL-0123456789"
 	providers := []struct {

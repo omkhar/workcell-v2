@@ -21,8 +21,7 @@ import (
 	"github.com/omkhar/workcell/v2/internal/rootfs"
 )
 
-// TestC38ExportErrorQuotesFilePath (I12 in spirit, hardening as C20 and C31): the image writer names a repository
-// file only quoted, both one that a checkout put past PATH_MAX and one that is no longer the file the walk saw.
+// TestC38ExportErrorQuotesFilePath (I12 in spirit, hardening as C20 and C31): the image writer names a repository file only quoted, both one that a checkout put past PATH_MAX and one that is no longer the file the walk saw.
 func TestC38ExportErrorQuotesFilePath(t *testing.T) {
 	const name = "\x1b]0;owned\x07\u009b2J‮README"
 	dir := t.TempDir()

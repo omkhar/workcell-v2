@@ -13,8 +13,7 @@ import (
 	"time"
 )
 
-// hostFile writes size bytes (a pattern, or a sparse file with marks at both ends when
-// big) under dir and describes the file as a Source.
+// hostFile writes size bytes (a pattern, or a sparse file with marks at both ends when big) under dir and describes the file as a Source.
 func hostFile(t *testing.T, dir, name string, size int64) (*HostFile, []byte) {
 	t.Helper()
 	path := filepath.Join(dir, name)
@@ -62,8 +61,7 @@ func imageFile(t *testing.T, tr *Tree, free int64) string {
 	return path
 }
 
-// TestWriteExt4File checks that data taken from host files gives the image that the same
-// data held in memory gives, byte for byte, however the files fall across blocks and groups.
+// TestWriteExt4File checks that data taken from host files gives the image that the same data held in memory gives, byte for byte, however the files fall across blocks and groups.
 func TestWriteExt4File(t *testing.T) {
 	tests := []struct {
 		name  string
@@ -142,8 +140,7 @@ func TestSourceChecks(t *testing.T) {
 	}
 }
 
-// TestFreeSpace checks that an image with free space is consistent, sparse, and has room the
-// guest can fill: debugfs writes a file into it.
+// TestFreeSpace checks that an image with free space is consistent, sparse, and has room the guest can fill: debugfs writes a file into it.
 func TestFreeSpace(t *testing.T) {
 	for _, tool := range []string{"e2fsck", "debugfs"} {
 		if _, err := exec.LookPath(tool); err != nil {

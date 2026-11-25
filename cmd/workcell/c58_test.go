@@ -18,8 +18,7 @@ import (
 )
 
 // TestC58RepositoryCannotSwitchOffTheSourceCheck (I5, I13): the operator's key file lies under cwd, as in C54, and the repository's workcell.toml drops the [[secret]] row that names it, by naming
-// another row or by emptying [network] allow. The row is gone, but the key file is still under cwd and still goes into the guest's /workspace. A repository file that changes nothing leaves the
-// config refused before anything is made (C54); one that drops the row must not switch that refusal off. The VMM is a dummy: a session not refused fails at boot, after the session directory and the export.
+// another row or by emptying [network] allow. The row is gone, but the key file is still under cwd and still goes into the guest's /workspace. A repository file that changes nothing leaves the config refused before anything is made (C54); one that drops the row must not switch that refusal off. The VMM is a dummy: a session not refused fails at boot, after the session directory and the export.
 func TestC58RepositoryCannotSwitchOffTheSourceCheck(t *testing.T) {
 	const key = "sk-ant-c58-real-key-0123456789"
 	for _, repo := range []string{"# C58: changes nothing\n", "[[secret]]\nname = \"nothing\"\nsource = \"x\"\n", "[network]\nallow = []\n"} { // the repository's workcell.toml

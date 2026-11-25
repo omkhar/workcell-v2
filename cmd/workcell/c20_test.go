@@ -42,8 +42,7 @@ func c20Control(s string) int {
 	return strings.IndexFunc(s, func(r rune) bool { return r < 0x20 || r == 0x7f })
 }
 
-// TestC20PullWriteErrorQuotesGuestPath (I8, I12): when the write of a guest-named file fails after it is
-// open, the one line pull prints carries the guest path only quoted, as shown renders every refusal.
+// TestC20PullWriteErrorQuotesGuestPath (I8, I12): when the write of a guest-named file fails after it is open, the one line pull prints carries the guest path only quoted, as shown renders every refusal.
 func TestC20PullWriteErrorQuotesGuestPath(t *testing.T) {
 	dest := t.TempDir()
 	m := judged(t, []guest.Entry{fileEntry(c20Path, 4, false)})

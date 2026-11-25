@@ -460,8 +460,7 @@ func checkOpened(t *testing.T, api *standIn) {
 	}
 }
 
-// runFixture writes the pins directory, starts the recorded upstream and the stand-in, and runs the command; it returns the output and the directory's files
-// before and after.
+// runFixture writes the pins directory, starts the recorded upstream and the stand-in, and runs the command; it returns the output and the directory's files before and after.
 func runFixture(t *testing.T, f fixture, dry bool) (string, int, *standIn, map[string]string, map[string]string) {
 	up := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, ok := f.upstream[r.URL.Path]

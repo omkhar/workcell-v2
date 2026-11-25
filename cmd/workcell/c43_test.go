@@ -14,8 +14,7 @@ import (
 	"github.com/omkhar/workcell/v2/internal/provider"
 )
 
-// TestFailSparesALayerThisStartDidNotInstall (I12, B10; finding C43 of S-1016d): fresh pairs the image this start installed with the one it replaced, not a provider's name, so a layer the
-// operator chose by `workcell update --rollback` while guest root kept the session silent is not this start's, even once a later start's apply has moved on and the rollback made this start's image current again; a forged first frame does not undo the operator.
+// TestFailSparesALayerThisStartDidNotInstall (I12, B10; finding C43 of S-1016d): fresh pairs the image this start installed with the one it replaced, not a provider's name, so a layer the operator chose by `workcell update --rollback` while guest root kept the session silent is not this start's, even once a later start's apply has moved on and the rollback made this start's image current again; a forged first frame does not undo the operator.
 func TestFailSparesALayerThisStartDidNotInstall(t *testing.T) {
 	p, dir := must(provider.All())[0], t.TempDir()
 	layers := filepath.Join(dir, "layers", p.Name)

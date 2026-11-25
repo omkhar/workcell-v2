@@ -112,8 +112,7 @@ func TestShown(t *testing.T) {
 }
 
 // FuzzPath (T5) feeds any bytes as a guest path to checkPath, fold, shown and a fresh manifest's add, and
-// checks what they promise for every input: none panics; shown never carries a byte a terminal would obey;
-// fold is idempotent and preserves EqualFold; add keeps only what checkPath admits, and never the same path twice.
+// checks what they promise for every input: none panics; shown never carries a byte a terminal would obey; fold is idempotent and preserves EqualFold; add keeps only what checkPath admits, and never the same path twice.
 func FuzzPath(f *testing.F) {
 	for _, s := range []string{"README", "a/b.txt", "Ünïcode/ſ", "\x1b]0;owned\x07\x1b[2J\x1b[31mREADME", ".git/x", "a//b", "\xff", ""} {
 		f.Add(s)

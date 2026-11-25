@@ -133,12 +133,10 @@ func TestAdversarial(t *testing.T) {
 		{name: "13 truncate symlink", req: func() []byte { return reqSetattr(n("ln"), fattrSize, 0, 0, 0) }, want: syscall.EPERM},
 		{name: "13 utimens symlink", req: func() []byte { return reqSetattr(n("ln"), fattrMtimeNow|fattrAtimeNow, 0, 0, 0) }},
 		{name: "14 lookup swap", req: func() []byte { return reqLookup(1, "swap") }, after: kind("swap", unix.S_IFDIR)},
-		{name: "14 create in a dir the host swapped for a symlink", pre: host(rm("swap"), ln("..", "swap")),
-			req: func() []byte { return reqCreate(n("swap"), "written", unix.O_RDWR, 0o644) }, want: syscall.ESTALE},
+		{name: "14 create in a dir the host swapped for a symlink", pre: host(rm("swap"), ln("..", "swap")), req: func() []byte { return reqCreate(n("swap"), "written", unix.O_RDWR, 0o644) }, want: syscall.ESTALE},
 		{name: "14 lookup swap again is the symlink", req: func() []byte { return reqLookup(1, "swap") }, after: kind("swap2", unix.S_IFLNK)},
 		{name: "15 lookup victim", req: func() []byte { return reqLookup(1, "victim") }, after: kind("victim", unix.S_IFREG)},
-		{name: "15 open a file the host swapped for a symlink", pre: host(rm("victim"), ln("../secret", "victim")),
-			req: func() []byte { return reqOpen(n("victim"), unix.O_RDWR) }, want: syscall.ELOOP},
+		{name: "15 open a file the host swapped for a symlink", pre: host(rm("victim"), ln("../secret", "victim")), req: func() []byte { return reqOpen(n("victim"), unix.O_RDWR) }, want: syscall.ELOOP},
 		{name: "16 symlink loop a", req: func() []byte { return reqLookup(1, "loop1") }, after: kind("loop1", unix.S_IFLNK)},
 		{name: "16 symlink loop b", req: func() []byte { return reqLookup(1, "loop2") }, after: kind("loop2", unix.S_IFLNK)},
 		{name: "17 link", req: func() []byte { return req(13, 0, 1, u64(n("a")), cstr("hlx")) }, want: syscall.ENOSYS},
@@ -159,15 +157,13 @@ func TestAdversarial(t *testing.T) {
 		{name: "22 lookup a/b", req: func() []byte { return reqLookup(n("dira"), "b") }, after: kind("dirb", unix.S_IFDIR)},
 		{name: "22 rename a to x", req: func() []byte { return reqRename(1, "a", 1, "x") }},
 		{name: "22 symlink a to ..", req: func() []byte { return reqSymlink(1, "a", "..") }, after: kind("a-link", unix.S_IFLNK)},
-		{name: "22 create through b lands in x/b", req: func() []byte { return reqCreate(n("dirb"), "written", unix.O_RDWR, 0o644) },
-			after: func(t *testing.T, _ []byte) {
-				if !exists(ex("x/b/written")) || exists(filepath.Join(fx.dir, "written")) {
-					t.Error("written is not in x/b, or is beside the export")
-				}
-			}},
+		{name: "22 create through b lands in x/b", req: func() []byte { return reqCreate(n("dirb"), "written", unix.O_RDWR, 0o644) }, after: func(t *testing.T, _ []byte) {
+			if !exists(ex("x/b/written")) || exists(filepath.Join(fx.dir, "written")) {
+				t.Error("written is not in x/b, or is beside the export")
+			}
+		}},
 		{name: "23 lookup sub", req: func() []byte { return reqLookup(1, "sub") }, after: kind("sub", unix.S_IFDIR)},
-		{name: "23 create in a dir the host moved beside the export", pre: host(mv("sub", "sub-moved")),
-			req: func() []byte { return reqCreate(n("sub"), "f", unix.O_RDWR, 0o644) }, want: syscall.ENOENT},
+		{name: "23 create in a dir the host moved beside the export", pre: host(mv("sub", "sub-moved")), req: func() []byte { return reqCreate(n("sub"), "f", unix.O_RDWR, 0o644) }, want: syscall.ENOENT},
 		{name: "23 mkdir in it", req: func() []byte { return reqMkdir(n("sub"), "d") }, want: syscall.ENOENT},
 		{name: "23 lookup in it", req: func() []byte { return reqLookup(n("sub"), "f") }, want: syscall.ENOENT},
 		{name: "23 getattr of it", req: func() []byte { return reqGetattr(n("sub")) }, want: syscall.ENOENT},
@@ -175,8 +171,7 @@ func TestAdversarial(t *testing.T) {
 		{name: "23 the name is gone", req: func() []byte { return reqLookup(1, "sub") }, want: syscall.ENOENT},
 		{name: "23 lookup p", req: func() []byte { return reqLookup(1, "p") }, after: kind("p", unix.S_IFDIR)},
 		{name: "23 lookup p/q", req: func() []byte { return reqLookup(n("p"), "q") }, after: kind("q", unix.S_IFDIR)},
-		{name: "23 create under a moved ancestor", pre: host(mv("p", "p-moved")),
-			req: func() []byte { return reqCreate(n("q"), "f", unix.O_RDWR, 0o644) }, want: syscall.ESTALE},
+		{name: "23 create under a moved ancestor", pre: host(mv("p", "p-moved")), req: func() []byte { return reqCreate(n("q"), "f", unix.O_RDWR, 0o644) }, want: syscall.ESTALE},
 		{name: "24 lookup r1", req: func() []byte { return reqLookup(1, "r1") }, after: kind("r1", unix.S_IFDIR)},
 		{name: "24 lookup r1/r2", req: func() []byte { return reqLookup(n("r1"), "r2") }, after: kind("r2", unix.S_IFDIR)},
 		{name: "24 rename into own descendant", req: func() []byte { return reqRename(1, "r1", n("r2"), "c") }, want: syscall.EINVAL},
@@ -253,18 +248,16 @@ func TestAdversarial(t *testing.T) {
 		{name: "42 lookup big", req: func() []byte { return reqLookup(1, "big") }, after: save("big")},
 		{name: "42 open big", req: func() []byte { return reqOpen(n("big"), unix.O_RDONLY) }, after: save("fhB")},
 		{name: "42 read of 4 GiB is clamped", req: func() []byte { return reqRead(n("big"), n("fhB"), 0, math.MaxUint32) }, after: lenIs(MaxWrite)},
-		{name: "43 readdir of 4 GiB fits a frame", req: func() []byte { return reqReaddir(1, n("dfh"), 0, math.MaxUint32, false) },
-			after: func(t *testing.T, b []byte) {
-				if len(b) > MaxWrite || !slices.Contains(dirNames(b, false), "a.txt") {
-					t.Errorf("%d bytes, names %v", len(b), dirNames(b, false))
-				}
-			}},
-		{name: "43 readdirplus of 4 GiB fits a frame", req: func() []byte { return reqReaddir(1, n("dfh"), 0, math.MaxUint32, true) },
-			after: func(t *testing.T, b []byte) {
-				if len(b) > MaxWrite || !slices.Contains(dirNames(b, true), "big") {
-					t.Errorf("%d bytes, names %v", len(b), dirNames(b, true))
-				}
-			}},
+		{name: "43 readdir of 4 GiB fits a frame", req: func() []byte { return reqReaddir(1, n("dfh"), 0, math.MaxUint32, false) }, after: func(t *testing.T, b []byte) {
+			if len(b) > MaxWrite || !slices.Contains(dirNames(b, false), "a.txt") {
+				t.Errorf("%d bytes, names %v", len(b), dirNames(b, false))
+			}
+		}},
+		{name: "43 readdirplus of 4 GiB fits a frame", req: func() []byte { return reqReaddir(1, n("dfh"), 0, math.MaxUint32, true) }, after: func(t *testing.T, b []byte) {
+			if len(b) > MaxWrite || !slices.Contains(dirNames(b, true), "big") {
+				t.Errorf("%d bytes, names %v", len(b), dirNames(b, true))
+			}
+		}},
 		{name: "44 write size above payload", req: func() []byte {
 			return req(opWrite, 0, n("a"), u64(n("fhA"), 0), u32(9, 0), u64(0), u32(0, 0), []byte("xyz"))
 		}, want: syscall.EINVAL},
@@ -354,35 +347,23 @@ func badIDs(n func(string) uint64) []step {
 	for _, id := range []struct {
 		name string
 		v    func() uint64
-	}{{"0", func() uint64 { return 0 }}, {"2^64-1", func() uint64 { return math.MaxUint64 }},
-		{"above the table", func() uint64 { return 1 << 40 }}, {"freed", func() uint64 { return n("fg") }}} {
+	}{{"0", func() uint64 { return 0 }}, {"2^64-1", func() uint64 { return math.MaxUint64 }}, {"above the table", func() uint64 { return 1 << 40 }}, {"freed", func() uint64 { return n("fg") }}} {
 		for _, op := range []struct {
 			name string
 			req  func(uint64) []byte
-		}{{"getattr", reqGetattr}, {"lookup", func(v uint64) []byte { return reqLookup(v, "x") }},
-			{"open", func(v uint64) []byte { return reqOpen(v, 0) }}, {"opendir", reqOpendir},
-			{"mkdir", func(v uint64) []byte { return reqMkdir(v, "x") }}, {"readlink", reqReadlink},
-			{"setattr", func(v uint64) []byte { return reqSetattr(v, fattrMode, 0, 0, 0o644) }},
-			{"rename", func(v uint64) []byte { return reqRename(v, "x", 1, "y") }}} {
-			steps = append(steps, step{name: "37 " + op.name + " of node " + id.name, want: syscall.ENOENT,
-				req: func() []byte { return op.req(id.v()) }})
+		}{{"getattr", reqGetattr}, {"lookup", func(v uint64) []byte { return reqLookup(v, "x") }}, {"open", func(v uint64) []byte { return reqOpen(v, 0) }}, {"opendir", reqOpendir}, {"mkdir", func(v uint64) []byte { return reqMkdir(v, "x") }}, {"readlink", reqReadlink}, {"setattr", func(v uint64) []byte { return reqSetattr(v, fattrMode, 0, 0, 0o644) }}, {"rename", func(v uint64) []byte { return reqRename(v, "x", 1, "y") }}} {
+			steps = append(steps, step{name: "37 " + op.name + " of node " + id.name, want: syscall.ENOENT, req: func() []byte { return op.req(id.v()) }})
 		}
 	}
 	for _, fh := range []struct {
 		name string
 		v    func() uint64
-	}{{"0", func() uint64 { return 0 }}, {"2^64-1", func() uint64 { return math.MaxUint64 }},
-		{"freed", func() uint64 { return n("fh1") }}} {
+	}{{"0", func() uint64 { return 0 }}, {"2^64-1", func() uint64 { return math.MaxUint64 }}, {"freed", func() uint64 { return n("fh1") }}} {
 		for _, op := range []struct {
 			name string
 			req  func(uint64) []byte
-		}{{"read", func(v uint64) []byte { return reqRead(n("a"), v, 0, 10) }},
-			{"write", func(v uint64) []byte { return reqWrite(n("a"), v, 0, []byte("x")) }},
-			{"getattr", func(v uint64) []byte { return reqGetattrFh(n("a"), v) }},
-			{"setattr", func(v uint64) []byte { return reqSetattr(n("a"), fattrFh|fattrSize, v, 0, 0) }},
-			{"release", func(v uint64) []byte { return reqRelease(n("a"), v) }}} {
-			steps = append(steps, step{name: "38 " + op.name + " with fh " + fh.name, want: syscall.EBADF,
-				req: func() []byte { return op.req(fh.v()) }})
+		}{{"read", func(v uint64) []byte { return reqRead(n("a"), v, 0, 10) }}, {"write", func(v uint64) []byte { return reqWrite(n("a"), v, 0, []byte("x")) }}, {"getattr", func(v uint64) []byte { return reqGetattrFh(n("a"), v) }}, {"setattr", func(v uint64) []byte { return reqSetattr(n("a"), fattrFh|fattrSize, v, 0, 0) }}, {"release", func(v uint64) []byte { return reqRelease(n("a"), v) }}} {
+			steps = append(steps, step{name: "38 " + op.name + " with fh " + fh.name, want: syscall.EBADF, req: func() []byte { return op.req(fh.v()) }})
 		}
 	}
 	return steps

@@ -196,8 +196,7 @@ func (b *tokenBroker) Tokens(string, string) ([]byte, []byte) {
 	return bytes.Clone(b.access), bytes.Clone(b.refresh)
 }
 
-// provider is a fake token endpoint on login.example.com and API on api.example.com: a code grant or the current refresh token gets a new pair, another grant 400 with the refresh token echoed; the API echoes Authorization.
-// mode frames a pair: "chunked" splits it inside a token, "gzip" compresses it, "escaped" spells the tokens with JSON escapes, "big" pads it past the bound.
+// provider is a fake token endpoint on login.example.com and API on api.example.com: a code grant or the current refresh token gets a new pair, another grant 400 with the refresh token echoed; the API echoes Authorization. mode frames a pair: "chunked" splits it inside a token, "gzip" compresses it, "escaped" spells the tokens with JSON escapes, "big" pads it past the bound.
 type provider struct {
 	mu     sync.Mutex
 	mode   string
@@ -281,8 +280,7 @@ func send(t *testing.T, c *http.Client, method, target, ctype, body string, head
 	return code, got
 }
 
-// TestSignInFlow: before a sign-in the access placeholder is refused; a sign-in's answer reaches the guest with the two placeholders in place of the tokens and a fresh Content-Length; the access placeholder then goes out as the real access token, the refresh placeholder in a form or a JSON grant as the
-// real refresh token, and after a refresh the same access placeholder is the new token; a 400 that echoes the refresh token is hidden too; and either placeholder anywhere else is refused or passed as it is. Drop tokenResponse → the guest reads a real token → FAIL.
+// TestSignInFlow: before a sign-in the access placeholder is refused; a sign-in's answer reaches the guest with the two placeholders in place of the tokens and a fresh Content-Length; the access placeholder then goes out as the real access token, the refresh placeholder in a form or a JSON grant as the real refresh token, and after a refresh the same access placeholder is the new token; a 400 that echoes the refresh token is hidden too; and either placeholder anywhere else is refused or passed as it is. Drop tokenResponse → the guest reads a real token → FAIL.
 func TestSignInFlow(t *testing.T) {
 	t.Parallel()
 	p := &provider{}

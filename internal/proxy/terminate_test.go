@@ -367,8 +367,7 @@ func TestNewTerminateRule(t *testing.T) { // the host comes back canonical and t
 	}
 }
 
-// TestTerminateNarrowedRule: a rule naming a method and a path prefix swaps a placeholder only on a request of that method under that prefix, and one naming repositories only on a request to /owner/name or /owner/name.git or under either, the placeholder bare, as a bearer or as a Basic password (as git sends a
-// token), judged on the path as sent and as decoded; any other request carrying the placeholder in the bound header is refused before the broker hears of it, with nothing forwarded, and a request carrying no placeholder passes as is. The bytes the broker gave are wiped once the request carries them. Drop the check → the broker is asked and the upstream sees the value → FAIL.
+// TestTerminateNarrowedRule: a rule naming a method and a path prefix swaps a placeholder only on a request of that method under that prefix, and one naming repositories only on a request to /owner/name or /owner/name.git or under either, the placeholder bare, as a bearer or as a Basic password (as git sends a token), judged on the path as sent and as decoded; any other request carrying the placeholder in the bound header is refused before the broker hears of it, with nothing forwarded, and a request carrying no placeholder passes as is. The bytes the broker gave are wiped once the request carries them. Drop the check → the broker is asked and the upstream sees the value → FAIL.
 func TestTerminateNarrowedRule(t *testing.T) {
 	t.Parallel()
 	broker := &fakeBroker{value: "real-secret"}

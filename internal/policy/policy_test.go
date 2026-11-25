@@ -75,8 +75,7 @@ func TestParse(t *testing.T) {
 	}
 }
 
-// TestParseSecret: each [[secret]] row comes back with its keys and its line, the optional
-// keys "" or nil when left out; the Allow entries are TestParse's concern.
+// TestParseSecret: each [[secret]] row comes back with its keys and its line, the optional keys "" or nil when left out; the Allow entries are TestParse's concern.
 func TestParseSecret(t *testing.T) {
 	full := "[[secret]]\nname = \"a\"\nsource = \"file:/s\"\nhost = \"a.example\"\nheader = \"X-Api-Key\"\nenv = \"A_KEY\"\nmethod = \"POST\"\npath = \"/v1/\"\n"
 	tests := []struct {
@@ -356,8 +355,7 @@ func TestReadRepo(t *testing.T) {
 
 var errTooLarge, errUpdate = errors.New("larger than"), errors.New(".toml:1: [update] is the user's table")
 
-// FuzzParse holds the reader to never panicking or hanging on any bytes, and to naming a line
-// that exists for every entry it returns. U-503 feeds it a repository's file (T5).
+// FuzzParse holds the reader to never panicking or hanging on any bytes, and to naming a line that exists for every entry it returns. U-503 feeds it a repository's file (T5).
 func FuzzParse(f *testing.F) {
 	for _, seed := range []string{specExample, "", "[network]\nallow = [\n\"a\",\n]\n", "[network]\nallow = [\"\\u0041\\\"\"]", "[[secret]]\nx = -1", "\xff", "[network]\r\nallow = []\r\n"} {
 		f.Add(seed)

@@ -2,8 +2,7 @@
 // Copyright 2026 Omkhar Arasaratnam
 
 // S-F7, finding C12 of S-1005 (I5). swapRefresh sends a refresh token to the endpoint as url.QueryEscape spells it in a form, so a token holding +, / or = (base64-shaped) goes out as a%2Bb%2Fc%3D, and as encoding/json spells it in an object, where & < > go out as \u0026 \u003c \u003e. hide must
-// replace both spellings as well as the verbatim bytes: an error answer that echoes the parameter or the body as received, in text or inside a JSON string, would otherwise carry the proxy's own spelling to the guest, one decode away from the real refresh token. That an IdP echoes is a precondition
-// the attacker does not control.
+// replace both spellings as well as the verbatim bytes: an error answer that echoes the parameter or the body as received, in text or inside a JSON string, would otherwise carry the proxy's own spelling to the guest, one decode away from the real refresh token. That an IdP echoes is a precondition the attacker does not control.
 package proxy
 
 import (

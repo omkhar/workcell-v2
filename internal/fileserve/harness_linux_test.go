@@ -25,9 +25,7 @@ type fixture struct {
 	secretStat          os.FileInfo
 }
 
-const longName = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" +
-	"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" +
-	"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" // 255 bytes
+const longName = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" // 255 bytes
 
 func newFixture(t *testing.T) *fixture {
 	t.Helper()
@@ -78,8 +76,7 @@ func (fx *fixture) checkSecret(t *testing.T) {
 	t.Helper()
 	b, err := os.ReadFile(fx.secret)
 	st, err2 := os.Lstat(fx.secret)
-	if err != nil || err2 != nil || string(b) != "secret" || st.Mode() != fx.secretStat.Mode() ||
-		!st.ModTime().Equal(fx.secretStat.ModTime()) {
+	if err != nil || err2 != nil || string(b) != "secret" || st.Mode() != fx.secretStat.Mode() || !st.ModTime().Equal(fx.secretStat.ModTime()) {
 		t.Errorf("the secret beside the export changed: %q %v %v %v", b, err, err2, st)
 	}
 }

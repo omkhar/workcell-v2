@@ -19,8 +19,7 @@ import (
 	"time"
 )
 
-// foldingFixture is signinFixture with the narrowed rules of terminateFixture, behind an upstream that folds the path as those routers do before it serves it (raw ;params cut up to the next raw slash, then decoded, a backslash taken for a slash, then dot segments resolved): the provider on
-// login.example.com, elsewhere an echo of the folded path and the credential header. The broker holds "real-secret".
+// foldingFixture is signinFixture with the narrowed rules of terminateFixture, behind an upstream that folds the path as those routers do before it serves it (raw ;params cut up to the next raw slash, then decoded, a backslash taken for a slash, then dot segments resolved): the provider on login.example.com, elsewhere an echo of the folded path and the credential header. The broker holds "real-secret".
 func foldingFixture(t *testing.T, prov *provider) *http.Client {
 	t.Helper()
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -51,8 +50,7 @@ func foldingFixture(t *testing.T, prov *provider) *http.Client {
 	return clientVia(listen(t, px, 443), caPool(t, ca))
 }
 
-// TestFoldedPathEscapesTheEndpointAndTheRule: (a) a code grant at a spelling the IdP's router folds to the token endpoint must reach the guest with no real token in it (send fails the test on one); (b) a placeholder on a request whose path folds to one outside its rule must be refused, as the
-// unfolded /v1/../admin is, with the secret withheld.
+// TestFoldedPathEscapesTheEndpointAndTheRule: (a) a code grant at a spelling the IdP's router folds to the token endpoint must reach the guest with no real token in it (send fails the test on one); (b) a placeholder on a request whose path folds to one outside its rule must be refused, as the unfolded /v1/../admin is, with the secret withheld.
 func TestFoldedPathEscapesTheEndpointAndTheRule(t *testing.T) {
 	t.Parallel()
 	c := foldingFixture(t, &provider{})

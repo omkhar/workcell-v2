@@ -2,8 +2,7 @@
 // Copyright 2026 Omkhar Arasaratnam
 
 // Finding C15 of S-1007 (I5, medium). learn in internal/proxy/signin.go hides only the tokens the broker holds when the answer arrives, plus the ones the answer itself issues. Two refresh requests sent at once both carry the one real refresh token R1 to the endpoint; the provider rotates on the
-// first and answers the second, now stale, 400 with the presented token echoed. By then the broker holds (A2, R2), so R1, real a moment before, reaches the guest verbatim. That the provider echoes is a precondition the attacker does not control. This file lives here as finding C15's regression test
-// (S4).
+// first and answers the second, now stale, 400 with the presented token echoed. By then the broker holds (A2, R2), so R1, real a moment before, reaches the guest verbatim. That the provider echoes is a precondition the attacker does not control. This file lives here as finding C15's regression test (S4).
 package proxy
 
 import (
@@ -22,8 +21,7 @@ import (
 	"github.com/omkhar/workcell/v2/internal/secret"
 )
 
-// TestConcurrentRefreshHidesTheReplacedToken: after a sign-in through the real proxy, broker and ledger, two refresh requests race. The loopback provider holds both until both have arrived, rotates on the first, and answers the second only once the guest holds the first answer, with the stale token
-// echoed. Pass: neither answer carries a byte of sk-ref-1. The second answer spells it: FAIL (I5).
+// TestConcurrentRefreshHidesTheReplacedToken: after a sign-in through the real proxy, broker and ledger, two refresh requests race. The loopback provider holds both until both have arrived, rotates on the first, and answers the second only once the guest holds the first answer, with the stale token echoed. Pass: neither answer carries a byte of sk-ref-1. The second answer spells it: FAIL (I5).
 func TestConcurrentRefreshHidesTheReplacedToken(t *testing.T) {
 	t.Parallel()
 	var arrived atomic.Int32

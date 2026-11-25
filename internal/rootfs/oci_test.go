@@ -76,8 +76,7 @@ type fixture struct {
 	blobs  []string
 }
 
-// newFixture serves layers (tar.gz blobs) behind an index, a manifest, a 401
-// challenge and an anonymous token endpoint, all on https.
+// newFixture serves layers (tar.gz blobs) behind an index, a manifest, a 401 challenge and an anonymous token endpoint, all on https.
 func newFixture(t *testing.T, layers ...[]byte) *fixture {
 	f := &fixture{t: t, routes: map[string][]byte{}, redir: map[string]string{}, seen: map[string][]string{}}
 	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
