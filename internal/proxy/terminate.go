@@ -166,7 +166,6 @@ func NewSessionCA(hosts []string, notAfter time.Time) (*SessionCA, error) {
 		KeyUsage:                    x509.KeyUsageCertSign,
 		BasicConstraintsValid:       true,
 		IsCA:                        true,
-		MaxPathLen:                  0,
 		MaxPathLenZero:              true,
 		PermittedDNSDomainsCritical: true,
 		PermittedDNSDomains:         hosts,

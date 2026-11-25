@@ -9,14 +9,11 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
-	"encoding/binary"
-	"encoding/hex"
 	"errors"
 	"io"
 	"net"
 	"net/http"
 	"net/netip"
-	"os"
 	"slices"
 	"strings"
 	"sync"
@@ -25,16 +22,13 @@ import (
 	"github.com/omkhar/workcell/v2/internal/audit"
 )
 
-// extECH is the encrypted_client_hello extension type.
-const extECH = 0xfe0d
-
 const (
+	extECH        = 0xfe0d // the encrypted_client_hello extension type
 	peekTimeout   = 10 * time.Second
 	dialTimeout   = 10 * time.Second // per resolve and per dial attempt
 	connectBudget = 3 * dialTimeout  // all dial attempts for one connection
 	maxHelloBytes = 16 << 10         // a real hello, post-quantum key share included, is under 2 KiB; bounds what each slot holds while peeking (I10)
 	maxConns      = 1024             // concurrent connections across all ports
-	rtfLocal      = 0x80000000       // RTF_LOCAL: a row of /proc/net/ipv6_route from the kernel's local table, one of the host's own addresses
 )
 
 var publicIPv6 = netip.MustParsePrefix("2000::/3") // the only global unicast IPv6 block; IPv4-embedding forms, site-local and SRv6 lie outside
@@ -104,66 +98,15 @@ func New(allow *Allowlist, rec Recorder) *Proxy {
 	}
 }
 
-// hostNets returns the networks of the host's own interfaces and the on-link unicast prefixes of its main route table, so a neighbour on a link whose interface prefix is host-length (a /32; a /128 beside the router's on-link /64) is known too (I4). A table the host lacks (no IPv6; a Mac) holds
-// nothing; one it cannot read refuses, as an unreadable interface list does.
+// hostNets returns the host's own networks (I4): the prefixes of its interfaces and, on Linux, the local and on-link rows of its route tables (hostRoutes), so a neighbour on a link whose interface prefix is host-length (a /32; a /128 beside the router's on-link /64) and an address held by a route alone are known too. A list or table that cannot be read refuses.
 func hostNets() ([]netip.Prefix, error) {
-	var text []byte
-	for _, path := range []string{"/proc/net/route", "/proc/net/ipv6_route"} {
-		b, err := os.ReadFile(path)
-		if err != nil && !errors.Is(err, os.ErrNotExist) {
-			return nil, err
-		}
-		text = append(text, b...)
-	}
-	nets, err := routes(string(text))
+	nets, err := hostRoutes()
 	addrs, err2 := net.InterfaceAddrs()
-	for i := 0; err2 == nil && i < len(addrs); i++ {
-		var p netip.Prefix
-		p, err2 = netip.ParsePrefix(addrs[i].String())
-		nets = append(nets, p)
+	for _, a := range addrs {
+		p, err := netip.ParsePrefix(a.String())
+		nets, err2 = append(nets, p), errors.Join(err2, err)
 	}
 	return nets, errors.Join(err, err2)
-}
-
-// routes returns the on-link unicast prefixes among the rows of /proc/net/route (a header, then eleven columns, of which Destination, Gateway and Mask hold the address bytes as one native-endian word in hex) and of /proc/net/ipv6_route (ten columns: destination, prefix length, source and its
-// length, next hop, metric, refcnt, use, flags, device; addresses as 32 hex digits): those with no gateway whose prefix is not the default route, not a local route (the IPv6 file holds the local table too) and not multicast. Either file may be absent; a malformed row refuses the table.
-func routes(text string) ([]netip.Prefix, error) {
-	var nets []netip.Prefix
-	for _, line := range strings.Split(text, "\n") {
-		f := strings.Fields(line)
-		p, gw, flags := netip.Prefix{}, netip.Addr{}, uint32(0) // the row's prefix and gateway, invalid where it is malformed
-		switch {
-		case len(f) == 0 || f[0] == "Iface":
-			continue
-		case len(f) == 11:
-			if ones, size := net.IPMask(hexAddr(f[7]).AsSlice()).Size(); size == 32 {
-				p, gw = netip.PrefixFrom(hexAddr(f[1]), ones), hexAddr(f[2])
-			}
-		case len(f) == 10:
-			plen, _ := hex.DecodeString(f[1])
-			fl, _ := hex.DecodeString(f[8])
-			if len(plen) == 1 && len(fl) == 4 {
-				p, gw, flags = netip.PrefixFrom(hexAddr(f[0]), int(plen[0])), hexAddr(f[4]), binary.BigEndian.Uint32(fl)
-			}
-		}
-		if !p.IsValid() || !gw.IsValid() || p.Addr().Is4() != (len(f) == 11) {
-			return nil, errors.New("route table: malformed row")
-		}
-		if gw.IsUnspecified() && p.Bits() > 0 && flags&rtfLocal == 0 && !p.Addr().IsMulticast() {
-			nets = append(nets, p)
-		}
-	}
-	return nets, nil
-}
-
-// hexAddr decodes an address printed as hex bytes, which for 4 bytes are one native-endian word of the network-order address.
-func hexAddr(s string) netip.Addr {
-	b, _ := hex.DecodeString(s)
-	if len(b) == 4 {
-		binary.NativeEndian.PutUint32(b, binary.BigEndian.Uint32(b))
-	}
-	a, _ := netip.AddrFromSlice(b)
-	return a
 }
 
 // Serve handles connections from ln, which receives traffic for port, until ln is closed.
@@ -179,10 +122,7 @@ func (p *Proxy) Serve(ln net.Listener, port uint16) error {
 		}
 		select {
 		case p.slots <- struct{}{}:
-			go func() {
-				defer func() { <-p.slots }()
-				p.handle(conn, port)
-			}()
+			go func() { defer func() { <-p.slots }(); p.handle(conn, port) }()
 		default:
 			_ = conn.Close() // at the limit: shed load and record nothing; the relay adapter, the only listener, holds an equal cap and closes first
 		}
@@ -212,10 +152,9 @@ func (p *Proxy) handle(client net.Conn, port uint16) {
 		return
 	}
 	defer upstream.Close()
-	if _, err := upstream.Write(replay); err != nil {
-		return
+	if _, err := upstream.Write(replay); err == nil {
+		splice(client, upstream)
 	}
-	splice(client, upstream)
 }
 
 // route picks the upstream host for a connection. On port 443 it reads the ClientHello and returns the bytes it read, which the caller must replay.
@@ -277,12 +216,10 @@ type recordingConn struct {
 	buf bytes.Buffer
 }
 
-var errHelloTooLarge = errors.New("client hello too large")
-
 func (r *recordingConn) Read(b []byte) (int, error) {
 	room := maxHelloBytes - r.buf.Len()
 	if room <= 0 {
-		return 0, errHelloTooLarge
+		return 0, errors.New("client hello too large")
 	}
 	n, err := r.Conn.Read(b[:min(len(b), room)])
 	r.buf.Write(b[:n])
@@ -297,13 +234,9 @@ func peekSNI(conn net.Conn) (sni string, read []byte, ok bool) {
 	abort := errors.New("sni peeked")
 	_ = tls.Server(rec, &tls.Config{
 		GetConfigForClient: func(hello *tls.ClientHelloInfo) (*tls.Config, error) {
-			// The outer name of an ECH hello is not the name the upstream serves.
-			for _, ext := range hello.Extensions {
-				if ext == extECH {
-					return nil, abort
-				}
+			if ok = !slices.Contains(hello.Extensions, extECH); ok { // the outer name of an ECH hello is not the name the upstream serves
+				sni = hello.ServerName
 			}
-			sni, ok = hello.ServerName, true
 			return nil, abort
 		},
 	}).Handshake()
@@ -312,10 +245,7 @@ func peekSNI(conn net.Conn) (sni string, read []byte, ok bool) {
 
 func splice(client, upstream net.Conn) {
 	var wg sync.WaitGroup
-	pipe := func(dst, src net.Conn) {
-		_, _ = io.Copy(dst, src)
-		closeWrite(dst)
-	}
+	pipe := func(dst, src net.Conn) { _, _ = io.Copy(dst, src); closeWrite(dst) }
 	// ponytail: no idle timeout; a peer that never closes holds its goroutines.
 	wg.Go(func() { pipe(upstream, client) })
 	wg.Go(func() { pipe(client, upstream) })

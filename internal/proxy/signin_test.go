@@ -85,8 +85,7 @@ func TestSwapRefresh(t *testing.T) {
 			t.Errorf("%s: swapRefresh = %q, %v, asked %d; want %q, asked %t", tc.name, got, err, asked, tc.want, tc.asked)
 		}
 	}
-	refused := func() ([]byte, error) { return nil, errors.New("not signed in") }
-	if got, err := swapRefresh(form, []byte("refresh_token="+ph), ph, refused); err == nil || got != nil {
+	if got, err := swapRefresh(form, []byte("refresh_token="+ph), ph, func() ([]byte, error) { return nil, errors.New("not signed in") }); err == nil || got != nil {
 		t.Errorf("a withheld token: swapRefresh = %q, %v; want the error", got, err)
 	}
 }
@@ -382,11 +381,7 @@ func TestTokenAnswerFramings(t *testing.T) {
 	for _, mode := range []string{"chunked", "gzip", "escaped", "big", "unrecorded"} {
 		t.Run(mode, func(t *testing.T) {
 			t.Parallel()
-			broker := &tokenBroker{}
-			p := &provider{mode: mode}
-			if mode == "unrecorded" {
-				broker.fail = errors.New("ledger failed")
-			}
+			broker, p := &tokenBroker{fail: map[bool]error{true: errors.New("ledger failed")}[mode == "unrecorded"]}, &provider{mode: mode}
 			c, _, px, log := signinFixture(t, p, broker)
 			code, body := send(t, c, "POST", "https://login.example.com"+tokenEndpointPath, "application/x-www-form-urlencoded", "grant_type=authorization_code&code=c0de")
 			switch mode {

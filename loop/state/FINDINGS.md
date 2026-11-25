@@ -6761,3 +6761,32 @@ to list it as residual risk without a code row would also be defensible (S7 list
 so the fix unit S-F53 stands and the maintainer may strike it.
 
 Sweep 3 now stands at five mediums (C65, C66, C67 and C68, fixed; C69, open) and two lows (C64, fixed; C70, open).
+
+C69 FIXED by S-F52, commits 2a2be63 (the fix, with the test moved into place) and 0f9366c (the test's own re-run
+path) (PR #315). also in v1 main: egressproxy/proxy.go. hostNets in internal/proxy/proxy.go no longer reads
+/proc/net/route and /proc/net/ipv6_route: routes, hexAddr and rtfLocal are gone, and it asks hostRoutes, a new
+Linux file internal/proxy/routes_linux.go with a stub beside it (routes_other.go, no table and no error, as a Mac's
+missing /proc was read before). hostRoutes sends one RTM_GETROUTE dump for every family and every table over an
+unprivileged netlink socket and reads its parts to NLMSG_DONE; routes, the pure parser, counts as the host's own
+every row of type local in any table of either family (so an AnyIP prefix such as `local 192.175.48.0/25 dev lo`
+or `local 2001:db8:1::/64 dev lo` is among the host's networks), and every unicast row with no gateway and more
+than zero prefix bits, as before. A route that carries a gateway is not the host's, so the suite's canary behind
+its gateway (S-F54) is still dialled. Broadcast, multicast and unreachable rows and rows of other families are
+skipped. A send or receive error, a part longer than the 64 KiB buffer, NLMSG_ERROR, an error carried in
+NLMSG_DONE, a cut message or attribute, a row shorter than its rtmsg or a prefix that does not fit its family
+refuses the whole read, and connect then answers blocked_address for every address, as an unreadable table did.
+The interface prefixes are still appended. TestC69AnyIPLocalRoute, now internal/proxy/c69_test.go, fails on main
+with its I4 line and passes on the fix, plain and under -race, by the builder, the orchestrator and the reviewer,
+each in a namespace of its own; its control arm is unchanged. The mend 0f9366c is in the test alone: a hosted
+runner lets an unprivileged process make a user namespace and then refuses it the namespace's network (EPERM at
+the first netlink request), so the test now goes on to `sudo -n unshare -n` whenever its first run failed, and a
+true I4 failure fails again there. TestRoutes is rewritten over hand-built netlink bytes in routes_linux_test.go
+(local v4 and v6, on-link and through a gateway, another table, no destination, the skipped types, and each
+refusal). Hosted on c010c6d, the same tree: gate on a real VM passed 147, failed 0, with the I2, I4, I5, I6, I9
+and I11 rows green against a canary that is not in the host's local table; gate-macos, gate-arm64 and guard green.
+Paid by folds in internal/proxy alone; product 14999 of 15000, test 28498 of 28498.
+What is left, none with a reproduction by an in-scope attacker: an IPv6 row of type anycast is not counted, read
+only, since no kernel at hand had IPv6; a dump that the host's own root changes while it is read is not read
+again; and the reader refuses more than before where a table reached only through a rule holds a local default
+(a TPROXY set-up) or where a route's gateway sits in a nexthop object, both toward refusal (PARKED.md weighs them).
+Sweep 3 now stands at five mediums (C65, C66, C67, C68 and C69, all fixed) and two lows (C64, fixed; C70, open).

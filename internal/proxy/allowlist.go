@@ -24,9 +24,7 @@ type Allowlist struct {
 }
 
 // canonicalHost lower-cases a host name and drops a trailing dot, so every lookup keyed by host agrees on one spelling.
-func canonicalHost(host string) string {
-	return strings.TrimSuffix(strings.ToLower(host), ".")
-}
+func canonicalHost(host string) string { return strings.TrimSuffix(strings.ToLower(host), ".") }
 
 // dnsName reports whether host, already canonical, is a DNS name: dot-separated labels of 1 to 63 letters, digits and inner hyphens, at most 253 bytes, the longest DNS name.
 func dnsName(host string) bool {
@@ -82,22 +80,14 @@ func ParseAllowlist(text, label string) (*Allowlist, error) {
 
 // Hosts lists every host the allowlist names, on any port, each once, in ascending order.
 func (a *Allowlist) Hosts() []string {
-	hosts := make(map[string]bool, len(a.sni)+len(a.forward))
-	maps.Copy(hosts, a.sni)
-	for _, host := range a.forward {
-		hosts[host] = true
-	}
-	return slices.Sorted(maps.Keys(hosts))
+	return slices.Compact(slices.Sorted(slices.Values(slices.Concat(slices.Collect(maps.Keys(a.sni)), slices.Collect(maps.Values(a.forward))))))
 }
 
 // TLSHosts lists the hosts allowed on port 443, in ascending order: the names the proxy terminates.
 func (a *Allowlist) TLSHosts() []string { return slices.Sorted(maps.Keys(a.sni)) }
 
 // Forward is the host that a non-443 port forwards to, if the allowlist forwards it.
-func (a *Allowlist) Forward(port uint16) (string, bool) {
-	host, ok := a.forward[port]
-	return host, ok
-}
+func (a *Allowlist) Forward(port uint16) (string, bool) { host, ok := a.forward[port]; return host, ok }
 
 // Ports lists the ports the proxy must listen on, in ascending order.
 func (a *Allowlist) Ports() []uint16 {
@@ -105,6 +95,5 @@ func (a *Allowlist) Ports() []uint16 {
 	if len(a.sni) > 0 {
 		ports = append(ports, tlsPort)
 	}
-	slices.Sort(ports)
-	return ports
+	return slices.Sorted(slices.Values(ports))
 }

@@ -3,7 +3,7 @@
 
 //go:build linux
 
-// Reproduces C69 of S-1006 sweep 3 (I4): an address the host owns through the kernel's local table alone (an AnyIP route, `local 192.175.48.0/25 dev lo`, no interface address, no main-table route) is // not among hostNets, so connect dials it and the kernel delivers the guest's bytes to a listener on the host. It fails until fix unit S-F52 lands; S-F52 moves it to internal/proxy/c69_test.go.
+// Reproduces C69 of S-1006 sweep 3 (I4): an address the host owns through the kernel's local table alone (an AnyIP route, `local 192.175.48.0/25 dev lo`, no interface address, no main-table route) is not among hostNets, so connect dials it and the kernel delivers the guest's bytes to a listener on the host. It fails until fix unit S-F52 lands.
 package proxy
 
 import (
@@ -17,14 +17,14 @@ import (
 	"testing"
 )
 
-// TestC69AnyIPLocalRoute runs itself again in a network namespace of its own (through a user namespace where one may be made, else as root through sudo), lays the host out there and asserts I4.
+// TestC69AnyIPLocalRoute runs itself again in a network namespace of its own (through a user namespace where one may be made and may lay out its network, else as root through sudo), lays the host out there and asserts I4.
 func TestC69AnyIPLocalRoute(t *testing.T) {
 	if os.Args[len(os.Args)-1] != "c69-inside" {
 		args := []string{os.Args[0], "-test.run=^" + t.Name() + "$", "-test.v", "c69-inside"}
 		cmd := exec.Command(args[0], args[1:]...)
 		cmd.SysProcAttr = &syscall.SysProcAttr{Cloneflags: syscall.CLONE_NEWUSER | syscall.CLONE_NEWNET, UidMappings: []syscall.SysProcIDMap{{HostID: os.Getuid(), Size: 1}}, GidMappings: []syscall.SysProcIDMap{{HostID: os.Getgid(), Size: 1}}}
 		out, err := cmd.CombinedOutput()
-		if err != nil && cmd.ProcessState == nil { // no user namespace here: as root instead
+		if err != nil { // no user namespace here, or none with a say over its network (EPERM at the first netlink request): as root instead
 			out, err = exec.Command("sudo", append([]string{"-n", "unshare", "-n"}, args...)...).CombinedOutput()
 		}
 		if err != nil {
