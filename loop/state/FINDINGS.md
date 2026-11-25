@@ -7773,3 +7773,170 @@ of 28500).
 Sweep 3 now stands at two highs (C76 and C77, both fixed), ten mediums (C65, C66, C67, C68, C69, C71, C72, C73,
 C74 and C75, all fixed) and two lows (C64 and C70, both fixed). The next candidate number is C78 and the next
 fix unit S-F62.
+
+## S-1009, sweep 3: policy loading and merge, CLI parsing, `--allow`, adapter data files (I13), as built at main b38a0fa
+
+Sweep 3 (S8), the last the SPEC allows, fresh context (S3), the whole surface read in full as built after S-F1
+to S-F61, not a diff, at the claim commit b1f9da8. One auditor run on the top tier, finished without a stop: no
+model declined and no safeguard re-ran a request. No hypervisor in the cloud session, and nothing on this surface
+needed a VM: every probe ran by go test -overlay on package main of cmd/workcell or against a binary built in a
+scratch directory outside the repository, and the only listener was an httptest TLS server on loopback (S12, T8).
+The auditor wrote its own trust boundary before it opened any earlier record. Result: two candidates, C78 (I5,
+medium) and C79 (I14 hardening, low), each given to the redteam as a claim only, run by the orchestrator, and
+ruled on by its own verifier; the records are below. Nothing was fixed (S1). cmd/workcell and internal/policy
+carry no `// Ported from v1`; C78 leans on how internal/secret/source.go runs a cmd: source, which is ported,
+so its record keeps the v1 line of C54 and C72. Nothing is someone else's project (S14).
+
+Trust boundary. Attacker bytes enter this surface by (a) <cwd>/workcell.toml, owned by the malicious repository
+and, under --mount, by guest root between runs: loadPolicy in cmd/workcell/policy.go, ReadRepo in internal/policy
+(O_NOFOLLOW and O_NONBLOCK, fstat on the opened descriptor, a regular file, a 1 MiB cap, [update] refused), Parse
+(the project's own TOML subset) and Narrow, of which only an allow entry's text and a secret row's name are ever
+compared; (b) the working directory itself, its name, links and mounts, exported or served live, judged by holds,
+within, named and the TMPDIR rule; (c) files the guest writes indirectly (workspace.ext4, the caches) and the
+network (channel.json, artifacts), which this surface only names. Typed by the operator and not the attacker's:
+argv (parseRun, allowFlag, cacheFlag, the flags of update, log, verify and pull, validID), the environment
+(XDG_CONFIG_HOME, XDG_DATA_HOME and HOME under the IsAbs rule of S-F14, TMPDIR under boot's, TERM, SSL_CERT_FILE
+and SSL_CERT_DIR in the proxy), the user's config.toml ([[secret]] sources and the C54 check, [update]) and the
+embedded provider TOML, fixed at build time and checked by provider.parse. Authority: the supervisor as the
+operator's uid before any VM exists. It decides the proxy's maps, the resolver's names, the session CA's permitted
+names, the forward ports on the kernel command line, which rows become broker grants and terminate rules (I5),
+what the guest sees as /workspace (I1, I13), where data and config live (I7, I9) and what the installer trusts
+and installs (I14).
+
+Lenses (S9), each worked in turn.
+1. Parsing and resources. FuzzParse for 90 s, 3,212,414 executions, no crasher. By the built binary: a file of
+   1 MiB and one byte refused; 20,000 [[secret]] rows naming the user's row narrowed in 54 ms and 30,000 allow
+   entries in 50 ms; a FIFO and a symlink as workcell.toml ignored with one line and the user's grants kept, the
+   ceiling; [update] in the repository refused at its line; control bytes and non-ASCII outside strings refused,
+   and escapes inside a repository string reach only the quoted note. Fifteen --allow forms: the empty value, a
+   space, `#`, U+00A0, an IPv4 address, `[::1]:443`, ports 0 and 65536, a leading hyphen, `a_b`, `*.` and
+   `a:443:x` refused; a trailing dot and capitals made canonical. Held.
+2. Logic and state. Narrow's three rules run through the binary: a repository that widens or respells keeps
+   nothing of it and lands in the note; a provider-filled row whose host the repository drops is refused by
+   bindings; `allow = []` with `--allow api.anthropic.com` brings back the host and, for a provider-filled row,
+   its binding, which is the operator's approval and which explain shows; the C34 check refuses both of its
+   shapes, also when --allow gives the hosts back. run refuses a bad repository line before the data directory
+   exists. C78 was found here.
+3. Concurrency, ordering and check-to-use. ReadRepo judges the descriptor it opened; the policy is fixed before
+   boot; named() (C61) refuses a working directory whose name no longer names the process's directory, so a swap
+   between loadPolicy and Export is refused; a mount guest that rewrites its own workcell.toml between runs gets
+   a narrowing or the ceiling. Nothing new.
+4. Cryptography and identity. The [update] key is 32 bytes; ca replaces the roots of the installer's client
+   (C79); placeholders come from crypto/rand; the session CA's permitted names are the canonical terminated hosts.
+5. Failure modes. Every error path of loadPolicy, parseRun, allowlist, bindings and newInstaller fails closed
+   (an unreadable user config, a socket, over 1 MiB, a bad line, a repository [update], a row without name or
+   source, HOME unset or relative, a secret row with no allow). Open by design: a missing or non-regular
+   workcell.toml gives the user's own grants, the ceiling.
+6. Downgrade, rollback and replay. cooloff only lengthens and a huge value is refused; channel is stable, hold
+   or https; the serial floor advances only after a verify; --to chooses from the manifest's current and previous
+   less the withdrawn. Nothing on this surface.
+7. Interaction with other surfaces. Narrowing against the I5 checks (the C34 and C58 shapes hold; C78 is the
+   source check against the HOME the broker hands a helper); the layers of every provider attach whatever the
+   policy says, a PATH entry and no grant; explain prints the same allow, note and bindings that run uses.
+
+Earlier leads tried again. The PARKED line of S-1007's sweep-3 notes on C72 named `~/` and `$PWD/` as left for
+the helper's shell: `~`, `$HOME` and `${HOME}` reproduce as C78, and `$PWD` is harmless because the broker runs
+the helper from `/` and does not pass PWD (the verifier's probe: exit status 2). The provider host dropped by the
+repository is still refused by bindings; a non-regular workcell.toml is still ignored, the ceiling; --allow after
+a dropping repository is as lens 2 says. The tests of C21, C22, C34, C54, C58, C59, C60, C61, C62, C65, C72 and
+C75 are green under -race, and the C59 fix holds for every relative spelling; C79 is its absolute sibling. Reasoned
+against the code and not run again, unchanged and R3 as recorded: a repository's broken `./claude` on the start
+that applied an update, the "." marker of findLayers, the non-ASCII separator, --rollback and the withdrawn list.
+
+Coverage. Read in full: in cmd/workcell policy.go, main.go, data.go, caps.go, explain.go, layer.go, cache.go,
+cache_vm.go, update.go, pull.go, pull_vm.go, pull_linux.go, pull_darwin.go, log.go, relay.go, bench.go, bench_vm.go,
+run_vm.go, run_other.go, backend_linux.go, backend_darwin.go, mount_linux.go, mount_darwin.go, term_linux.go,
+term_vm.go, ocsf.go, session.go and the tests of policy, data, explain, caps and of C19, C21, C22, C28, C29, C34,
+C54, C58 to C62, C65, C72 and C75; internal/policy and internal/provider with their tests and the four provider
+TOML files; as trusted code internal/proxy (allowlist.go, terminate.go, signin.go, proxy.go), internal/secret
+(source.go, broker.go), internal/channel/channel.go, pins/pins.go, internal/pins/pins.go, internal/audit/key.go
+and two pin files; docs/policy.md on secret sources; PARKED.md. Read in part: internal/pins/sources.go,
+internal/artifact/verify.go, internal/workspace/workspace.go. Run: FuzzParse, the surface's tests under -race,
+the two probes, 16 invocations of the built binary's explain and run against hostile workcell.toml shapes and
+--allow values, and 24 edge invocations of every verb. Not examined, as other units' surfaces: internal/fileserve,
+the body of internal/workspace, internal/audit beyond key.go, internal/wire, internal/guest, internal/vmm,
+internal/resolver, internal/rootfs, internal/sigstore, internal/bump, internal/advisory, cmd/workcell-init,
+cmd/bump, cmd/mkimage, escape/, the other tests of cmd/workcell and `_legacy/`. No VM, no macOS path, no network.
+
+### S-1009 candidates, sweep 3
+
+C78. ID I5 (real credential bytes never exist in guest disk or memory), through the secret-source check of the
+policy loader, the class of C54, C58, C72 and C75; nothing widens, so not I13. ATTACKER: the malicious repository
+and guest root, who read /workspace. Precondition the attacker does not control, of the same kind as C72's and
+C75's: the operator's [[secret]] row spells the key's path under the working directory through the home, as
+`~`, `$HOME` or `${HOME}`, which the helper's shell expands and the check does not. SEVERITY: medium (S6). WHERE:
+cmd/workcell/policy.go, the word loop of loadPolicy, which reads each word of a cmd: source from its first slash
+and at every separator, and for which `~`, `$`, `{`, `}` and `<` are separators: `~/repo/.secrets/k` and
+`$HOME/repo/.secrets/k` are both judged as the text /repo/.secrets/k, which is not under the directory. The
+broker (internal/secret/source.go) splits the source on spaces, runs it with no shell of its own from `/`, and
+passes HOME, so the path is live in the program. INPUT: HOME an absolute home, the working directory <home>/repo
+holding .secrets/anthropic.key; config.toml with [network] allow = ["api.anthropic.com"] and a [[secret]] row
+named "anthropic" whose source is `cmd:/bin/sh -c cat<~/repo/.secrets/anthropic.key`, or the same with `$HOME`
+or `${HOME}`, or `cmd:<abs>/get-key.sh ~/repo/.secrets/anthropic.key` with a helper that expands its argument;
+then workcell run, or workcell run --mount, there. EFFECT: loadPolicy returns no error and a binding, where the
+same row with the literal absolute path is refused with the C54 line, and the session goes on past the export:
+in clone mode the key's bytes lie in workspace.ext4, which the guest gets as /workspace and may carry out through
+an allowed host; under --mount the directory is served live. Reproducing test, by the redteam, who was given the
+claim and not the auditor's probe: TestC78SecretPathSpelledFromHome, package main of cmd/workcell, 54 lines,
+parked at escape/_pending/S-F62/c78_test.go. Eight arms: `~` in a redirect in clone and mount mode, `$HOME` in
+clone mode, `${HOME}` under --mount, a helper given `~` in clone mode and `$HOME` under --mount, and two controls
+(the literal absolute path, refused on this tree; a source wholly outside the directory, which loads). It drives
+loadPolicy and then session() with temporary XDG directories and the dummy artifacts of the C19 test, runs each
+row once as the broker splits it, with HOME alone, and requires that it print the key, and fails on any session
+directory made. Run by the orchestrator by go test -overlay on the claim tree, plain and under -race, logs saved:
+the six finding arms fail with "I5: session <id> started for cmd:/bin/sh -c cat<~/repo/.secrets/anthropic.key:
+under --mount <cwd> is served live as /workspace, else its export holds the key", each after the dummy VMM's
+"start firecracker: invalid argument", so after the export, and no arm says the row did not print the key; the
+two controls pass. Outcome: CONFIRMED at medium by the verifier, who repeated the run and ruled on three questions.
+The row is live by the product's own path and not by the test's imitation: a probe of its own, overlaid into
+internal/secret, called secret.Resolve on the three /bin/sh spellings and got the key each time, and exit status
+2 for `$PWD`. It is a gap in what the check promises and not a program that reaches the directory by its own
+logic: docs/policy.md promises that every path a word of a cmd: source names lies outside the directory, the
+product itself hands the helper HOME, and loadPolicy has the same HOME, so the spelling is one it could resolve.
+The two helper arms are weaker, since the helper's own eval does the expanding, and the /bin/sh arms carry the
+finding alone. Medium and not low: the break is shown, with the key's bytes in workspace.ext4 while a placeholder
+is minted. This is the fourth residue of one check (C54, then C58, C72, C75 and now C78), and the earlier records
+hold that a reading of a helper's words cannot be made whole by listing spellings, so the maintainer may read it
+as the design problem of S8; the third shape of S-F59's line, to say in docs/policy.md that only literal paths
+are judged, is still theirs alone to take. Variants no arm expresses, from the redteam: another variable the
+broker passes that names an ancestor of the directory, `~user`, a `$(...)` substitution, and a glob such as
+`/*/u/repo/.secrets/*`. Not S14: policy.go is v2's own. also in v1 main: credbroker/cli.go. Fix unit: S-F62,
+below S-1009 in PLAN.md.
+
+C79. ID I14 hardening (the trust root of the host's channel and artifact fetches), with I13 (workspace content
+decides a host-side trust root); the absolute sibling of C59, which was a relative `ca` resolved against the
+working directory. ATTACKER: the malicious repository, which ships the file in its tree, or guest root under
+--mount, who rewrites it. Precondition the attacker does not control: the operator's [update] table names an
+absolute `ca` that lies under the directory sessions are run in. SEVERITY: low (S6: hardening, no invariant
+shown broken). WHERE: cmd/workcell/update.go, newInstaller, which refuses a `ca` that is not absolute, reads
+the file and makes it the only root of the installer's client; nothing relates it to the working directory.
+INPUT: config.toml with [update], channel = "https://<host>/channel.json", key = "<64 hex>" and ca =
+"<cwd>/certs/corp-ca.pem", a file that holds a certificate of the attacker's choosing; the operator runs workcell
+run, update or bench start there. EFFECT: the installer's client trusts the attacker's root alone for that
+invocation's fetches, so an attacker on the network path presents its own certificate for the channel host and
+the pin URLs. channel.Verify still demands the key, a serial no lower than the last seen and an unexpired
+manifest, and the fetch still refuses a digest mismatch, so nothing installs past the checks. Reproducing test,
+by the redteam from the claim alone: TestC79UpdateCAUnderTheWorkingDirectory, package main of cmd/workcell, 41
+lines, parked at escape/_pending/S-F63/c79_test.go. An httptest TLS server on loopback stands for the attacker's
+upstream and its certificate is the `ca` file; after newInstaller a HEAD through the installer's client must not
+succeed when the file lies under the directory, and must succeed when it lies beside the config, the control arm.
+Run by the orchestrator by overlay, plain and under -race, logs saved: the arm under the directory fails with
+"newInstaller and a fetch through its transport from the server holding that certificate gave <nil>; want trusted:
+false", and the control passes. Outcome: CONFIRMED at low by the verifier, who repeated the run and found that
+the test calls the real newInstaller and that manifest() builds its client from the same transport; that run
+reaches it after loadPolicy with the repository as the working directory and before holds(), which never compares
+the directory with `ca`, so nothing stops a session there; that the precondition is of the kind already accepted
+for C54 and C28; and that it is a finding under R2 and not a matter of use, since the loader refuses every other
+host-trusted path the operator names under the directory and no page calls `ca` repository content. Low as C59
+and for its reason: the certificate alone does nothing without a place on the network, and with one it gains
+only the blocking or replay of a signed manifest; not nothing, since the TLS factor that ADR-004 names beside the
+key is handed to the repository. Not expressed: a `ca` reached through a link from outside into the directory,
+and one under the data directory. Not S14: update.go is v2's own, nothing ported, no v1 line. Fix unit: S-F63,
+below S-1009 in PLAN.md.
+
+The 95 lines of the two parked tests were paid by 93 lines of layout folds in escape/ and the 3 lines of room
+(test 28499 of 28500, product 15000 of 15000): no test, row, arm or assertion removed.
+
+Sweep 3 now stands at two highs (C76 and C77, both fixed), eleven mediums (C65, C66, C67, C68, C69, C71, C72,
+C73, C74 and C75, all fixed; C78, open) and three lows (C64 and C70, both fixed; C79, open). The next candidate
+number is C80 and the next fix unit S-F64.

@@ -10,9 +10,7 @@ import (
 
 func TestFindSecrets(t *testing.T) {
 	a, b := secretPrefix+strings.Repeat("a", secretHex), secretPrefix+strings.Repeat("b", secretHex)
-	cases := []struct {
-		in, want string
-	}{{"", ""}, {secretPrefix, ""}, {a, a}, {"KEY=" + a + "\x00PATH=/bin", a},
+	cases := []struct{ in, want string }{{"", ""}, {secretPrefix, ""}, {a, a}, {"KEY=" + a + "\x00PATH=/bin", a},
 		{a + "0", ""},                                            // one hex digit too many: not the secret's shape
 		{a[:secretLen-1], ""},                                    // one too few
 		{a[:secretLen-1] + "G", ""},                              // not hex

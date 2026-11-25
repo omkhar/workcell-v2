@@ -135,11 +135,7 @@ func dnsCanary(listen dnsListener, leaked func(qs []dnsQuestion, token string) (
 		}
 		var mu sync.Mutex
 		var got []dnsQuestion
-		target, stop, err := listen(addr, func(q dnsQuestion) {
-			mu.Lock()
-			defer mu.Unlock()
-			got = append(got, q)
-		})
+		target, stop, err := listen(addr, func(q dnsQuestion) { mu.Lock(); defer mu.Unlock(); got = append(got, q) })
 		if err != nil {
 			return false, "", fmt.Errorf("canary listener: %w", err)
 		}

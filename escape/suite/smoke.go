@@ -32,8 +32,7 @@ const smokeVersion = "5.5.5"
 
 // events: the Messages API's stream, as pairs of event name and data.
 var events = []string{
-	"message_start", `{"type":"message_start","message":{"id":"msg_fake","type":"message","role":"assistant","model":"fake","content":[],"stop_reason":null,"usage":{"input_tokens":1,"output_tokens":1}}}`, "content_block_start", `{"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}`, "content_block_delta", `{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"hello"}}`,
-	"content_block_stop", `{"type":"content_block_stop","index":0}`, "message_delta", `{"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"output_tokens":1}}`, "message_stop", `{"type":"message_stop"}`,
+	"message_start", `{"type":"message_start","message":{"id":"msg_fake","type":"message","role":"assistant","model":"fake","content":[],"stop_reason":null,"usage":{"input_tokens":1,"output_tokens":1}}}`, "content_block_start", `{"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}`, "content_block_delta", `{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"hello"}}`, "content_block_stop", `{"type":"content_block_stop","index":0}`, "message_delta", `{"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"output_tokens":1}}`, "message_stop", `{"type":"message_stop"}`,
 }
 
 // messages is the fake API: a POST to /v1/messages carrying want in header gets a 200 stream, the only form claude -p asks for; any other credential 401; any other path 404.

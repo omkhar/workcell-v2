@@ -88,11 +88,7 @@ func serveCanaries(ln net.Listener, keys []tls.EncryptedClientHelloKey, cs ...*c
 }
 
 // requests is a copy of what the canary has received, taken under its lock, so that nothing else ever holds the lock while it reads.
-func (c *canary) requests() []request {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	return slices.Clone(c.seen)
-}
+func (c *canary) requests() []request { c.mu.Lock(); defer c.mu.Unlock(); return slices.Clone(c.seen) }
 
 // carried says whether a request's URL or headers held the secret, the header it is bound to not counted.
 func (c *canary) carried(secret, bound string) (string, bool) {

@@ -139,11 +139,7 @@ func (st *stream) serve(w http.ResponseWriter, r *http.Request) {
 	}
 	st.mu.Unlock()
 	if first {
-		defer func() {
-			st.mu.Lock()
-			st.ended = time.Now()
-			st.mu.Unlock()
-		}()
+		defer func() { st.mu.Lock(); st.ended = time.Now(); st.mu.Unlock() }()
 	}
 	tick := time.NewTicker(100 * time.Millisecond)
 	defer tick.Stop()

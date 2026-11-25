@@ -27,10 +27,7 @@ func TestJudgesOnFakeCanaries(t *testing.T) {
 		pass, err    bool
 	}{{"strict", nil, nil, "unreachable", false, true}, {"strict", []request{clean}, nil, "unreachable", true, false},
 		{"strict", []request{clean, clean}, nil, "served", true, false}, // the mismatch rewritten to the one name
-		{"strict", []request{clean, {sni: "bound.escape.test", host: "other.escape.test:2"}}, nil, "served", false, false}, {"strict", []request{clean}, []request{clean}, "served", false, false}, {"strict", []request{clean}, nil, "ech-accepted", false, false},
-		{"termination", []request{clean}, nil, "terminated", true, false}, {"termination", []request{clean}, nil, "spliced", false, false}, {"termination", []request{clean}, nil, "untrusted", false, false},
-		{"termination", []request{clean}, []request{clean}, "terminated", false, false}, {"termination", []request{{sni: "", host: "bound.escape.test:1"}}, nil, "terminated", false, false}, {"termination", nil, nil, "terminated", false, true},
-		{"upstream", nil, []request{clean}, "served", true, false}, {"upstream", []request{clean}, []request{clean}, "served", false, false}, {"upstream", nil, nil, "unreachable", false, true}, {"swap", []request{swapped}, nil, "sent", true, false},
+		{"strict", []request{clean, {sni: "bound.escape.test", host: "other.escape.test:2"}}, nil, "served", false, false}, {"strict", []request{clean}, []request{clean}, "served", false, false}, {"strict", []request{clean}, nil, "ech-accepted", false, false}, {"termination", []request{clean}, nil, "terminated", true, false}, {"termination", []request{clean}, nil, "spliced", false, false}, {"termination", []request{clean}, nil, "untrusted", false, false}, {"termination", []request{clean}, []request{clean}, "terminated", false, false}, {"termination", []request{{sni: "", host: "bound.escape.test:1"}}, nil, "terminated", false, false}, {"termination", nil, nil, "terminated", false, true}, {"upstream", nil, []request{clean}, "served", true, false}, {"upstream", []request{clean}, []request{clean}, "served", false, false}, {"upstream", nil, nil, "unreachable", false, true}, {"swap", []request{swapped}, nil, "sent", true, false},
 		{"swap", []request{unswapped}, nil, "sent", false, false},                      // the bound name got the placeholder, not the value
 		{"swap", []request{swapped}, []request{withPlaceholder}, "sent", false, false}, // the other name got anything
 		{"swap", []request{elsewhere}, nil, "sent", false, false},                      // the value in another header
@@ -45,10 +42,7 @@ func TestJudgesOnFakeCanaries(t *testing.T) {
 		var pass bool
 		var detail string
 		var err error
-		go func() {
-			defer close(done)
-			pass, detail, err = judges[c.judge](s, bound, other)
-		}()
+		go func() { defer close(done); pass, detail, err = judges[c.judge](s, bound, other) }()
 		select {
 		case <-done:
 		case <-time.After(time.Second):
@@ -73,8 +67,7 @@ func TestExchange(t *testing.T) {
 		wide, narr bool // admitted
 	}{{"GET,bound,/check,header", true, true, false}, {"GET,bound,/check,bearer", true, true, false}, {"POST,bound,/v1/ok,header", true, true, true}, {"POST,bound,/v1/ok,bearer", true, true, true}, {"GET,bound,/v1/ok,header", true, true, false}, {"POST,bound,/v2/no,header", true, true, false},
 		{"POST,bound,/v1,header", true, true, false}, // not under the prefix
-		{"GET,other,/replay,header", true, false, false}, {"GET,bound,/auth,auth", true, false, false}, {"GET,bound,/path,path", true, false, false}, {"GET,bound,/query,query", true, false, false}, {"GET,bound,/none,none", true, false, false}, {"GET,bound,/basic,basic", true, false, false},
-		{"GET,bound,/x,cookie", false, false, false}, {"GET,elsewhere,/x,header", false, false, false}, {"GET,bound,x,header", false, false, false}, {",bound,/x,header", false, false, false}, {"GET bound /x header", false, false, false},
+		{"GET,other,/replay,header", true, false, false}, {"GET,bound,/auth,auth", true, false, false}, {"GET,bound,/path,path", true, false, false}, {"GET,bound,/query,query", true, false, false}, {"GET,bound,/none,none", true, false, false}, {"GET,bound,/basic,basic", true, false, false}, {"GET,bound,/x,cookie", false, false, false}, {"GET,elsewhere,/x,header", false, false, false}, {"GET,bound,x,header", false, false, false}, {",bound,/x,header", false, false, false}, {"GET bound /x header", false, false, false},
 	}
 	for _, c := range cases {
 		e, ok := parseExchange(c.spec)

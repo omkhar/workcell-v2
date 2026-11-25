@@ -51,10 +51,7 @@ func (r *naiveRelay) one(c net.Conn) {
 		return
 	}
 	defer up.Close()
-	go func() {
-		io.Copy(up, c)
-		up.(*net.TCPConn).CloseWrite()
-	}()
+	go func() { io.Copy(up, c); up.(*net.TCPConn).CloseWrite() }()
 	io.Copy(c, up)
 }
 func (r *naiveRelay) stop() { r.ln.Close() }
