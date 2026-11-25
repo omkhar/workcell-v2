@@ -97,8 +97,7 @@ type installer struct {
 	fresh   []string
 }
 
-// newInstaller reads the user's [update] table (B10): the channel is fetched unless it is "hold" or no key is trusted, the table's alone when it gives one,
-// else the built-in ones; ca's certificates alone are the roots, and ca is read as written, so it must be absolute.
+// newInstaller reads the user's [update] table (B10): the channel is fetched unless it is "hold" or no key is trusted, the table's alone when it gives one, else the built-in ones; ca's certificates alone are the roots, and ca is read as written, so it must be absolute and outside the working directory.
 func newInstaller() (in installer, err error) {
 	in = installer{client: &http.Client{}, keys: channel.Keys}
 	file, err := configFile()
@@ -127,8 +126,9 @@ func newInstaller() (in installer, err error) {
 	default:
 		in.channel = u.Channel
 	}
-	if u.CA != "" && !filepath.IsAbs(u.CA) { // a relative one would be read against the working directory: a repository's own ca.pem as the only root (I13, I14)
-		return in, fmt.Errorf("%s: [update] ca %s is not absolute: set an absolute path", file, u.CA)
+	cwd, err := os.Getwd()
+	if u.CA != "" && (err != nil || !filepath.IsAbs(u.CA) || within(cwd, u.CA)) { // a relative one would be read against the working directory, and an absolute one under it (or linking into it) is read from there: a repository's own ca.pem as the only root (C59, C79; I13, I14). With no working directory to judge by, it is refused too
+		return in, fmt.Errorf("%s: [update] ca %s must be an absolute path outside the working directory %q, which the guest gets as /workspace: move the file and set that path", file, u.CA, cwd)
 	}
 	if u.CA != "" {
 		pool := x509.NewCertPool()
