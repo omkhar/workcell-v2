@@ -15,8 +15,7 @@ import (
 	"time"
 )
 
-// TestRunEndsWithAStoppedReader reproduces C50 (S-1002, sweep 2; I9, I7; C3's sibling), fixed by S-F33: the stdout reader takes nothing
-// (`workcell run -- cmd | sleep 1000`), the command writes more than the pipe holds and exits. The seat drops the client and the Exit reaches done; session's done arm, end, must return at once. Before the fix it waited on a client parked in os.Stdout.Write, which theirs.Close() cannot wake.
+// TestRunEndsWithAStoppedReader reproduces C50 (S-1002, sweep 2; I9, I7; C3's sibling), fixed by S-F33: the stdout reader takes nothing (`workcell run -- cmd | sleep 1000`), the command writes more than the pipe holds and exits. The seat drops the client and the Exit reaches done; session's done arm, end, must return at once. Before the fix it waited on a client parked in os.Stdout.Write, which theirs.Close() cannot wake.
 func TestRunEndsWithAStoppedReader(t *testing.T) {
 	saved, s := must(unix.Dup(unix.Stdout)), &seat{window: make(chan struct{}, guest.StdinWindow), in: make(chan wire.Frame, 4)}
 	r, w, err := os.Pipe()                       // fd 1 becomes this pipe, whose reader is alive and reads nothing

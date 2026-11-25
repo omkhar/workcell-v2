@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Omkhar Arasaratnam
 
-// Finding C57 of S-1008 (I10): a pull charged nothing for directory and symlink entries. S-F40
-// fixed it by charging one block per entry in manifest.add; this test proves the charge holds.
+// Finding C57 of S-1008 (I10): a pull charged nothing for directory and symlink entries. S-F40 fixed it by charging one block per entry in manifest.add; this test proves the charge holds.
 
 //go:build linux || (darwin && arm64 && cgo)
 
