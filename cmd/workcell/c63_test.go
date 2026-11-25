@@ -14,8 +14,7 @@ import (
 	"time"
 )
 
-// TestC63PullHoldsNoLock (I1, I4, I7, I12): a pull boots a VM for an ended session without taking its lock, so while the pull runs the session reads as not
-// running, and the refusal C56 holds for a mount session whose directory holds a running session's VMM directory does not see the pull's live one.
+// TestC63PullHoldsNoLock (I1, I4, I7, I12): a pull boots a VM for an ended session without taking its lock, so while the pull runs the session reads as not running, and the refusal C56 holds for a mount session whose directory holds a running session's VMM directory does not see the pull's live one.
 func TestC63PullHoldsNoLock(t *testing.T) {
 	repo, data := t.TempDir(), filepath.Join(t.TempDir(), "workcell")
 	t.Setenv("XDG_DATA_HOME", filepath.Dir(data))

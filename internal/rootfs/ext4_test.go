@@ -24,8 +24,7 @@ func pattern(n int) []byte {
 	return b
 }
 
-// fullTree holds every entry kind, a file over 48 KiB, a directory over one block and
-// ids over 65535.
+// fullTree holds every entry kind, a file over 48 KiB, a directory over one block and ids over 65535.
 func fullTree(t *testing.T) *Tree {
 	t.Helper()
 	tr := NewTree()
@@ -204,8 +203,7 @@ func TestE2fsck(t *testing.T) {
 	}
 }
 
-// TestMultiGroup writes a tree over 128 MiB, so over one group, and checks the file
-// size against the block count in the superblock.
+// TestMultiGroup writes a tree over 128 MiB, so over one group, and checks the file size against the block count in the superblock.
 func TestMultiGroup(t *testing.T) {
 	big := pattern(64 << 20)
 	tr := NewTree()

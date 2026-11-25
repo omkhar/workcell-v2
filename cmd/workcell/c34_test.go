@@ -15,8 +15,7 @@ import (
 const c34User = "[network]\nallow = [\"api.c34.test\", \"login.c34.test\", \"other.c34.test\"]\n\n[[secret]]\nname = \"k\"\n" +
 	"source = \"signin:login.c34.test/oauth/token\"\nhost = \"api.c34.test\"\nheader = \"authorization\"\n"
 
-// c34Load is the session's policy as `workcell run` loads it in a directory holding the repository file repo, "" for none: whether the token host is
-// terminated on 443, and whether a rule still has the proxy read and rewrite that host's token answers.
+// c34Load is the session's policy as `workcell run` loads it in a directory holding the repository file repo, "" for none: whether the token host is terminated on 443, and whether a rule still has the proxy read and rewrite that host's token answers.
 func c34Load(t *testing.T, repo string) (reachable, rewritten bool, err error) {
 	dir, work := t.TempDir(), t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", dir)

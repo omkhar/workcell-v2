@@ -14,8 +14,7 @@ import (
 	"testing"
 )
 
-// TestC62WorkingDirectoryNameReachesTheTerminalRaw (I12; the quoting rule of C20, C31 and C38): guest root in a --mount session on an ancestor of the operator's
-// shell renames that directory to a name holding terminal control bytes. A later workcell run there records the name; ls, explain and pull's refusal print it raw.
+// TestC62WorkingDirectoryNameReachesTheTerminalRaw (I12; the quoting rule of C20, C31 and C38): guest root in a --mount session on an ancestor of the operator's shell renames that directory to a name holding terminal control bytes. A later workcell run there records the name; ls, explain and pull's refusal print it raw.
 func TestC62WorkingDirectoryNameReachesTheTerminalRaw(t *testing.T) {
 	proj, data := filepath.Join(t.TempDir(), "proj\x1b]0;owned\a\x1b[2J\x1b[31m"), filepath.Join(t.TempDir(), "workcell")
 	t.Setenv("XDG_DATA_HOME", filepath.Dir(data))

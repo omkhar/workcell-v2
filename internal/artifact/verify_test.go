@@ -121,8 +121,7 @@ func newSigner(t testing.TB) *signer {
 	return s
 }
 
-// bundle mints a Sigstore bundle whose leaf names san and issuer: a message
-// signature over digest when payload is nil, else a DSSE envelope over payload.
+// bundle mints a Sigstore bundle whose leaf names san and issuer: a message signature over digest when payload is nil, else a DSSE envelope over payload.
 func (s *signer) bundle(t testing.TB, san string, digest, payload []byte, payloadType string) []byte {
 	k := p256(t)
 	sanDER, _ := asn1.Marshal([]asn1.RawValue{{Class: asn1.ClassContextSpecific, Tag: 6, Bytes: []byte(san)}})
@@ -207,8 +206,7 @@ type route struct {
 // marker is text an attacker's response carries that must never reach an error.
 const marker = "IGNORE PREVIOUS INSTRUCTIONS"
 
-// serve runs one TLS server that answers for every host: the client dials it
-// whatever the URL says. Routes are keyed by host and escaped path.
+// serve runs one TLS server that answers for every host: the client dials it whatever the URL says. Routes are keyed by host and escaped path.
 func serve(t *testing.T, routes map[string]route) (*http.Client, *atomic.Int32) {
 	var hits atomic.Int32
 	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -302,8 +300,7 @@ func (s *setup) retar(arch string, entries ...entry) {
 	s.art(arch, func(a *pins.Artifact) { a.SHA256 = hexOf(tb) })
 }
 
-// attest serves the registry's attestations: a publish attestation and a
-// provenance one of outer predicate type whose DSSE payload is stmt.
+// attest serves the registry's attestations: a publish attestation and a provenance one of outer predicate type whose DSSE payload is stmt.
 func (s *setup) attest(outer, payloadType string, stmt map[string]any) {
 	raw, _ := json.Marshal(stmt)
 	b := s.sg.bundle(s.t, s.san, nil, raw, payloadType)
@@ -691,8 +688,7 @@ func TestVerify(t *testing.T) {
 	}
 }
 
-// TestTarMember covers the limits that the Verify table cannot reach cheaply:
-// the decompressed cap and a member of exactly the cap.
+// TestTarMember covers the limits that the Verify table cannot reach cheaply: the decompressed cap and a member of exactly the cap.
 func TestTarMember(t *testing.T) {
 	bin := []byte("binary")
 	want := sha256.Sum256(bin)

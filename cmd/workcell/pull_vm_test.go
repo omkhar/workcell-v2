@@ -66,8 +66,7 @@ func content(t *testing.T, p string) string {
 	return string(b)
 }
 
-// TestWrite runs the writer against prepared directories. dest lies in a parent that must
-// stay untouched: the symlink cases bring updir -> .. there, as the I8 suite does.
+// TestWrite runs the writer against prepared directories. dest lies in a parent that must stay untouched: the symlink cases bring updir -> .. there, as the I8 suite does.
 func TestWrite(t *testing.T) {
 	link := func(t *testing.T, dest string) { // what a first pull of the link shape leaves behind
 		must(0, os.Symlink("..", filepath.Join(dest, "updir")))

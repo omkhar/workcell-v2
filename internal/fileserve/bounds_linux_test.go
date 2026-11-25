@@ -307,9 +307,7 @@ func TestStreamEnd(t *testing.T) {
 		want error
 	}{
 		{"stream closed", func(_ *kern, guest net.Conn) { _ = guest.Close() }, nil},
-		{"frame of 64 KiB + 1", func(_ *kern, guest net.Conn) {
-			_, _ = guest.Write([]byte{wire.Version, FrameType, 0, 1, 0, 1})
-		}, wire.ErrTooLarge},
+		{"frame of 64 KiB + 1", func(_ *kern, guest net.Conn) { _, _ = guest.Write([]byte{wire.Version, FrameType, 0, 1, 0, 1}) }, wire.ErrTooLarge},
 		{"wire header claiming 4 GiB", func(_ *kern, guest net.Conn) {
 			_, _ = guest.Write([]byte{wire.Version, FrameType, 0xff, 0xff, 0xff, 0xff})
 		}, wire.ErrTooLarge},
@@ -374,8 +372,7 @@ func TestOpen(t *testing.T) {
 	}
 }
 
-// TestGrowthCap is I10 on the export: files may grow by the cap in all, and the WRITE or SETATTR that would take them past it is ENOSPC and does nothing,
-// whether the growth is bytes or a hole. An entry costs one block of 4096, so the two creates take 8192 of the cap. Writes in place are free; shrinking gives nothing back.
+// TestGrowthCap is I10 on the export: files may grow by the cap in all, and the WRITE or SETATTR that would take them past it is ENOSPC and does nothing, whether the growth is bytes or a hole. An entry costs one block of 4096, so the two creates take 8192 of the cap. Writes in place are free; shrinking gives nothing back.
 func TestGrowthCap(t *testing.T) {
 	fx := newFixture(t)
 	const limit = 100_000
@@ -426,9 +423,7 @@ func TestGrowthCap(t *testing.T) {
 	}
 }
 
-// TestPace is C64: frames that take no reply are read no faster than paceFrames a paceEvery however cheap each is, a BATCH_FORGET's entries counted perForget
-// to one (I10). Eight periods' worth of frames too short to be a request, eight of 64 KiB BATCH_FORGETs of a node the host does not know, then a request whose
-// reply comes after them, take at least sixteen periods from before Serve began.
+// TestPace is C64: frames that take no reply are read no faster than paceFrames a paceEvery however cheap each is, a BATCH_FORGET's entries counted perForget to one (I10). Eight periods' worth of frames too short to be a request, eight of 64 KiB BATCH_FORGETs of a node the host does not know, then a request whose reply comes after them, take at least sixteen periods from before Serve began.
 func TestPace(t *testing.T) {
 	t0 := time.Now()
 	k, stop := start(t, t.TempDir())

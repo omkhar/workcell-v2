@@ -13,8 +13,7 @@ import (
 	"testing"
 )
 
-// debugfs runs one debugfs request against the image and returns what it printed, with
-// white space collapsed.
+// debugfs runs one debugfs request against the image and returns what it printed, with white space collapsed.
 func debugfs(t *testing.T, image, request string) string {
 	t.Helper()
 	out, _ := exec.Command("debugfs", "-R", request, image).CombinedOutput() // a missing path is a message, not a failure

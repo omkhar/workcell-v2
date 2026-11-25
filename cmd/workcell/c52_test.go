@@ -19,8 +19,7 @@ import (
 
 // TestC52BindMountAliasEvadesWithin (I1, I4; I7, I9, I13): within() compares spellings, the kernel compares identities. A bind mount
 // (`mount --bind repo /mnt/repo; cd /mnt/repo`) gives a tree a second name that Abs, EvalSymlinks and Rel never relate to the first, so the refusals
-// of C28 (TMPDIR inside a mount export) and C19/C29 (cwd holds the data directory) do not fire. Needs root: the gate's runner is not, so the test re-runs
-// itself through sudo -n, as escape/sandbox does, and skips only where that asks for a password. The arms are named short to keep the socket path under 108 bytes.
+// of C28 (TMPDIR inside a mount export) and C19/C29 (cwd holds the data directory) do not fire. Needs root: the gate's runner is not, so the test re-runs itself through sudo -n, as escape/sandbox does, and skips only where that asks for a password. The arms are named short to keep the socket path under 108 bytes.
 func TestC52BindMountAliasEvadesWithin(t *testing.T) {
 	if os.Geteuid() != 0 {
 		if err := exec.Command("sudo", "-n", "true").Run(); err != nil {

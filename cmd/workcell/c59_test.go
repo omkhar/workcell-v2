@@ -16,8 +16,7 @@ import (
 	"testing"
 )
 
-// TestC59UpdateCAIsNotReadFromTheWorkingDirectory: the user's [update] ca names a relative file, and the repository that is the working directory
-// holds a ca.pem of the attacker's. Building the installer must not read it: a relative ca is refused, or at least the roots are not the repository's (I14, I13).
+// TestC59UpdateCAIsNotReadFromTheWorkingDirectory: the user's [update] ca names a relative file, and the repository that is the working directory holds a ca.pem of the attacker's. Building the installer must not read it: a relative ca is refused, or at least the roots are not the repository's (I14, I13).
 func TestC59UpdateCAIsNotReadFromTheWorkingDirectory(t *testing.T) {
 	srv := httptest.NewTLSServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {})) // the attacker's upstream: its self-signed certificate is its own root
 	defer srv.Close()

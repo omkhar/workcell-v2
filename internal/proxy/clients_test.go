@@ -22,8 +22,7 @@ import (
 )
 
 // TestClientsValidateSessionLeaf is the accept clause of TLS termination for the clients: a TLS server with a session leaf for localhost, the CA in the trust stores guest.WriteTrust writes, the same files and variables the guest gets, and curl, Node, Python, Java and the Go standard library each
-// validating it under that environment alone. The guest image has none of these tools, so this runs here with go test, and each tool that is not on PATH is skipped. When the host has Debian's bundle the test starts from a copy of it, so the keystore and the bundle hold the public roots too, as they
-// do in the guest.
+// validating it under that environment alone. The guest image has none of these tools, so this runs here with go test, and each tool that is not on PATH is skipped. When the host has Debian's bundle the test starts from a copy of it, so the keystore and the bundle hold the public roots too, as they do in the guest.
 func TestClientsValidateSessionLeaf(t *testing.T) {
 	ca := must(NewSessionCA([]string{"localhost"}, time.Now().Add(time.Hour)))
 	dir := filepath.Join(t.TempDir(), "certs")

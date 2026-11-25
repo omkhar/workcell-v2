@@ -16,8 +16,7 @@ import (
 	"github.com/omkhar/workcell/v2/internal/guest"
 )
 
-// TestPullGrowthCapEntries is I10 on the pull path: a directory, symlink or empty-file entry carries no file bytes but costs
-// the host a block and an inode, so against limit bytes at most limit/4096 plus slack of them may land, as in mount mode (C18).
+// TestPullGrowthCapEntries is I10 on the pull path: a directory, symlink or empty-file entry carries no file bytes but costs the host a block and an inode, so against limit bytes at most limit/4096 plus slack of them may land, as in mount mode (C18).
 func TestPullGrowthCapEntries(t *testing.T) {
 	const limit, tries, slack = 100_000, 200, 2
 	most := limit/4096 + slack

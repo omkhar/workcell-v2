@@ -79,8 +79,7 @@ func TestDenyReader(t *testing.T) {
 }
 
 // TestAcceptBlockedNpmInstallNamesTheHostToAllow is the accept demonstration of U-308 at unit
-// level: the guest's npm asks for registry.npmjs.org, the resolver refuses it and tells the
-// proxy's real Deny, and the log, read the way `workcell log` reads it, has exactly one line, which names the host and the remedy.
+// level: the guest's npm asks for registry.npmjs.org, the resolver refuses it and tells the proxy's real Deny, and the log, read the way `workcell log` reads it, has exactly one line, which names the host and the remedy.
 func TestAcceptBlockedNpmInstallNamesTheHostToAllow(t *testing.T) {
 	dir := t.TempDir()
 	p := proxy.New(nil, must(audit.Create(dir, must(audit.LoadKey(dir)), time.Now)))

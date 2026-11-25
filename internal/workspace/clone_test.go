@@ -17,8 +17,7 @@ import (
 )
 
 // TestCloneSpeed is the acceptance test of clone mode: a 1 GB repository adds under 300 ms
-// on a filesystem that can reflink. It needs mkfs.xfs or mkfs.btrfs and permission to loop
-// mount (root, or passwordless sudo), and says which is missing when it skips.
+// on a filesystem that can reflink. It needs mkfs.xfs or mkfs.btrfs and permission to loop mount (root, or passwordless sudo), and says which is missing when it skips.
 func TestCloneSpeed(t *testing.T) {
 	var mkfs []string
 	for _, c := range [][]string{{"mkfs.xfs", "-q", "-m", "reflink=1"}, {"mkfs.btrfs", "-q"}} {

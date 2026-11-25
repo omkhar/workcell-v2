@@ -72,8 +72,7 @@ func TestFrame(t *testing.T) {
 	}
 }
 
-// FuzzDecode holds the header decoder to its bounds on any bytes: what decodes has a proto the
-// host knows and encodes back to the same bytes, so the guest has exactly one way to name a destination.
+// FuzzDecode holds the header decoder to its bounds on any bytes: what decodes has a proto the host knows and encodes back to the same bytes, so the guest has exactly one way to name a destination.
 func FuzzDecode(f *testing.F) {
 	f.Add(Header{Proto: TCP, Dst: netip.MustParseAddrPort("198.51.100.7:443")}.Encode())
 	f.Add(Header{Proto: UDP, Dst: netip.MustParseAddrPort("[::1]:53")}.Encode())
@@ -93,8 +92,7 @@ func FuzzDecode(f *testing.F) {
 	})
 }
 
-// FuzzReadFrame holds the frame reader to its bounds on any bytes: a frame is never longer
-// than its two-byte length says, and what it reads frames back to the bytes it consumed.
+// FuzzReadFrame holds the frame reader to its bounds on any bytes: a frame is never longer than its two-byte length says, and what it reads frames back to the bytes it consumed.
 func FuzzReadFrame(f *testing.F) {
 	f.Add(Frame([]byte("abc")))
 	f.Add([]byte{0xff, 0xff})

@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Omkhar Arasaratnam
 
-// Finding C17 of S-1008 (I10). Fix unit S-F10 first moves this file to
-// internal/fileserve/c17_test.go, as this comment says.
+// Finding C17 of S-1008 (I10). Fix unit S-F10 first moves this file to internal/fileserve/c17_test.go, as this comment says.
 
 //go:build linux
 
@@ -17,8 +16,7 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-// TestGrowthCapAppend is I10 on the export: a file opened O_APPEND, through CREATE or OPEN, must stay
-// within the cap however many WRITEs name offset 0.
+// TestGrowthCapAppend is I10 on the export: a file opened O_APPEND, through CREATE or OPEN, must stay within the cap however many WRITEs name offset 0.
 func TestGrowthCapAppend(t *testing.T) {
 	const limit, chunk, rounds, flags = 100_000, 60_000, 20, unix.O_RDWR | unix.O_APPEND
 	for _, tc := range []struct {

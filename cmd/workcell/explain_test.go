@@ -42,8 +42,7 @@ func TestExplanation(t *testing.T) {
 	}
 }
 
-// TestReach: the network text names where the policy came from, each name once with how it is
-// reached, and says that all else is refused; an empty policy says there is no network.
+// TestReach: the network text names where the policy came from, each name once with how it is reached, and says that all else is refused; an empty policy says there is no network.
 func TestReach(t *testing.T) {
 	list := func(texts ...string) policy.Policy {
 		var p policy.Policy

@@ -72,8 +72,7 @@ func TestFindArtifacts(t *testing.T) {
 }
 
 // TestRunUnavailable runs `workcell run` where it cannot start a session: on Linux with an
-// empty data directory, elsewhere because there is no backend. Both end with 125 and a
-// line that says why. It boots nothing, so it needs no hypervisor.
+// empty data directory, elsewhere because there is no backend. Both end with 125 and a line that says why. It boots nothing, so it needs no hypervisor.
 func TestRunUnavailable(t *testing.T) {
 	want := map[string]string{"linux": "firecracker is missing", "darwin": "vmlinux is missing"}
 	msg, ok := want[runtime.GOOS]
