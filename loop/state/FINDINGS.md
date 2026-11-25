@@ -8231,6 +8231,33 @@ them findings but the dead row; the first shape of fix refuses them too. Not exp
 through a link inside the directory; the guest's 502 and the audit row, read from code and not run. Not S14:
 policy.go is v2's own, and the ported source.go is not weak here, since it refuses the relative path. Fix unit:
 S-F66, below S-F65 in PLAN.md.
+C82 FIXED by S-F66, commits 5ec3e7b (the test moved, with an arm for a row the repository drops) and 5d0d710 (the
+fix) (PR #338). The orchestrator chose the unit line's first shape before the redteam ran and wrote it as a
+contract: loadPolicy refuses a [[secret]] row of the user's policy whose source has the scheme file and whose
+value, the whole text after `file:`, is not absolute by filepath.IsAbs, an empty value and one that starts with a
+space included, whether or not the repository's workcell.toml kept the row; an absolute file: value, cmd: and
+every other scheme are judged as on main. Why the first shape: the broker's readFile applies the same predicate
+and serves no such row, so the refusal costs honest use nothing and says at load what the broker would say only
+at first use, after the export; the second shape leaves a dead row accepted when it points outside the directory,
+and needs a join and a second judgement where this needs one condition. The fix is three lines in the loop over
+p.Secret in cmd/workcell/policy.go, before the words are read, paid by joining three doc comments (two in caps.go,
+one in cache_vm.go): product 15000 of 15000. The line, from loadPolicy and so before any session directory:
+`<config file>:<line>: secret "anthropic": file: path ".secrets/anthropic.key" is not absolute: a file: path must
+be absolute, as the broker reads it from no directory`. docs/policy.md says in its file: bullet that the path is
+absolute and that a row whose path is not is refused before a session starts. The test is
+TestC82RelativeFileSource in cmd/workcell/c82_test.go, now seven arms: in the new one the repository's
+workcell.toml drops the row (C58's pattern), so a fix that judged only the kept rows would fail it; its four lines
+were paid by joining five rows of a table in escape/suite/bench_test.go, no row removed: test 28500 of 28500.
+Proved: with main's policy.go, by go test -overlay, the five arms that are not controls fail with the line that
+the session started and the two controls pass; on the fix all seven pass, plain and under -race (redteam, builder,
+reviewer and orchestrator, each by its own run). The built binary, for seven values that are not absolute (the
+three of the finding, the key's path without its first slash, repo/.secrets/anthropic.key, a value with a leading
+space and an empty one), prints the one line from `workcell explain` and from `workcell run`, exits 2 and leaves
+the data directory empty (the reviewer; the builder for the first value); eight absolute spellings of the key
+under the directory get C54's line as on main, and an absolute path outside it loads and is printed as served.
+Review: one round, no finding. Cost to honest use: none, since every row now refused was one the broker never
+served; `file:~/...` now gets this line and not C78's. Not S14: policy.go is v2's own. Rows that are not C82 and
+load on this tree are in PARKED.md and not here: no verifier has ruled on them (S4).
 
 The 166 lines of the three parked tests were paid by 165 lines of layout folds in escape/ (112 in 21 files for C80
 and C81, 53 in 23 files for C82: adjacent constants, variables and short assignments joined, comments merged) and
@@ -8248,3 +8275,7 @@ S-F67.
 After S-F65: sweep 3 stands at two highs (C76 and C77, both fixed), fourteen mediums (C65, C66, C67, C68, C69, C71,
 C72, C73, C74, C75, C78, C80 and C81, fixed; C82, open) and three lows (C64, C70 and C79, all fixed). The next
 candidate number is C83 and the next fix unit S-F67.
+
+After S-F66: sweep 3 stands at two highs (C76 and C77, both fixed), fourteen mediums (C65, C66, C67, C68, C69, C71,
+C72, C73, C74, C75, C78, C80, C81 and C82, all fixed) and three lows (C64, C70 and C79, all fixed). Nothing waits
+under escape/_pending/. The next candidate number is C83 and the next fix unit S-F67.
