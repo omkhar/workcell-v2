@@ -35,8 +35,7 @@ import (
 	rows "github.com/omkhar/workcell/v2/pins"
 )
 
-// maxLayer bounds the bytes of tar stream, and of file data, that one provider CLI's artifact may unpack to in memory; channelBound is how long a fetch at a
-// session start may take: the day's check, and the install of what it kept.
+// maxLayer bounds the bytes of tar stream, and of file data, that one provider CLI's artifact may unpack to in memory; channelBound is how long a fetch at a session start may take: the day's check, and the install of what it kept.
 const (
 	maxLayer     = 1 << 30
 	channelBound = 10 * time.Minute
@@ -85,8 +84,7 @@ func update(args []string, stdout, stderr io.Writer) int {
 	return rc
 }
 
-// installer is what update works with: the data directory, the rows under pins/, the client that fetches (an artifact through pins.Redirect, channel.json
-// following no redirect), the channel's URL, "" when nothing is fetched, the keys trusted to sign it, the user's cool-off (B10) and fresh, per layer apply installed in this start, its image and the one it replaced, newline-joined.
+// installer is what update works with: the data directory, the rows under pins/, the client that fetches (an artifact through pins.Redirect, channel.json following no redirect), the channel's URL, "" when nothing is fetched, the keys trusted to sign it, the user's cool-off (B10) and fresh, per layer apply installed in this start, its image and the one it replaced, newline-joined.
 type installer struct {
 	dir     string
 	rows    []pins.Pin
@@ -97,7 +95,7 @@ type installer struct {
 	fresh   []string
 }
 
-// newInstaller reads the user's [update] table (B10): the channel is fetched unless it is "hold" or no key is trusted, the table's alone when it gives one, else the built-in ones; ca's certificates alone are the roots, and ca is read as written, so it must be absolute and outside the working directory.
+// newInstaller reads the user's [update] table (B10): the channel is fetched unless it is "hold" or no key is trusted, the table's alone when it gives one, else the built-in ones; ca's certificates alone are the roots, and ca is read as written, so it must be absolute and no part of its path may lie in or lead into the working directory.
 func newInstaller() (in installer, err error) {
 	in = installer{client: &http.Client{}, keys: channel.Keys}
 	file, err := configFile()
@@ -127,8 +125,13 @@ func newInstaller() (in installer, err error) {
 		in.channel = u.Channel
 	}
 	cwd, err := os.Getwd()
-	if u.CA != "" && (err != nil || !filepath.IsAbs(u.CA) || within(cwd, u.CA)) { // a relative one would be read against the working directory, and an absolute one under it (or linking into it) is read from there: a repository's own ca.pem as the only root (C59, C79; I13, I14). With no working directory to judge by, it is refused too
-		return in, fmt.Errorf("%s: [update] ca %s must be an absolute path outside the working directory %q, which the guest gets as /workspace: move the file and set that path", file, u.CA, cwd)
+	refuse := u.CA != "" && (err != nil || !filepath.IsAbs(u.CA))                  // a relative one would be read against the working directory; with no directory to judge by, it is refused too
+	for n, parts := 2, strings.Split(u.CA, "/"); !refuse && n <= len(parts); n++ { // each prefix of the path, followed as the kernel walks it: one that lies in the working directory, or is a link into it, reads a file of the repository as the only root (C59, C79; I13, I14). A prefix that does not resolve is left to the read, which fails on it
+		r, e := filepath.EvalSymlinks(strings.Join(parts[:n], "/"))
+		refuse = e == nil && within(cwd, r)
+	}
+	if refuse {
+		return in, fmt.Errorf("%s: [update] ca %s must be an absolute path no part of which lies in or leads into the working directory %q, which the guest gets as /workspace: move the file and set that path", file, u.CA, cwd)
 	}
 	if u.CA != "" {
 		pool := x509.NewCertPool()
@@ -142,8 +145,7 @@ func newInstaller() (in installer, err error) {
 	return in, nil
 }
 
-// update brings the provider p to its current pin, to the pin to names, or back to the layer kept from before, and returns the result line: agent, version,
-// digest prefix. The pins come from the channel manifest, fetched by manifest when there is one to fetch, else from the row's own.
+// update brings the provider p to its current pin, to the pin to names, or back to the layer kept from before, and returns the result line: agent, version, digest prefix. The pins come from the channel manifest, fetched by manifest when there is one to fetch, else from the row's own.
 func (in installer) update(ctx context.Context, p provider.Provider, manifest func() (*channel.Manifest, error), to string, rollback bool) (string, error) {
 	dir := filepath.Join(in.dir, "layers", p.Name)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
@@ -200,8 +202,7 @@ func (in installer) row(p provider.Provider) (pins.Pin, error) {
 	return in.rows[i], nil
 }
 
-// manifest fetches channel.json, at most channel.MaxBytes and following no redirect (a 3xx is a refusal), and verifies it (verify); it returns the bytes too,
-// for the daily check to keep.
+// manifest fetches channel.json, at most channel.MaxBytes and following no redirect (a 3xx is a refusal), and verifies it (verify); it returns the bytes too, for the daily check to keep.
 func (in installer) manifest(ctx context.Context) (raw []byte, m *channel.Manifest, err error) {
 	c := http.Client{Transport: in.client.Transport, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	body, err := artifact.Fetch(ctx, &c, in.channel, "", channel.MaxBytes)
@@ -218,8 +219,7 @@ func (in installer) manifest(ctx context.Context) (raw []byte, m *channel.Manife
 	return raw, m, nil
 }
 
-// verify is channel.Verify of raw at now against the keys and the last serial seen, kept in <data>/channel.serial, which advances only once a manifest verified
-// (I14) and on any failure is untouched.
+// verify is channel.Verify of raw at now against the keys and the last serial seen, kept in <data>/channel.serial, which advances only once a manifest verified (I14) and on any failure is untouched.
 func (in installer) verify(raw []byte, now time.Time) (*channel.Manifest, error) {
 	last, _ := strconv.ParseInt(marker(in.dir, "channel.serial"), 10, 64) // absent, or not a number, is 0
 	m, err := channel.Verify(raw, in.keys, now, last)
