@@ -7986,10 +7986,47 @@ only the blocking or replay of a signed manifest; not nothing, since the TLS fac
 key is handed to the repository. Not expressed: a `ca` reached through a link from outside into the directory,
 and one under the data directory. Not S14: update.go is v2's own, nothing ported, no v1 line. Fix unit: S-F63,
 below S-1009 in PLAN.md.
+C79 FIXED by S-F63, commits f13444a (the test moved, with an arm for a link from outside into the directory),
+c8d8ebe (the fix) and a815dd1 (the fix round) (PR #334). newInstaller in cmd/workcell/update.go refuses, before
+the file is read and before any transport exists, a `ca` that is not absolute, and one any part of whose path
+lies in the working directory or is a link into it: each prefix of the path as written is followed with
+filepath.EvalSymlinks, in the order the kernel walks it, and the result goes to within() of data.go with the
+directory from os.Getwd. The one line names the config file, `ca`, the value and the directory, "must be an
+absolute path no part of which lies in or leads into the working directory", and says to move the file. With a
+`ca` set and no working directory to judge by (os.Getwd fails) it is refused too, and within() is never given an
+empty directory; with no `ca` nothing changes, whatever Getwd says. update prints the line and exits 2, with
+nothing fetched and an empty data directory (the builder ran the built binary). docs/policy.md has its first two
+lines on `ca`. Net zero product lines (six added in newInstaller, paid by joining six two-line doc comments in
+update.go, no wording of behaviour changed) and one test line fewer (the test grew from 41 lines to 48 with five
+arms and a count of the requests its server served, paid by eight joins of comment lines in the c28, c52, c58,
+c60, data and log tests): product 15000 of 15000, test 28498 of 28500.
+The fix round came from the one review. The first fix (c8d8ebe) was the unit line's shape, within(cwd, ca) beside
+IsAbs, and within() judges only where a path ends: a `ca` spelled under the directory that is a link to a file
+outside it was accepted and read through the link, so the repository, which ships the link, still chose the root.
+The reviewer aimed it at the operator's cache image, <data>/workcell/caches/<name>.ext4, which a guest with
+--cache <name>:rw writes and in whose bytes pem.Decode finds a certificate; newInstaller returned nil and a HEAD
+to the attacker's server through the installer's client was trusted (I14 with I13, low as C79). The reviewer's
+own shape, a lexical prefix test beside within(), would have closed that row and left one the orchestrator named
+before the round: a `ca` spelled through a link outside the directory that leads to a folder inside it, whose
+file is a link out. So the round took the rule whole, every prefix as the kernel walks it, and the test holds
+both rows as arms, each seen to fail on c8d8ebe by overlay (builder and orchestrator) and to pass on a815dd1,
+plain and under -race. The builder showed by runs that a walk of filepath.Dir with within() alone is not the same
+rule: resolved() cleans `..` before it follows links, so `<link out>/../<path back in>` would pass; hence the
+EvalSymlinks of each prefix as written. Its fourteen probe rows: refused, the plain path, a link outward, a link
+inward to a file, a link inward to a folder whose file links out, the directory reached through a link and five
+`..` spellings; accepted as on main, a plain file outside, one outside through a link that never touches the
+directory, and `..` outside.
+Cost to honest use: an operator who runs workcell in a directory that holds the `ca` file, the home directory or
+`/` with the file under ~/.config, is refused where main went on, and the line says to move the file though a
+change of directory would do; that is the rule the unit asked for. Not closed: the check and the read are two
+steps, so a path changed between them is read as changed (only by someone who can write outside the directory,
+since every part of an accepted path lies outside it); a hard link outside the directory to a file inside it, which no
+repository can ship and which the export refuses to change; a `ca` under the data directory, which the record
+above names and no test expresses. Not S14: update.go is v2's own, nothing ported, no v1 line.
 
 The 95 lines of the two parked tests were paid by 93 lines of layout folds in escape/ and the 3 lines of room
 (test 28499 of 28500, product 15000 of 15000): no test, row, arm or assertion removed.
 
 Sweep 3 now stands at two highs (C76 and C77, both fixed), eleven mediums (C65, C66, C67, C68, C69, C71, C72,
-C73, C74, C75 and C78, all fixed) and three lows (C64 and C70, both fixed; C79, open). The next candidate
+C73, C74, C75 and C78, all fixed) and three lows (C64, C70 and C79, all fixed). The next candidate
 number is C80 and the next fix unit S-F64.
