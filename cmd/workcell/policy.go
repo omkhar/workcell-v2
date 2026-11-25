@@ -21,8 +21,7 @@ import (
 	"github.com/omkhar/workcell/v2/internal/secret"
 )
 
-// configFile is the policy file, $XDG_CONFIG_HOME/workcell/config.toml or ~/.config/workcell/config.toml,
-// which may not exist.
+// configFile is the policy file, $XDG_CONFIG_HOME/workcell/config.toml or ~/.config/workcell/config.toml, which may not exist.
 func configFile() (string, error) {
 	dir, err := xdgDir("XDG_CONFIG_HOME", ".config")
 	return filepath.Join(dir, "config.toml"), err
@@ -81,7 +80,8 @@ func loadPolicy(extra []string, stderr io.Writer) (allow *proxy.Allowlist, secre
 		if scheme == "cmd" {
 			words = strings.Fields(rest) // the program and each argument: the broker runs it from /, so a relative one never means cwd
 		}
-		for _, w := range words {
+		for _, w := range words { // a path inside an option word, --key=/x or -k/x, is judged as /x (C72); a relative a/b becomes /b, inside cwd only when cwd is a root, which holds refuses
+			w = w[max(strings.IndexByte(w, '/'), 0):]
 			for q, up := w, ""; err == nil && (scheme == "file" || scheme == "cmd") && filepath.IsAbs(w) && q != up; q, up = filepath.Dir(q), q { // the spelling and each lexical ancestor, resolved: under --mount the guest may replace any of them
 				if within(cwd, q) {
 					return nil, nil, "", "", fmt.Errorf("%s:%d: secret %q: source %s lies inside the directory %q, which the guest gets as /workspace: keep it outside", file, s.Line, s.Name, w, cwd)
