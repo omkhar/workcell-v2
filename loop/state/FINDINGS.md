@@ -7626,3 +7626,57 @@ C68, C69, C71, C72, C73, C74 and C75, all fixed) and two lows (C64 and C70, both
 cost 119 test lines, paid by 125 layout folds in test files, 112 of them in internal/fileserve, with no test,
 row, arm or assertion removed (test 28494 of 28500, product 15000 of 15000). The next candidate number is C78
 and the next fix unit S-F62.
+
+C76 FIXED by S-F60, commits 39e2340 (the test moved) and 1a50388 (the fix) (PR #327).
+The shape is the first of the three, a pace that counts work, chosen by the orchestrator before the redteam ran
+and written as a contract of behaviour: no depth cap and no smaller page, every request that main answers is
+answered with the same bytes, and only the moment at which Serve takes the next frame changes. In
+internal/fileserve/serve_linux.go the reader's count is now in points, unit (40) to the old unit: a frame costs
+one unit as before and a BATCH_FORGET one more per perForget entries, so TestPace's arithmetic is unchanged.
+Workers charge an atomic tally on the Server, and the reader folds it in before every frame: one point for each
+link of the chain that at() is about to stat, charged before the loop so that an error path pays too; one point
+for every 24 bytes that a getdents returned to readdir(), which is the most entries those bytes can hold; and
+plusEntry (20) for every READDIRPLUS entry made. A point is about 0.75 us of host CPU. Nothing is rounded away
+between frames, and what is over one period is slept off period by period and not forgiven. No new option,
+name, hook or reply. The depth cap and the page clamp were not built: the unit line shows that neither passes
+alone, and each refuses or changes something an honest guest does.
+Constants: a link and 24 listed bytes sit at 30 us a unit, as the contract asked. plusEntry is twice as dear
+as that (15 us an entry, against 4 us measured for one in sequence and 8 us beside fifteen other workers),
+and only because the test judges this process under -race, where the detector makes an entry cost about
+30 us: at 8 points arm (b) ran at 2.28 to 2.34 cores under -race, at 16 at 1.38 to 1.52, at 20 at 0.83 to 0.88.
+Evidence. TestC76WorkOfOneFrame, bound 1.5 cores: on main it fails in both arms (redteam: 3.34 and 2.76 plain,
+3.67 and 2.30 under -race; reviewer, on an archive of main: 3.54 and 2.65). On the fix it passes five runs of
+five plain and five of five under -race, alone: arm (a) 0.48 to 0.55 cores plain and 0.95 to 1.09 under -race,
+arm (b) 0.25 to 0.29 and 0.83 to 0.88. The reviewer's own floods on the fix, in process with the harness
+counted: plain READDIR of 20 thousand files at MaxWrite 0.37 cores, READDIRPLUS at 4096 bytes over 512
+directories 0.25 (3.15 on main), a LOOKUP storm 0.49 (0.52 on main), RENAME at depth 300 0.50, OPENDIR at depth
+300 0.53. The whole package passes under -race here, TestPace, TestDeepChain and FuzzRequest's seeds included.
+Hosted gate on 1a50388, green in 285 s with gate-macos, gate-arm64 and guard: the unit tests run under -race
+there and internal/fileserve is ok in 12.6 s (the log is not verbose and names no test); the suite ran on a
+real VM, 147 rows passed and none failed; mount-cpu-flood passed with 3.3 CPU seconds in 3.5 s of wall
+against 4.5 allowed, mount-disk-flood and the seven I1 mount rows passed, P1 p50 317 ms.
+No VM row holds C76. The redteam added none: a GETATTR flood on the init's own stream draws a reply for a
+unique the guest kernel never issued, which the probe cannot read without breaking that stream, and this
+session has no hypervisor to try a row on. So the evidence for C76 is Go-level, on the real Server.
+Cost to honest use, measured and not small. Charged work: a GETATTR at depth 30 is 30 points, 0.75 of a unit
+over the frame's one; a READDIRPLUS page of 4096 bytes, 25 entries, is 841 points, 21 units, of which 341 are
+the 8 KiB that readdir() reads for every page whatever size was asked; a plain READDIR page of 4096 bytes is
+341 points, 8.5 units. With one request in flight and an in-process client, which answers faster than any
+guest: 20000 GETATTRs at depth 30 take 2.25 s where main took 1.29 s (main is at its pace there already), a
+READDIRPLUS walk of 4000 files in 4096-byte pages takes 143 to 253 ms where main took 34 to 38 ms, and the
+reviewer measured 520 ms against 84 ms for 10000 entries. A client with one request in flight never meets the
+pace at depth 30 if a round trip takes 109 us or more, and on such a walk only if a page takes 1.375 ms or
+more. So the unit line's wish is met for a build in a tree some tens of levels deep and is not met for an
+`ls -l` of thousands of entries, which is slowed about four to six times on its page fetches, half a second
+for ten thousand entries. No row of the suite times either shape in a real guest; the mount rows show only
+that nothing broke. For the maintainer to weigh: the dearest part of that cost is avoidable, by fetching no
+more than the page asked for, which is a change to readdir() outside this fix (S1). Charging the entries sent
+and not the bytes read, as the review noted in passing, would not do: by the orchestrator's reading, not
+tested, a READDIR that asks for a page too small for one entry still reads 8 KiB and would then be free.
+Folds: the fix is net zero product lines, paid by joining lines of the docs of the pace, perForget, at() and
+readdir() and by one bytes.Cut for the six lines that cut a name at its NUL (product 15000 of 15000, test
+28494 of 28500). Review: one round, no finding, so no fix round; its notes are in PARKED.md.
+
+Sweep 3 now stands at two highs (C76 fixed, C77 open, fix unit S-F61), ten mediums (C65, C66, C67, C68, C69,
+C71, C72, C73, C74 and C75, all fixed) and two lows (C64 and C70, both fixed). The next candidate number is C78
+and the next fix unit S-F62.
