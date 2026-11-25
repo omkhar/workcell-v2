@@ -24,9 +24,8 @@ const (
 	// maxFDs is how many descriptors the guest can make this process hold: a directory node, an open file or an open directory each hold one. ENFILE beyond (I10),
 	// below any RLIMIT_NOFILE the Go runtime raises at start, so the proxy and the log keep their headroom.
 	maxFDs = 4096
-	// maxNodes bounds the node table (I10). A node costs about 200 bytes plus its name, so the table is at most about 60 MiB. ADR-005's walk of 10,100 entries
-	// held 10,102 nodes, so this leaves twelve times that for a real tree; only the guest's dentry cache holds a node for long, and it sheds entries under its own
-	// memory pressure. ENOMEM beyond.
+	// maxNodes bounds the node table (I10): ENOMEM beyond. A node costs about 200 bytes plus its name, so the table is at most about 60 MiB. ADR-005's walk of 10,100
+	// entries held 10,102 nodes, so this leaves twelve times that for a real tree; only the guest's dentry cache holds a node for long, and it sheds entries under its own memory pressure.
 	maxNodes = 1 << 17
 	// frameLimit is how long one frame may take once it has begun (I12), as on the channel.
 	frameLimit = 5 * time.Second
@@ -42,9 +41,8 @@ const (
 	validity = time.Second
 )
 
-// node is one inode the guest knows by its id: where it is, as (parent, name), and what it was when looked up. A directory holds its own descriptor, so every
-// call on its content is relative to it. name is "" once the entry was unlinked or replaced: the node then answers ENOENT until the guest forgets it, except
-// through a file handle already open on it.
+// node is one inode the guest knows by its id: where it is, as (parent, name), and what it was when looked up. A directory holds its own descriptor, so every call on
+// its content is relative to it. name is "" once the entry was unlinked or replaced: the node then answers ENOENT until the guest forgets it, except through a file handle already open on it.
 type node struct {
 	id       uint64
 	parent   *node // nil for the root
@@ -101,8 +99,8 @@ type Server struct {
 	nextID, nextFH uint64
 	fds            int
 	work           atomic.Int64 // points of work the workers did that Serve has not yet counted toward the pace
-	// grown is what the guest has been charged this session, in bytes: growth by WRITE past the end or SETATTR size, and block per CREATE, MKDIR and SYMLINK.
-	// limit is its cap (I10): ENOSPC beyond. Shrinking and unlinking give nothing back, so the host loses at most limit however the guest mixes them.
+	// grown is what the guest has been charged this session, in bytes: growth by WRITE past the end or SETATTR size, the blocks a WRITE takes in a hole below the
+	// end, and block per CREATE, MKDIR and SYMLINK. limit is its cap (I10): ENOSPC beyond. Shrinking and unlinking give nothing back, so the host loses at most limit however the guest mixes them.
 	grown, limit int64
 }
 
@@ -123,13 +121,18 @@ func Open(dir string, limit int64) (*Server, error) {
 		nextID: rootID, fds: 1, limit: limit}, nil
 }
 
-// grow charges the file open on fd for reaching end bytes long, before it does. A request in flight beside another on the same file charges as if alone.
-func (s *Server) grow(fd int, end int64) syscall.Errno {
-	var st unix.Stat_t
-	if err := unix.Fstat(fd, &st); err != nil {
-		return errno(err)
+// grow charges the file open on fd, before it does, for reaching end bytes long and for the filesystem's whole blocks a write of [off, end) takes in a hole below the
+// length, found by one SEEK_HOLE from off: a hole that begins below both is charged to the lesser, the safe side when data follows it. A write in flight beside another on the same file charges as if alone.
+func (s *Server) grow(fd int, off, end int64) syscall.Errno {
+	st, e := stat(loc{fd: fd})
+	bs, n := max(int64(st.Blksize), 512), max(0, end-st.Size)
+	hole, err := unix.Seek(fd, off/bs*bs, unix.SEEK_HOLE) // ENXIO: off is at or past the end, so no hole lies below the length
+	if to := min(st.Size, (end+bs-1)/bs*bs); off < end && err == nil && hole < to {
+		n += to - hole
+	} else if e == 0 && err != nil && err != unix.ENXIO {
+		e = errno(err)
 	}
-	return s.charge(0, end-st.Size)
+	return s.charge(e, n)
 }
 
 // block is what a new entry costs the host however little it holds, one block and an inode, charged before the syscall so a failure leaves nothing to undo.
