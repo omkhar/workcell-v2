@@ -78,7 +78,10 @@ func loadPolicy(extra []string, stderr io.Writer) (allow *proxy.Allowlist, secre
 	}
 	secrets, err = bindings(narrowed, allow, file)
 	for _, s := range p.Secret { // a file: or cmd: source under cwd would be exported into, or served live as, the guest's /workspace, whether or not the repository kept the row (I5)
-		scheme, rest, _ := strings.Cut(s.Source, ":") // cmd: the words are the program and each argument, split as the broker splits them (it runs the program from /, so a relative word is read from there: home/u/repo/k names cwd's key when cwd is /home/u/repo); file: the path, one word; the other schemes name no path
+		scheme, rest, _ := strings.Cut(s.Source, ":")                // cmd: the words are the program and each argument, split as the broker splits them (it runs the program from /, so a relative word is read from there: home/u/repo/k names cwd's key when cwd is /home/u/repo); file: the path, one word; the other schemes name no path
+		if err == nil && scheme == "file" && !filepath.IsAbs(rest) { // the broker reads a file: path from no directory and refuses one that is not absolute, but only at first use, after the export; from cwd such a path names cwd's key, and the check below, which judges a word from its first slash, would pass it (C82)
+			return nil, nil, "", "", fmt.Errorf("%s:%d: secret %q: file: path %q is not absolute: a file: path must be absolute, as the broker reads it from no directory", file, s.Line, s.Name, rest)
+		}
 		words := strings.FieldsFunc(rest, func(r rune) bool { return scheme == "cmd" && unicode.IsSpace(r) })
 		for _, w := range words { // a word is judged from its first slash on, so a path inside an option word, --key=/x or -k/x, is judged as /x (C72), and, under cmd:, as read from /, so a relative a/b as /a/b (C80); either is refused when it lies in cwd
 			if err == nil && (scheme == "file" || scheme == "cmd") && strings.ContainsAny(w, "~$`\\'\"*?[{;&") { // this check reads literal paths only: a shell the helper runs rewrites these in a word (a home, a variable or substitution, an escape or quote pair, a glob, a brace), or runs a second command on `;` or `&` (a cd before a relative path), so such a word can spell a path under cwd that no reading of its text finds (C78)

@@ -73,8 +73,7 @@ func lockCache(dir string, c vmm.Cache) (*os.File, error) {
 	return f, nil
 }
 
-// createCache makes an empty image at image with the writer the workspace uses, under a
-// temporary name in its directory, so that a half-written image is never attached.
+// createCache makes an empty image at image with the writer the workspace uses, under a temporary name in its directory, so that a half-written image is never attached.
 func createCache(image string, free int64) error {
 	tmp, err := os.MkdirTemp(filepath.Dir(image), "new")
 	if err != nil {

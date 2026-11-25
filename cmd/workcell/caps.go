@@ -26,8 +26,7 @@ const (
 // limits are the resource caps of one session. DiskMiB 0 means the default, 1 GiB.
 type limits struct{ CPUs, MemoryMiB, DiskMiB int }
 
-// parseSize reads a size such as "256MiB" or "4GiB" (the spelling of SPEC section 5) into
-// whole MiB. Digits alone count as MiB. It never returns zero without an error.
+// parseSize reads a size such as "256MiB" or "4GiB" (the spelling of SPEC section 5) into whole MiB. Digits alone count as MiB. It never returns zero without an error.
 func parseSize(s string) (int, error) {
 	digits, unit := s, "MiB"
 	for _, u := range []string{"MiB", "GiB"} {
@@ -48,8 +47,7 @@ func parseSize(s string) (int, error) {
 	return int(n), nil
 }
 
-// disk is how many bytes the guest may write in all: --disk, or 1 GiB (I10). In clone mode
-// it sizes the image's free room; in mount mode it is the export's cap on growth.
+// disk is how many bytes the guest may write in all: --disk, or 1 GiB (I10). In clone mode it sizes the image's free room; in mount mode it is the export's cap on growth.
 func (l limits) disk() int64 { return int64(cmp.Or(l.DiskMiB, 1024)) << 20 }
 
 // cmdline is what the init is told on the kernel command line. The disk size is a courtesy to
