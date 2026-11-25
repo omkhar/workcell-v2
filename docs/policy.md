@@ -124,6 +124,7 @@ secrets: swapped in by the session proxy; the guest holds a placeholder
 A `file:` path, and every path a word of a `cmd:` source names, must lie outside the directory `workcell run` is started in, which the guest gets as `/workspace`: such a row is refused before a session starts.
 A word is read as paths from its first `/` and from the first `/` after any separator, each to the word's end or to the next separator, where a separator is any ASCII character other than a letter, a digit, `.`, `_`, `-` or `/`.
 So, run in `/work`, `--dir=/work:/out/b` is refused, and so is a sibling named `/work+old`, where `/work-keys` is not.
+A word of a `cmd:` source is also read from `/`, where the program runs: its text from the start and from after any separator, when it does not begin with `/`, is read with `/` put before it, so run in `/home/u/repo`, `home/u/repo/key` is refused where `tmp/key` is not.
 The check reads literal paths only, so a word of a `file:` or `cmd:` source that holds any of `~`, `$`, `` ` ``, `\`, `'`, `"`, `*`, `?`, `[` or `{`, which a shell the program runs would rewrite into a path the check cannot read, or `;` or `&`, on which it would run a second command, such as `cd` before a relative path, is refused wherever it points.
 Spell the path out, or put the line in a script outside the directory.
 
