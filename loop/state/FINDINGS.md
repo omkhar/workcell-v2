@@ -8167,6 +8167,22 @@ well) all twenty-three arms pass with the C54, C72, C75 and C78 tests green. Med
 end: every spelling drops the first slash of an absolute path, which no shell habit, document or tool produces. Not
 expressed: a non-ASCII separator; a helper whose body changes directory; under --mount the arms show the session
 and not bytes read by a guest. Not S14: policy.go is v2's own. Fix unit: S-F65, below S-F64 in PLAN.md.
+C81 FIXED by S-F64's commit c7ed735 (PR #336, on main as 07db5f8); S-F65 moved the test in ef79a69 (PR #337) and
+changed no product code and no doc. The short branch of the unit line, taken by running and not by reading: on
+the tree S-F65 lands, TestC81RelativeTextAfterASeparator in cmd/workcell/c81_test.go passes all twenty-three
+arms, plain and under -race; by go test -overlay with cmd/workcell/policy.go as at commit ef6026f its seventeen
+finding arms fail, each with the line that the session started, after secret.Resolve printed the key, and its
+six controls pass there as here (redteam, builder and reviewer, each by its own run). The file moved unchanged,
+at no line: product 15000 of 15000, test 28500 of 28500. The built binary, started in a directory that holds
+the key, prints C54's one line for each row of the unit line, exits 2 and makes no session directory and no
+export (the reviewer with all sixteen rows, the three shapes and the helper after each of the fourteen
+separators; the builder with the three shapes); built over ef6026f's file the same rows pass loadPolicy. Every
+finding arm is refused by C54's line and none by C78's twelve characters (the reviewer's probe). A relative text
+after a separator that names nothing in the working directory when read from `/` loads as before and reads its
+file outside. docs/policy.md is true of it as it stands. Review: one round, no finding. Cost to honest use, as
+S-F64 recorded: a word is refused only when `/` joined to the text at its start or after one of its separators
+lies in the working directory. The line also in v1 main: credbroker/cli.go stands in the record above. Rows that
+are not C81 and load on this tree are in PARKED.md and not here: no verifier has ruled on them (S4).
 
 C82. ID I5, the same check, in its file: branch; a residue of C54 and not of C80, since no reading from `/` is in
 it. ATTACKER: as C80. Precondition the attacker does not control: the operator's [[secret]] row names the key by a
@@ -8228,3 +8244,7 @@ After S-F64: sweep 3 stands at two highs (C76 and C77, both fixed), fourteen med
 C72, C73, C74, C75, C78 and C80, fixed; C81, whose rows main refuses since S-F64 and whose record S-F65 closes, and
 C82, open) and three lows (C64, C70 and C79, all fixed). The next candidate number is C83 and the next fix unit
 S-F67.
+
+After S-F65: sweep 3 stands at two highs (C76 and C77, both fixed), fourteen mediums (C65, C66, C67, C68, C69, C71,
+C72, C73, C74, C75, C78, C80 and C81, fixed; C82, open) and three lows (C64, C70 and C79, all fixed). The next
+candidate number is C83 and the next fix unit S-F67.
