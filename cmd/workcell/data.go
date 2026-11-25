@@ -29,8 +29,7 @@ func xdgDir(env string, home ...string) (string, error) {
 
 // holds is the error for a directory that holds, or lies inside, workcell's data or config directory, named: a session there would carry the audit key, other
 // sessions, their records and the images into the guest, and pull would write the guest's versions back (I7, I9, I13). So is one that holds a mount point: a bind mount is
-// neither a symlink nor an ancestor, so within relates it to nothing, and it can show those directories under another name, which no mount is told apart from (C65). So is
-// one that holds the VMM directory of a running session (vmm, under its TMPDIR): the sockets there would lie in the guest's view, or under a pull, for the guest to swap for a link to any host socket of the operator's (I1, I4, I7). A stale record refuses nothing.
+// neither a symlink nor an ancestor, so within relates it to nothing, and it can show those directories under another name, which no mount is told apart from (C65). So is one that holds the VMM directory of a running session (vmm, under its TMPDIR): the sockets there would lie in the guest's view, or under a pull, for the guest to swap for a link to any host socket of the operator's (I1, I4, I7). A stale record refuses nothing.
 func holds(dir string) error {
 	data, err := dataDir()
 	if err != nil {
@@ -87,8 +86,7 @@ func resolved(p string) string {
 	return p
 }
 
-// artifacts are the files a session boots from, and the directory they are in: the kernel, the initramfs, the root image and, where the backend is a program (vmmBinary), that too.
-// run adds the provider layers (findLayers) and the caches (openCaches); pull and bench boot without them.
+// artifacts are the files a session boots from, and the directory they are in: the kernel, the initramfs, the root image and, where the backend is a program (vmmBinary), that too. run adds the provider layers (findLayers) and the caches (openCaches); pull and bench boot without them.
 type artifacts struct {
 	binary, kernel, initrd, image, dir string
 	layers                             []vmm.Layer

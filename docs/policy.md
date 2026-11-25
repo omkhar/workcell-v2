@@ -119,6 +119,10 @@ secrets: swapped in by the session proxy; the guest holds a placeholder
 - `secret-service:SERVICE/ACCOUNT` runs `/usr/bin/secret-tool lookup` (Linux).
 - `keychain:SERVICE/ACCOUNT` runs `/usr/bin/security find-generic-password -w` (macOS login keychain).
 
+A `file:` path, and every path a word of a `cmd:` source names, must lie outside the directory `workcell run` is started in, which the guest gets as `/workspace`: such a row is refused before a session starts.
+A word is read as paths from its first `/` and from the first `/` after any separator, each to the word's end or to the next separator, where a separator is any character other than a letter, a digit, `.`, `_`, `-` or `/`.
+So, run in `/work`, `--dir=/work:/out/b` is refused, and so is a sibling named `/work+old`, where `/work-keys` is not.
+
 The value is read on each use, never at start. An error never prints the value or a program's stderr.
 A `signin:HOST/PATH` source is a sign-in flow, which this page does not cover.
 
