@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -29,12 +30,13 @@ const (
 	maxNodes = 1 << 17
 	// frameLimit is how long one frame may take once it has begun (I12), as on the channel.
 	frameLimit = 5 * time.Second
-	// paceFrames and paceEvery: Serve reads at most paceFrames requests a paceEvery, 16 thousand a second, a BATCH_FORGET counting perForget entries as one
-	// (I10). A replied request costs the host about 10 us, so that is a sixth of a core, within the one vCPU plus a second of slack the gate allows a guest.
-	// Honest traffic stays far below: ADR-005 measured 2 to 6 thousand requests a second, and at 60 KiB a READ or WRITE the transport caps a stream lower.
-	paceFrames, paceEvery = 1 << 10, 64 * time.Millisecond
-	// perForget: an entry the host does not know costs it about a 250th of a request, and one it knows was paid for by the LOOKUP that made the node; at 64 an
-	// honest guest shedding the whole table of maxNodes waits an eighth of a second.
+	// paceFrames and paceEvery: Serve reads at most paceFrames units of work a paceEvery, 16 thousand a second (I10). A frame is a unit, as are perForget entries
+	// of a BATCH_FORGET, and the work a frame asks for is charged on top in points, unit to the unit, a point being about 0.75 us of host CPU: a link of a node's
+	// chain checked (at), 24 bytes of a directory listed (readdir), and plusEntry for a READDIRPLUS entry made, what one costs beside fifteen other workers. A frame
+	// alone costs the host about 10 us, so cheap frames take a sixth of a core and the costliest about half, within the one vCPU plus a second of slack the gate
+	// allows a guest. Honest traffic stays far below: ADR-005 measured 2 to 6 thousand requests a second, and at 60 KiB a READ or WRITE the transport caps a stream lower.
+	paceFrames, paceEvery, unit, plusEntry = 1 << 10, 64 * time.Millisecond, 40, 20
+	// perForget: an entry the host does not know costs it about a 250th of a request; at 64 an honest guest shedding the whole table of maxNodes waits an eighth of a second.
 	perForget = 64
 	// validity is the entry and attribute timeout the guest kernel caches, as ADR-005 measured.
 	validity = time.Second
@@ -98,6 +100,7 @@ type Server struct {
 	fhs            map[uint64]*handle
 	nextID, nextFH uint64
 	fds            int
+	work           atomic.Int64 // points of work the workers did that Serve has not yet counted toward the pace
 	// grown is what the guest has been charged this session, in bytes: growth by WRITE past the end or SETATTR size, and block per CREATE, MKDIR and SYMLINK.
 	// limit is its cap (I10): ENOSPC beyond. Shrinking and unlinking give nothing back, so the host loses at most limit however the guest mixes them.
 	grown, limit int64
@@ -180,10 +183,10 @@ func (s *Server) Serve(st wire.Stream) error {
 	}
 	sem := make(chan struct{}, workers)
 	var inited, destroyed bool
-	for n, mark := 0, time.Now(); ; n++ {
-		if n >= paceFrames { // past the pace a faster host only takes a bigger flood (I10)
+	for n, mark := 0, time.Now(); ; n += unit { // n is in points; what the workers charged is folded in as it is seen, and what is over a period carries
+		for n += int(s.work.Swap(0)); n >= paceFrames*unit; n -= paceFrames * unit { // past the pace a faster host only takes a bigger flood (I10)
 			time.Sleep(paceEvery - time.Since(mark))
-			mark, n = time.Now(), 0
+			mark = time.Now()
 		}
 		f, err := c.ReadFrame()
 		if err != nil {
@@ -224,7 +227,7 @@ func (s *Server) Serve(st wire.Stream) error {
 		case r.Opcode == opInterrupt: // answered with nothing, so settled here, before a slot and a goroutine are taken: a flood of them costs the reader alone (I10)
 		case quiet: // FORGET and BATCH_FORGET: the same, once the lookups are dropped
 			s.forget(r.Forgets)
-			n += len(r.Forgets) / perForget
+			n += len(r.Forgets) / perForget * unit
 		}
 		if e != 0 || quiet || r.Opcode == opDestroy {
 			if !quiet {
@@ -288,14 +291,15 @@ func (s *Server) loc(id uint64) (loc, syscall.Errno) {
 	return l, 0
 }
 
-// at is the node's location, checked: every link from the export down to the directory the syscall will use still names the inode it did. A directory the host
-// moved out of the export, or replaced, is ESTALE until the guest looks it up afresh (R6). need is what the syscall needs the node to be: ENOTDIR a directory,
-// for only a directory node has a descriptor; EISDIR a node with a parent, anything but the root; 0 any node. A node that is not that is the error need.
+// at is the node's location, checked: every link from the export down to the directory the syscall will use still names the inode it did, else, as for a directory
+// the host moved out or replaced, ESTALE until the guest looks it up afresh (R6). need is what the node must be, else it is the error need: ENOTDIR a directory,
+// for only a directory node has a descriptor; EISDIR a node with a parent, anything but the root; 0 any node.
 func (s *Server) at(id uint64, need syscall.Errno) (loc, syscall.Errno) {
 	l, e := s.loc(id)
 	if e != 0 {
 		return l, e
 	}
+	s.work.Add(int64(len(l.chain)))
 	for i, c := range l.chain {
 		var st unix.Stat_t
 		switch err := unix.Fstatat(c.pfd, c.name, &st, unix.AT_SYMLINK_NOFOLLOW); {
