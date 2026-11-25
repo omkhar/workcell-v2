@@ -78,12 +78,12 @@ func loadPolicy(extra []string, stderr io.Writer) (allow *proxy.Allowlist, secre
 	}
 	secrets, err = bindings(narrowed, allow, file)
 	for _, s := range p.Secret { // a file: or cmd: source under cwd would be exported into, or served live as, the guest's /workspace, whether or not the repository kept the row (I5)
-		scheme, rest, _ := strings.Cut(s.Source, ":")
-		words := []string{rest} // file: the path; the other schemes name no path
-		if scheme == "cmd" {
-			words = strings.Fields(rest) // the program and each argument: the broker runs it from /, so a relative one never means cwd
-		}
+		scheme, rest, _ := strings.Cut(s.Source, ":") // cmd: the words are the program and each argument, split as the broker splits them (it runs the program from /, so a relative one never means cwd); file: the path, one word; the other schemes name no path
+		words := strings.FieldsFunc(rest, func(r rune) bool { return scheme == "cmd" && unicode.IsSpace(r) })
 		for _, w := range words { // a word is judged from its first slash on, so a path inside an option word, --key=/x or -k/x, is judged as /x (C72); a relative a/b is judged as /b, and refused when that lies in cwd
+			if err == nil && (scheme == "file" || scheme == "cmd") && strings.ContainsAny(w, "~$`\\'\"*?[{;&") { // this check reads literal paths only: a shell the helper runs rewrites these in a word (a home, a variable or substitution, an escape or quote pair, a glob, a brace), or runs a second command on `;` or `&` (a cd before a relative path), so such a word can spell a path under cwd that no reading of its text finds (C78)
+				return nil, nil, "", "", fmt.Errorf("%s:%d: secret %q: word %s holds one of ~ $ ` \\ ' \" * ? [ { ; &, which a shell rewrites or runs as a second command, and this check reads literal paths only: spell the path out, or put the line in a script outside the directory %q, which the guest gets as /workspace", file, s.Line, s.Name, w, cwd)
+			}
 			for i := 0; i < len(w); i += 1 + strings.IndexFunc(w[i:]+":", sep) { // and so is the text from the first slash after each separator of a list word, --files=/a:/b, to the word's end: cwd itself may hold a separator, so the word is never split
 				p := w[i+max(strings.IndexByte(w[i:], '/'), 0):]
 				for j := len(p); err == nil && (scheme == "file" || scheme == "cmd") && filepath.IsAbs(p) && j > 0; j-- { // the spelling, each prefix that ends before a slash (its lexical ancestors) and, under cmd:, each that ends before a separator (C75), resolved: under --mount the guest may replace any of them

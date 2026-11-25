@@ -7903,6 +7903,59 @@ broker passes that names an ancestor of the directory, `~user`, a `$(...)` subst
 `/*/u/repo/.secrets/*`. Not S14: policy.go is v2's own. also in v1 main: credbroker/cli.go. Fix unit: S-F62,
 below S-1009 in PLAN.md.
 
+C78 FIXED by S-F62, commits c7a9b71 (the test moved and widened), 8bd4711 (the fix) and 80c0365 (the fix round)
+(PR #330).
+also in v1 main: credbroker/cli.go. The shape is the second of the three, chosen by the orchestrator before the
+redteam wrote its rows: the check reads literal paths only, and loadPolicy in cmd/workcell/policy.go refuses a
+word of a file: or cmd: source that holds any of twelve characters, `~`, `$`, a backtick, a backslash, `'`, `"`,
+`*`, `?`, `[`, `{`, `;` and `&`: the ten that a shell rewrites in a word, and the two on which it runs a second
+command. The refusal is one line that names the config file and its line, the secret, the word and the
+directory, and says to spell the path out or to put the line in a script outside the directory; it comes at the
+place of C54's check, for the same rows, before any session directory or export, and C54's own line still
+refuses a literal path under the directory. A row with none of the twelve behaves as on main. docs/policy.md
+says the rule in one sentence and the way out in another. Net zero product lines (the four lines that made the
+words became one strings.FieldsFunc, which judges the same words) and net zero test lines (seven joins of
+comment lines in the c28, c29, c50, c57, c58, c59 and c60 tests paid for seven in c78_test.go).
+Why the second shape and not the first: before choosing, the orchestrator gave dash and bash one word, as the
+broker would, and each read a file through a backslash inside a name, a pair of quotes inside a name and a
+substitution, and bash through a glob in a redirect and through a brace word; the redteam then showed nine such
+rows live on main beside the six of the audit, each loading with a binding, each with the key in the export or
+the directory served under --mount, each printing the key when run as the broker splits it. A rule for `~`,
+`$HOME` and `${HOME}` would have passed the audit's test and left all nine, and the redteam's variants of the
+record above with them (`~user`, another variable, `$(...)`, a glob), which the twelve close. The third shape is
+the maintainer's alone.
+The fix round came from the one review: `cmd:/bin/sh -c cd;cat<repo/.secrets/anthropic.key` holds none of the
+first ten characters, and it loaded with a binding and printed the key, since `cd` with no operand goes to the
+HOME that the broker passes and the relative path is then read from there (I5, the malicious repository and
+guest root, C78's precondition; the reviewer ran it, with `cd&&`, `exec<` and bash as well, and the orchestrator
+ran it again). So `;` and `&` joined the set: one word given to a shell can then hold one simple command or a
+pipeline, and neither changes directory for a later read. One arm of the test holds it; it failed on 8bd4711
+with the key in the export and passes on 80c0365.
+Cost to honest use, which the unit line asks to be said: every row with one of the twelve in a word is refused
+wherever the word points, a path far outside the directory included. That takes a helper line that uses the
+shell (`cmd:/bin/sh -c cat<~/.keys/k`), an argument with a query or a pattern (`?`, `&`, `*`, `[`), a JSON
+argument, and a quoted argument, which was never honoured, since the broker splits on spaces with no quoting. It
+takes a file: path whose name holds one as well, though the broker opens a file: path itself with no shell, so
+there the refusal buys only one rule for both schemes, as the unit line's second shape has it. The way out is in
+the error and in docs/policy.md: the literal path, or the line in a script outside the directory. No row of the
+tests or the documents used any of the twelve.
+Proved: TestC78SecretPathSpelledFromHome, now 18 arms, fails on main in its fifteen finding arms of c7a9b71 and
+passes on the fix in all, its two controls unchanged (the literal path refused, a source wholly outside
+loading), plain and under -race; the package passes under -race, the C19, C28, C29, C34, C52, C54, C58, C72 and
+C75 tests among them; `workcell run -- true` with the row `cmd:/bin/sh -c cat<~/x` prints the one line, exits 2
+and makes no session directory. loop/gate.sh GATE PASS, product 15000 of 15000, test 28499 of 28500. Hosted on
+8bd4711: gate (298 s), gate-macos, gate-arm64 and guard green.
+Not closed, and said so: this fix closes what a shell does to a word and nothing else, and the check still reads
+a command line as text. The orchestrator's probe on 80c0365, by a test overlay that is not kept: `cmd:/bin/cat
+<home without its first slash>/repo/.secrets/anthropic.key`, a relative word and no shell, loads with a binding
+and prints the key when run from `/` as the broker runs it, and so does the same after `/bin/sh -c cat<`; `./`
+before it is refused. The loop judges such a word from its first slash, as /u/repo/... for a home /home/u, and
+the comment there, that a relative word never means the directory, is false of a word read from `/`. It is on
+main as well, it is neither C78 nor the review's finding, and no verifier has ruled on it, so nothing landed for
+it in the freeze (S1, S4); PARKED.md holds the row for an audit to bring. Also not judged, as before: a program
+that reaches the directory by its own logic, such as a helper that takes a directory to change to as an option;
+and a character outside ASCII that some program rewrites.
+
 C79. ID I14 hardening (the trust root of the host's channel and artifact fetches), with I13 (workspace content
 decides a host-side trust root); the absolute sibling of C59, which was a relative `ca` resolved against the
 working directory. ATTACKER: the malicious repository, which ships the file in its tree, or guest root under
@@ -7938,5 +7991,5 @@ The 95 lines of the two parked tests were paid by 93 lines of layout folds in es
 (test 28499 of 28500, product 15000 of 15000): no test, row, arm or assertion removed.
 
 Sweep 3 now stands at two highs (C76 and C77, both fixed), eleven mediums (C65, C66, C67, C68, C69, C71, C72,
-C73, C74 and C75, all fixed; C78, open) and three lows (C64 and C70, both fixed; C79, open). The next candidate
+C73, C74, C75 and C78, all fixed) and three lows (C64 and C70, both fixed; C79, open). The next candidate
 number is C80 and the next fix unit S-F64.

@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Omkhar Arasaratnam
 
-// Finding C28 of S-1013 (I1, I4). Fix unit S-F20 first moves this file to cmd/workcell/c28_test.go, package main,
-// build tag `linux || (darwin && arm64 && cgo)`, as this comment says.
+// Finding C28 of S-1013 (I1, I4). Fix unit S-F20 first moves this file to cmd/workcell/c28_test.go, package main, build tag `linux || (darwin && arm64 && cgo)`, as this comment says.
 
 //go:build linux || (darwin && arm64 && cgo)
 
