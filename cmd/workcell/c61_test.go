@@ -16,8 +16,7 @@ import (
 	"testing"
 )
 
-// TestC61CloneExportFollowsARenamedWorkingDirectory (I1; I5, I7, I9 by the target chosen): session takes the working directory by name, judges and records that name, and
-// the clone export opens the same name again. Guest root of a mount session on a proper ancestor renames the directory away in between and puts a symlink to any host directory under its name, so the image exports a directory outside every export. Deterministic: holds reads every session's vmm after Getwd, so a FIFO there parks it until the writer opens.
+// TestC61CloneExportFollowsARenamedWorkingDirectory (I1; I5, I7, I9 by the target chosen): session takes the working directory by name, judges and records that name, and the clone export opens the same name again. Guest root of a mount session on a proper ancestor renames the directory away in between and puts a symlink to any host directory under its name, so the image exports a directory outside every export. Deterministic: holds reads every session's vmm after Getwd, so a FIFO there parks it until the writer opens.
 func TestC61CloneExportFollowsARenamedWorkingDirectory(t *testing.T) {
 	work, outside, data := t.TempDir(), t.TempDir(), filepath.Join(t.TempDir(), "workcell")
 	proj, canary := filepath.Join(work, "proj"), []byte(rand.Text())
