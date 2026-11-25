@@ -7195,3 +7195,36 @@ what an upstream might read; this fix lists one more reading and the maintainer 
 Sweep 3 now stands at nine mediums (C65, C66, C67, C68, C69, C71, C72 and C73, fixed; C74, open) and two lows (C64
 and C70, both fixed), with one unconfirmed candidate still a unit (S-1021, the list-word residue of C72). The open
 fix unit is S-F58 (C74); the next candidate number is C75 and the next fix unit S-F59.
+
+C74 FIXED by S-F58, commits d336c8b (the test moved), c17f792 (the fix) and b115d48 (the fix round) (PR #323).
+also in v1 main: egressproxy/terminate.go. The shape is the one the unit line named: cgiName in
+internal/proxy/terminate.go folds "." to "_" as it folds "-", so under a rule that narrows, a query parameter or a
+header named `.method`, or any of the six override names with a dot for an underscore, is refused with 403
+binding_mismatch before the broker is asked, as `_method` is (C68). The builder weighed a space and "[" on PHP
+8.3.6 and folded "." alone, since neither in place of the dot reaches `_method`.
+
+The fix round, from the one finding of the review (I5, medium, guest root choosing its own query string; R2 held,
+every step run, the upstream side on PHP 8.3.6's built-in server): PHP skips leading spaces in the name of an
+incoming variable before it folds "." and " " to "_", and reads the name as a C string, so a NUL ends it. So
+`?+_method=DELETE`, `?%20.method=DELETE` and `?_method%00=DELETE` land in $_GET as `_method`, and on c17f792 each
+was served as DELETE with the real secret and no record. The builder had seen the leading space too and left it
+for a reproduction (S1); the reviewer found it alone. cgiName now reads a name as PHP does: leading spaces skipped,
+the name cut at the first NUL, then "-", "." and " " to "_" in lower case. The space is folded because PHP stores
+`x%20http%20method%20override` as `x_http_method_override`. "[" is not folded: a leading "[" drops the parameter,
+`_method[` lands as `_method_`, and `_method[]` lands as an array, which Symfony's InputBag does not hand out as a
+string. Only spaces are trimmed, so `%09_method` stays a name of its own on PHP and is still served.
+
+Honest cost: under a rule that narrows, a header or query parameter whose name folds to one of the six override
+names by letter case, leading spaces, a NUL, or "-", "." or a space for "_" is answered 403; docs/policy.md says so
+in one parenthesis. Still served under the narrowed rule: `?method=`, `?%20method=`, `?a.b=`, `?a%20b=`, a path
+such as /v1/x.json. A rule that narrows nothing serves every one of them as before. The test:
+TestC74DotMethodQuery in internal/proxy/c74_test.go, eight rows, its upstream reading a name as PHP does; on main's
+terminate.go the two `.method` rows and the three of the fix round fail, on c17f792 those three alone, on b115d48
+none, plain and under -race. Its control rows are unchanged: the plain POST is served with the secret, and the
+plain DELETE and the `_method` spelling get the 403. As S-F55's and S-F57's records hold, this lists one more
+reading of an upstream (the fifth: header, form, JSON, header spelling, parameter spelling) and does not make a
+rule on the method whole; the maintainer may still prefer the third shape of S-F57.
+
+Sweep 3 now stands at nine mediums (C65, C66, C67, C68, C69, C71, C72, C73 and C74, all fixed) and two lows (C64
+and C70, both fixed), with one unconfirmed candidate still a unit (S-1021, the list-word residue of C72). No fix
+unit is open; the next candidate number is C75 and the next fix unit S-F59.
