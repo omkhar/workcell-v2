@@ -16,8 +16,7 @@ import (
 	"github.com/omkhar/workcell/v2/internal/provider"
 )
 
-// TestC60ZeroInstallerFailReadsTheRepository (I12, B9): the user's [update] ca is relative, so startup printed one line and handed run the zero installer, whose data directory is "". A first frame guest root chose, an Exit with an error, then has run call fail, which reads layers/<agent>/current for every provider
-// against that directory: the repository the operator runs in. A symlink there to a FIFO parks `workcell run` for good, after the VM is closed; a regular file makes the repository's bytes the marker. The read must return, or never be made: fail takes a bounded time whatever the repository holds.
+// TestC60ZeroInstallerFailReadsTheRepository (I12, B9): the user's [update] ca is relative, so startup printed one line and handed run the zero installer, whose data directory is "". A first frame guest root chose, an Exit with an error, then has run call fail, which reads layers/<agent>/current for every provider against that directory: the repository the operator runs in. A symlink there to a FIFO parks `workcell run` for good, after the VM is closed; a regular file makes the repository's bytes the marker. The read must return, or never be made: fail takes a bounded time whatever the repository holds.
 func TestC60ZeroInstallerFailReadsTheRepository(t *testing.T) {
 	p, cfg, repo := must(provider.All())[0], t.TempDir(), t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", cfg)
