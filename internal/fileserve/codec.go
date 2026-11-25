@@ -1,15 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Omkhar Arasaratnam
 
-// Package fileserve is the host side of mount mode (ADR-005): a FUSE 7 server for one
-// exported directory, fed the guest kernel's raw requests over internal/wire by the guest
-// init, which parses nothing. The grammar is the (handle, name) model: a request names a
-// node or an open file by an index into tables the host holds, and a name appears only in
-// LOOKUP, CREATE, MKDIR, UNLINK, RMDIR, RENAME and SYMLINK, where it must be one ordinary
-// path component. Every call on the export is relative to a directory descriptor the host
-// already holds and never follows a symbolic link (R6). The guest is hostile (A1): what it
-// sends is checked byte by byte before any syscall, and what it can make the host hold is
-// capped (I10, I12).
+// Package fileserve is the host side of mount mode (ADR-005): a FUSE 7 server for one exported directory, fed the guest
+// kernel's raw requests over internal/wire by the guest init, which parses nothing. The grammar is the (handle, name)
+// model: a request names a node or an open file by an index into tables the host holds, and a name appears only in
+// LOOKUP, CREATE, MKDIR, UNLINK, RMDIR, RENAME and SYMLINK, where it must be one ordinary path component. Every call on
+// the export is relative to a directory descriptor the host already holds and never follows a symbolic link (R6). The
+// guest is hostile (A1): what it sends is checked byte by byte before any syscall, and what it can make the host hold is capped (I10, I12).
 //
 // This file is the codec: the layouts of include/uapi/linux/fuse.h at protocol 7.37,
 // little-endian as on every guest.

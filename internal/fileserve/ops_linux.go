@@ -107,7 +107,7 @@ func (s *Server) op(r request) ([]byte, syscall.Errno) {
 			}
 			return buf[:n], 0
 		}
-		if e := s.grow(h.fd, int64(r.Offset)+int64(size)); e != 0 {
+		if e := s.grow(h.fd, int64(r.Offset), int64(r.Offset)+int64(size)); e != 0 {
 			return nil, e
 		}
 		for done := 0; done < len(r.Data); {
@@ -196,9 +196,8 @@ func (s *Server) lookup(p loc, name string) ([]byte, syscall.Errno) {
 	return entryOut(id, validity, attrOf(&st)), 0
 }
 
-// rename runs with life held for writing: the entry moves on disk and in the tables as one
-// step, so a request racing it resolves against the old or the new shape, never a mix. A
-// directory never moves under itself, so the parent chain stays acyclic whatever the disk says.
+// rename runs with life held for writing: the entry moves on disk and in the tables as one step, so a request racing it resolves against the old or the new shape,
+// never a mix. A directory never moves under itself, so the parent chain stays acyclic whatever the disk says.
 func (s *Server) rename(r request) syscall.Errno {
 	op, e := s.at(r.NodeID, syscall.ENOTDIR)
 	if e != 0 {
@@ -280,10 +279,8 @@ func (s *Server) create(r request) ([]byte, syscall.Errno) {
 	return append(entryOut(id, validity, attrOf(&st)), openOut(s.newFH(&handle{fd: fd, node: id}))...), 0
 }
 
-// setattr changes mode, size or times. Owner is the host user and stays so: uid and gid are
-// EPERM. Mode and size reach a file through a descriptor opened O_NOFOLLOW, so a symbolic
-// link is EPERM and its target untouched; times reach the entry itself, never a target.
-// What they would change is checked first (single), so a refusal leaves everything as it was.
+// setattr changes mode, size or times. Owner is the host user and stays so: uid and gid are EPERM. Mode and size reach a file through a descriptor opened O_NOFOLLOW,
+// so a symbolic link is EPERM and its target untouched; times reach the entry itself, never a target. What they would change is checked first (single), so a refusal leaves everything as it was.
 func (s *Server) setattr(r request) ([]byte, syscall.Errno) {
 	a := r.Setattr
 	const times = fattrAtime | fattrMtime | fattrAtimeNow | fattrMtimeNow
@@ -338,7 +335,7 @@ func (s *Server) setattr(r request) ([]byte, syscall.Errno) {
 		if l.mode == unix.S_IFDIR {
 			return nil, syscall.EISDIR
 		}
-		if e = s.grow(fd, int64(a.Size)); e == 0 {
+		if e = s.grow(fd, int64(a.Size), int64(a.Size)); e == 0 { // no range: a hole the new length ends in stays one
 			e = errno(unix.Ftruncate(fd, int64(a.Size)))
 		}
 	}
@@ -365,10 +362,9 @@ func (s *Server) setattr(r request) ([]byte, syscall.Errno) {
 	return attrReply(l, e)
 }
 
-// readdir lists from the handle's own descriptor, positioned at the offset the kernel gives back, which is the cookie of the entry after the last one it took.
-// Nothing is cached, so a directory of any size costs one 8 KiB buffer per call; the bytes read and the nodes made are charged to the pace (I10). READDIRPLUS
-// makes a node per entry, as a LOOKUP would; an entry that cannot get one (cap reached) goes out with node 0, so the listing stays complete and the kernel's own
-// LOOKUP reports the error.
+// readdir lists from the handle's own descriptor, positioned at the offset the kernel gives back, which is the cookie of the entry after the last one it took. Nothing
+// is cached, so a directory of any size costs one 8 KiB buffer per call; the bytes read and the nodes made are charged to the pace (I10). READDIRPLUS makes a node per
+// entry, as a LOOKUP would; an entry that cannot get one (cap reached) goes out with node 0, so the listing stays complete and the kernel's own LOOKUP reports the error.
 func (s *Server) readdir(r request) ([]byte, syscall.Errno) {
 	h, e := s.fh(r.NodeID, r.Fh)
 	if e != 0 {
