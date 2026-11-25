@@ -160,8 +160,7 @@ func (st *stream) serve(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// helperKilled runs the guest of holdProbe, waits until the allowed canary serves the connection the guest holds (or, atStart, kills at once, while the guest is still booting), kills the named helper with SIGKILL, and judges the host after: the helper is dead and every process of the session with it, the held connection closed within closeWithin, the run over within wakeWait, no request at either
-// canary and no question at the judge's resolver after the kill, and, if the guest could still speak, its resolver answered no name. A guest that held no connection before the kill is an error, not a pass.
+// helperKilled runs the guest of holdProbe, waits until the allowed canary serves the connection the guest holds (or, atStart, kills at once, while the guest is still booting), kills the named helper with SIGKILL, and judges the host after: the helper is dead and every process of the session with it, the held connection closed within closeWithin, the run over within wakeWait, no request at either canary and no question at the judge's resolver after the kill, and, if the guest could still speak, its resolver answered no name. A guest that held no connection before the kill is an error, not a pass.
 func helperKilled(name string, atStart bool) Judge {
 	return func(ctx context.Context, s Session) (bool, string, error) {
 		var st stream // The canaries and the judge's resolver, where the product reaches the test host; the resolver answers both names with the address the canaries listen at.

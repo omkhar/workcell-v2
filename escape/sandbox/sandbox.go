@@ -151,9 +151,7 @@ func LoopbackHolds(ip string) error {
 	return fmt.Errorf("%s is not an address of the host's loopback interface, which its setup must hold", ip)
 }
 
-// A session's own network (Config.Isolated) is AS112 space (RFC 7534): global unicast that the product's vetting accepts and no operator's, and nothing sent to it leaves the host (T8, S12). There the product's host holds IsolatedNet, so Neighbour lies on a network of the host's own, and the judge's canaries listen at CanaryAddr, outside that prefix: on Linux behind Neighbour, a real neighbour on a link to a second namespace (suite.Hold); on a Mac at an alias of lo0 that a host route alone makes the host's. A product that dials only off the host's networks reaches them still.
-const IsolatedNet, Neighbour, CanaryAddr = "192.175.48.1/25", "192.175.48.2", "192.175.48.129"
-
+const IsolatedNet, Neighbour, CanaryAddr = "192.175.48.1/25", "192.175.48.2", "192.175.48.129" // A session's own network (Config.Isolated) is AS112 space (RFC 7534): global unicast that the product's vetting accepts and no operator's, and nothing sent to it leaves the host (T8, S12). There the product's host holds IsolatedNet, so Neighbour lies on a network of the host's own, and the judge's canaries listen at CanaryAddr, outside that prefix: on Linux behind Neighbour, a real neighbour on a link to a second namespace (suite.Hold); on a Mac at an alias of lo0 that a host route alone makes the host's. A product that dials only off the host's networks reaches them still.
 // placed is addr with "host" or "neighbour" replaced: where the judge's canaries listen, or an address on a network the test host holds, in the network the product reaches the test host in. In a session's own network (isolated) those are CanaryAddr and Neighbour; in the host's own, both are HostAddr.
 func placed(addr string, isolated bool) (string, error) {
 	host, port, err := net.SplitHostPort(addr)
@@ -205,8 +203,7 @@ func headPipe(out io.Writer) (w *os.File, finish func(), err error) {
 	return w, func() { w.Close(); <-done }, nil
 }
 
-// bounded keeps the first limit bytes written and drops the rest; several goroutines may write.
-type bounded struct {
+type bounded struct { // bounded keeps the first limit bytes written and drops the rest; several goroutines may write.
 	mu    sync.Mutex
 	limit int
 	buf   []byte

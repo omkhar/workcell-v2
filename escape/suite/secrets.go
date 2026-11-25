@@ -35,8 +35,7 @@ const (
 	readChunk                          = 1 << 20
 )
 
-// NewSecret makes a fresh secret bound to the first allowed name of w, in the header boundHeader, for the runner to put in a session's Config when a test wants one; Narrow binds it to narrowMethod
-// requests under narrowPath alone; Repos scopes it, as a git token in the Authorization header, to those repositories. With a Source of w's own, a sign-in flow, the row has no value: the endpoint the source names issues the tokens, and the access one goes in the Authorization header, as a bearer token does.
+// NewSecret makes a fresh secret bound to the first allowed name of w, in the header boundHeader, for the runner to put in a session's Config when a test wants one; Narrow binds it to narrowMethod requests under narrowPath alone; Repos scopes it, as a git token in the Authorization header, to those repositories. With a Source of w's own, a sign-in flow, the row has no value: the endpoint the source names issues the tokens, and the access one goes in the Authorization header, as a bearer token does.
 func NewSecret(w Want) sandbox.Secret {
 	sec := sandbox.Secret{Name: "escape", Value: secretPrefix + newToken()[:secretHex], Host: w.Allow[0], Header: cmp.Or(w.Header, boundHeader), Env: "ESCAPE_API_KEY"}
 	if w.Narrow {
@@ -112,8 +111,7 @@ func (s *scan) spent(phase string, limit bool) bool {
 	return true
 }
 
-// secretProbe scans the environment and arguments of every process it can see, the disk, and process memory: every process in its own pid namespace, then a few ancestors nearest first (the agent that launched it holds what the host gave it), stopping at the first ancestor that holds a hit. What its own environment holds as the credential (args[1] names the variable) comes first in the result,
-// then the values, so that the line's bound (maxDetail) can cut only where they were seen; a sixth value is marked with "+".
+// secretProbe scans the environment and arguments of every process it can see, the disk, and process memory: every process in its own pid namespace, then a few ancestors nearest first (the agent that launched it holds what the host gave it), stopping at the first ancestor that holds a hit. What its own environment holds as the credential (args[1] names the variable) comes first in the result, then the values, so that the line's bound (maxDetail) can cut only where they were seen; a sixth value is marked with "+".
 func secretProbe(args []string) Result {
 	if len(args) != 2 {
 		return Result{Status: "error", Detail: "want the export path and the credential variable"}

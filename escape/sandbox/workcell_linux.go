@@ -210,9 +210,7 @@ func productProcess(root int, bin string) (int, bool) {
 	return found, depth >= 0
 }
 
-// resolverLoader runs in a mount namespace of its own: it makes every mount private, so that nothing it binds shows on the host, binds the session's resolv.conf ($1) over /etc/resolv.conf, becomes the user the suite runs as ($2, $3; the loader runs as root, since binding needs that), and becomes the product with exactly the environment the suite gives it (the K=V words after the ids, then the command), which then resolves every name with that file's resolver.
-const resolverLoader = `mount --make-rprivate / && mount --bind "$1" /etc/resolv.conf || { echo "workcell adapter: cannot bind the session's resolv.conf over /etc/resolv.conf" >&2; exit 125; }; u=$2 g=$3; shift 3; exec setpriv --reuid="$u" --regid="$g" --init-groups -- env -i "$@"`
-
+const resolverLoader = `mount --make-rprivate / && mount --bind "$1" /etc/resolv.conf || { echo "workcell adapter: cannot bind the session's resolv.conf over /etc/resolv.conf" >&2; exit 125; }; u=$2 g=$3; shift 3; exec setpriv --reuid="$u" --regid="$g" --init-groups -- env -i "$@"` // resolverLoader runs in a mount namespace of its own: it makes every mount private, so that nothing it binds shows on the host, binds the session's resolv.conf ($1) over /etc/resolv.conf, becomes the user the suite runs as ($2, $3; the loader runs as root, since binding needs that), and becomes the product with exactly the environment the suite gives it (the K=V words after the ids, then the command), which then resolves every name with that file's resolver.
 // steered returns the argv that runs argv under a /etc/resolv.conf naming resolver, with env as its whole environment: the loader above in a new mount namespace, through sudo when the suite is not root, as a hosted runner grants without a password, and inside the network namespace that the process ns holds when ns is set. The resolv.conf is written under dir.
 func steered(dir, resolver string, env, argv []string, ns int) ([]string, error) {
 	file := filepath.Join(dir, "resolv.conf")

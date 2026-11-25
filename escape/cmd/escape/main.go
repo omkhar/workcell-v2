@@ -23,9 +23,8 @@ import (
 	"time"
 )
 
-// Outcomes of one test.
-const Pass, Fail, NotImplemented, Error = "pass", "fail", "not-implemented", "error"
-const perTest = 20 * time.Second // perTest bounds one test, sandbox start to stop (SPEC: under 20 seconds), unless the test states its own Bound.
+const Pass, Fail, NotImplemented, Error = "pass", "fail", "not-implemented", "error" // Outcomes of one test.
+const perTest = 20 * time.Second                                                     // perTest bounds one test, sandbox start to stop (SPEC: under 20 seconds), unless the test states its own Bound.
 // Report is the JSON the runner prints.
 type Report struct {
 	Sandbox string   `json:"sandbox"`
@@ -178,8 +177,7 @@ func runOne(ctx context.Context, fresh func() (sandbox.Sandbox, error), payload,
 	return Fail, detail
 }
 
-// session is one sandbox and the directory made for its export.
-type session struct {
+type session struct { // session is one sandbox and the directory made for its export.
 	sb   sandbox.Sandbox
 	root string
 }

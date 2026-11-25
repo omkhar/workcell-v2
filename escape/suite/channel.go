@@ -318,8 +318,7 @@ func floodJudge(ctx context.Context, s Session) (bool, string, error) {
 	return true, say + "; a plain run after still works", nil
 }
 
-// rebootJudge has root restart the guest's kernel while the run stands (reboot -f, after one line of output) and holds the host to I12 and I7 after: the run ends within hangBound with a clean refusal of the session, exit 125, not a hang at the vCPU cap on a kernel booted again with no host end to talk to; no process of the session, the VMM first, outlives the run; and a plain run after still
-// works. The session's processes are listed while the run stands, below its supervisor. Off the product's VM the probe refuses to restart anything (S12), and the run's exit 0 is the honest failure.
+// rebootJudge has root restart the guest's kernel while the run stands (reboot -f, after one line of output) and holds the host to I12 and I7 after: the run ends within hangBound with a clean refusal of the session, exit 125, not a hang at the vCPU cap on a kernel booted again with no host end to talk to; no process of the session, the VMM first, outlives the run; and a plain run after still works. The session's processes are listed while the run stands, below its supervisor. Off the product's VM the probe refuses to restart anything (S12), and the run's exit 0 is the honest failure.
 func rebootJudge(ctx context.Context, s Session) (bool, string, error) {
 	ch, err := s.Channel(ctx)
 	if err != nil {
