@@ -14,9 +14,7 @@ import (
 	"testing"
 )
 
-// TestC28TempDirInMountExport (I1, I4): a mount session whose export holds os.TempDir()
-// is refused, naming that directory, before boot. Otherwise the VMM's vsock_<port> sockets are made inside the
-// tree the guest may rewrite: guest root unlinks one and symlinks it to a host socket of the operator's uid (docker.sock, ssh-agent), and the VMM's next connect for that port follows the link.
+// TestC28TempDirInMountExport (I1, I4): a mount session whose export holds os.TempDir() is refused, naming that directory, before boot. Otherwise the VMM's vsock_<port> sockets are made inside the tree the guest may rewrite: guest root unlinks one and symlinks it to a host socket of the operator's uid (docker.sock, ssh-agent), and the VMM's next connect for that port follows the link.
 func TestC28TempDirInMountExport(t *testing.T) {
 	for _, tc := range []struct {
 		name, sub string
