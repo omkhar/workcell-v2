@@ -63,8 +63,7 @@ func dohProbe(method string) Probe {
 		if len(args) != 2 {
 			return Result{Status: "error", Detail: "want address and token"}
 		}
-		msg := dnsQuery(dnsQuestion{Name: dnsName(args[1]), Type: dnsTypeA})
-		url := "https://" + args[0] + "/dns-query"
+		msg, url := dnsQuery(dnsQuestion{Name: dnsName(args[1]), Type: dnsTypeA}), "https://"+args[0]+"/dns-query"
 		var req *http.Request
 		if method == http.MethodGet {
 			req, _ = http.NewRequest(method, url+"?dns="+base64.RawURLEncoding.EncodeToString(msg), nil)

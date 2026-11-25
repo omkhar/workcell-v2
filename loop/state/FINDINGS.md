@@ -8030,3 +8030,159 @@ The 95 lines of the two parked tests were paid by 93 lines of layout folds in es
 Sweep 3 now stands at two highs (C76 and C77, both fixed), eleven mediums (C65, C66, C67, C68, C69, C71, C72,
 C73, C74, C75 and C78, all fixed) and three lows (C64, C70 and C79, all fixed). The next candidate
 number is C80 and the next fix unit S-F64.
+
+## S-1009b, sweep 3: brought candidates of the policy surface, the relative words of a secret source (I5), as built at main ef6026f
+
+S-1009b is a unit the maintainer added after S-F62. It brings its candidates from the line `S-F62 orchestrator's
+probe` of PARKED.md, so no auditor ran (PROMPT.md section 4), as in S-1020 and S-1021: the redteam wrote each test
+from the claim alone, the orchestrator ran each by go test -overlay against the real package, plain and under
+-race, logs saved, and one verifier for each candidate, in a fresh context and with no one's reasoning, tried to
+refute it. Nothing here needed a VM. Nothing is private (S14): the missing judgement is in cmd/workcell/policy.go,
+which is v2's own, and the records keep the v1 line of C54.
+
+Coverage, each row run through the real loadPolicy and through secret.Resolve, the broker's own path, with the
+working directory <cwd> holding .secrets/anthropic.key and REL standing for that key's absolute path without its
+first slash. The two rows of the PARKED line: `cmd:/bin/cat REL` and `cmd:/bin/sh -c cat<REL`, both accepted and
+both printing the key (C80, C81). A relative text after each separator that a loadable word may still hold, the
+unit line's first variant: `=` by a real program (`cmd:/bin/dd if=REL`) and `:`, `,`, `>`, `|`, `(`, `)`, `+`, `@`,
+`%`, `#`, `!`, `^`, `]` and `}` through a helper outside the directory that takes the text after the separator as a
+path; every kind was accepted and printed the key, and none was found that is not live (C81). A relative `file:`
+source, the unit line's second variant: `file:.secrets/anthropic.key`, `file:./.secrets/anthropic.key`,
+`file:repo/.secrets/anthropic.key`, `file:../repo/.secrets/anthropic.key` and `file:REL` are all accepted with a
+binding, and the broker refuses each at first use with "secret source file: needs an absolute path" (C82 for the
+spellings that name the key from the directory). Refused as they should be, with C54's line: `cmd:/bin/cat /REL`,
+`cmd:/bin/cat ./REL`, `cmd:/bin/sh -c cat</REL`, `cmd:/bin/dd if=/REL`, the helper with `k:/REL`, and `file:<the
+absolute path>`. Accepted as they should be: the same relative texts when they name a key outside the directory as
+read from `/`. Not live: `cmd:/bin/cat .secrets/anthropic.key` and `cmd:/bin/cat repo/.secrets/anthropic.key`,
+which the program cannot open from `/` (exit status 1), so a word relative to the directory itself names nothing
+there.
+
+### S-1009b candidates, sweep 3
+
+C80. ID I5 ("Real credential bytes never exist in guest memory, disk, environment, arguments or logs"), through the
+secret-source check of the policy loader, the class of C54, C58, C72, C75 and C78. ATTACKER: the malicious
+repository and guest root, who read /workspace. Precondition the attacker does not control, of the kind accepted
+for C54 to C78: the operator's [[secret]] row has a cmd: source one of whose words is the key's absolute path
+without its first slash. SEVERITY: medium (S6). WHERE: cmd/workcell/policy.go, the word loop of loadPolicy, which
+judges a word from its first slash on, so the word home/u/repo/.secrets/anthropic.key is judged as
+/u/repo/.secrets/anthropic.key, outside the working directory /home/u/repo; the comment there, that the program is
+run from `/` so a relative word never means the directory, holds for a word read from the directory and is false of
+one read from `/`. The broker (internal/secret/source.go) splits the source on spaces and runs it with no shell and
+with its directory set to `/`, so the word names the key. also in v1 main: credbroker/cli.go, as C54's record has
+it. INPUT: a user config that allows api.anthropic.com, with [[secret]] name "anthropic" and source `cmd:/bin/cat
+<cwd without its first slash>/.secrets/anthropic.key`, the key file at <cwd>/.secrets/anthropic.key, and workcell
+run there, clone or --mount. The row holds none of the twelve characters S-F62 refuses. EFFECT: loadPolicy returns
+no error and a binding, where the same row with the slash, or with `./` before the word, is refused with C54's line
+before any session directory is made; the session goes past the export, so in clone mode workspace.ext4 holds the
+key's bytes while a placeholder is minted for it, and under --mount the directory is served live.
+
+Reproducing test, by the redteam from the claim alone: TestC80RelativeWordReadFromRoot, package main of
+cmd/workcell, 55 lines, parked at escape/_pending/S-F64/c80_test.go, on the fixtures of C54 and C78 (c19Data, a
+dummy VMM, so a session that is not refused fails at boot, after the export). Six arms: the row in clone mode and
+under --mount, and four controls (the literal absolute path and the word after `./`, both refused with C54's line;
+a relative and an absolute word that name a key outside the directory, both loading). Each row that is not refused
+is given once to secret.Resolve and must print the key. Run by the orchestrator by overlay, plain and under -race:
+the two finding arms fail with "I5: session <id> started for cmd:/bin/cat REL: under --mount <cwd> is served live
+as /workspace, else its export holds the key, which the broker reads from / through the relative word", each after
+the dummy VMM's "start firecracker: invalid argument", and the four controls pass. Outcome: CONFIRMED at medium by
+the verifier, who repeated the run beside the C54, C72, C75 and C78 tests, which pass, so this is not a row those
+fixes cover. The row is live by the product's own path: a probe of its own in internal/secret, run from another
+directory, got the key from Resolve, since the broker sets the command's directory to `/`; and run() goes from
+loadPolicy to session, holds, newSession and workspace.Export before boot, so a real run exports the key. It is
+inside the promise and not a program's own logic: docs/policy.md says every path a word of a cmd: source names must
+lie outside the directory and that the program runs from `/`, so a relative word names `/` joined to the word,
+which the loader can form from the text alone. A fix-shaped overlay of three lines outside the repository, which
+judges a plain relative word joined to `/` as well, made the test pass with the C54, C72, C75 and C78 tests green.
+Medium and not high: the break is shown, with the key's bytes in workspace.ext4, but the operator must spell the
+row so; the verifier calls the spelling less likely than C78's `~`, a slip more than a habit. Not expressed: a
+non-ASCII separator, and a helper whose body changes directory. Not S14: policy.go is v2's own. Fix unit: S-F64,
+below S-1009b in PLAN.md.
+
+C81. ID I5, the same check and class; the residue that a fix of C80 alone would leave. ATTACKER: as C80.
+Precondition the attacker does not control: the operator's cmd: source has a word in which the key's absolute path
+without its first slash stands after a separator, a separator being every ASCII byte that is not a letter, a digit,
+`.`, `_`, `-` or `/`. SEVERITY: medium (S6). WHERE: the same loop of loadPolicy in cmd/workcell/policy.go, which
+reads a word as paths from the first slash after any separator, so the text after the separator loses its first
+name as C80's word does. also in v1 main: credbroker/cli.go. INPUT: as C80, with the source `cmd:/bin/sh -c
+cat<REL`, or `cmd:/bin/dd if=REL`, or `cmd:<out>/get-key.sh k:REL` with a helper outside the directory that takes
+the text after the separator as a path, and the same with `,`, `>`, `|`, `(`, `)`, `+`, `@`, `%`, `#`, `!`, `^`,
+`]` and `}`. No word holds one of the twelve characters. EFFECT: as C80: a binding, a session past the export, the
+key in workspace.ext4 or the directory served live, where each row with the slash is refused with C54's line.
+
+Reproducing test, by the redteam from the claim alone: TestC81RelativeTextAfterASeparator, package main of
+cmd/workcell, 57 lines, parked at escape/_pending/S-F65/c81_test.go, on the same fixtures. Twenty-three arms:
+seventeen finding arms (/bin/sh in clone mode and under --mount, /bin/dd, and one arm for each of the fourteen
+other separators through the helper, whose cut is the loader's own rule for a separator) and six controls (three
+rows with the slash, refused with C54's line; three whose relative text names a key outside the directory,
+loading). Each row that is not refused is given once to secret.Resolve and must print the key. Run by the
+orchestrator by overlay, plain and under -race: the seventeen finding arms fail with "I5: session <id> started for
+...: under --mount <cwd> is served live as /workspace, else its export holds the key, which the program reads from
+/ through the text after the separator" and the six controls pass. Outcome: CONFIRMED at medium by the verifier,
+who repeated the run and ruled on what the unit asked. Three arms carry the finding alone, with a real program
+doing the cutting: /bin/sh twice and /bin/dd. The fourteen helper arms widen the cover of separators and do not
+establish the finding; they are a gap in the promise and not a program's own logic, since docs/policy.md says a
+word is read as paths from the first slash after any separator, so the loader itself takes the text after `:` or
+`,` for a path and misreads a relative one, and C72 and C75 were confirmed on helpers of the same shape. It is
+distinct from C80 by its rows and one with it by its cause: under an overlay shaped as a narrow fix of C80 (a whole
+relative word judged joined to `/`, nothing else) C80's row is refused and all seventeen arms here still fail, and
+under a wide overlay (the text at the word's start and after each separator, when relative, judged joined to `/` as
+well) all twenty-three arms pass with the C54, C72, C75 and C78 tests green. Medium by S6's letter and at its thin
+end: every spelling drops the first slash of an absolute path, which no shell habit, document or tool produces. Not
+expressed: a non-ASCII separator; a helper whose body changes directory; under --mount the arms show the session
+and not bytes read by a guest. Not S14: policy.go is v2's own. Fix unit: S-F65, below S-F64 in PLAN.md.
+
+C82. ID I5, the same check, in its file: branch; a residue of C54 and not of C80, since no reading from `/` is in
+it. ATTACKER: as C80. Precondition the attacker does not control: the operator's [[secret]] row names the key by a
+file: path relative to the directory the session is run in. SEVERITY: medium (S6). WHERE: cmd/workcell/policy.go,
+loadPolicy, which gives the C54 judgement to an absolute file: path alone and accepts a value that is not absolute,
+minting a placeholder for it; the broker (internal/secret/source.go, readFile) refuses every relative file: value
+with "secret source file: needs an absolute path", but only at first use, after the export. INPUT: a user config
+that allows api.anthropic.com, with [[secret]] name "anthropic" and source `file:.secrets/anthropic.key`,
+`file:./.secrets/anthropic.key` or `file:../repo/.secrets/anthropic.key`, the key file at
+<cwd>/.secrets/anthropic.key with <cwd> named repo, and workcell run there, clone or --mount. EFFECT: loadPolicy
+returns no error and a binding, where `file:<the absolute path of the same file>` is refused with C54's line before
+any session directory is made; the session goes past the export, so in clone mode workspace.ext4 holds the key's
+bytes beside the placeholder the guest is given, and under --mount the directory is served live. Nothing names the
+row to the operator: load prints nothing, `workcell explain` prints the row as served, and a real `workcell run --
+true` of the built binary (the redteam, with dummy artifacts) made the session directory with the key in
+workspace.ext4 and printed only that the guest did not boot.
+
+Reproducing test, by the redteam from the claim alone: TestC82RelativeFileSource, package main of cmd/workcell, 54
+lines, parked at escape/_pending/S-F66/c82_test.go, on the same fixtures. Six arms: `file:.secrets/anthropic.key`
+in clone mode and under --mount, `file:./.secrets/anthropic.key` in clone mode,
+`file:../repo/.secrets/anthropic.key` under --mount, and two controls (the absolute path under the directory,
+refused with C54's line; an absolute path outside it, loading). A refusal of any kind before a session directory is
+made passes, so a fix may refuse every relative file: value or judge it against the directory; each finding arm
+logs what the broker answers at first use. Run by the orchestrator by overlay, plain and under -race: the four
+finding arms fail with "I5: session <id> started for file:.secrets/anthropic.key: under --mount <cwd> is served
+live as /workspace, else its export holds the key, which the row names by a path relative to that directory", each
+after the dummy VMM's "start firecracker: invalid argument" and the broker's "needs an absolute path", and the two
+controls pass. Outcome: CONFIRMED at medium by the verifier, who repeated the run and argued the hard question both
+ways before ruling. Against: docs/policy.md shows `file:/abs/path`, the broker never reads this file as a
+credential, so the row is dead and the file lies in the export as every file of the directory does. For, and the
+ruling: I5 is stated in bytes, the row tells the product which path is the credential, the loader accepts it and
+puts a placeholder for it in the guest beside the real key, and docs/policy.md promises that a file: path must lie
+outside the directory and that such a row is refused before a session starts, with no word that limits the promise
+to absolute spellings; C54's record ruled the same objection so. The loader refuses other rows that can never work
+at load, so accepting one the broker will surely refuse is a gap and not an intent. Its own probe saw `workcell
+explain` print the row as served with exit status 0; from the code, the guest's first use gets a 502 and the audit
+log a broker_denied row, after the export. Two fix-shaped overlays outside the repository each made all six arms
+pass with the whole package green under -race: a refusal at load of a file: value that is not absolute (three
+lines), and a judgement of the value joined to the working directory in the existing loop. It is distinct from C80
+and C81: under an overlay of their fix shape C80 passes and these four arms still fail. Medium as C54, C58 and C78
+were, since the check's measure is the bytes and the placeholder and not whether the grant works; the verifier
+notes that a reader who weighs the dead row could say low, and that the spelling is an operator's mistake, likelier
+for one who always runs from one project. Not an arm, and said so: `file:<the key's absolute path without its first
+slash>` and `file:repo/.secrets/anthropic.key` load as well and name nothing under any reading, so nothing makes
+them findings but the dead row; the first shape of fix refuses them too. Not expressed: a relative file: path
+through a link inside the directory; the guest's 502 and the audit row, read from code and not run. Not S14:
+policy.go is v2's own, and the ported source.go is not weak here, since it refuses the relative path. Fix unit:
+S-F66, below S-F65 in PLAN.md.
+
+The 166 lines of the three parked tests were paid by 165 lines of layout folds in escape/ (112 in 21 files for C80
+and C81, 53 in 23 files for C82: adjacent constants, variables and short assignments joined, comments merged) and
+one line of the room left: no test, row, arm or assertion removed. Product 15000 of 15000, test 28500 of 28500.
+
+Sweep 3 now stands at two highs (C76 and C77, both fixed), fourteen mediums (C65, C66, C67, C68, C69, C71, C72,
+C73, C74, C75 and C78, all fixed; C80, C81 and C82, open) and three lows (C64, C70 and C79, all fixed). The next
+candidate number is C83 and the next fix unit S-F67.

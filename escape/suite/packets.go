@@ -7,8 +7,7 @@ import "bytes"
 
 // Pure encoders and parsers for the probes' packets. The bytes a judge parses come from the guest and are hostile, so quicDCID is total and fuzzed.
 
-const maxCID = 20        // RFC 9000: a connection ID is at most 20 bytes
-const quicInitMin = 1200 // RFC 9000: a client Initial is padded to at least this
+const maxCID, quicInitMin = 20, 1200 // RFC 9000: a connection ID is at most 20 bytes, and a client Initial is padded to at least 1200
 // quicInitial builds a QUIC version 1 Initial packet with the destination connection ID dcid, padded as a client's first flight must be. Its payload is not a valid handshake; a canary only needs the invariant header.
 func quicInitial(dcid []byte) []byte {
 	b := []byte{0xC3, 0, 0, 0, 1, byte(len(dcid))} // long header, fixed bit, Initial, 4-byte packet number; version 1

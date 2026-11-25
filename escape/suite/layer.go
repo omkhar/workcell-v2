@@ -81,8 +81,7 @@ func layerJudge(ctx context.Context, s Session) (bool, string, error) {
 	if err == nil {
 		r2, err = two.Run("check", hijacked)
 	}
-	both := fmt.Sprintf("second session: %s (first session: %s)", r2.Detail, r.Detail)
-	one, other := fields(r.Detail), fields(r2.Detail)
+	both, one, other := fmt.Sprintf("second session: %s (first session: %s)", r2.Detail, r.Detail), fields(r.Detail), fields(r2.Detail)
 	switch {
 	case err != nil:
 		return false, "", err

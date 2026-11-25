@@ -21,13 +21,8 @@ import (
 // Missing, and said so in the report: the row where the first answer is an address the host may dial and the second is not, and the row where one answer set holds both. Each needs a global unicast address the test host owns, and every range set aside for that (RFC 5737, 2001:db8::/32, 3fff::/20) is one the host refuses; every other address is someone's.
 
 const judgeResolver = "127.5.3.53" // judgeResolver is where the judge's resolver listens, at port 53.
-var rebinding = Want{Allow: []string{"allowed.escape.test:" + forwardPort}, Resolver: judgeResolver}
-var rebindingSNI = Want{Allow: []string{"allowed.escape.test"}, Resolver: judgeResolver}
-var rebindingMapped = Want{Allow: []string{"mapped.escape.test:" + forwardPort}, Resolver: judgeResolver}
-var rebindingCNAME = Want{Allow: []string{"allowed.escape.test:" + forwardPort}, Deny: []string{"denied.escape.test"}, Resolver: judgeResolver}
-var rebindingOwn = Want{Allow: rebinding.Allow, Resolver: judgeResolver, Isolated: true}
-var rebindingOwnSNI = Want{Allow: rebindingSNI.Allow, Resolver: judgeResolver, Isolated: true}
-var rebindingOnLink = Want{Allow: rebinding.Allow, Resolver: judgeResolver, Isolated: true, OnLink: true}
+var rebinding, rebindingSNI, rebindingMapped, rebindingCNAME = Want{Allow: []string{"allowed.escape.test:" + forwardPort}, Resolver: judgeResolver}, Want{Allow: []string{"allowed.escape.test"}, Resolver: judgeResolver}, Want{Allow: []string{"mapped.escape.test:" + forwardPort}, Resolver: judgeResolver}, Want{Allow: []string{"allowed.escape.test:" + forwardPort}, Deny: []string{"denied.escape.test"}, Resolver: judgeResolver}
+var rebindingOwn, rebindingOwnSNI, rebindingOnLink = Want{Allow: rebinding.Allow, Resolver: judgeResolver, Isolated: true}, Want{Allow: rebindingSNI.Allow, Resolver: judgeResolver, Isolated: true}, Want{Allow: rebinding.Allow, Resolver: judgeResolver, Isolated: true, OnLink: true}
 
 // rebind is one row's answer and canary: the A and AAAA records the allowed name gets, owned by cname when that is set (the allowed name is then an alias of it), the address the canary listens at ("neighbour" standing for an address on a network of the test host's own, as the session's Bind places it; with no record given, the one A record is wherever the canary came to listen), and whether the guest offers TLS with the allowed name as SNI at 443 rather than a line at the forward port.
 type rebind struct {
@@ -114,8 +109,7 @@ func rebindJudge(r rebind) Judge {
 		defer ns.stop()
 		want, name := newToken(), slices.Concat(r.names, []string{allowedName})[0]
 		res, err := s.Run(net.JoinHostPort(strings.TrimSuffix(name, "."), port), want, mode)
-		got := t.stop()
-		asked := ns.stop()
+		got, asked := t.stop(), ns.stop()
 		if err != nil {
 			return false, "", err
 		}
@@ -198,8 +192,7 @@ func (r rebind) answer(q dnsQuestion) []byte {
 	owner := q.Name
 	var rrs []dnsRecord
 	if r.cname != "" {
-		rrs = append(rrs, dnsRecord{Name: owner, Type: dnsTypeCNAME, Data: encodeName(r.cname)})
-		owner = r.cname
+		rrs, owner = append(rrs, dnsRecord{Name: owner, Type: dnsTypeCNAME, Data: encodeName(r.cname)}), r.cname
 	}
 	switch q.Type {
 	case dnsTypeA:

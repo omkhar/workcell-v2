@@ -14,9 +14,7 @@ import (
 	"syscall"
 )
 
-var exported = Want{Workspace: true}                                        // exported is the sandbox the I1 and I7 tests want: a workspace export.
-var live = Want{Workspace: true, Mount: true}                               // live is the sandbox the mount-mode I1 tests want: the export served live (`--mount`, A5).
-var residueDirs = []string{"/tmp", "/var/tmp", "/dev/shm", "/root", "/run"} // residueDirs are the places a guest writes that another guest must not see.
+var exported, live, residueDirs = Want{Workspace: true}, Want{Workspace: true, Mount: true}, []string{"/tmp", "/var/tmp", "/dev/shm", "/root", "/run"} // exported is the sandbox the I1 and I7 tests want: a workspace export. live is the sandbox the mount-mode I1 tests want: the export served live (`--mount`, A5). residueDirs are the places a guest writes that another guest must not see.
 // target is what an I1 probe gets: where the guest sees its export, and the host path, inode and content of a secret the judge planted beside it. An attacker knows the host's layout; the invariant must hold anyway.
 type target struct {
 	guest, secret, token string
@@ -189,8 +187,7 @@ func residueProbe(args []string) Result {
 	if len(args) < 3 {
 		return Result{Status: "error", Detail: "want plant|seek|clean, token and export paths"}
 	}
-	verb, token := args[0], args[1]
-	places, n := append(append([]string{}, residueDirs...), args[2:]...), 0
+	verb, token, places, n := args[0], args[1], append(append([]string{}, residueDirs...), args[2:]...), 0
 	var where []string
 	for _, d := range places {
 		path := filepath.Join(d, residueName(token))

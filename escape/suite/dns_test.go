@@ -94,9 +94,7 @@ func TestParseDNSReply(t *testing.T) {
 		b := append([]byte{0xC0, 12}, byte(typ>>8), byte(typ), 0, 1, 0, 0, 0, 60)
 		return append(binary.BigEndian.AppendUint16(b, uint16(len(data))), data...)
 	}
-	a, aaaa := reply(0, rr(dnsTypeA, 127, 0, 0, 1)), reply(0, rr(dnsTypeAAAA, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1))
-	cname := reply(0, []byte{1, 'b', 4, 't', 'e', 's', 't', 0, 0, 5, 0, 1, 0, 0, 0, 60, 0, 2, 0xC0, 12}, rr(dnsTypeA, 10, 0, 0, 1))
-	txt := reply(0, rr(dnsTypeTXT, 1, 'x'))
+	a, aaaa, cname, txt := reply(0, rr(dnsTypeA, 127, 0, 0, 1)), reply(0, rr(dnsTypeAAAA, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1)), reply(0, []byte{1, 'b', 4, 't', 'e', 's', 't', 0, 0, 5, 0, 1, 0, 0, 0, 60, 0, 2, 0xC0, 12}, rr(dnsTypeA, 10, 0, 0, 1)), reply(0, rr(dnsTypeTXT, 1, 'x'))
 	cases := []struct {
 		name  string
 		in    []byte

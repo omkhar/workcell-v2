@@ -22,9 +22,7 @@ import (
 
 // The sign-in rows of I5. A secret's source is a sign-in flow: a token endpoint on one allowed name issues an access token and a refresh token, and the access token is bound to the API on the other name. The judge is the provider, serving both names from the one listener (serveTwo); the guest is an agent that signs in and uses the tokens as the row's steps say. The provider chose every real token, so it knows them where the guest shows its hand (its word, its scan) and where a canary saw them.
 
-const tokenPath, form = "/oauth/token", "application/x-www-form-urlencoded"
-const accessMark = "acce55"                                                                                                                                                                              // the hex after secretPrefix that starts an access token
-const refreshMark = "5efe5"                                                                                                                                                                              // and a refresh token, so that the scan's shape fits both
+const tokenPath, form, accessMark, refreshMark = "/oauth/token", "application/x-www-form-urlencoded", "acce55", "5efe5"                                                                                  // accessMark: the hex after secretPrefix that starts an access token; refreshMark: and a refresh token, so that the scan's shape fits both
 var signedInWant = Want{Workspace: true, Allow: []string{"api.escape.test", "login.escape.test"}, Resolver: judgeResolver, Isolated: true, Secret: true, Source: "signin:login.escape.test" + tokenPath} // signedInWant is the sandbox the rows want: withSecret, with the API as the first name and the token host as the second, and the secret from a sign-in flow at the token endpoint there.
 // grant is one request body a canary received, and what the token endpoint made of it: the refresh token it presented, and whether a pair was issued for it.
 type grant struct {
@@ -66,8 +64,7 @@ func (p *provider) serve(c *canary, token bool) http.HandlerFunc {
 			}
 		case typ == "authorization_code", typ == "refresh_token" && cur >= 0 && refresh == p.issued[cur][1] && scope != "bad":
 			pair := [2]string{secretPrefix + accessMark + newToken()[:secretHex-len(accessMark)], secretPrefix + refreshMark + newToken()[:secretHex-len(refreshMark)]}
-			p.issued = append(p.issued, pair)
-			g.issued = true
+			p.issued, g.issued = append(p.issued, pair), true
 			p.write(w, fmt.Sprintf(`{"access_token":%q,"token_type":"Bearer","expires_in":3600,"refresh_token":%q}`, pair[0], pair[1]), pair[0])
 		default: // what a provider says to a bad grant: the parameters back, with an error
 			w.Header().Set("Content-Type", "application/json")
@@ -189,8 +186,7 @@ func (f *flow) replay() []string {
 // signedIn serves the API host, the first allowed name, and the token host, the second, with the token endpoint framing its answers as mode says, runs the guest through the steps and holds the session to I5.
 func signedIn(mode string, steps ...string) Judge {
 	return func(ctx context.Context, s Session) (bool, string, error) {
-		p := &provider{mode: mode}
-		api, login := &canary{name: s.Allow[0]}, &canary{name: s.Allow[1]}
+		p, api, login := &provider{mode: mode}, &canary{name: s.Allow[0]}, &canary{name: s.Allow[1]}
 		api.respond, login.respond = p.serve(api, false), p.serve(login, true)
 		ns, stop, err := serveTwo(ctx, s, nil, api, login)
 		if err != nil {

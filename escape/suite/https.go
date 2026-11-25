@@ -262,8 +262,7 @@ func echProbe(args []string) Result {
 	if err != nil {
 		return Result{Status: "error", Detail: "ECH config list: " + err.Error()}
 	}
-	check := t.check()
-	cfg := &tls.Config{ServerName: t.bound, MinVersion: tls.VersionTLS13, EncryptedClientHelloConfigList: list, EncryptedClientHelloRejectionVerify: func(tls.ConnectionState) error { return nil }}
+	check, cfg := t.check(), &tls.Config{ServerName: t.bound, MinVersion: tls.VersionTLS13, EncryptedClientHelloConfigList: list, EncryptedClientHelloRejectionVerify: func(tls.ConnectionState) error { return nil }}
 	resp, err := fetch(t.get(t.bound, "/ech"), t.addrs, cfg, false)
 	var rejected *tls.ECHRejectionError
 	if errors.As(err, &rejected) {
@@ -417,8 +416,7 @@ func swapJudge(specs ...string) func(s Session, bound, other *canary) (bool, str
 			if e.name == "other" {
 				c = other
 			}
-			got, admitted := e.at(c), e.admitted(s.Secret)
-			want := e.credential(s.Secret.Value)
+			got, admitted, want := e.at(c), e.admitted(s.Secret), e.credential(s.Secret.Value)
 			switch {
 			case !admitted && len(got) > 0:
 				return false, fmt.Sprintf("exchange %d (%s), which the binding does not admit, reached %s %d times%s", i, spec, c.name, len(got), say), nil

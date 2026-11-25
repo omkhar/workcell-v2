@@ -14,22 +14,12 @@ import (
 )
 
 // SPEC I2, I4 and I12 on the network path of ADR-003. Every address is local to the guest: its kernel completes a TCP handshake to a listed port and the init carries the stream to the host as its own vsock stream, behind a 20-byte header that names the destination. Root in the guest (A1) can skip the init and speak that header itself, with any address, port, proto or version. The host must dial none of it: the canary's catch is the evidence of reach. A stream whose header never completes must be dropped, or a guest that sent ten bytes holds a slot of a bounded relay; the guest's side is the only witness.
-const (
-	relayVersion, protoTCP, protoUDP, headerLen = 1, 6, 17, 20
-	shortHeader                                 = 10               // header bytes the short kind sends
-	dripBytes                                   = headerLen - 1    // the slow kind sends every header byte but the last
-	dripEvery                                   = 400 * ms         // between bytes of the slow header
-	answerWait                                  = 3 * time.Second  // how long a whole-header stream waits for the host's answer
-	headerWait                                  = 8 * time.Second  // a stream with no complete header must be dropped within this
-	relayWait                                   = 25 * time.Second // a relay run must end within this
-	relayBound                                  = 30 * time.Second // Test.Bound for the header kinds that wait
-)
+const relayVersion, protoTCP, protoUDP, headerLen, shortHeader, dripBytes, dripEvery, answerWait, headerWait, relayWait, relayBound = 1, 6, 17, 20, 10, headerLen - 1, 400 * ms, 3 * time.Second, 8 * time.Second, 25 * time.Second, 30 * time.Second // shortHeader: header bytes the short kind sends; dripBytes: the slow kind sends every header byte but the last; dripEvery: between bytes of the slow header; answerWait: how long a whole-header stream waits for the host's answer; headerWait: a stream with no complete header must be dropped within this; relayWait: a relay run must end within this; relayBound: Test.Bound for the header kinds that wait
 
 var errHeld = errors.New("the stream is still open") // errHeld is read's answer when the peer neither wrote nor closed in time.
 // relayHeader encodes the relay's header: version, proto, the port big-endian and the address as 16 bytes, an IPv4 address mapped.
 func relayHeader(version, proto byte, ip net.IP, port uint16) []byte {
-	h := []byte{version, proto, byte(port >> 8), byte(port)}
-	ip16 := ip.To16()
+	h, ip16 := []byte{version, proto, byte(port >> 8), byte(port)}, ip.To16()
 	if ip16 == nil {
 		ip16 = make(net.IP, 16)
 	}
@@ -60,8 +50,7 @@ func relayProbe(args []string) Result {
 	if err != nil || ip == nil || perr != nil {
 		return Result{Status: "error", Detail: "want an IP address and port, got " + args[2]}
 	}
-	version, proto := byte(relayVersion), byte(protoTCP)
-	payload := []byte(args[3] + "\n")
+	version, proto, payload := byte(relayVersion), byte(protoTCP), []byte(args[3]+"\n")
 	switch kind {
 	case "tcp":
 	case "udp":
@@ -77,8 +66,7 @@ func relayProbe(args []string) Result {
 	default:
 		return Result{Status: "error", Detail: "unknown kind " + kind}
 	}
-	b := append(relayHeader(version, proto, ip, uint16(p)), payload...)
-	what := fmt.Sprintf("%s: a version %d proto %d header for %s then %d bytes", kind, version, proto, args[2], len(payload))
+	b, what := append(relayHeader(version, proto, ip, uint16(p)), payload...), fmt.Sprintf("%s: a version %d proto %d header for %s then %d bytes", kind, version, proto, args[2], len(payload))
 	if n, err := c.write(b, sendWait); err != nil {
 		return Result{Status: "cut", Detail: fmt.Sprintf("%s; the host took %d of %d bytes: %v", what, n, len(b), err)}
 	}
@@ -87,8 +75,7 @@ func relayProbe(args []string) Result {
 
 // headless sends shortHeader bytes of a header at once, or dripBytes of it a byte at a time, and reports whether the host dropped the stream.
 func headless(c *rawConn, kind string) Result {
-	start := time.Now()
-	h := relayHeader(relayVersion, protoTCP, net.IPv4(127, 0, 0, 1), 443)
+	start, h := time.Now(), relayHeader(relayVersion, protoTCP, net.IPv4(127, 0, 0, 1), 443)
 	if kind == "short" {
 		if n, err := c.write(h[:shortHeader], sendWait); err != nil {
 			return Result{Status: "closed", Detail: fmt.Sprintf("short: the host dropped the stream as %d of %d header bytes went: %v", n, headerLen, err)}

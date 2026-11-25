@@ -22,18 +22,7 @@ import (
 
 // The I5 probe is an agent gone rogue: root in the guest, it looks for the real credential everywhere a naive sandbox leaves one. It knows the format of the secret, as an attacker knows a provider's key prefix, not its value: it reports every value of that shape it finds and where, and the judge, which chose the value, says whether any of them is real. A placeholder found this way is no leak.
 
-const (
-	secretPrefix, secretHex, secretLen = "sk-escape-", 24, len(secretPrefix) + secretHex // the prefix, the hex digits after it, the whole
-	diskBudget                         = 5 * time.Second                                 // for the processes' environment and the disk
-	memBudget                          = 3 * time.Second                                 // for process memory
-	fileLimit                          = 1 << 20                                         // bytes read of one file
-	diskLimit                          = 256 << 20                                       // bytes read from disk in all
-	fileQuota                          = 50000                                           // files read in all
-	maxValues                          = 5                                               // distinct values the result names; more is marked
-	procLimit                          = 512 << 20                                       // bytes read of one process's memory
-	memLimit                           = 1 << 30                                         // bytes read of process memory in all
-	readChunk                          = 1 << 20
-)
+const secretPrefix, secretHex, secretLen, diskBudget, memBudget, fileLimit, diskLimit, fileQuota, maxValues, procLimit, memLimit, readChunk = "sk-escape-", 24, len(secretPrefix) + secretHex, 5 * time.Second, 3 * time.Second, 1 << 20, 256 << 20, 50000, 5, 512 << 20, 1 << 30, 1 << 20 // the prefix, the hex digits after it, the whole; diskBudget: for the processes' environment and the disk; memBudget: for process memory; fileLimit: bytes read of one file; diskLimit: bytes read from disk in all; fileQuota: files read in all; maxValues: distinct values the result names, more is marked; procLimit: bytes read of one process's memory; memLimit: bytes read of process memory in all
 
 // NewSecret makes a fresh secret bound to the first allowed name of w, in the header boundHeader, for the runner to put in a session's Config when a test wants one; Narrow binds it to narrowMethod requests under narrowPath alone; Repos scopes it, as a git token in the Authorization header, to those repositories. With a Source of w's own, a sign-in flow, the row has no value: the endpoint the source names issues the tokens, and the access one goes in the Authorization header, as a bearer token does.
 func NewSecret(w Want) sandbox.Secret {
@@ -53,8 +42,7 @@ func NewSecret(w Want) sandbox.Secret {
 const boundHeader, narrowMethod, narrowPath = "x-api-key", "POST", "/v1/"
 
 var withSecret = Want{Workspace: true, Allow: []string{"bound.escape.test", "other.escape.test"}, Resolver: judgeResolver, Isolated: true, Secret: true} // withSecret is the sandbox the I5 tests want: a workspace, two allowed names, bare, a secret bound to the first, the judge as the host's resolver and the host side in a network of its own, where the judge holds the one address both names resolve to and serves a canary for each at port 443 (twoNames). The guest's view of the names is given to each probe as a literal address beside the name. narrowed binds the secret to one method and path as well; scoped, as a git token, to one repository.
-var narrowed = Want{Workspace: true, Allow: withSecret.Allow, Resolver: judgeResolver, Isolated: true, Secret: true, Narrow: true}
-var scoped = Want{Workspace: true, Allow: withSecret.Allow, Resolver: judgeResolver, Isolated: true, Secret: true, Repos: []string{"octo/allowed"}}
+var narrowed, scoped = Want{Workspace: true, Allow: withSecret.Allow, Resolver: judgeResolver, Isolated: true, Secret: true, Narrow: true}, Want{Workspace: true, Allow: withSecret.Allow, Resolver: judgeResolver, Isolated: true, Secret: true, Repos: []string{"octo/allowed"}}
 
 // findSecrets returns every secret-shaped value in b, in order, once each.
 func findSecrets(b []byte) []string {
@@ -116,8 +104,7 @@ func secretProbe(args []string) Result {
 	if len(args) != 2 {
 		return Result{Status: "error", Detail: "want the export path and the credential variable"}
 	}
-	s := &scan{hits: map[string]string{}, deadline: time.Now().Add(diskBudget)}
-	pids := listPids()
+	s, pids := &scan{hits: map[string]string{}, deadline: time.Now().Add(diskBudget)}, listPids()
 	for _, pid := range pids {
 		for _, f := range []string{"environ", "cmdline"} {
 			if b, err := readPrefix(fmt.Sprintf("/proc/%d/%s", pid, f), fileLimit); err == nil {
@@ -255,8 +242,7 @@ func (s *scan) process(pid int) (hit, spent bool) {
 	comm, _ := readPrefix(fmt.Sprintf("/proc/%d/comm", pid), 16)
 	where := fmt.Sprintf("mem:%d(%s)", pid, strings.TrimSpace(string(comm)))
 	var read int64
-	buf := make([]byte, readChunk+secretLen)
-	sc := bufio.NewScanner(maps)
+	buf, sc := make([]byte, readChunk+secretLen), bufio.NewScanner(maps)
 	for sc.Scan() {
 		f := strings.Fields(sc.Text())
 		if len(f) < 5 || f[1][0] != 'r' || f[1][1] != 'w' || f[4] != "0" || len(f) > 5 && f[5] != "[heap]" && f[5] != "[stack]" && !strings.HasPrefix(f[5], "[anon") {

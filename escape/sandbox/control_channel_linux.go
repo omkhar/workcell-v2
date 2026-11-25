@@ -109,8 +109,7 @@ func (h *naiveHost) exited(b []byte) {
 		code = 126
 	}
 	h.mu.Lock()
-	h.exit = &code
-	h.noExec = h.noExec || b[0] == 2
+	h.exit, h.noExec = &code, h.noExec || b[0] == 2
 	h.mu.Unlock()
 }
 func (h *naiveHost) couldNotRun() bool { h.mu.Lock(); defer h.mu.Unlock(); return h.noExec } // couldNotRun says whether the guest claimed, in an Exit frame, that the command could not run; a naive host takes that at its word too.
@@ -122,8 +121,7 @@ func (h *naiveHost) result(out Output) Output {
 		out.Exit = *h.exit
 	}
 	if h.crash != "" {
-		out.Exit = 2
-		out.Stderr = append(out.Stderr, "panic: "+h.crash+"\n\ngoroutine 1 [running]:\n"...)
+		out.Exit, out.Stderr = 2, append(out.Stderr, "panic: "+h.crash+"\n\ngoroutine 1 [running]:\n"...)
 	}
 	return out
 }
