@@ -7627,58 +7627,70 @@ cost 119 test lines, paid by 125 layout folds in test files, 112 of them in inte
 row, arm or assertion removed (test 28494 of 28500, product 15000 of 15000). The next candidate number is C78
 and the next fix unit S-F62.
 
-C76 FIXED by S-F60, commits 39e2340 (the test moved) and 1a50388 (the fix) (PR #327).
+C76 FIXED by S-F60, commits 39e2340 (the test moved), 1a50388 (the fix) and b31a965 (the fix round, two
+constants, after a red hosted gate) (PR #327).
 The shape is the first of the three, a pace that counts work, chosen by the orchestrator before the redteam ran
 and written as a contract of behaviour: no depth cap and no smaller page, every request that main answers is
 answered with the same bytes, and only the moment at which Serve takes the next frame changes. In
 internal/fileserve/serve_linux.go the reader's count is now in points, unit (40) to the old unit: a frame costs
 one unit as before and a BATCH_FORGET one more per perForget entries, so TestPace's arithmetic is unchanged.
-Workers charge an atomic tally on the Server, and the reader folds it in before every frame: one point for each
-link of the chain that at() is about to stat, charged before the loop so that an error path pays too; one point
-for every 24 bytes that a getdents returned to readdir(), which is the most entries those bytes can hold; and
-plusEntry (20) for every READDIRPLUS entry made. A point is about 0.75 us of host CPU. Nothing is rounded away
-between frames, and what is over one period is slept off period by period and not forgiven. No new option,
-name, hook or reply. The depth cap and the page clamp were not built: the unit line shows that neither passes
-alone, and each refuses or changes something an honest guest does.
-Constants: a link and 24 listed bytes sit at 30 us a unit, as the contract asked. plusEntry is twice as dear
-as that (15 us an entry, against 4 us measured for one in sequence and 8 us beside fifteen other workers),
-and only because the test judges this process under -race, where the detector makes an entry cost about
-30 us: at 8 points arm (b) ran at 2.28 to 2.34 cores under -race, at 16 at 1.38 to 1.52, at 20 at 0.83 to 0.88.
+Workers charge an atomic tally on the Server, and the reader folds it in before every frame: two points for
+each link of the chain that at() is about to stat, charged before the loop so that an error path pays too; one
+point for every 24 bytes that a getdents returned to readdir(), which is the most entries those bytes can
+hold; and plusEntry (40) for every READDIRPLUS entry made. A point stands for about 0.75 us of host CPU.
+Nothing is rounded away between frames, and what is over one period is slept off period by period and not
+forgiven. No new option, name, hook or reply. The depth cap and the page clamp were not built: the unit line
+shows that neither passes alone, and each refuses or changes something an honest guest does.
+Constants, and what set them. The contract asked for 30 us of measured CPU a unit. The listed bytes sit there.
+A link is charged 1.5 us and a READDIRPLUS entry 30 us, against 0.9 us and 4 to 8 us measured plain on this
+machine, and both for the test's sake and not the plain cost's: the test judges its own process under -race,
+where an entry costs about 30 us, and the hosted runner pays about 1.7 times what this machine pays for the
+same frames. The first constants (one point a link, plusEntry 20) passed here at 0.95 to 1.09 cores (arm a)
+and 0.83 to 0.88 (arm b) under -race, passed the hosted gate once on 1a50388, and failed it on the same code
+at afdd911: arm (a), 1862 frames, 1.70 cores against 1.5. So the first green was luck, and the fix round
+doubled both charges to leave that runner room.
 Evidence. TestC76WorkOfOneFrame, bound 1.5 cores: on main it fails in both arms (redteam: 3.34 and 2.76 plain,
-3.67 and 2.30 under -race; reviewer, on an archive of main: 3.54 and 2.65). On the fix it passes five runs of
-five plain and five of five under -race, alone: arm (a) 0.48 to 0.55 cores plain and 0.95 to 1.09 under -race,
-arm (b) 0.25 to 0.29 and 0.83 to 0.88. The reviewer's own floods on the fix, in process with the harness
-counted: plain READDIR of 20 thousand files at MaxWrite 0.37 cores, READDIRPLUS at 4096 bytes over 512
-directories 0.25 (3.15 on main), a LOOKUP storm 0.49 (0.52 on main), RENAME at depth 300 0.50, OPENDIR at depth
-300 0.53. The whole package passes under -race here, TestPace, TestDeepChain and FuzzRequest's seeds included.
-Hosted gate on 1a50388, green in 285 s with gate-macos, gate-arm64 and guard: the unit tests run under -race
-there and internal/fileserve is ok in 12.6 s (the log is not verbose and names no test); the suite ran on a
-real VM, 147 rows passed and none failed; mount-cpu-flood passed with 3.3 CPU seconds in 3.5 s of wall
-against 4.5 allowed, mount-disk-flood and the seven I1 mount rows passed, P1 p50 317 ms. The first push of
-this record, 5ddb0bc, which changed state files only, drew a red gate from a known flake that this fix does
-not touch: I12 channel-connect-flood lost 65 MiB of available memory where the same code lost 58 on 1a50388;
-its other 146 rows passed, mount-cpu-flood at 3.4 CPU seconds in 3.7 s against 4.7 allowed.
+3.67 and 2.30 under -race; reviewer, on an archive of main: 3.54 and 2.65). On the final constants it passes
+five runs of five plain and five of five under -race, alone: arm (a) 0.28 to 0.29 cores plain and 0.47 to 0.58
+under -race, arm (b) 0.13 to 0.15 and 0.47 to 0.50. The whole package passes under -race here, TestPace,
+TestDeepChain and FuzzRequest's seeds included. The reviewer's floods, run on the first constants, in process
+with the harness counted: plain READDIR of 20 thousand files at MaxWrite 0.37 cores, READDIRPLUS at 4096 bytes
+over 512 directories 0.25 (3.15 on main), a LOOKUP storm 0.49 (0.52 on main), RENAME at depth 300 0.50,
+OPENDIR at depth 300 0.53; the fix round only raised charges, so none of these can cost more now.
+Hosted gate. On 1a50388, the first constants: green in 285 s with gate-macos, gate-arm64 and guard; the suite
+ran on a real VM, 147 rows passed and none failed, mount-cpu-flood with 3.3 CPU seconds in 3.5 s of wall
+against 4.5 allowed, mount-disk-flood and the seven I1 mount rows passed, P1 p50 317 ms. On 5ddb0bc, a commit
+of state files only: red from a known flake that this fix does not touch, I12 channel-connect-flood, 65 MiB
+of available memory lost where the same code lost 58 before; its other 146 rows passed. On afdd911, the same
+code again: red from this fix's own test, as said above. The hosted result on the final constants is in
+LOG.md, in this unit's entry, since this record is pushed with them.
 No VM row holds C76. The redteam added none: a GETATTR flood on the init's own stream draws a reply for a
 unique the guest kernel never issued, which the probe cannot read without breaking that stream, and this
 session has no hypervisor to try a row on. So the evidence for C76 is Go-level, on the real Server.
-Cost to honest use, measured and not small. Charged work: a GETATTR at depth 30 is 30 points, 0.75 of a unit
-over the frame's one; a READDIRPLUS page of 4096 bytes, 25 entries, is 841 points, 21 units, of which 341 are
-the 8 KiB that readdir() reads for every page whatever size was asked; a plain READDIR page of 4096 bytes is
-341 points, 8.5 units. With one request in flight and an in-process client, which answers faster than any
-guest: 20000 GETATTRs at depth 30 take 2.25 s where main took 1.29 s (main is at its pace there already), a
-READDIRPLUS walk of 4000 files in 4096-byte pages takes 143 to 253 ms where main took 34 to 38 ms, and the
-reviewer measured 520 ms against 84 ms for 10000 entries. A client with one request in flight never meets the
-pace at depth 30 if a round trip takes 109 us or more, and on such a walk only if a page takes 1.375 ms or
-more. So the unit line's wish is met for a build in a tree some tens of levels deep and is not met for an
-`ls -l` of thousands of entries, which is slowed about four to six times on its page fetches, half a second
-for ten thousand entries. No row of the suite times either shape in a real guest; the mount rows show only
-that nothing broke. For the maintainer to weigh: the dearest part of that cost is avoidable, by fetching no
-more than the page asked for, which is a change to readdir() outside this fix (S1). Charging the entries sent
-and not the bytes read, as the review noted in passing, would not do: by the orchestrator's reading, not
-tested, a READDIR that asks for a page too small for one entry still reads 8 KiB and would then be free.
+Cost to honest use, measured and not small. Charged work on the final constants: a GETATTR at depth 30 is 60
+points, 1.5 units over the frame's one; a READDIRPLUS page of 4096 bytes, 25 entries, is 1341 points, 33.5
+units, of which 341 points are the 8 KiB that readdir() reads for every page whatever size was asked; a
+plain READDIR page of 4096 bytes is 341 points, 8.5 units. With one request in flight and an in-process
+client, which answers faster than any guest: 20000 GETATTRs at depth 30 take 3.12 s where main took 1.29 s
+(main is at its pace there already), and a READDIRPLUS walk of 4000 files in 4096-byte pages takes 300 to
+385 ms where main took 34 to 38 ms. A client with one request in flight never meets the pace at depth 30 if a
+round trip takes 156 us or more, and on such a walk only if a page takes 2.16 ms or more. So the unit line's
+wish, that honest use is not slowed where it was not before, is not met. A build in a tree 30 deep keeps a
+pace of 6400 requests a second, the top of what ADR-005 measured for honest traffic, and an `ls -l` of
+thousands of entries is slowed about nine times on its page fetches, near a tenth of a millisecond an entry.
+No row of the suite times either shape in a real guest; the mount rows show only that nothing broke.
+For the maintainer to weigh, since none of it is a fix for a confirmed finding and so none could land in the
+freeze (S1): the charge is as dear as it is because of how the test measures, not because of what a guest can
+cost a host. Two things would let it fall with no loss to I10: a measure that is not this process under the
+race detector on a shared runner, and a readdir() that fetches no more than the page asked for. Charging the
+entries sent and not the bytes read, as the review noted in passing, would not do: by the orchestrator's
+reading, not tested, a READDIR that asks for a page too small for one entry still reads 8 KiB and would then
+be free. A charge by the time a worker spent, and not by a count of what it did, would hold on any host and
+under any detector, but it also charges a wait for the disk, and it is a design and not a constant.
 Folds: the fix is net zero product lines, paid by joining lines of the docs of the pace, perForget, at() and
 readdir() and by one bytes.Cut for the six lines that cut a name at its NUL (product 15000 of 15000, test
-28494 of 28500). Review: one round, no finding, so no fix round; its notes are in PARKED.md.
+28494 of 28500). Review: one round on the first constants, no finding; its notes are in PARKED.md. The fix
+round came from the hosted gate and not from the review, and was not reviewed again (R1).
 
 Sweep 3 now stands at two highs (C76 fixed, C77 open, fix unit S-F61), ten mediums (C65, C66, C67, C68, C69,
 C71, C72, C73, C74 and C75, all fixed) and two lows (C64 and C70, both fixed). The next candidate number is C78
