@@ -7319,3 +7319,57 @@ word, the directory before a separator). Fix unit S-F59 says the same.
 Sweep 3 now stands at ten mediums (C65, C66, C67, C68, C69, C71, C72, C73 and C74, fixed; C75, open) and two lows
 (C64 and C70, both fixed), and no unconfirmed candidate is left as a unit. The open fix unit is S-F59 (C75); the
 next candidate number is C76 and the next fix unit S-F60.
+
+C75 FIXED by S-F59, commits 2389163 (the test moved and widened), 14102c9 (the fix) and baf3543 (the fix
+round, one word of docs/policy.md) (PR #325).
+also in v1 main: credbroker/cli.go. The shape is the first of
+the three, made whole at both ends, chosen by the orchestrator before the redteam wrote its rows: the source
+loop of loadPolicy in cmd/workcell/policy.go no longer lists separators. A word of a cmd: source is read as
+paths. One may start at the word's first slash and at the first slash after any separator; one may end at the
+word's end, before a slash (the lexical ancestors, as before) and before any separator. A separator is every
+ASCII byte that is not a letter, a digit, ".", "_", "-" or "/" (the new one-line predicate sep); a byte of
+0x80 or above is part of a name, so no cut falls inside a UTF-8 rune. Each such text that is absolute goes
+to within(), which is unchanged, so symbolic links on either side are resolved as before, and the refusal is
+C54's one error, unchanged, before any session directory is made. A file: source is one exact path: it shares
+the new starts and gets no cut at a separator, so `file:<cwd> (old)/key` loads as before.
+
+Why this shape. The first shape as the unit line gave it lists two separators, and the probe of S-1021 already
+had the directory accepted before `=`, `;` and `|`, so it would have been a fourth listing with its residue
+known on the day it landed. The second shape, a substring test of the directory's spelling, covers every
+separator but resolves nothing, so a symbolic link to the directory named before a separator would pass it,
+and it refuses the sibling `<cwd>-keys/x`. The shape taken keeps within() as the one judge, judges every text
+that main judged and more, and ends a path at a boundary, so a sibling whose name goes on with a name byte
+loads. The third shape (say in docs/policy.md that only whole paths are judged) stays open to the maintainer (S8).
+
+Honest cost. Under cmd: a sibling directory whose name is the working directory's name followed by a separator
+byte, `<cwd>+old/x` or `<cwd>~/x`, is refused, by an error that says it lies inside the directory; `<cwd>-keys`,
+`<cwd>.bak`, `<cwd>_old` and `<cwd>2` load. A character outside ASCII never separates, so the directory before a
+full-width colon loads; no program is known to split a list there, and docs/policy.md says "ASCII". Not judged,
+as before: a program that reaches the directory by its own logic, a relative path that the program resolves
+itself, and a hard link from outside to a key inside. The code: three loop lines changed in place and five lines
+for sep, paid by five comment folds (the docs of repoFile and envName in policy.go, of session in run_vm.go, of
+artifacts and holds in data.go), product at 15000 of 15000. docs/policy.md has four lines more, three sentences
+and a blank, the first words the page has on a source inside the working directory (Markdown 1365 of 2500).
+
+The test: TestC75WorkspaceBeforeAListSeparator in cmd/workcell/c75_test.go, moved from escape/_pending/S-F59/,
+which is gone, so escape/_pending/ no longer exists; 61 lines, 17 arms, its first seven unchanged. On main's
+policy.go the four separator arms fail, and so do the eight the redteam added against the shape: the bare word
+`<cwd>:<out>/b`, `--dir=<cwd>:` alone, `--dir=<cwd>:rel`, `--map=<cwd>=<out>/b`, `--dir=<cwd>;<out>/b` under
+--mount, `--dir=<cwd>|<out>/b`, the key after a separator in `--map=<out>/a=<cwd>/.secrets/anthropic.key`, and
+a link to the directory in `--dir=<link>:<out>/b`; each with a session started and, in clone mode, the key in
+workspace.ext4. The three control arms pass there, and so do two arms that must load on both trees: the sibling
+`--dir=<cwd>-keys/x` and `--dir=<out>/a:<out>/b`. On 14102c9 all 17 pass, plain and under -race (redteam on
+main, builder and reviewer on the fix, the reviewer on main's policy.go by overlay too). Six arms run in a
+directory whose own path holds `=`. The eight rows and the fold of c72_test.go's doc leave test at 28496 of 28500.
+
+The review: one round, no finding. The reviewer ran 541 rows through loadPolicy on both trees: nothing that main
+refused loads on the fix, no row wholly outside the directory is refused that main loaded, and the one false
+refusal is the sibling above. Its note that the page said "any character" where sep judges ASCII alone was shown
+by running, and the unit line holds that the page must stay true, so the one fix round is that word. The built
+binary gives one line, exit 2 and no data directory for `--dir=<cwd>:<out>/b` and `--map=<cwd>=<out>/b`. As
+S-F56's record holds, a check on the words of a command line reads what a program might read and cannot know
+what it does read: this fix ends the listing of separators, not that limit.
+
+Sweep 3 now stands at ten mediums (C65, C66, C67, C68, C69, C71, C72, C73, C74 and C75, all fixed) and two
+lows (C64 and C70, both fixed), and no unconfirmed candidate is left as a unit. No fix unit is open; the next
+candidate number is C76 and the next fix unit S-F60.
