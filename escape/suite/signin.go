@@ -64,8 +64,7 @@ func (p *provider) serve(c *canary, token bool) http.HandlerFunc {
 			}
 		case typ == "authorization_code", typ == "refresh_token" && cur >= 0 && refresh == p.issued[cur][1] && scope != "bad":
 			pair := [2]string{secretPrefix + accessMark + newToken()[:secretHex-len(accessMark)], secretPrefix + refreshMark + newToken()[:secretHex-len(refreshMark)]}
-			p.issued = append(p.issued, pair)
-			g.issued = true
+			p.issued, g.issued = append(p.issued, pair), true
 			p.write(w, fmt.Sprintf(`{"access_token":%q,"token_type":"Bearer","expires_in":3600,"refresh_token":%q}`, pair[0], pair[1]), pair[0])
 		default: // what a provider says to a bad grant: the parameters back, with an error
 			w.Header().Set("Content-Type", "application/json")
@@ -187,8 +186,7 @@ func (f *flow) replay() []string {
 // signedIn serves the API host, the first allowed name, and the token host, the second, with the token endpoint framing its answers as mode says, runs the guest through the steps and holds the session to I5.
 func signedIn(mode string, steps ...string) Judge {
 	return func(ctx context.Context, s Session) (bool, string, error) {
-		p := &provider{mode: mode}
-		api, login := &canary{name: s.Allow[0]}, &canary{name: s.Allow[1]}
+		p, api, login := &provider{mode: mode}, &canary{name: s.Allow[0]}, &canary{name: s.Allow[1]}
 		api.respond, login.respond = p.serve(api, false), p.serve(login, true)
 		ns, stop, err := serveTwo(ctx, s, nil, api, login)
 		if err != nil {

@@ -20,10 +20,8 @@ import (
 	"time"
 )
 
-var capped, cappedLive = Want{CPUs: 1, MemoryMiB: 256, DiskMiB: 64}, Want{Workspace: true, Mount: true, CPUs: capped.CPUs, MemoryMiB: capped.MemoryMiB, DiskMiB: capped.DiskMiB} // capped is the sandbox the I10 tests want: each judge holds the host to these caps, with slack, while the probe asks for twice as much. cappedLive is capped in mount mode: a write inside the live export lands on the host's disk, where the cap must hold.
-const forkCount, forkSlack, memoryTouch, memorySlack, diskWrite, diskSlack, sparseGrow = 256, 64, 512, 128, 128, 32, 4                                                           // forkCount: processes the fork probe makes at once, about 50 MiB of page tables, stacks and slab, which a 256 MiB guest holds without thrashing; forkSlack: host processes a whole session may add; memoryTouch: MiB the memory probe touches; memorySlack: MiB of host memory the session may take over its cap; diskWrite: MiB the disk probe writes; diskSlack: MiB of host disk the session may fill over its cap; sparseGrow: GiB the mount-mode disk probe grows a file to without writing it
-const fileCount, fileSlack, logWrite, logCap, cpuSpin, cpuSlack, ticksPerSec = 8192, 2048, 96 << 20, 1 << 20, 3, 1.0, 100                                                        // fileCount: descriptors the descriptor probe opens; fileSlack: open file handles a whole session may add to the host; logWrite: bytes the log probe streams; logCap: bytes of one session's output the host may keep; cpuSpin: seconds the CPU probe spins on every CPU it sees; cpuSlack: CPU seconds of host noise allowed; ticksPerSec: USER_HZ, the unit of /proc/stat
-const hold, childWait, ms = 1500 * ms, 5 * time.Second, time.Millisecond                                                                                                         // hold: how long a probe holds its load for the judge's samples; childWait: how long a probe waits for its child, which needs about hold, before killing it
+var capped, cappedLive = Want{CPUs: 1, MemoryMiB: 256, DiskMiB: 64}, Want{Workspace: true, Mount: true, CPUs: capped.CPUs, MemoryMiB: capped.MemoryMiB, DiskMiB: capped.DiskMiB}                                                                                                                              // capped is the sandbox the I10 tests want: each judge holds the host to these caps, with slack, while the probe asks for twice as much. cappedLive is capped in mount mode: a write inside the live export lands on the host's disk, where the cap must hold.
+const forkCount, forkSlack, memoryTouch, memorySlack, diskWrite, diskSlack, sparseGrow, fileCount, fileSlack, logWrite, logCap, cpuSpin, cpuSlack, ticksPerSec, hold, childWait, ms = 256, 64, 512, 128, 128, 32, 4, 8192, 2048, 96 << 20, 1 << 20, 3, 1.0, 100, 1500 * ms, 5 * time.Second, time.Millisecond // forkCount: processes the fork probe makes at once, about 50 MiB of page tables, stacks and slab, which a 256 MiB guest holds without thrashing; forkSlack: host processes a whole session may add; memoryTouch: MiB the memory probe touches; memorySlack: MiB of host memory the session may take over its cap; diskWrite: MiB the disk probe writes; diskSlack: MiB of host disk the session may fill over its cap; sparseGrow: GiB the mount-mode disk probe grows a file to without writing it; fileCount: descriptors the descriptor probe opens; fileSlack: open file handles a whole session may add to the host; logWrite: bytes the log probe streams; logCap: bytes of one session's output the host may keep; cpuSpin: seconds the CPU probe spins on every CPU it sees; cpuSlack: CPU seconds of host noise allowed; ticksPerSec: USER_HZ, the unit of /proc/stat; hold: how long a probe holds its load for the judge's samples; childWait: how long a probe waits for its child, which needs about hold, before killing it
 
 // sampled runs the probe while read samples the host every 50 ms. It returns the result with how far below and above the sample taken just before the run the host went meanwhile.
 func sampled(s Session, read func() (int64, error), args ...string) (r Result, below, above int64, err error) {
@@ -41,8 +39,7 @@ func sampledRun(read func() (int64, error), run func()) (below, above int64, err
 	if err != nil {
 		return 0, 0, err
 	}
-	low, high := base, base
-	stop := make(chan struct{})
+	low, high, stop := base, base, make(chan struct{})
 	var wg sync.WaitGroup
 	wg.Go(func() {
 		t := time.NewTicker(50 * ms)
@@ -195,9 +192,7 @@ func asChild(args ...string) Result {
 	ctx, cancel := context.WithTimeout(context.Background(), childWait)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, exe, args[:len(args)-1]...)
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-	cmd.Cancel = func() error { return unix.Kill(-cmd.Process.Pid, unix.SIGKILL) } // the whole group: the child and what it forked
-	cmd.WaitDelay = time.Second                                                    // a forked copy that still holds the child's stdout does not hold the report
+	cmd.SysProcAttr, cmd.Cancel, cmd.WaitDelay = &syscall.SysProcAttr{Setpgid: true}, func() error { return unix.Kill(-cmd.Process.Pid, unix.SIGKILL) }, time.Second // the whole group: the child and what it forked; a forked copy that still holds the child's stdout does not hold the report
 	out, err := cmd.Output()
 	var exit *exec.ExitError
 	switch {

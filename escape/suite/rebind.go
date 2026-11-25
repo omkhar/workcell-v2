@@ -109,8 +109,7 @@ func rebindJudge(r rebind) Judge {
 		defer ns.stop()
 		want, name := newToken(), slices.Concat(r.names, []string{allowedName})[0]
 		res, err := s.Run(net.JoinHostPort(strings.TrimSuffix(name, "."), port), want, mode)
-		got := t.stop()
-		asked := ns.stop()
+		got, asked := t.stop(), ns.stop()
 		if err != nil {
 			return false, "", err
 		}
@@ -193,8 +192,7 @@ func (r rebind) answer(q dnsQuestion) []byte {
 	owner := q.Name
 	var rrs []dnsRecord
 	if r.cname != "" {
-		rrs = append(rrs, dnsRecord{Name: owner, Type: dnsTypeCNAME, Data: encodeName(r.cname)})
-		owner = r.cname
+		rrs, owner = append(rrs, dnsRecord{Name: owner, Type: dnsTypeCNAME, Data: encodeName(r.cname)}), r.cname
 	}
 	switch q.Type {
 	case dnsTypeA:

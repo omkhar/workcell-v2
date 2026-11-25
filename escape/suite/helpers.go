@@ -56,8 +56,7 @@ func holdProbe(args []string) Result {
 	if r.Status == "served" {
 		held = holdOpen(t.get(allowed, "/stream"), addrs)
 	}
-	out := []string{"before-dns=" + before, "reach=" + r.Status, "held=" + held, "after-dns=" + lookupName(allowed), "after-dns-denied=" + lookupName(denied)}
-	status := "unreached"
+	out, status := []string{"before-dns=" + before, "reach=" + r.Status, "held=" + held, "after-dns=" + lookupName(allowed), "after-dns-denied=" + lookupName(denied)}, "unreached"
 	for _, name := range []string{allowed, denied} {
 		a := report(fetchWithin(t.get(name, "/after"), addrs, &tls.Config{}, false, attemptWait))
 		if a.Status == "served" {
@@ -302,8 +301,7 @@ func helperKilled(name string, atStart bool) Judge {
 func below(children map[int][]int, pid int) []int {
 	var out []int
 	for queue := []int{pid}; len(queue) > 0; queue = queue[1:] {
-		out = append(out, children[queue[0]]...)
-		queue = append(queue, children[queue[0]]...)
+		out, queue = append(out, children[queue[0]]...), append(queue, children[queue[0]]...)
 	}
 	return out
 }

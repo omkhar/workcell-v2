@@ -27,8 +27,7 @@ const fast, lookupWait, garbageWait, resolvConf, burstSize, allowedName, deniedN
 
 // The lookups the rows ask. The allowed name must resolve however it is spelled; every other name, every other type for it, and the allowed name under a policy that allows nothing must be refused. The allowed row asks one denied name too: a resolver that answers everything, the control sandbox's, is then no pass (SPEC T2), and "only for allowed names" is shown on the one resolver that answered.
 var allowedLookups, deniedLookups = []lookup{{"a", "A:" + allowedName, "addr"}, {"u", "A:" + strings.ToUpper(allowedName), "addr"}, {"m", "A:aLlOwEd.EsCaPe.TeSt.", "addr"}, {"e", "A+edns:" + allowedName, "addr"}, {"q", "AAAA:" + allowedName, "answered"}, {"t", "TXT:" + allowedName, "answered"}, {"d", "A:" + deniedName, "refused"}}, []lookup{{"d", "A:" + deniedName, "refused"}, {"i", "A:TOKEN.invalid.", "refused"}, {"s", "A:sub." + allowedName, "refused"}, {"p", "A:evil" + allowedName, "refused"}, {"x", "A:" + allowedName + "TOKEN.invalid.", "refused"}, {"6", "AAAA:" + deniedName, "refused"}, {"t", "TXT:" + deniedName, "refused"}, {"y", "ANY:" + deniedName, "refused"}, {"r", "PTR:1.0.0.127.in-addr.arpa.", "refused"}, {"e", "A+edns:" + deniedName, "refused"}}
-var bothLookups, nothingLookups = []lookup{allowedLookups[0], deniedLookups[0], deniedLookups[1]}, []lookup{{"a", "A:" + allowedName, "refused"}, {"d", "A:" + deniedName, "refused"}}
-var reachable, queryTypes = Want{Allow: []string{"allowed.escape.test"}, Deny: []string{"denied.escape.test"}}, map[string]uint16{"A": dnsTypeA, "AAAA": dnsTypeAAAA, "TXT": dnsTypeTXT, "PTR": dnsTypePTR, "ANY": dnsTypeANY} // reachable is the sandbox the resolver rows want: one allowed name and one denied, both of which the host resolver is to know of.
+var bothLookups, nothingLookups, reachable, queryTypes = []lookup{allowedLookups[0], deniedLookups[0], deniedLookups[1]}, []lookup{{"a", "A:" + allowedName, "refused"}, {"d", "A:" + deniedName, "refused"}}, Want{Allow: []string{"allowed.escape.test"}, Deny: []string{"denied.escape.test"}}, map[string]uint16{"A": dnsTypeA, "AAAA": dnsTypeAAAA, "TXT": dnsTypeTXT, "PTR": dnsTypePTR, "ANY": dnsTypeANY} // reachable is the sandbox the resolver rows want: one allowed name and one denied, both of which the host resolver is to know of.
 
 // resolverAddr turns the target the judge named into an address: the first nameserver of the guest's /etc/resolv.conf at port 53, or a literal.
 func resolverAddr(target string) (string, error) {
@@ -184,8 +183,7 @@ func burst(addr, token string) string {
 		}
 		sent++
 	}
-	seen := map[uint16]string{}
-	buf := make([]byte, 65535)
+	seen, buf := map[uint16]string{}, make([]byte, 65535)
 	for len(seen) < sent {
 		n, err := c.Read(buf)
 		if err != nil {

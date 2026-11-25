@@ -31,8 +31,7 @@ func icmpProbe(args []string) Result {
 	}
 	defer syscall.Close(fd)
 	syscall.SetsockoptTimeval(fd, syscall.SOL_SOCKET, syscall.SO_RCVTIMEO, &syscall.Timeval{Sec: 3})
-	token := []byte(args[1])
-	to := &syscall.SockaddrInet4{Addr: [4]byte(ip)}
+	token, to := []byte(args[1]), &syscall.SockaddrInet4{Addr: [4]byte(ip)}
 	if err := syscall.Sendto(fd, icmpEcho(uint16(os.Getpid()), 1, token), 0, to); err != nil {
 		return Result{Status: "unreachable", Detail: err.Error()}
 	}

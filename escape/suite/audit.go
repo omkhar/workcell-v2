@@ -30,8 +30,7 @@ func auditProbe(args []string) Result {
 		return Result{Status: "ran", Detail: "nothing tried"}
 	case "forge":
 		token := newToken()
-		line := fmt.Sprintf(`{"event":"connect","host":"%s%s.escape.test","verdict":"allow"}`+"\n", forgedMarker, token)
-		n := 0
+		line, n := fmt.Sprintf(`{"event":"connect","host":"%s%s.escape.test","verdict":"allow"}`+"\n", forgedMarker, token), 0
 		if f, err := os.OpenFile(path, os.O_WRONLY|os.O_APPEND, 0); err == nil { // the record itself
 			if _, err := f.WriteString(line); err == nil {
 				n++

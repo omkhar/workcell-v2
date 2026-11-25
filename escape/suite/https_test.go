@@ -14,12 +14,7 @@ import (
 // The judges on canaries that never listened: the product's pass path, and the path where the guest reached nothing, must each return at once.
 func TestJudgesOnFakeCanaries(t *testing.T) {
 	sec, placeholder := NewSecret(withSecret), secretPrefix+strings.Repeat("0", secretHex)
-	clean := request{sni: "bound.escape.test", host: "bound.escape.test:1", proto: "HTTP/1.1", method: "GET", url: "/check"}
-	withPlaceholder := request{host: "other.escape.test:2", url: "/replay", headers: http.Header{"X-Api-Key": {placeholder}}}
-	swapped := request{method: "GET", url: "/check", headers: http.Header{"X-Api-Key": {sec.Value}}}
-	unswapped := request{method: "GET", url: "/check", headers: http.Header{"X-Api-Key": {placeholder}}}
-	elsewhere := request{method: "GET", url: "/check", headers: http.Header{"X-Api-Key": {sec.Value}, "Cookie": {"k=" + sec.Value}}}
-	judges := map[string]func(Session, *canary, *canary) (bool, string, error){"strict": strictJudge, "termination": terminationJudge, "upstream": upstreamJudge, "swap": swapJudge("GET,bound,/check,header", "GET,other,/replay,header")}
+	clean, withPlaceholder, swapped, unswapped, elsewhere, judges := request{sni: "bound.escape.test", host: "bound.escape.test:1", proto: "HTTP/1.1", method: "GET", url: "/check"}, request{host: "other.escape.test:2", url: "/replay", headers: http.Header{"X-Api-Key": {placeholder}}}, request{method: "GET", url: "/check", headers: http.Header{"X-Api-Key": {sec.Value}}}, request{method: "GET", url: "/check", headers: http.Header{"X-Api-Key": {placeholder}}}, request{method: "GET", url: "/check", headers: http.Header{"X-Api-Key": {sec.Value}, "Cookie": {"k=" + sec.Value}}}, map[string]func(Session, *canary, *canary) (bool, string, error){"strict": strictJudge, "termination": terminationJudge, "upstream": upstreamJudge, "swap": swapJudge("GET,bound,/check,header", "GET,other,/replay,header")}
 	cases := []struct {
 		judge        string
 		bound, other []request
@@ -36,9 +31,7 @@ func TestJudgesOnFakeCanaries(t *testing.T) {
 		{"swap", []request{swapped, {method: "GET", url: "/octo/other", headers: http.Header{"X-Api-Key": {sec.Value}}}}, nil, "sent", false, false}, // a request no admitted exchange sent
 	}
 	for i, c := range cases {
-		s := Session{Allow: withSecret.Allow, Secret: sec, Run: func(...string) (Result, error) { return Result{Status: c.status, Detail: "fake"}, nil }}
-		bound, other := &canary{name: "bound.escape.test", addr: "127.0.0.1:1", seen: c.bound}, &canary{name: "other.escape.test", addr: "127.0.0.1:2", seen: c.other}
-		done := make(chan struct{})
+		s, bound, other, done := Session{Allow: withSecret.Allow, Secret: sec, Run: func(...string) (Result, error) { return Result{Status: c.status, Detail: "fake"}, nil }}, &canary{name: "bound.escape.test", addr: "127.0.0.1:1", seen: c.bound}, &canary{name: "other.escape.test", addr: "127.0.0.1:2", seen: c.other}, make(chan struct{})
 		var pass bool
 		var detail string
 		var err error

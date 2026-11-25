@@ -22,8 +22,7 @@ func TestUnsupported(t *testing.T) {
 
 // TestPolicyTOML checks the one file the adapter writes for a session: each allowed name quoted, nothing for a denied one, the secret as one table naming its file source and only the keys it has, and a refusal of a name or a value that would change what the file says, or of a secret bound to a name the policy does not allow.
 func TestPolicyTOML(t *testing.T) {
-	bound := &Secret{Name: "escape", Value: "sk-x", Host: "a.escape.test", Header: "x-api-key", Env: "ESCAPE_API_KEY"}
-	narrow := &Secret{Name: "escape", Value: "sk-x", Host: "a.escape.test", Header: "x-api-key", Method: "POST", Path: "/v1/"}
+	bound, narrow := &Secret{Name: "escape", Value: "sk-x", Host: "a.escape.test", Header: "x-api-key", Env: "ESCAPE_API_KEY"}, &Secret{Name: "escape", Value: "sk-x", Host: "a.escape.test", Header: "x-api-key", Method: "POST", Path: "/v1/"}
 	cases := []struct {
 		cfg  Config
 		want string // the file, or "" for a refusal

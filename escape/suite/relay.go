@@ -14,14 +14,12 @@ import (
 )
 
 // SPEC I2, I4 and I12 on the network path of ADR-003. Every address is local to the guest: its kernel completes a TCP handshake to a listed port and the init carries the stream to the host as its own vsock stream, behind a 20-byte header that names the destination. Root in the guest (A1) can skip the init and speak that header itself, with any address, port, proto or version. The host must dial none of it: the canary's catch is the evidence of reach. A stream whose header never completes must be dropped, or a guest that sent ten bytes holds a slot of a bounded relay; the guest's side is the only witness.
-const relayVersion, protoTCP, protoUDP, headerLen, shortHeader, dripBytes = 1, 6, 17, 20, 10, headerLen - 1                                     // shortHeader: header bytes the short kind sends; dripBytes: the slow kind sends every header byte but the last
-const dripEvery, answerWait, headerWait, relayWait, relayBound = 400 * ms, 3 * time.Second, 8 * time.Second, 25 * time.Second, 30 * time.Second // dripEvery: between bytes of the slow header; answerWait: how long a whole-header stream waits for the host's answer; headerWait: a stream with no complete header must be dropped within this; relayWait: a relay run must end within this; relayBound: Test.Bound for the header kinds that wait
+const relayVersion, protoTCP, protoUDP, headerLen, shortHeader, dripBytes, dripEvery, answerWait, headerWait, relayWait, relayBound = 1, 6, 17, 20, 10, headerLen - 1, 400 * ms, 3 * time.Second, 8 * time.Second, 25 * time.Second, 30 * time.Second // shortHeader: header bytes the short kind sends; dripBytes: the slow kind sends every header byte but the last; dripEvery: between bytes of the slow header; answerWait: how long a whole-header stream waits for the host's answer; headerWait: a stream with no complete header must be dropped within this; relayWait: a relay run must end within this; relayBound: Test.Bound for the header kinds that wait
 
 var errHeld = errors.New("the stream is still open") // errHeld is read's answer when the peer neither wrote nor closed in time.
 // relayHeader encodes the relay's header: version, proto, the port big-endian and the address as 16 bytes, an IPv4 address mapped.
 func relayHeader(version, proto byte, ip net.IP, port uint16) []byte {
-	h := []byte{version, proto, byte(port >> 8), byte(port)}
-	ip16 := ip.To16()
+	h, ip16 := []byte{version, proto, byte(port >> 8), byte(port)}, ip.To16()
 	if ip16 == nil {
 		ip16 = make(net.IP, 16)
 	}

@@ -22,8 +22,7 @@ import (
 
 // The I5 probe is an agent gone rogue: root in the guest, it looks for the real credential everywhere a naive sandbox leaves one. It knows the format of the secret, as an attacker knows a provider's key prefix, not its value: it reports every value of that shape it finds and where, and the judge, which chose the value, says whether any of them is real. A placeholder found this way is no leak.
 
-const secretPrefix, secretHex, secretLen = "sk-escape-", 24, len(secretPrefix) + secretHex                                                                                                            // the prefix, the hex digits after it, the whole
-const diskBudget, memBudget, fileLimit, diskLimit, fileQuota, maxValues, procLimit, memLimit, readChunk = 5 * time.Second, 3 * time.Second, 1 << 20, 256 << 20, 50000, 5, 512 << 20, 1 << 30, 1 << 20 // diskBudget: for the processes' environment and the disk; memBudget: for process memory; fileLimit: bytes read of one file; diskLimit: bytes read from disk in all; fileQuota: files read in all; maxValues: distinct values the result names, more is marked; procLimit: bytes read of one process's memory; memLimit: bytes read of process memory in all
+const secretPrefix, secretHex, secretLen, diskBudget, memBudget, fileLimit, diskLimit, fileQuota, maxValues, procLimit, memLimit, readChunk = "sk-escape-", 24, len(secretPrefix) + secretHex, 5 * time.Second, 3 * time.Second, 1 << 20, 256 << 20, 50000, 5, 512 << 20, 1 << 30, 1 << 20 // the prefix, the hex digits after it, the whole; diskBudget: for the processes' environment and the disk; memBudget: for process memory; fileLimit: bytes read of one file; diskLimit: bytes read from disk in all; fileQuota: files read in all; maxValues: distinct values the result names, more is marked; procLimit: bytes read of one process's memory; memLimit: bytes read of process memory in all
 
 // NewSecret makes a fresh secret bound to the first allowed name of w, in the header boundHeader, for the runner to put in a session's Config when a test wants one; Narrow binds it to narrowMethod requests under narrowPath alone; Repos scopes it, as a git token in the Authorization header, to those repositories. With a Source of w's own, a sign-in flow, the row has no value: the endpoint the source names issues the tokens, and the access one goes in the Authorization header, as a bearer token does.
 func NewSecret(w Want) sandbox.Secret {
@@ -105,8 +104,7 @@ func secretProbe(args []string) Result {
 	if len(args) != 2 {
 		return Result{Status: "error", Detail: "want the export path and the credential variable"}
 	}
-	s := &scan{hits: map[string]string{}, deadline: time.Now().Add(diskBudget)}
-	pids := listPids()
+	s, pids := &scan{hits: map[string]string{}, deadline: time.Now().Add(diskBudget)}, listPids()
 	for _, pid := range pids {
 		for _, f := range []string{"environ", "cmdline"} {
 			if b, err := readPrefix(fmt.Sprintf("/proc/%d/%s", pid, f), fileLimit); err == nil {

@@ -46,8 +46,7 @@ func (c *control) Start(_ context.Context, cfg Config) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	c.dir = dir
-	c.payload = filepath.Join(dir, "payload")
+	c.dir, c.payload = dir, filepath.Join(dir, "payload")
 	b, err := os.ReadFile(cfg.Payload)
 	if err == nil {
 		err = os.WriteFile(c.payload, b, 0o755)
@@ -55,8 +54,7 @@ func (c *control) Start(_ context.Context, cfg Config) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("control: place payload: %w", err)
 	}
-	c.env = []string{"PATH=" + filepath.Join(prefix, "bin") + ":/usr/sbin:/usr/bin:/sbin:/bin", "HOME=/root"}
-	c.workspace, c.update, c.command, c.head = cfg.Workspace, cfg.Update, cfg.Command, cfg.Head
+	c.env, c.workspace, c.update, c.command, c.head = []string{"PATH=" + filepath.Join(prefix, "bin") + ":/usr/sbin:/usr/bin:/sbin:/bin", "HOME=/root"}, cfg.Workspace, cfg.Update, cfg.Command, cfg.Head
 	ln, err := net.Listen("unix", filepath.Join(dir, "channel"))
 	if err != nil {
 		return "", fmt.Errorf("control: open the channel: %w", err)
@@ -119,17 +117,13 @@ func (c *control) Exec(ctx context.Context, args ...string) (Output, error) {
 	host := &naiveHost{stdout: stdout, stderr: stderr, cancel: cancel}
 	host.wg.Go(func() { host.accept(c.ln) })
 	cmd := exec.CommandContext(cctx, "/bin/sh", append([]string{"-c", controlLoader, filepath.Join(c.dir, "resolv.conf"), cmp.Or(c.command, c.payload)}, args...)...) // The loader makes every mount private in the run's own mount namespace, binds the session's resolv.conf over /etc/resolv.conf, then becomes the payload, or the command the session runs by name from the prefix's PATH.
-	cmd.Dir = "/"
-	cmd.Env = c.env
-	cmd.ExtraFiles = []*os.File{end}
+	cmd.Dir, cmd.Env, cmd.ExtraFiles = "/", c.env, []*os.File{end}
 	attr := &syscall.SysProcAttr{Cloneflags: syscall.CLONE_NEWNS | syscall.CLONE_NEWPID | syscall.CLONE_NEWUTS | syscall.CLONE_NEWIPC}
 	if uid := os.Getuid(); uid != 0 {
 		attr.Cloneflags |= syscall.CLONE_NEWUSER
-		attr.UidMappings = []syscall.SysProcIDMap{{ContainerID: 0, HostID: uid, Size: 1}}
-		attr.GidMappings = []syscall.SysProcIDMap{{ContainerID: 0, HostID: os.Getgid(), Size: 1}}
+		attr.UidMappings, attr.GidMappings = []syscall.SysProcIDMap{{ContainerID: 0, HostID: uid, Size: 1}}, []syscall.SysProcIDMap{{ContainerID: 0, HostID: os.Getgid(), Size: 1}}
 	}
-	cmd.SysProcAttr = attr
-	cmd.WaitDelay = 2 * time.Second                                     // the payload is pid 1 of its namespace: its death takes the rest
+	cmd.SysProcAttr, cmd.WaitDelay = attr, 2*time.Second                // the payload is pid 1 of its namespace: its death takes the rest
 	if err := c.record("exec " + strings.Join(args, " ")); err != nil { // A plain container logs everything the guest says, without a cap, after the record of the run itself.
 		return Output{}, err
 	}

@@ -128,8 +128,7 @@ func cpioEntry(w io.Writer, name string, mode uint32, data []byte) error {
 	if name == "TRAILER!!!" {
 		ino = 0
 	}
-	fields := []uint32{ino, mode, 0, 0, 1, 0, uint32(len(data)), 0, 0, 0, 0, uint32(len(name) + 1), 0}
-	b := []byte(magic)
+	fields, b := []uint32{ino, mode, 0, 0, 1, 0, uint32(len(data)), 0, 0, 0, 0, uint32(len(name) + 1), 0}, []byte(magic)
 	for _, f := range fields {
 		b = fmt.Appendf(b, "%08X", f)
 	}

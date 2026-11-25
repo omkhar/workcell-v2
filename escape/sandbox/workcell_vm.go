@@ -230,8 +230,7 @@ func goBuild(ctx context.Context, repo, out, pkg, overlay string, env ...string)
 		args = append(args, "-overlay", overlay)
 	}
 	cmd := exec.CommandContext(ctx, "go", append(args, pkg)...)
-	cmd.Dir = repo
-	cmd.Env = append(os.Environ(), env...)
+	cmd.Dir, cmd.Env = repo, append(os.Environ(), env...)
 	if b, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("build %s: %v: %s", pkg, err, bytes.TrimSpace(b))
 	}
@@ -363,8 +362,7 @@ func (w *workcell) cli(ctx context.Context, in io.Reader, args ...string) (Outpu
 	if w.cfg.Workspace != "" {
 		cmd.Dir = w.cfg.Workspace
 	}
-	cmd.Env = env
-	cmd.Stdin = in
+	cmd.Env, cmd.Stdin = env, in
 	stdout, stderr := &bounded{limit: MaxStdout}, &bounded{limit: MaxStderr}
 	cmd.Stdout, cmd.Stderr = stdout, stderr
 	finish := func() {}
@@ -375,9 +373,7 @@ func (w *workcell) cli(ctx context.Context, in io.Reader, args ...string) (Outpu
 		}
 		cmd.Stdout, finish = head, fin
 	}
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true} // the product and what it forks, in a group of their own
-	cmd.Cancel = func() error { return cmd.Process.Signal(syscall.SIGTERM) }
-	cmd.WaitDelay = 3 * time.Second
+	cmd.SysProcAttr, cmd.Cancel, cmd.WaitDelay = &syscall.SysProcAttr{Setpgid: true}, func() error { return cmd.Process.Signal(syscall.SIGTERM) }, 3*time.Second // the product and what it forks, in a group of their own
 	if err := cmd.Start(); err != nil {
 		return Output{}, fmt.Errorf("workcell %s: %w", args[0], err)
 	}
@@ -533,8 +529,7 @@ func (w *workcell) Install(ctx context.Context, l Layer) (string, error) {
 	if l.Artifact != nil {
 		sum = fmt.Sprintf("%x", sha256.Sum256(l.Artifact))
 	}
-	row := fmt.Sprintf(`{"Name":%q,"Class":"guest","Version":%q,"Artifacts":{%q:{"URL":%q,"SHA256":%q}}}`, name, l.Version, runtime.GOARCH, l.URL, sum)
-	dir := filepath.Join(w.dir, "overlay")
+	row, dir := fmt.Sprintf(`{"Name":%q,"Class":"guest","Version":%q,"Artifacts":{%q:{"URL":%q,"SHA256":%q}}}`, name, l.Version, runtime.GOARCH, l.URL, sum), filepath.Join(w.dir, "overlay")
 	file, bin := filepath.Join(dir, name+".json"), filepath.Join(dir, "workcell")
 	swap := fmt.Sprintf(`{"Replace":{%q:%q}}`, filepath.Join(prepared.repo, "pins", name+".json"), file)
 	err := errors.Join(os.MkdirAll(dir, 0o755), os.WriteFile(file, []byte(row), 0o644), os.WriteFile(file+".overlay", []byte(swap), 0o644))

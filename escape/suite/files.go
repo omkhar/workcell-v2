@@ -187,8 +187,7 @@ func residueProbe(args []string) Result {
 	if len(args) < 3 {
 		return Result{Status: "error", Detail: "want plant|seek|clean, token and export paths"}
 	}
-	verb, token := args[0], args[1]
-	places, n := append(append([]string{}, residueDirs...), args[2:]...), 0
+	verb, token, places, n := args[0], args[1], append(append([]string{}, residueDirs...), args[2:]...), 0
 	var where []string
 	for _, d := range places {
 		path := filepath.Join(d, residueName(token))
