@@ -31,11 +31,11 @@ const (
 	// frameLimit is how long one frame may take once it has begun (I12), as on the channel.
 	frameLimit = 5 * time.Second
 	// paceFrames and paceEvery: Serve reads at most paceFrames units of work a paceEvery, 16 thousand a second (I10). A frame is a unit, as are perForget entries
-	// of a BATCH_FORGET, and the work a frame asks for is charged on top in points, unit to the unit, a point being about 0.75 us of host CPU: a link of a node's
-	// chain checked (at), 24 bytes of a directory listed (readdir), and plusEntry for a READDIRPLUS entry made, what one costs beside fifteen other workers. A frame
-	// alone costs the host about 10 us, so cheap frames take a sixth of a core and the costliest about half, within the one vCPU plus a second of slack the gate
-	// allows a guest. Honest traffic stays far below: ADR-005 measured 2 to 6 thousand requests a second, and at 60 KiB a READ or WRITE the transport caps a stream lower.
-	paceFrames, paceEvery, unit, plusEntry = 1 << 10, 64 * time.Millisecond, 40, 20
+	// of a BATCH_FORGET, and the work a frame asks for is charged on top in points, unit to the unit, a point being about 0.75 us of host CPU: two for a link of a
+	// node's chain checked (at), one for 24 bytes of a directory listed (readdir), and plusEntry for a READDIRPLUS entry made, what one costs beside fifteen other
+	// workers on a slow host. A frame alone costs the host about 10 us, so cheap frames take a sixth of a core and the costliest about half, within the one vCPU plus
+	// a second the gate allows a guest. Honest traffic stays far below: ADR-005 measured 2 to 6 thousand requests a second, and at 60 KiB a READ or WRITE the transport caps a stream lower.
+	paceFrames, paceEvery, unit, plusEntry = 1 << 10, 64 * time.Millisecond, 40, 40
 	// perForget: an entry the host does not know costs it about a 250th of a request; at 64 an honest guest shedding the whole table of maxNodes waits an eighth of a second.
 	perForget = 64
 	// validity is the entry and attribute timeout the guest kernel caches, as ADR-005 measured.
@@ -299,7 +299,7 @@ func (s *Server) at(id uint64, need syscall.Errno) (loc, syscall.Errno) {
 	if e != 0 {
 		return l, e
 	}
-	s.work.Add(int64(len(l.chain)))
+	s.work.Add(2 * int64(len(l.chain)))
 	for i, c := range l.chain {
 		var st unix.Stat_t
 		switch err := unix.Fstatat(c.pfd, c.name, &st, unix.AT_SYMLINK_NOFOLLOW); {
