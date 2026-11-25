@@ -8097,6 +8097,43 @@ Medium and not high: the break is shown, with the key's bytes in workspace.ext4,
 row so; the verifier calls the spelling less likely than C78's `~`, a slip more than a habit. Not expressed: a
 non-ASCII separator, and a helper whose body changes directory. Not S14: policy.go is v2's own. Fix unit: S-F64,
 below S-1009b in PLAN.md.
+C80 FIXED by S-F64, commits d68dd28 (the test moved, with an arm for a relative word through a link) and c7ed735
+(the fix) (PR #336). The orchestrator chose the unit line's wide shape before the redteam ran and wrote it as a
+contract: for a cmd: source only, every text that begins at a word's start or right after one of its separators,
+when it does not begin with a slash, is also judged as `/` joined to it, as an absolute path is judged: the
+spelling and each prefix that ends before a slash or a separator, resolved by within() against the working
+directory. What main judged from the first slash is still judged, and a file: source is judged as on main. The
+refusal is C54's one line from loadPolicy, before any session directory, and it names `/` joined to the text,
+which is what the program opens. Why wide: C81 is a medium that S7 makes the loop fix anyway, the verifier's
+overlays showed the narrow shape leaves its seventeen rows live and the wide one closes both with the earlier
+tests green, and one rule in one place is less than two. So this commit refuses C81's rows too: its parked test,
+run by overlay as cmd/workcell/c81_test.go, passes all twenty-three arms here, and S-F65 only moves it and records
+C81, as its line says. C82's parked test by overlay is unchanged: four finding arms fail and two controls pass.
+The fix is in the word loop of cmd/workcell/policy.go: a second candidate, `/` joined to the text, beside the one
+from the first slash, under cmd: and only where the text does not begin with a slash; the two comments that said a
+relative word never means the directory are made true; docs/policy.md has one new line. Net zero product lines
+(one added, paid by joining the three-line doc of holds() in data.go into two) and zero test lines (the redteam's
+arm was folded into the rows and set-up lines of the test): product 15000 of 15000, test 28500 of 28500.
+Proved: TestC80RelativeWordReadFromRoot, now seven arms, fails on main's policy.go in its three finding arms
+(redteam, orchestrator, and the reviewer by overlay of de43873), each with the key printed by secret.Resolve, and
+passes on c7ed735, plain and under -race, its four controls unchanged; the cmd/workcell tests pass under -race,
+the C19 to C78 tests of the accept line among them. The builder and the reviewer each ran the built binary:
+workcell run with such a row prints the one line, exits 2 and makes no data directory. Review: one round, no
+finding. The reviewer ran 162 rows through loadPolicy on both trees: every change of verdict is from loading to
+refused, each with `/` joined to a text resolving into the directory, and nothing that main refused loads.
+Cost to honest use: a word of a cmd: source is refused when `/` joined to the relative text at its start or after
+one of its separators lies in the working directory, or passes through it on the way: the argument `work`, or
+`user@work`, in a session started in /work, so an operator whose directory is a top-level one meets it soonest;
+and, as for an absolute path on main, a text one of whose prefixes resolves into the directory though the whole
+does not (a link into the directory followed by `..`). The way out is the old one: a script outside the directory.
+Not closed, for the maintainer, each shown live on main and on the fix by the redteam through secret.Resolve and
+none of them C80 or C81, so nothing landed for them in the freeze (S1, S4) and PARKED.md holds them: a relative
+path attached to an option letter, `cmd:/usr/bin/xargs -a<cwd without its first slash>/.secrets/anthropic.key`,
+where neither `-` nor a letter is a separator (the relative sibling of C72, whose absolute form is refused); a
+URL with a host, `cmd:/usr/bin/curl -s file://localhost/<cwd>/.secrets/anthropic.key`, judged as /localhost/...;
+and a standard program that changes directory, `cmd:/usr/bin/env -C <parent of cwd, either spelling> /bin/cat
+repo/.secrets/anthropic.key`. No audit left in this sweep covers policy.go. This is the sixth turn of one check,
+and the earlier records hold: a reading of a command line as text is not made whole by rules (S8).
 
 C81. ID I5, the same check and class; the residue that a fix of C80 alone would leave. ATTACKER: as C80.
 Precondition the attacker does not control: the operator's cmd: source has a word in which the key's absolute path
@@ -8186,3 +8223,8 @@ one line of the room left: no test, row, arm or assertion removed. Product 15000
 Sweep 3 now stands at two highs (C76 and C77, both fixed), fourteen mediums (C65, C66, C67, C68, C69, C71, C72,
 C73, C74, C75 and C78, all fixed; C80, C81 and C82, open) and three lows (C64, C70 and C79, all fixed). The next
 candidate number is C83 and the next fix unit S-F67.
+
+After S-F64: sweep 3 stands at two highs (C76 and C77, both fixed), fourteen mediums (C65, C66, C67, C68, C69, C71,
+C72, C73, C74, C75, C78 and C80, fixed; C81, whose rows main refuses since S-F64 and whose record S-F65 closes, and
+C82, open) and three lows (C64, C70 and C79, all fixed). The next candidate number is C83 and the next fix unit
+S-F67.
