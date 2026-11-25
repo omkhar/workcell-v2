@@ -7036,3 +7036,32 @@ Content-Type headers of which admits judges the first, and a text/plain body.
 Sweep 3 now stands at seven mediums (C65, C66, C67, C68, C69 and C71, fixed; C72, open) and two lows (C64 and
 C70, both fixed), with one unconfirmed candidate parked (the JSON residue of C71). The open fix unit is S-F56
 (C72); the next candidate number is C73 and the next fix unit S-F57.
+
+C72 FIXED by S-F56, commits 72ad9cc (the test moved), d03956a (the fix) and 156ff3d (the fix round) (PR #319).
+also in v1 main: credbroker/cli.go. The source loop of loadPolicy in cmd/workcell/policy.go now judges a word of
+a file: or cmd: source from its first slash on, so `--key=/x` and `-k/x` are held against the working directory
+as `/x`, and it judges the text after each ':' or ',' of the word in the same way, from that text's first slash
+to the word's end, so the second path of a list word (`--files=<out>/a:<cwd>/b`, `-f<out>/a,<cwd>/b`) is held
+too. The word is never split: a working directory whose own path holds ':' or ',' is still found by the pass
+over the whole word. The refusal is C54's one error, now naming the judged path, before any session directory
+is made. Three product lines, paid by three wrapped doc comments joined in the same file; product stays at
+15000. TestC72SecretPathInsideAnOptionWord (cmd/workcell/c72_test.go, moved from escape/_pending/S-F56/, which
+is gone, with three rows added in the fix round) fails on main in its four option-word arms and its three
+list-word arms, fails on d03956a in the three list-word arms alone, and passes on 156ff3d, plain and under
+-race, its control arm unchanged; the orchestrator ran all three by go test -overlay.
+A correction to the record above: it says that a relative `a/b` becomes `/b`, "which lies inside the working
+directory only when that directory is a root". The reviewer showed that this is false. A relative word whose
+text from its first slash is a path under the working directory is refused, where main accepted it:
+`--key=x<cwd>`, `--tpl=templates<cwd>/x`, and with the working directory /app a word `secret/app/key`. The fix
+round adds the same for the text after a ':' or ',' (`--map=a/b:y<cwd>/z`). That is the honest cost: the denial
+is one clear line and it names the path, and the row shape is rare for a working directory of some depth.
+Residue, not fixed here, since there is no second fix round (R1): a list word that names the working directory
+itself before a separator, `--dir=<cwd>:<out>/b` or `--dir=<cwd>,<out>/b`, is accepted (loadPolicy returns no
+error, by the builder's probe and the orchestrator's), where `--dir=<cwd>`, the bare word `<cwd>`,
+`--dir=<cwd>/:<out>/b` and `--dir=<cwd>/k:<out>/b` are refused. It is not confirmed under S4, so nothing lands
+for it under S1; it stands in PARKED.md as a candidate with its reproduction, for R-3 to turn into a unit.
+Still not judged, as before: a program that reaches the working directory by its own logic, a relative path
+that the program resolves itself, and a bind mount beneath the directory.
+Sweep 3 now stands at seven mediums (C65, C66, C67, C68, C69, C71 and C72, all fixed) and two lows (C64 and
+C70, both fixed), with two unconfirmed candidates parked (the JSON residue of C71 and the list-word residue of
+C72). No fix unit is open; the next candidate number is C73 and the next fix unit S-F57.
