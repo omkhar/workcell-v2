@@ -7228,3 +7228,94 @@ rule on the method whole; the maintainer may still prefer the third shape of S-F
 Sweep 3 now stands at nine mediums (C65, C66, C67, C68, C69, C71, C72, C73 and C74, all fixed) and two lows (C64
 and C70, both fixed), with one unconfirmed candidate still a unit (S-1021, the list-word residue of C72). No fix
 unit is open; the next candidate number is C75 and the next fix unit S-F59.
+
+## S-1021, sweep 3: one brought candidate of the secrets surface, the list-word residue of C72 (I5), as built at main 1318754
+
+S-1021 is a unit that R-3 made from PARKED.md, so no auditor ran (PLAN.md): the redteam wrote the test from the
+claim in the unit line alone, the orchestrator ran it by go test -overlay against the real package, plain and under
+-race, and one verifier, in a fresh context and with no one's reasoning, tried to refute it. Nothing here needed a
+VM. Nothing is private (S14): the missing judgement is in cmd/workcell/policy.go, which is v2's own, and the record
+keeps the v1 line of C54 and C72.
+
+### S-1021 candidates, sweep 3
+
+C75. ID I5 ("Real credential bytes never exist in guest memory, disk, environment, arguments or logs"), the class
+of C54, C58 and C72. It is the residue of C72, as C72 was of C54: seen by S-F56's builder, parked for want of the
+end of the chain, now reproduced. Attacker: guest root or hostile model output, reading /workspace in clone mode or
+the live tree under --mount. Precondition it does not control: the operator's [[secret]] row has a cmd: source
+whose program lies outside the working directory and one of whose words is a list that names the working directory
+itself before a separator: `--dir=<cwd>:<out>/b` or `--dir=<cwd>,<out>/b`. Where: cmd/workcell/policy.go,
+loadPolicy, the source loop: a word is judged from its first slash and after each `:` or `,`, with each lexical
+ancestor of those texts. The word from its first slash is `<cwd>:<out>/b`, whose ancestors `<cwd>:<out>` and
+`<cwd>:` do not lie within the directory, and the text after the separator lies outside it, so nothing judged is
+the directory. also in v1 main: credbroker/cli.go, as C54's record has it. Input: a user config that allows
+api.anthropic.com, with [[secret]] name "anthropic" and source `cmd:/bin/sh <out>/get-key.sh --dir=<cwd>:<out>/b`
+(or the comma), a key file at <cwd>/.secrets/anthropic.key, and `workcell run` there, clone or --mount. Effect:
+loadPolicy accepts the row and mints a binding, the session goes past the export, and in clone mode workspace.ext4
+holds the key's bytes, while under --mount the directory is served live; `--dir=<cwd>`, the bare word `<cwd>` and
+`--dir=<cwd>/k:<out>/b` are refused with C54's one line before any session directory is made.
+
+Reproducing test: TestC75WorkspaceBeforeAListSeparator, package main, 56 lines, escape/_pending/S-F59/c75_test.go,
+on the fixtures of C54 and C72 (c19Data, a dummy VMM, so a session that is not refused fails at boot, after the
+export). Its helper is a three-line shell script that strips `--dir=`, cuts the word at the first `:` or `,` and
+prints .secrets/anthropic.key from the directory left; the test runs it once on the host, with the row's last word,
+only where the row was not refused, and fails an arm whose helper does not print the key. Seven arms: clone and
+--mount with each separator fail when a session other than the fixture's own exists and, in clone mode, its
+workspace.ext4 holds the key; three control arms (`--dir=<cwd>`, the bare word, `--dir=<cwd>/k:<out>/b`) must leave
+no session. Log of the orchestrator's run, with <id> and <tmp> for a session ID and a temporary directory; the same
+four arms fail under -race, and the redteam and the verifier saw the same:
+
+    --- FAIL: TestC75WorkspaceBeforeAListSeparator/clone_colon
+        c75_test.go:44: session: start firecracker: invalid argument
+        c75_test.go:51: I5: session <id> started for cmd:/bin/sh OUT/get-key.sh --dir=WORK:OUT/b: under --mount
+            <tmp> is served live as /workspace, else its export holds the key, which the helper reads from the
+            text before the separator
+    --- FAIL: TestC75WorkspaceBeforeAListSeparator/mount_colon   (the same two lines)
+    --- FAIL: TestC75WorkspaceBeforeAListSeparator/clone_comma   (the same, for --dir=WORK,OUT/b)
+    --- FAIL: TestC75WorkspaceBeforeAListSeparator/mount_comma   (the same, for --dir=WORK,OUT/b)
+    FAIL github.com/omkhar/workcell/v2/cmd/workcell
+
+The three control arms pass, and no arm reports a helper that missed the key. Outcome: CONFIRMED at medium by the
+verifier, which ran the test with those of C72 and C54 beside it (both green, so their fixes are present and this
+is a distinct gap), and a probe of its own on loadPolicy: `--dir=<cwd>:<out>/b`, `--dir=<cwd>,<out>/b`, the bare
+word `<cwd>:<out>/b` and `--dir=<cwd>:` each load with one binding and no error, and `--dir=<cwd>`, the bare word
+`<cwd>`, `--dir=<cwd>/k:<out>/b`, `--dir=<cwd>/:<out>/b` and `--dir=<out>/b:<cwd>` are refused with C54's line. So
+the controls are refused by the very check in question, and a separator joined to the directory's last name is the
+only difference between a refusal and a started session. It also ran a fix-shaped overlay kept outside the
+repository, the first shape below in one condition, `within(cwd, q) || within(cwd, strings.TrimRight(q, ":,"))`:
+this test and those of C19, C28, C29, C54, C58 and C72, with TestBindings and TestProviderPolicy, then pass. So the
+test fails for the cause it names and passes once the row is refused.
+
+Its ruling on the question the unit line put first: this is not "a program that reaches the directory by its own
+logic", which S-F56's line names as not judged. That clause is about a program whose command line does not spell
+the directory (a fixed path, a config file, $HOME). Here the operator's own word spells the directory's absolute
+path, and the helper does no more than the splitting that C72's confirmed helper did for `--key=`, carried to the
+list separator that S-F56's fix round itself took on when it judged the text after each `:` or `,` of a word. The
+check already refuses the directory named alone and a first list element at every depth below it, so depth zero is
+a gap in the check's own promise and no shape outside it. S-F56's record lists this residue as a candidate for R-3,
+in a sentence apart from the one on a program's own logic, and docs/policy.md and the refusal text ("keep it
+outside") promise that a source inside the directory is refused and say nothing of whole paths alone. On the test's
+honesty: it takes only the operator's step, as C54 and C72 did; the clone arms fail on the key's bytes in
+workspace.ext4, the mount arms on the session existing, as C54 and C72 were graded; running the helper on the host
+gives the attacker nothing and is not what an arm fails on. Not a duplicate (C72's record leaves this residue
+unconfirmed), not accepted (docs/adr/accepted/ says nothing of sources), not out of scope (the operator's row is
+the precondition of S6, not host root or malware). On the precondition: lists of paths joined by a colon or a comma
+in one argument are real (a class path, a search path, a wrapper that takes a list as PATH is written), but the row
+must name the project root itself as an element, which the verifier holds to be rarer than C72's
+`--key=<cwd>/file`. Not high for that reason, and since a keychain, secret-service or config-directory source is
+untouched; not low, since the clone arms show the key's bytes in the export on the real package.
+
+What the fix costs, for the maintainer (S8): three shapes, none chosen here. One, cutting a trailing `:` or `,`
+before each text is judged, is one condition, and lists two separators: a probe of the orchestrator, by overlay on
+loadPolicy, found that `--map=<cwd>=<out>/b`, `--dir=<cwd>;<out>/b` and `--dir=<cwd>|<out>/b` load with a binding
+too, and no test here expresses them. Two, refusing every word of a cmd: source that holds the directory's path
+anywhere, covers each of those (the redteam ran such a copy of policy.go by overlay, outside the repository: this
+test and those of C72 and C54 pass), and as a plain substring test it also refuses a sibling directory whose name
+begins with the directory's. Three, saying in docs/policy.md that only whole paths are judged, leaves the test
+failing, so under S4 and S7 only the maintainer can take it. S-F56's record holds that a check on the words of a
+command line cannot be made whole by listing spellings; this is the third listing (a whole word, a path inside a
+word, the directory before a separator). Fix unit S-F59 says the same.
+
+Sweep 3 now stands at ten mediums (C65, C66, C67, C68, C69, C71, C72, C73 and C74, fixed; C75, open) and two lows
+(C64 and C70, both fixed), and no unconfirmed candidate is left as a unit. The open fix unit is S-F59 (C75); the
+next candidate number is C76 and the next fix unit S-F60.
