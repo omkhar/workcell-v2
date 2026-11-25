@@ -6,6 +6,7 @@
 package fileserve
 
 import (
+	"bytes"
 	"io"
 	"math"
 	"syscall"
@@ -364,11 +365,10 @@ func (s *Server) setattr(r request) ([]byte, syscall.Errno) {
 	return attrReply(l, e)
 }
 
-// readdir lists from the handle's own descriptor, positioned at the offset the kernel gives
-// back, which is the cookie of the entry after the last one it took. Nothing is cached, so a
-// directory of any size costs one 8 KiB buffer per call. READDIRPLUS makes a node per entry,
-// as a LOOKUP would; an entry that cannot get one (cap reached) goes out with node 0, so the
-// listing stays complete and the kernel's own LOOKUP reports the error.
+// readdir lists from the handle's own descriptor, positioned at the offset the kernel gives back, which is the cookie of the entry after the last one it took.
+// Nothing is cached, so a directory of any size costs one 8 KiB buffer per call; the bytes read and the nodes made are charged to the pace (I10). READDIRPLUS
+// makes a node per entry, as a LOOKUP would; an entry that cannot get one (cap reached) goes out with node 0, so the listing stays complete and the kernel's own
+// LOOKUP reports the error.
 func (s *Server) readdir(r request) ([]byte, syscall.Errno) {
 	h, e := s.fh(r.NodeID, r.Fh)
 	if e != 0 {
@@ -401,19 +401,14 @@ func (s *Server) readdir(r request) ([]byte, syscall.Errno) {
 		if n == 0 {
 			return out, 0
 		}
+		s.work.Add(int64(n / direntLen)) // the most entries the bytes can hold (I10)
 		for b := buf[:n]; len(b) >= 19; {
 			reclen := int(le.Uint16(b[16:]))
 			if reclen < 19 || reclen > len(b) {
 				return nil, syscall.EIO
 			}
 			ino, off, typ := le.Uint64(b), le.Uint64(b[8:]), uint32(b[18])
-			name := b[19:reclen]
-			for i, c := range name {
-				if c == 0 {
-					name = name[:i]
-					break
-				}
-			}
+			name, _, _ := bytes.Cut(b[19:reclen], []byte{0})
 			b = b[reclen:]
 			if checkName(string(name)) != nil { // "." and ".." carry nothing a guest needs
 				continue
@@ -427,6 +422,7 @@ func (s *Server) readdir(r request) ([]byte, syscall.Errno) {
 				if unix.Fstatat(l.fd, string(name), &st, unix.AT_SYMLINK_NOFOLLOW) != nil {
 					continue // gone since getdents
 				}
+				s.work.Add(plusEntry)
 				entry = make([]byte, entryOutLen)
 				if id, e := s.child(l, string(name), &st); e == 0 {
 					entry = entryOut(id, validity, attrOf(&st))
