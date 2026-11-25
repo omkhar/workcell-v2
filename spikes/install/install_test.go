@@ -34,7 +34,7 @@ const (
 	firecrackerSum = "06094a1108ae9e82aa4c23a775aa92758f53f1175d422270d9d6162cb9ade558"
 	firecrackerBin = "release-v1.17.0-x86_64/firecracker-v1.17.0-x86_64"
 	vmlinuxURL     = "https://github.com/cloud-hypervisor/linux/releases/download/ch-release-v7.2.8-20261009/vmlinux-x86_64"
-	vmlinuxSum     = "edfeb8a8a6c04ff2979e9f1c700feaa29b8f564f952261834ef0b7d2e673a853"
+	vmlinuxSum     = "d18d6c3ba91d24e9d7776d2d69afc475674b3a2149bd610304acf9cd2ad4b315"
 	maxDownload    = 256 << 20
 	p2Target       = 60 * time.Second
 )
