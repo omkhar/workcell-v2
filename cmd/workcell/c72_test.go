@@ -26,6 +26,7 @@ func TestC72SecretPathInsideAnOptionWord(t *testing.T) {
 	}{
 		{"clone, --key=", "cmd:/bin/sh OUT/get-key.sh --key=WORK/.secrets/anthropic.key", false}, {"mount, --key=", "cmd:/bin/sh OUT/get-key.sh --key=WORK/.secrets/anthropic.key", true}, {"clone, -k", "cmd:/bin/sh OUT/get-key.sh -kWORK/.secrets/anthropic.key", false},
 		{"mount, -k", "cmd:/bin/sh OUT/get-key.sh -kWORK/.secrets/anthropic.key", true}, {"control: clone, bare word", "cmd:/bin/sh OUT/get-key.sh WORK/.secrets/anthropic.key", false}, // the control: refused, so no session exists; accepted, its export would hold the key
+		{"clone, --files=OUT:WORK", "cmd:/bin/sh OUT/get-key.sh --files=OUT/a:WORK/.secrets/anthropic.key", false}, {"mount, --files=OUT:WORK", "cmd:/bin/sh OUT/get-key.sh --files=OUT/a:WORK/.secrets/anthropic.key", true}, {"clone, -fOUT,WORK", "cmd:/bin/sh OUT/get-key.sh -fOUT/a,WORK/.secrets/anthropic.key", false}, // the review of S-F56: a word that holds two paths, the second one under cwd
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			work, data, config := must(filepath.EvalSymlinks(t.TempDir())), filepath.Join(t.TempDir(), "workcell"), filepath.Join(t.TempDir(), "workcell") // macOS: /var is /private/var

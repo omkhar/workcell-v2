@@ -30,8 +30,7 @@ func configFile() (string, error) {
 // repoFile is the policy a repository may carry, in the directory a session starts in.
 const repoFile = "workcell.toml"
 
-// loadPolicy reads the policy and builds what a session needs from it: the proxy's allowlist (nil: nothing is relayed) and the secret bindings. The user's file is narrowed by the workcell.toml of the current
-// directory, which may take grants away and give none (I13), then this session's --allow entries are added (the operator typed them on the host, and the repository may not undo that). A repository file that is not a regular file is ignored, with a line on stderr. An error names the file and line, or the flag; note is a line for `explain` about what the repository file took away.
+// loadPolicy reads the policy and builds what a session needs from it: the proxy's allowlist (nil: nothing is relayed) and the secret bindings. The user's file is narrowed by the workcell.toml of the current directory, which may take grants away and give none (I13), then this session's --allow entries are added (the operator typed them on the host, and the repository may not undo that). A repository file that is not a regular file is ignored, with a line on stderr. An error names the file and line, or the flag; note is a line for `explain` about what the repository file took away.
 func loadPolicy(extra []string, stderr io.Writer) (allow *proxy.Allowlist, secrets []binding, note, file string, err error) {
 	if file, err = configFile(); err != nil {
 		return nil, nil, "", "", err
@@ -80,11 +79,13 @@ func loadPolicy(extra []string, stderr io.Writer) (allow *proxy.Allowlist, secre
 		if scheme == "cmd" {
 			words = strings.Fields(rest) // the program and each argument: the broker runs it from /, so a relative one never means cwd
 		}
-		for _, w := range words { // a path inside an option word, --key=/x or -k/x, is judged as /x (C72); a relative a/b becomes /b, inside cwd only when cwd is a root, which holds refuses
-			w = w[max(strings.IndexByte(w, '/'), 0):]
-			for q, up := w, ""; err == nil && (scheme == "file" || scheme == "cmd") && filepath.IsAbs(w) && q != up; q, up = filepath.Dir(q), q { // the spelling and each lexical ancestor, resolved: under --mount the guest may replace any of them
-				if within(cwd, q) {
-					return nil, nil, "", "", fmt.Errorf("%s:%d: secret %q: source %s lies inside the directory %q, which the guest gets as /workspace: keep it outside", file, s.Line, s.Name, w, cwd)
+		for _, w := range words { // a word is judged from its first slash on, so a path inside an option word, --key=/x or -k/x, is judged as /x (C72); a relative a/b is judged as /b, and refused when that lies in cwd
+			for i := 0; i < len(w); i += 1 + strings.IndexAny(w[i:]+":", ":,") { // and so is the text after each ':' or ',' of a list word, --files=/a:/b, to the word's end: cwd itself may hold either, so the word is never split
+				p := w[i+max(strings.IndexByte(w[i:], '/'), 0):]
+				for q, up := p, ""; err == nil && (scheme == "file" || scheme == "cmd") && filepath.IsAbs(p) && q != up; q, up = filepath.Dir(q), q { // the spelling and each lexical ancestor, resolved: under --mount the guest may replace any of them
+					if within(cwd, q) {
+						return nil, nil, "", "", fmt.Errorf("%s:%d: secret %q: source %s lies inside the directory %q, which the guest gets as /workspace: keep it outside", file, s.Line, s.Name, p, cwd)
+					}
 				}
 			}
 		}
@@ -112,8 +113,7 @@ func placeholderEnv(secrets []binding) (env []string) {
 // envName is a variable name as the guest's environment takes it.
 var envName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
-// bindings turns the policy's [[secret]] rows into the session's bindings, one fresh placeholder each. The proxy judges host, header, method, path and repos (A3); the host must then be a bare name of the allow list, so that the proxy terminates it and swaps there (I6), as must the host of a sign-in source, and env must be a variable name. Two
-// rows on one header of one host, or on one token endpoint, are refused by the proxy. A row with a name and source but no host and no header takes them, and env unless it gives one, from the provider secret of that name: a convenience that grants nothing, since the host must still be in the allow list (I13); the provider's prefix needs no rule, as the proxy keeps a "Bearer " the guest sends before the placeholder. A fault is reported with its line.
+// bindings turns the policy's [[secret]] rows into the session's bindings, one fresh placeholder each. The proxy judges host, header, method, path and repos (A3); the host must then be a bare name of the allow list, so that the proxy terminates it and swaps there (I6), as must the host of a sign-in source, and env must be a variable name. Two rows on one header of one host, or on one token endpoint, are refused by the proxy. A row with a name and source but no host and no header takes them, and env unless it gives one, from the provider secret of that name: a convenience that grants nothing, since the host must still be in the allow list (I13); the provider's prefix needs no rule, as the proxy keeps a "Bearer " the guest sends before the placeholder. A fault is reported with its line.
 func bindings(p policy.Policy, allow *proxy.Allowlist, file string) ([]binding, error) {
 	var out []binding
 	for _, s := range p.Secret {
