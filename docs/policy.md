@@ -113,7 +113,7 @@ secrets: swapped in by the session proxy; the guest holds a placeholder
 
 ## Secret sources
 
-- `file:/abs/path` reads a regular file of at most 64 KiB. Its value is its one line.
+- `file:/abs/path` reads a regular file of at most 64 KiB. Its value is its one line. The path is absolute: a row whose `file:` path is not is refused before a session starts.
 - `cmd:/abs/program args` runs a program with no shell. Arguments are split on spaces, with no quoting.
   The environment is cleared, except `PATH`, `LC_ALL`, `HOME`, the D-Bus address and `XDG_RUNTIME_DIR`.
   The program has two minutes. It runs with `/` as its working directory, so nothing in the repository
