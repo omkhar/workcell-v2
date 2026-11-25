@@ -49,17 +49,13 @@ func (b *fakeBroker) Lookup(_ context.Context, host, header string) ([]byte, err
 	return b.last, b.err
 }
 
-// No rule of the fixture has a sign-in flow; signin_test.go has a broker that holds tokens.
-func (b *fakeBroker) Issue(string, string, []byte, []byte) error              { return b.err }
+func (b *fakeBroker) Issue(string, string, []byte, []byte) error              { return b.err } // No rule of the fixture has a sign-in flow; signin_test.go has a broker that holds tokens.
 func (b *fakeBroker) Refresh(context.Context, string, string) ([]byte, error) { return nil, b.err }
 func (b *fakeBroker) Tokens(string, string) ([]byte, []byte)                  { return nil, nil }
 
 func (b *fakeBroker) callCount() int { b.mu.Lock(); defer b.mu.Unlock(); return len(b.calls) }
 
-// terminateFixture runs an upstream that echoes the x-api-key and Authorization it received and a proxy that terminates example.com, with a rule for each of
-// those headers, a.example.com, with none, n.example.com, with an x-api-key rule narrowed to POST under /v1/, and r.example.com, with an Authorization rule
-// scoped to the repository octo/allowed.
-func terminateFixture(t *testing.T, broker Broker) (proxyAddr string, ca *SessionCA, p *Proxy, log *recorder) {
+func terminateFixture(t *testing.T, broker Broker) (proxyAddr string, ca *SessionCA, p *Proxy, log *recorder) { // an upstream that echoes the x-api-key and Authorization it received and a proxy that terminates example.com, with a rule for each of those headers, a.example.com, with none, n.example.com, with an x-api-key rule narrowed to POST under /v1/, and r.example.com, with an Authorization rule scoped to the repository octo/allowed
 	t.Helper()
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = io.WriteString(w, r.Host+" "+strings.Join(r.Header.Values("X-Api-Key"), ","))
@@ -72,16 +68,14 @@ func terminateFixture(t *testing.T, broker Broker) (proxyAddr string, ca *Sessio
 	p.upstreamRoots = x509.NewCertPool()
 	p.upstreamRoots.AddCert(server.Certificate())
 	ca = must(NewSessionCA([]string{"example.com", "a.example.com", "n.example.com", "r.example.com"}, time.Now().Add(time.Hour)))
-	// Mixed-case header names: the broker must still get the lowercase form its grants use (TestTerminateSwapsOnlyExactPlaceholder checks the call).
-	must(0, p.Terminate(ca, broker, []TerminateRule{
+	must(0, p.Terminate(ca, broker, []TerminateRule{ // Mixed-case header names: the broker must still get the lowercase form its grants use (TestTerminateSwapsOnlyExactPlaceholder checks the call).
 		{Host: "example.com", Header: "X-Api-Key", Placeholder: testPlaceholder}, {Host: "example.com", Header: "Authorization", Placeholder: testAuthPlaceholder},
 		{Host: "n.example.com", Header: "X-Api-Key", Placeholder: testPlaceholder, Method: "POST", Path: "/v1/"}, {Host: "r.example.com", Header: "Authorization", Placeholder: testAuthPlaceholder, Repos: []string{"octo/allowed"}},
 	}))
 	return listen(t, p, 443), ca, p, buf
 }
 
-// basic is password as git sends a token: a Basic value of base64("x-access-token:" + password).
-func basic(password string) string {
+func basic(password string) string { // password as git sends a token: a Basic value of base64("x-access-token:" + password)
 	return "Basic " + base64.StdEncoding.EncodeToString([]byte("x-access-token:"+password))
 }
 
@@ -126,19 +120,13 @@ func TestTerminateSwapsOnlyExactPlaceholder(t *testing.T) {
 	broker := &fakeBroker{value: "real-secret"}
 	addr, ca, p, log := terminateFixture(t, broker)
 	c := clientVia(addr, caPool(t, ca))
-	cases := []struct{ sent, want string }{
-		{testPlaceholder, "example.com real-secret"},
-		{"Bearer " + testPlaceholder, "example.com Bearer real-secret"},
-		{"user-key", "example.com user-key"},
-		{"", "example.com "},
-	}
+	cases := []struct{ sent, want string }{{testPlaceholder, "example.com real-secret"}, {"Bearer " + testPlaceholder, "example.com Bearer real-secret"}, {"user-key", "example.com user-key"}, {"", "example.com "}}
 	for _, tc := range cases {
 		if code, body := get(t, c, "https://example.com/v1?key=user-key", tc.sent); code != http.StatusOK || body != tc.want {
 			t.Errorf("sent %q: upstream saw (%d, %q), want %q", tc.sent, code, body, tc.want)
 		}
 	}
-	// A Host that is not the SNI's name, another allowed name included, is refused before the broker or the upstream hears of it (I6); one that spells the name
-	// differently is the name.
+	// A Host that is not the SNI's name, another allowed name included, is refused before the broker or the upstream hears of it (I6); one that spells the name differently is the name.
 	for host, code := range map[string]int{"evil.example": 421, "a.example.com": 421, "EXAMPLE.COM:443": 200, "example.com.": 200} {
 		req, _ := http.NewRequest(http.MethodGet, "https://example.com/", nil)
 		req.Host = host
@@ -153,8 +141,7 @@ func TestTerminateSwapsOnlyExactPlaceholder(t *testing.T) {
 	if d, want := denies(t, p, log), (denyLine{Host: "example.com", Port: 443, Reason: "host_mismatch", Count: 2, Seq: 2}); len(d) != 2 || d[1] != want {
 		t.Errorf("deny lines = %+v, want 2 ending in %+v", d, want)
 	}
-	// Every allowed name is terminated, with or without a rule: the client sees a session leaf for a.example.com too.
-	if code, body := get(t, c, "https://a.example.com/", "user-key"); code != http.StatusOK || body != "a.example.com user-key" {
+	if code, body := get(t, c, "https://a.example.com/", "user-key"); code != http.StatusOK || body != "a.example.com user-key" { // Every allowed name is terminated, with or without a rule: the client sees a session leaf for a.example.com too.
 		t.Errorf("GET to the host without a rule = (%d, %q), want it served through the session leaf", code, body)
 	}
 }
@@ -174,14 +161,12 @@ func TestSameHost(t *testing.T) {
 			t.Errorf("sameHost(%q) = %t, want %t", tc.host, got, tc.want)
 		}
 	}
-	// A test's listener has a port of its own, which a Host may then name; :443 still may.
-	if !sameHost("example.com:8443", "example.com", "8443") || !sameHost("Example.com.:443", "example.com", "8443") || sameHost("example.com:8443.", "example.com", "8443") {
+	if !sameHost("example.com:8443", "example.com", "8443") || !sameHost("Example.com.:443", "example.com", "8443") || sameHost("example.com:8443.", "example.com", "8443") { // A test's listener has a port of its own, which a Host may then name; :443 still may.
 		t.Error("sameHost does not take the connection's own port alone beside 443")
 	}
 }
 
-// Claude Code with apiKeyHelper sends the key in x-api-key and in Authorization; both rules for one host must swap.
-func TestTerminateSwapsBothHeaders(t *testing.T) {
+func TestTerminateSwapsBothHeaders(t *testing.T) { // Claude Code with apiKeyHelper sends the key in x-api-key and in Authorization; both rules for one host must swap.
 	t.Parallel()
 	broker := &fakeBroker{value: "real-secret"}
 	addr, ca, _, _ := terminateFixture(t, broker)
@@ -196,8 +181,7 @@ func TestTerminateSwapsBothHeaders(t *testing.T) {
 	}
 }
 
-// A placeholder left anywhere after the swap fails closed with 502 and a deny line; it never reaches upstream.
-func TestTerminateRefusesUnswappedPlaceholder(t *testing.T) {
+func TestTerminateRefusesUnswappedPlaceholder(t *testing.T) { // A placeholder left anywhere after the swap fails closed with 502 and a deny line; it never reaches upstream.
 	t.Parallel()
 	addr, ca, p, log := terminateFixture(t, &fakeBroker{value: "real-secret"})
 	c := clientVia(addr, caPool(t, ca))
@@ -226,8 +210,7 @@ func TestTerminateRefusesUnswappedPlaceholder(t *testing.T) {
 			t.Errorf("%s: got (%d, %q), want 502 from the proxy", name, code, body)
 		}
 	}
-	// A trailer is declared before the body and delivered after it, so the proxy refuses every request trailer, placeholder-named or benign.
-	trailers := []string{"X-" + testPlaceholder, "X-Checksum"}
+	trailers := []string{"X-" + testPlaceholder, "X-Checksum"} // A trailer is declared before the body and delivered after it, so the proxy refuses every request trailer, placeholder-named or benign.
 	for _, name := range trailers {
 		req, _ := http.NewRequest(http.MethodPost, "https://example.com/v1", strings.NewReader("body"))
 		req.ContentLength = -1
@@ -274,8 +257,7 @@ func TestTerminateOffersHTTP11Only(t *testing.T) {
 	}
 }
 
-// A request pipelined behind a refused CONNECT is never served: the 405 closes the connection (I12; go1.27.0 kept it open and served the GET).
-func TestC27(t *testing.T) {
+func TestC27(t *testing.T) { // A request pipelined behind a refused CONNECT is never served: the 405 closes the connection (I12; go1.27.0 kept it open and served the GET).
 	t.Parallel()
 	addr, ca, _, _ := terminateFixture(t, &fakeBroker{value: "real-secret"})
 	c := must(tls.Dial("tcp", addr, &tls.Config{ServerName: "example.com", RootCAs: caPool(t, ca)}))
@@ -297,9 +279,7 @@ func TestSessionCANameConstraints(t *testing.T) {
 	if ca.key.Curve != elliptic.P256() {
 		t.Fatal("CA key is not P-256")
 	}
-	// The CA is trusted only through the file SSL_CERT_FILE would name, as an operator's private authority is; a leaf of another authority is not, and a file that
-	// cannot be read refuses.
-	file := filepath.Join(t.TempDir(), "roots.pem")
+	file := filepath.Join(t.TempDir(), "roots.pem") // The CA is trusted only through the file SSL_CERT_FILE would name, as an operator's private authority is; a leaf of another authority is not, and a file that cannot be read refuses.
 	must(0, os.WriteFile(file, ca.CertPEM(), 0o600))
 	roots := must(upstreamRoots(file))
 	verify := func(name string, leaf *x509.Certificate) error {
@@ -350,9 +330,7 @@ func TestNewSessionCARefusesBadInput(t *testing.T) {
 	}
 }
 
-// TestNewTerminateRule: the host comes back canonical and the header lowercase, each rule gets a placeholder of its own, and a bad host, header, method, path
-// or repository is refused, as are repositories beside a method or path.
-func TestNewTerminateRule(t *testing.T) {
+func TestNewTerminateRule(t *testing.T) { // the host comes back canonical and the header lowercase, each rule gets a placeholder of its own, and a bad host, header, method, path or repository is refused, as are repositories beside a method or path
 	t.Parallel()
 	repo := func(repos ...string) []string { return repos }
 	cases := []struct {
@@ -389,11 +367,8 @@ func TestNewTerminateRule(t *testing.T) {
 	}
 }
 
-// TestTerminateNarrowedRule: a rule naming a method and a path prefix swaps a placeholder only on a request of that method under that prefix, and one naming
-// repositories only on a request to /owner/name or /owner/name.git or under either, the placeholder bare, as a bearer or as a Basic password (as git sends a
-// token), judged on the path as sent and as decoded; any other request carrying the placeholder in the bound header is refused before the broker hears of it,
-// with nothing forwarded, and a request carrying no placeholder passes as is. The bytes the broker gave are wiped once the request carries them. Drop the check
-// → the broker is asked and the upstream sees the value → FAIL.
+// TestTerminateNarrowedRule: a rule naming a method and a path prefix swaps a placeholder only on a request of that method under that prefix, and one naming repositories only on a request to /owner/name or /owner/name.git or under either, the placeholder bare, as a bearer or as a Basic password (as git sends a
+// token), judged on the path as sent and as decoded; any other request carrying the placeholder in the bound header is refused before the broker hears of it, with nothing forwarded, and a request carrying no placeholder passes as is. The bytes the broker gave are wiped once the request carries them. Drop the check → the broker is asked and the upstream sees the value → FAIL.
 func TestTerminateNarrowedRule(t *testing.T) {
 	t.Parallel()
 	broker := &fakeBroker{value: "real-secret"}
@@ -406,33 +381,21 @@ func TestTerminateNarrowedRule(t *testing.T) {
 		code                                    int
 		body                                    string
 	}{
-		{"method and path match", n, "POST", "/v1/messages", "X-Api-Key", testPlaceholder, 200, "n.example.com real-secret"},
-		{"the prefix itself", n, "POST", "/v1/", "X-Api-Key", testPlaceholder, 200, "n.example.com real-secret"},
-		{"bearer under the prefix with a query", n, "POST", "/v1/x?q=1", "X-Api-Key", "Bearer " + testPlaceholder, 200, "n.example.com Bearer real-secret"},
-		{"other method", n, "GET", "/v1/messages", "X-Api-Key", testPlaceholder, 403, ""},
-		{"method in another case", n, "post", "/v1/messages", "X-Api-Key", testPlaceholder, 403, ""},
-		{"other path", n, "POST", "/v2/no", "X-Api-Key", testPlaceholder, 403, ""},
-		{"the prefix without its slash", n, "POST", "/v1", "X-Api-Key", testPlaceholder, 403, ""},
-		{"dot segments leading out", n, "POST", "/v1/../v2/no", "X-Api-Key", testPlaceholder, 403, ""},
-		{"encoded dot segments", n, "POST", "/v1/%2e%2e/v2/no", "X-Api-Key", testPlaceholder, 403, ""},
-		{"encoded slash", n, "POST", "/v1%2Fx", "X-Api-Key", testPlaceholder, 403, ""},
+		{"method and path match", n, "POST", "/v1/messages", "X-Api-Key", testPlaceholder, 200, "n.example.com real-secret"}, {"the prefix itself", n, "POST", "/v1/", "X-Api-Key", testPlaceholder, 200, "n.example.com real-secret"},
+		{"bearer under the prefix with a query", n, "POST", "/v1/x?q=1", "X-Api-Key", "Bearer " + testPlaceholder, 200, "n.example.com Bearer real-secret"}, {"other method", n, "GET", "/v1/messages", "X-Api-Key", testPlaceholder, 403, ""},
+		{"method in another case", n, "post", "/v1/messages", "X-Api-Key", testPlaceholder, 403, ""}, {"other path", n, "POST", "/v2/no", "X-Api-Key", testPlaceholder, 403, ""},
+		{"the prefix without its slash", n, "POST", "/v1", "X-Api-Key", testPlaceholder, 403, ""}, {"dot segments leading out", n, "POST", "/v1/../v2/no", "X-Api-Key", testPlaceholder, 403, ""},
+		{"encoded dot segments", n, "POST", "/v1/%2e%2e/v2/no", "X-Api-Key", testPlaceholder, 403, ""}, {"encoded slash", n, "POST", "/v1%2Fx", "X-Api-Key", testPlaceholder, 403, ""},
 		{"no placeholder", n, "GET", "/v2/no", "X-Api-Key", "user-key", 200, "n.example.com user-key"},
-		{"a clone's refs within the repository", r, "GET", "/octo/allowed.git/info/refs?service=git-upload-pack", auth, basic(testAuthPlaceholder), 200, swapped},
-		{"a fetch", r, "POST", "/octo/allowed.git/git-upload-pack", auth, basic(testAuthPlaceholder), 200, swapped},
-		{"a push", r, "POST", "/octo/allowed.git/git-receive-pack", auth, basic(testAuthPlaceholder), 200, swapped},
-		{"the repository itself, without .git", r, "GET", "/octo/allowed", auth, basic(testAuthPlaceholder), 200, swapped},
+		{"a clone's refs within the repository", r, "GET", "/octo/allowed.git/info/refs?service=git-upload-pack", auth, basic(testAuthPlaceholder), 200, swapped}, {"a fetch", r, "POST", "/octo/allowed.git/git-upload-pack", auth, basic(testAuthPlaceholder), 200, swapped},
+		{"a push", r, "POST", "/octo/allowed.git/git-receive-pack", auth, basic(testAuthPlaceholder), 200, swapped}, {"the repository itself, without .git", r, "GET", "/octo/allowed", auth, basic(testAuthPlaceholder), 200, swapped},
 		{"a bearer within the repository", r, "GET", "/octo/allowed.git/info/refs?service=git-receive-pack", auth, "Bearer " + testAuthPlaceholder, 200, r + "  auth=Bearer real-secret"},
 		{"a user's own token within the repository", r, "GET", "/octo/allowed.git/info/refs", auth, basic("user-key"), 200, r + "  auth=" + basic("user-key")},
-		{"another repository", r, "GET", "/octo/other.git/info/refs", auth, basic(testAuthPlaceholder), 403, ""},
-		{"a push to another repository", r, "POST", "/octo/other.git/git-receive-pack", auth, basic(testAuthPlaceholder), 403, ""},
-		{"another owner", r, "GET", "/other/allowed.git/info/refs", auth, basic(testAuthPlaceholder), 403, ""},
-		{"a longer name", r, "GET", "/octo/allowed-x.git/info/refs", auth, basic(testAuthPlaceholder), 403, ""},
-		{"a longer suffix", r, "GET", "/octo/allowed.git-x/info/refs", auth, basic(testAuthPlaceholder), 403, ""},
-		{"another letter case", r, "GET", "/Octo/Allowed.git/info/refs", auth, basic(testAuthPlaceholder), 403, ""},
-		{"dot segments leading out of the repository", r, "GET", "/octo/allowed.git/../other.git/info/refs", auth, basic(testAuthPlaceholder), 403, ""},
-		{"an encoded slash out of the repository", r, "GET", "/octo/allowed.git%2F..%2Fother.git/info/refs", auth, basic(testAuthPlaceholder), 403, ""},
-		{"a doubled slash", r, "GET", "//octo/allowed.git/info/refs", auth, basic(testAuthPlaceholder), 403, ""},
-		{"a bearer to another repository", r, "GET", "/octo/other.git/git-upload-pack", auth, "Bearer " + testAuthPlaceholder, 403, ""},
+		{"another repository", r, "GET", "/octo/other.git/info/refs", auth, basic(testAuthPlaceholder), 403, ""}, {"a push to another repository", r, "POST", "/octo/other.git/git-receive-pack", auth, basic(testAuthPlaceholder), 403, ""},
+		{"another owner", r, "GET", "/other/allowed.git/info/refs", auth, basic(testAuthPlaceholder), 403, ""}, {"a longer name", r, "GET", "/octo/allowed-x.git/info/refs", auth, basic(testAuthPlaceholder), 403, ""},
+		{"a longer suffix", r, "GET", "/octo/allowed.git-x/info/refs", auth, basic(testAuthPlaceholder), 403, ""}, {"another letter case", r, "GET", "/Octo/Allowed.git/info/refs", auth, basic(testAuthPlaceholder), 403, ""},
+		{"dot segments leading out of the repository", r, "GET", "/octo/allowed.git/../other.git/info/refs", auth, basic(testAuthPlaceholder), 403, ""}, {"an encoded slash out of the repository", r, "GET", "/octo/allowed.git%2F..%2Fother.git/info/refs", auth, basic(testAuthPlaceholder), 403, ""},
+		{"a doubled slash", r, "GET", "//octo/allowed.git/info/refs", auth, basic(testAuthPlaceholder), 403, ""}, {"a bearer to another repository", r, "GET", "/octo/other.git/git-upload-pack", auth, "Bearer " + testAuthPlaceholder, 403, ""},
 	}
 	refused, swaps := map[string]uint64{}, 0
 	for _, tc := range cases {
@@ -457,9 +420,7 @@ func TestTerminateNarrowedRule(t *testing.T) {
 	}
 }
 
-// TestPlaceholderForm: the three forms a placeholder is swapped in rebuild around the real value; a Basic value is a pair, the placeholder its whole password,
-// strictly encoded and bounded; anything else is not swapped.
-func TestPlaceholderForm(t *testing.T) {
+func TestPlaceholderForm(t *testing.T) { // the three forms a placeholder is swapped in rebuild around the real value; a Basic value is a pair, the placeholder its whole password, strictly encoded and bounded; anything else is not swapped
 	t.Parallel()
 	b64 := base64.StdEncoding.EncodeToString
 	cases := []struct {
@@ -508,9 +469,7 @@ func TestNewPlaceholderIsFreshAndParses(t *testing.T) {
 	}
 }
 
-// TestTerminateRefusesTraceAndConnect: TRACE could echo the swapped key and CONNECT tunnels past the rewrite, so both get 405 before the swap; a GET still
-// reaches the upstream. Drop the method check → the broker is asked and the request goes upstream → FAIL.
-func TestTerminateRefusesTraceAndConnect(t *testing.T) {
+func TestTerminateRefusesTraceAndConnect(t *testing.T) { // TRACE could echo the swapped key and CONNECT tunnels past the rewrite, so both get 405 before the swap; a GET still reaches the upstream. Drop the method check → the broker is asked and the request goes upstream → FAIL.
 	t.Parallel()
 	broker := &fakeBroker{value: "real-secret"}
 	addr, ca, p, log := terminateFixture(t, broker)
@@ -530,9 +489,7 @@ func TestTerminateRefusesTraceAndConnect(t *testing.T) {
 	}
 }
 
-// FuzzCarriesPlaceholder: a placeholder in any case in a header name, a header value, a Basic value decoded or the raw target must be caught, and a swap form
-// must rebuild the exact value it matched.
-func FuzzCarriesPlaceholder(f *testing.F) {
+func FuzzCarriesPlaceholder(f *testing.F) { // a placeholder in any case in a header name, a header value, a Basic value decoded or the raw target must be caught, and a swap form must rebuild the exact value it matched
 	f.Add("X-Api-Key", "Bearer "+testPlaceholder, "/v1?key=%77cph-0123456789abcdef0123456789abcdef")
 	f.Add("X-"+strings.ToUpper(testPlaceholder), "v", "/")
 	f.Add("Authorization", basic(testPlaceholder), "/octo/allowed.git/info/refs")
