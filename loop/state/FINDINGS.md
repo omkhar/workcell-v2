@@ -7373,3 +7373,256 @@ what it does read: this fix ends the listing of separators, not that limit.
 Sweep 3 now stands at ten mediums (C65, C66, C67, C68, C69, C71, C72, C73, C74 and C75, all fixed) and two
 lows (C64 and C70, both fixed), and no unconfirmed candidate is left as a unit. No fix unit is open; the next
 candidate number is C76 and the next fix unit S-F60.
+
+## S-1008, sweep 3: workspace export in both modes, and the return path (I1, I8), as built at main 3972242
+
+Sweep 3 (S8), the last the SPEC allows, fresh context (S3), the whole surface read in full as built after S-F1
+to S-F59, not a diff, at the claim commit 4bf6399. The unit line still carries its sweep-1 text (copy four parked
+tests for C17 to C20 and run no auditor); those tests are in place, S-F10 to S-F13 are done and escape/_pending/
+did not exist, so this run took the other branch of the line's accept and did the audit again as S-1002 says,
+as sweep 2 did and as S-1017's record asked. One auditor run on the top tier, finished without a stop: no
+model declined and no safeguard re-ran a request. No hypervisor in the cloud session; every probe ran by go
+test -overlay against the real fileserve.Server over the package's own harness pipe, from a scratch directory
+outside the repository, and every target was an in-process pipe or a file under the test's own temp directory
+(S12, T8). The auditor wrote its own trust boundary before it opened any earlier record. No file of this surface
+carries `// Ported from v1` (only internal/proxy, internal/secret and internal/audit/lines.go do), so no record
+here has a v1 line, and nothing is someone else's project (S14).
+
+Trust boundary. Export (clone): the attacker's bytes are the host directory tree at the working directory, as
+a malicious repository, a previous mount guest or a previous pull left it: names, link targets, link topology,
+sizes, modes, types, depth and count. They enter at workspace.Export (a descriptor walk, Fstatat and Openat with
+NOFOLLOW, Readlinkat, hard links by device and inode) and rootfs.Tree and WriteExt4File, with openSource opening
+each file again beneath the export's one descriptor and checking device, inode, size and S_IFREG. Authority:
+the operator's uid reads every file beneath the directory and writes one new 0600 image under the session's data
+directory. It trusts named() for the directory's identity (C61), holds() for no workcell directory and no mount point
+beneath it (C19, C52, C65), and the image's apparent size plus its inode count as the pull's later bound. Mount
+(--mount, Linux only): the attacker's bytes are every byte of every FUSE frame on the one vsock 5002 stream;
+guest root writes them directly, so the kernel's grammar is no bound. They enter at wire.Conn, fileserve.parse
+and op. Authority: the operator's uid runs openat, mkdirat, symlinkat, unlinkat, renameat, pwrite, ftruncate,
+fchmod and utimensat relative to directory descriptors beneath the export. It trusts single-component names,
+at()'s re-check of the chain by device and inode, the life lock against reused descriptors and half-moved nodes,
+single() against a file with a name outside (C41), and the caps maxFDs, maxNodes, grown and the frame pace. Return
+path (pull, diff): the attacker's bytes are every Entry, Data and Exit frame from the pull VM's init, which
+mounts an image the attacker wrote, so A1 applies there too. They enter at fetch in pull_vm.go, pulled.frame,
+guest.DecodeEntry, manifest.add, checkPath and fold, then write and put or compare and sameBytes. Authority:
+the operator's uid creates, unlinks, links and writes beneath the destination descriptor through openat2 with
+RESOLVE_BENEATH, RESOLVE_NO_SYMLINKS and RESOLVE_NO_XDEV (Linux) or O_NOFOLLOW_ANY (macOS), one component at
+a time, refusing a component that is its directory's .git by inode before and after the create. It trusts the
+manifest's byte cap (image size plus inodes times 4096), holds(dest), the TMPDIR rule, named() and the session
+lock. Concurrent actors on the host are only the operator's other sessions; a running mount guest controls its
+export wholly, so a pull or an export that races it in the same tree gains the guest nothing it lacks. What no
+code judged, before the records were read: the work one FUSE frame may ask of the host (the depth of the chain,
+the width of a directory page), and allocation against length where growth is charged. Both became candidates.
+
+Lenses (S9). Parsing and resources: parse() walked per opcode against the 7.37 layouts, every index guarded
+(fixed(n), the length equations of write and batch_forget, split's NUL rule) and held by FuzzRequest; readdir's
+decoding of getdents checks reclen against 19 and len(b); DecodeEntry, DecodeExit and wire.ReadFrame the same,
+with FuzzDecode, FuzzPath and FuzzReadFrame (seed corpora only here). Memory is bounded: 64 KiB frames, 16 workers,
+maxNodes 2^17, maxFDs 4096, handles within maxFDs, the pull's one million entries and 64 MiB of names. CPU: the
+pace of S-F47 bounds frames at 16000 a second on a model of 10 us a frame, and the measured cost of a frame runs
+from 25 us to 3.15 ms: C76. Disk: grown charges growth of length and a block per entry (C17, C18 and C57 fixed)
+and nothing for a write into a hole of a file that was sparse before the session: C77. The export refuses above
+32 GiB, 8.4 million entries or 65000 links, names above 255 and targets above 4095 bytes. Logic and state: put()
+traced again for every ordering (a link and then a path through it is ELOOP, a non-empty directory where a file is
+wanted is ENOTEMPTY, a host link where a directory is wanted is unlinked and never followed, the same path twice
+meets the fold map, .git as any component or by inode meets isGit before and after the create, no setuid bit,
+no parent made that was not an entry); the manifest is judged before any byte is written, and Data before the
+manifest's end, a Data frame of no bytes, an early Exit and bytes past the last file are each errors; fileserve
+answers EIO before INIT and after DESTROY, EPROTO for another major, ENOSYS for LINK, MKNOD, RENAME2, xattrs and
+fallocate, masks modes to 0o777, never reuses a node id or a handle, and serves a file of several names read-only
+(C41); the export leaves out a socket, FIFO or device and copies a link as a link. Concurrency and check-to-use:
+the life lock is read-held by every request that uses a descriptor and write-held by FORGET, RELEASE, RENAME and
+Close; at() checks every link of the chain again; a worker blocked in send ends at the 5 s deadline; against a
+concurrent mount guest openSource's check of device, inode and size refuses any file but the one the walk saw,
+so the bytes copied are always of a file that had a name inside the export; the C61 window stays closed by
+`.` and the one descriptor; what C76 adds here is that 16 workers on one guest's requests are the only bound on
+parallelism and nothing pins them to --cpus. Cryptography and identity: none by design; identity is device and inode
+at the moment of use, node ids are the host's and monotonic, and once{} refuses a second connection to 5000 and
+5002. Failure modes: no path fails open; a pull error exits after writing nothing or the documented partial tree;
+a failed export removes the image and the session directory; fileserve maps an unknown error to EIO, ends Serve
+on any stream error and releases every descriptor; a failed FUSE mount in the guest leaves an empty /workspace;
+holds() refuses nothing where /proc/self/mountinfo cannot be read (macOS, as recorded). Downgrade, rollback and
+replay: wire version 1 only; the FUSE minor is negotiated down on fixed layouts, so a shorter struct is EINVAL;
+INIT twice is EIO; a pull is one shot, a frame out of place is a stream error, and pulling a session twice gives
+the same tree. Interaction between surfaces: the file service shares the supervisor process with the proxy, the
+resolver and the audit log (A9), and its workers are not under the pin of S-F3, so C76's CPU is taken from them
+and from every other session of the host; the export carries the repository's workcell.toml, which only narrows
+(I13); a mount guest may leave a workcell.toml, a link or a directory under that name for the next session,
+each a narrowing or an ignored file; C56 and C65 stand with their tests green.
+
+Parked leads of this surface, tried again, by the lines of PARKED.md on main at 3972242. Unchanged, no VM or no
+Mac here: 17 (the mount dotdot and link-rename rows resolve in the guest kernel), 18 (fallocate, LINK and MKNOD
+are ENOSYS, a tmpfs rename is EXDEV), 20 and 21 (os.Root; NFC against NFD on APFS), 66 (the VM rows of C17 and
+C18, not written), 67 (its maxFDs note is eased by Go raising the soft RLIMIT_NOFILE to the hard one at start),
+86 and 87, 120 and 121 (C41's refusal by Nlink stands), 126, 162, 163, 166 to 170, 185, 188 and 193. Line 124
+(compare blocking on a FIFO): the walk skips a FIFO by Fstatat before any open, so only a host actor can place
+one after the walk. Line 164 (C56 variants): diff's walk never opens a socket or a FIFO, so it cannot block
+on a running session's sockets; the other two variants unchanged. Line 165 (C57, a deep path charged for its
+last component only): answered, the pull makes no directory that was not an entry, so each component is sent
+and charged. Lines 189 and 190 (C64, S-F47): the pace holds the rate of requests near 16000 a second as those
+lines reasoned; what it does not hold is the cost of one request, which is C76.
+
+Coverage. Read in full: internal/workspace (workspace.go and its three tests); internal/fileserve (codec.go,
+ops_linux.go, serve_linux.go, the harness, bounds, adversarial, codec, c17, c18 and c41 tests); internal/rootfs
+(ext4.go, ext4file.go, tree.go, build.go, layer.go and the ext4, ext4file and tree tests); internal/guest
+(guest.go, trust.go, walk.go, guest_test.go); internal/wire; internal/vmm (vmm.go, firecracker/firecracker.go,
+firecracker/mount_test.go, vz/vz.go); internal/policy/policy.go; cmd/workcell (pull.go, pull_vm.go, pull_linux.go,
+pull_darwin.go, run_vm.go, data.go, mount_linux.go, mount_darwin.go, session.go, policy.go, layer.go, main.go, the
+two backend files, run_other.go, caps.go, cache.go, cache_vm.go, relay.go, term_vm.go, bench_vm.go, explain.go,
+and the pull, pull_vm, c44, c56, c57, c61 and c65 tests); cmd/workcell-init (pull.go, mount.go, main.go,
+root.go, exec.go, net.go, root_test.go); cmd/mkimage/main.go; escape/suite (files.go, files_linux.go, gitdir.go,
+repo.go, tests.go, floods.go, floods_linux.go, channel_linux.go, suite.go); escape/sandbox (workcell_vm.go,
+workcell_linux.go, workcell.go, sandbox.go); docs/adr/005-mount-mode.md; PARKED.md whole; the earlier records
+of this surface in this file (S-1008 of sweeps 1 and 2, S-1016c, C64 and S-1003 of sweep 3). By grep: New,
+Recorder, Serve and Deny of internal/proxy/proxy.go; Note, Record and append of internal/audit/audit.go; fuseFlood,
+frameFlood and interrupt of escape/suite/channel.go; the workspace-cap arm of firecracker/run_test.go. Not opened:
+internal/rootfs/oci.go and its tests (the artifact surface); internal/guest/trust_test.go and c31_test.go;
+log.go, ocsf.go and update.go of cmd/workcell and its other tests; cmd/mkimage/main_test.go; the other tests
+of internal/vmm; the rest of escape/suite and escape/sandbox, and escape/cmd; docs other than ADR-005. Ran:
+go test -count=1 of internal/fileserve, internal/workspace, internal/rootfs, internal/guest, internal/wire,
+cmd/workcell and cmd/workcell-init on the unchanged tree, all ok, and the overlay probes. Not run: any VM row,
+the escape suite, any macOS path, the fuzz targets beyond their seed corpora, any arm that needs root.
+
+### S-1008 candidates, sweep 3
+
+C76. ID I10 ("The guest cannot exhaust host CPU, memory, disk, file descriptors, processes or log volume"), host
+CPU in mount mode, the class of C64 with the bound C64's fix did not set; A1 in that the pace of S-F47 holds only
+for requests of the cost an honest kernel's usual ones have. Attacker: root in the guest of a --mount session,
+by hostile model output or a hook of a malicious repository. The chain shape needs no raw frames and no root:
+any guest process can mkdir and chdir a few hundred levels and stat there from several threads. The page shape
+at 61440 bytes needs the init's 5002 socket, taken as fuseFlood takes it. Precondition it does not control:
+the operator chose --mount (A5), nothing else. Where: internal/fileserve/serve_linux.go: loc() copies the whole
+ancestor chain of a node under s.mu, one link per level, and at() makes one Fstatat per link on every request
+that names a node; ops_linux.go: readdir() makes per entry of a page an Fstatat and, for READDIRPLUS, child(),
+which for a directory entry is an openat, an fstat and a close even when the node is in the table; rename()
+walks the chain under s.mu too; Serve paces frames, paceFrames per paceEvery (16000 a second), and hands them
+to 16 workers that nothing pins. No code bounds the depth of the tree served or the work one frame may ask for;
+the pin of S-F3 covers Firecracker's threads and not the supervisor's goroutines, and the proxy and the audit log
+share that process (A9). Not ported. Input: (a) MKDIR d and LOOKUP d repeated to a depth of hundreds or thousands
+(each level holds one host descriptor, maxFDs 4096 is the only bound, and the chain stays pinned because children
+keep parents), then GETATTR of the deepest node, or LOOKUP of missing names under it, from 16 or more guest
+threads or as raw frames with the replies drained; (b) a directory of some thousand subdirectories, OPENDIR, then
+READDIRPLUS(fh, offset 0, size 61440) repeated over 16 handles. Effect claimed: one request costs the host 3.15
+ms of CPU at depth 3900 (126 times the 25 us at the root), 1.59 ms for a LOOKUP of a missing name at depth 2000,
+1.35 ms for one READDIRPLUS page of 384 entries and 0.84 ms for a READDIR page of 1920; the 16 workers then run
+flat out below the pace: a flood of 4096 GETATTRs on the deep node took 3.62 of the session's 4 cores at 1030
+requests a second, a READDIRPLUS flood 2.90 cores at 1023 a second, against the allowance of one vCPU plus a
+second that cpuJudge gives (C64 failed that judge at 5.3 CPU seconds in 3.4 s). The bound is the lesser of 16
+and the host's cores: the whole machine on a 4-core runner and on most developer hosts. Auditor's evidence:
+two probes by go test -overlay on the package's own harness, their lines above; the CPU figures include the
+harness's own goroutine, which a flood at the root bounds at 0.43 cores in all. Severity claimed: high by the
+precedent of C17 and C18, medium if --mount is read as a precondition under S6, as C64's verifier read it.
+
+Reproducing test: TestC76WorkOfOneFrame, package fileserve, 67 lines, escape/_pending/S-F60/c76_test.go, written
+by the redteam from the claim alone on the package's harness. Two arms, each a flood of one second from a sender
+goroutine, ended by a STATFS as marker and drained, and each fails when this process's CPU over wall for the flood
+is above 1.5 cores, so that any shape of fix passes: (a) a chain of 300 MKDIRs, then GETATTR of the bottom node;
+(b) 512 subdirectories, 16 OPENDIRs, then READDIRPLUS(offset 0, MaxWrite) over the handles in turn. The depth is
+300 and not thousands because a pace that counts work would make the building of the chain cost the square of
+its depth, and TestDeepChain already wants 300 admitted; on main the redteam saw the same ratio at depths 300,
+1000, 2000 and 4000 (3.3 to 3.6 cores). The redteam's caveat: a flood of cheap frames at the full pace costs this
+in-process test 0.6 cores plain and 1.6 to 1.75 under -race, harness included, so a depth cap alone that leaves
+16000 frames a second of 60 us each would still fail it. Also seen by the redteam: a plain READDIR flood over
+a directory of 2000 entries on 16 handles took 3.2 cores, so the frame count as the pace's unit is the common
+cause, not the per-entry stats alone.
+
+The orchestrator's run, go test -overlay on main's package at db0dba3, 4 cores: plain, arm (a) "15913 frames under
+the pace took 3.53 host cores (3.529525s CPU in 1.00075632s), want at most 1.5" and arm (b) "916 frames under the
+pace took 2.65 host cores"; under -race 3.71 cores for 10339 frames and 2.29 for 243. go test ./internal/fileserve/
+is green without the overlay.
+
+Verifier: fresh context, the claim, the test and the two logs, no one's reasoning. CONFIRMED, high (medium only
+if --mount is read as a precondition under S6), after C17 and C18 and not after C64 and C51. It ran the test as
+given (3.41 and 2.71 cores) and then took the harness out of the measure: its own probe, outside the repository,
+runs the unchanged Open and Serve in a child process over a unix socketpair and reads the child's CPU from /proc,
+so the sender and the reader of replies, which are a real guest's own vCPU, are not counted. The server alone:
+GETATTR at depth 0 costs 0.19 cores at 16009 frames a second (the sixth of a core that the comment on the pace
+promises), 0.30 at depth 10, 1.47 at depth 100 and 3.21 at depth 300 (6.49 s of CPU in 2.02 s at 14715 a second,
+the harness 0.25); READDIRPLUS of 512 directories at MaxWrite 2.54 cores at 975 a second. So what breaks is the
+pace's assumption of 10 us a request, not the harness. The attacker has no power it lacks in a session: guest
+root writing whole frames on the init's 5002 stream is the precedent of C17 and C64 and ADR-005's own words,
+the inputs are 300 MKDIRs (TestDeepChain shows the service serves that chain), 512 MKDIRs and 16 OPENDIRs,
+and the flood needs 15000 frames of 54 bytes a second, where the real-VM row mount-cpu-flood showed a guest
+of one vCPU writing 2.75 million frames in 3 s. Nothing else bounds it: only the Firecracker child is pinned
+(internal/vmm/firecracker/firecracker.go), serveMount runs in unpinned goroutines of the supervisor at the default
+GOMAXPROCS, with no cgroup and no rlimit, so the bound is 16 workers and the reader, the whole host on any machine
+of up to 17 cores. C64 and C51 were low because their overrun was bounded near one core by short workers; here
+the workers are long, and the server's 3.2 cores plus the guest's one fill the hosted 4-core runner, about three
+times what the judge of mount-cpu-flood allows. Facts it added: a plain READDIR of the 512-entry directory at
+MaxWrite costs the server 2.47 cores at 8800 frames a second; READDIRPLUS at the 4096-byte page that the guest
+kernel itself asks for costs 2.79 cores at 11588 a second, so the kernel's page size is no mitigation and an `ls`
+loop through the kernel drives the same cost; READDIRPLUS of 512 regular files costs 2.58 cores, so child()'s
+work in the node table and the Fstatat per entry carry the cost and not the open of a directory alone; the cost
+is linear in depth, and a chain of 100 alone passes one core.
+
+Verdict: C76 CONFIRMED, high (S6; I10, guest root in a --mount session, no precondition beyond the operator's
+--mount, as C17 and C18 were graded). Fix unit S-F60. No VM ran: the evidence is Go-level on the real Server,
+in process and in a child process, and a real-VM row is left to the fix unit where test lines allow.
+
+C77. ID I10, host disk in mount mode: the cap that --disk sets and the row mount-disk-flood enforces, the class
+of C17 and C18 with one gap left in the charge by length. Attacker: root in the guest of a --mount session,
+through the ordinary kernel path (dd conv=notrunc, or any write into a file at an offset below its length); no raw
+frames. Precondition it does not control: a sparse file lies in the exported tree before the session, the operator's
+own (a VM image, a database file, a download in progress, a truncate -s). Where: internal/fileserve/serve_linux.go,
+grow(): it charges the end of a write less the file's size, so a write at an offset below the length is free;
+opWrite in ops_linux.go calls it before the pwrite, and TestGrowthCap's own words are "Writes in place are
+free". The model of cost is the file's length; the host pays in blocks. Not ported. Input: a file of 256 MiB
+made by truncate before the open (one block on disk); INIT, LOOKUP, OPEN O_WRONLY, then WRITE(offset i MiB,
+60000 bytes) for i from 0 to 39 against a cap of 100000; FSYNC. Effect claimed: every write is accepted, none is
+ENOSPC, and the host's blocks for the file grow by 2,461,696 bytes against a cap of 100,000; scaled, the guest
+fills every hole of every sparse file in the tree, to the full apparent size of the operator's sparse files,
+beyond --disk. The guest's own sparse files are paid for (a SETATTR or a write that sets a length is charged in
+full), so only holes that were there before are free; a sparse file that an earlier mount session's guest left,
+charged at that session's cap, is filled free by the next, about twice the cap a session. Auditor's evidence: a
+probe by go test -overlay, "40 writes of 60000 bytes into holes accepted, 0 ENOSPC; host blocks grew by 2461696
+bytes against a cap of 100000", with TestGrowthCap, TestGrowthCapAppend and TestGrowthCapEntries passing on the
+same tree. Severity claimed: medium by S6, a shown break with a precondition the attacker does not control.
+
+Reproducing test: TestC77WritesIntoHoles, package fileserve, 52 lines, escape/_pending/S-F61/c77_test.go, written
+by the redteam from the claim alone on the package's harness. The host side makes export/sparse as an empty file
+truncated to 256 MiB, and the test skips, naming the count of blocks, where the temp directory's filesystem
+stores no holes; then a cap of 100000, LOOKUP, OPEN O_WRONLY, 40 WRITEs of 60000 bytes one megabyte apart, an
+FSYNC through the service, and it fails when the growth of st.Blocks times 512 is above the cap plus two blocks,
+by blocks alone, so that a fix may answer any errno. Also noted by the redteam, not tested: the same free write
+holds for any file whose blocks are fewer than its length, such as reflinked or compressed extents.
+
+The orchestrator's run, go test -overlay on main's package at db0dba3, plain and under -race alike: "I10: the
+host's blocks for the sparse file grew by 2461696 bytes against a growth cap of 100000, with 40 of 40 writes of
+60000 bytes into its holes accepted".
+
+Verifier: fresh context, the claim, the test and the two logs, no one's reasoning. CONFIRMED, and by its evidence
+high, not the medium claimed. It ran the test through an overlay of its own with TestGrowthCap beside it:
+TestGrowthCap passes and TestC77WritesIntoHoles fails with the line above, plain and under -race. The effect is
+judged by st.Blocks, real allocation. The cause it read in the code: grow charges the end less st.Size and charge
+returns 0 for nothing or less, so opWrite charges nothing for any write that ends below the length. No power
+the attacker lacks: INIT, LOOKUP, OPEN O_WRONLY and a WRITE below the length are the frames a guest kernel's
+FUSE client sends for dd conv=notrunc seek=N or a pwrite into an existing file, and the cap is the product's,
+since startCapped calls fileserve.Open(export, limit) as openMount in cmd/workcell/mount_linux.go does with
+limits.disk(). Not intended: the comment on the charge in serve_linux.go promises that "the host loses at most
+limit however the guest mixes them", caps.go says --disk "is how many bytes the guest may write in all", and no
+page (ADR-005, docs/policy.md, the explain text) exempts writes in place or names sparse files; TestGrowthCap's
+free overwrite is of a dense file, which costs the host nothing; the judge of mount-disk-flood measures apparent
+size and free disk against the probe's own writes and never meets a hole that was there before. The precondition:
+the attacker can supply it. A checkout by git 2.43 streams a blob and seeks over runs of zeros, so a repository
+with a blob of 256 MiB of zeros and one other byte (a pack of 1.4 MB) was checked out with 40 blocks, 20 KiB,
+for 268435456 bytes of length. A malicious repository (SPEC section 2) plants the hole at no cost to itself,
+so S6's precondition the attacker does not control does not apply. Facts it added: within one session the guest
+cannot make a hole for free (SETATTR of a size is charged by apparent size and FALLOCATE is ENOSYS); across two
+sessions it can truncate a file to --disk in the first, charged and with no blocks, and fill it free in the second,
+twice the cap for that session though the sum of the two caps in all; the row mount-disk-flood cannot see this,
+so the Go test is the place for the regression, as for C17 and C18; the test skips where the filesystem stores
+no holes, and /tmp here is ext4.
+
+The orchestrator's probe of that fact, outside the repository: a repository with one file of 64 MiB of zeros,
+cloned locally by git 2.43.0, has that file at 131072 blocks in the source tree and at 8 blocks in the clone's
+working tree.
+
+Verdict: C77 CONFIRMED, high (S6; I10, guest root in a --mount session with a malicious repository, no precondition
+the attacker does not control, as C17 and C18 were graded; the auditor and the redteam held medium for want of
+the checkout fact). Fix unit S-F61.
+
+Sweep 3 now stands at two highs (C76 and C77, both open, fix units S-F60 and S-F61), ten mediums (C65, C66, C67,
+C68, C69, C71, C72, C73, C74 and C75, all fixed) and two lows (C64 and C70, both fixed). The two parked tests
+cost 119 test lines, paid by 125 layout folds in test files, 112 of them in internal/fileserve, with no test,
+row, arm or assertion removed (test 28494 of 28500, product 15000 of 15000). The next candidate number is C78
+and the next fix unit S-F62.
