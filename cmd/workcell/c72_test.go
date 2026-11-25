@@ -15,9 +15,7 @@ import (
 	"testing"
 )
 
-// TestC72SecretPathInsideAnOptionWord (I5): loadPolicy judges a word of a cmd: source against cwd only when the whole word is an absolute path, so the key file under cwd passes when its path is spelled inside an option word, where the same path as a
-// bare word is refused (the control arm, which main passes). The session then goes past the export: in clone mode the image the guest gets as /workspace holds the key, under --mount cwd is served live. Precondition the attacker does not control: the
-// operator's row spells the path that way. The VMM is a dummy, as in C54: a session not refused fails at boot, after the export. The program reads the file under either spelling, but is never run here: the broker would run it per use.
+// TestC72SecretPathInsideAnOptionWord (I5): loadPolicy judges a word of a cmd: source against cwd only when the whole word is an absolute path, so the key file under cwd passes when its path is spelled inside an option word, where the same path as a bare word is refused (the control arm, which main passes). The session then goes past the export: in clone mode the image the guest gets as /workspace holds the key, under --mount cwd is served live. Precondition the attacker does not control: the operator's row spells the path that way. The VMM is a dummy, as in C54: a session not refused fails at boot, after the export. The program reads the file under either spelling, but is never run here: the broker would run it per use.
 func TestC72SecretPathInsideAnOptionWord(t *testing.T) {
 	const key = "sk-ant-c72-real-key-0123456789"
 	for _, tc := range []struct {
