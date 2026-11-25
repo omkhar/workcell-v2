@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Omkhar Arasaratnam
 
-// Finding C76 of S-1008 (I10). Fix unit S-F60 first moves this file to internal/fileserve/c76_test.go, as this comment says; the harness is Linux only, so the build constraint below stays.
+// Finding C76 of S-1008 (I10), fixed by S-F60. The harness is Linux only, so the build constraint stays.
 
 //go:build linux
 
