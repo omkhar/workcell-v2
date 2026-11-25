@@ -116,13 +116,13 @@ func cgiName(n string) string { return strings.ReplaceAll(strings.ToLower(n), "-
 // overrides are the routing overrides a framework honours instead of the request line, as cgiName spells them: the method from the first three as a header on a POST (Rack::MethodOverride, ASP.NET MVC, Google's API front end) and from the first or the last as a query parameter (ASP.NET MVC, Spring, Symfony), the path from the others (IIS URL Rewrite, Symfony HttpFoundation). A rule that narrows refuses a request carrying any of them as a header or a query parameter (C68).
 var overrides = []string{"x_http_method_override", "x_http_method", "x_method_override", "x_original_url", "x_rewrite_url", "_method"}
 
-// admits reports whether the rule swaps on the request req: the rule's method when it names one, and a path under its prefix, or within one of its repositories, when it names either, and then none of overrides named by a header or a query parameter, with any value or none. A rule that names a method also refuses a body a framework reads as a form, since a form field moves the method as a header or a parameter does (C71): a media type of application/x-www-form-urlencoded or multipart/*, or a Content-Type missing or unparsed, which Rack reads as a form on a POST. The path is judged as sent and under both folds (see fold), so that neither an encoded slash, a backslash, a ;param nor ".." leads out from under the prefix on any reading.
+// admits reports whether the rule swaps on the request req: the rule's method when it names one, and a path under its prefix, or within one of its repositories, when it names either, and then none of overrides named by a header or a query parameter, with any value or none. A rule that names a method also refuses a body a framework reads as a form (C71) or as JSON (C73), since a field there moves the method as a header or a parameter does: a media type of application/x-www-form-urlencoded or multipart/*, a Content-Type missing or unparsed, which Rack reads as a form on a POST, or "json" anywhere in any Content-Type value, in any letter case, since Laravel reads the raw header for "/json" or "+json" and not the parsed type, and a server may join a second value onto the first. The path is judged as sent and under both folds (see fold), so that neither an encoded slash, a backslash, a ;param nor ".." leads out from under the prefix on any reading.
 func (r TerminateRule) admits(req *http.Request) bool {
 	params, _ := url.ParseQuery(strings.ReplaceAll(req.URL.RawQuery, ";", "&")) // the parameter names as they decode; a pair holding ";" would otherwise be dropped unjudged, though a framework reads it
 	names := slices.AppendSeq(slices.Collect(maps.Keys(req.Header)), maps.Keys(params))
 	mediaType, _, err := mime.ParseMediaType(req.Header.Get("Content-Type"))
-	form := req.Body != http.NoBody && (err != nil || mediaType == formType || strings.HasPrefix(mediaType, "multipart/")) // the server hands a request with no body NoBody, so a GET or a Content-Length: 0 POST needs no Content-Type
-	if r.Method != "" && (req.Method != r.Method || form) || (r.Method != "" || r.Path != "" || len(r.Repos) > 0) && slices.ContainsFunc(names, func(n string) bool { return slices.Contains(overrides, cgiName(n)) }) {
+	readable := req.Body != http.NoBody && (err != nil || mediaType == formType || strings.HasPrefix(mediaType, "multipart/") || strings.Contains(strings.ToLower(strings.Join(req.Header.Values("Content-Type"), ",")), "json")) // a body a framework reads fields from; the server hands a request with no body NoBody, so a GET or a Content-Length: 0 POST needs no Content-Type
+	if r.Method != "" && (req.Method != r.Method || readable) || (r.Method != "" || r.Path != "" || len(r.Repos) > 0) && slices.ContainsFunc(names, func(n string) bool { return slices.Contains(overrides, cgiName(n)) }) {
 		return false
 	}
 	sent := req.URL.EscapedPath()
@@ -348,7 +348,7 @@ func sameHost(host, sni, port string) bool {
 	return (!hasPort || p == "443" || p == port) && strings.TrimSuffix(name, ".") == sni
 }
 
-// serveTerminated terminates TLS for host with a session leaf and proxies HTTP/1.1 requests to the real host, swapping the placeholder headers. It refuses a request that names another host than the SNI did (I6), one that sends a placeholder outside the method and path its rule binds it to, with a routing override beside it or, under a method rule, in a form body (I5), and one that still carries a placeholder after the swap.
+// serveTerminated terminates TLS for host with a session leaf and proxies HTTP/1.1 requests to the real host, swapping the placeholder headers. It refuses a request that names another host than the SNI did (I6), one that sends a placeholder outside the method and path its rule binds it to, with a routing override beside it or, under a method rule, in a form or JSON body (I5), and one that still carries a placeholder after the swap.
 func (p *Proxy) serveTerminated(client net.Conn, host string, replay []byte) {
 	rules := p.terminate[host]
 	tlsConn := tls.Server(&replayConn{Conn: client, r: io.MultiReader(bytes.NewReader(replay), client)}, &tls.Config{
@@ -404,7 +404,7 @@ func (p *Proxy) serveTerminated(client net.Conn, host string, replay []byte) {
 					case len(rule.Repos) > 0:
 						scope = "repositories " + strings.Join(rule.Repos, ", ")
 					case rule.Method != "":
-						scope += ", with no form body"
+						scope += ", with no form or JSON body"
 					}
 					p.Deny(host, tlsPort, "binding_mismatch")
 					http.Error(w, "the credential in "+rule.Header+" is bound to "+scope, http.StatusForbidden)
