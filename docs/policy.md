@@ -38,12 +38,12 @@ that one TCP port as it is. IP addresses are refused. With no entry, the guest h
 - `method` and `path` narrow the swap to requests with that method, under that path prefix. Any other
   request gets a 403, and the value is not read; so does one carrying a method or path override such as
   `X-HTTP-Method-Override` or `_method` as a header or query parameter, in any spelling a server folds
-  to it (letter case, `-` or `.` for `_`). A `method` rule also refuses a request whose body a web
-  framework could read the method from: `application/x-www-form-urlencoded`, any `multipart/*`, a body
-  with no readable `Content-Type`, one whose `Content-Type` holds `json` in any letter case, or any body
-  sent beside a second spelling of that header, such as `Content_Type`, which some servers read instead.
-  The body itself is never read. So `method` suits requests without a body; for an API that takes JSON,
-  narrow with `path` alone.
+  to it (letter case, leading spaces, a NUL ending the name, `-`, `.` or a space for `_`). A `method`
+  rule also refuses a request whose body a web framework could read the method from:
+  `application/x-www-form-urlencoded`, any `multipart/*`, a body with no readable `Content-Type`, one
+  whose `Content-Type` holds `json` in any letter case, or any body sent beside a second spelling of
+  that header, such as `Content_Type`, which some servers read instead. The body itself is never read.
+  So `method` suits requests without a body; for an API that takes JSON, narrow with `path` alone.
 - `repos` is a list of `owner/name` repositories. It narrows the swap to git requests for them, and
   cannot be combined with `method` or `path`.
 
