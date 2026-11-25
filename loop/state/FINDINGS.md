@@ -7654,7 +7654,10 @@ directories 0.25 (3.15 on main), a LOOKUP storm 0.49 (0.52 on main), RENAME at d
 Hosted gate on 1a50388, green in 285 s with gate-macos, gate-arm64 and guard: the unit tests run under -race
 there and internal/fileserve is ok in 12.6 s (the log is not verbose and names no test); the suite ran on a
 real VM, 147 rows passed and none failed; mount-cpu-flood passed with 3.3 CPU seconds in 3.5 s of wall
-against 4.5 allowed, mount-disk-flood and the seven I1 mount rows passed, P1 p50 317 ms.
+against 4.5 allowed, mount-disk-flood and the seven I1 mount rows passed, P1 p50 317 ms. The first push of
+this record, 5ddb0bc, which changed state files only, drew a red gate from a known flake that this fix does
+not touch: I12 channel-connect-flood lost 65 MiB of available memory where the same code lost 58 on 1a50388;
+its other 146 rows passed, mount-cpu-flood at 3.4 CPU seconds in 3.7 s against 4.7 allowed.
 No VM row holds C76. The redteam added none: a GETATTR flood on the init's own stream draws a reply for a
 unique the guest kernel never issued, which the probe cannot read without breaking that stream, and this
 session has no hypervisor to try a row on. So the evidence for C76 is Go-level, on the real Server.
