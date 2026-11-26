@@ -31,8 +31,7 @@ func sum(s string) string { d := sha256.Sum256([]byte(s)); return hex.EncodeToSt
 
 // sample is n providers by two architectures, each with a kept previous version.
 func sample(n int, published time.Time) Manifest {
-	m := Manifest{Serial: published.Unix(), Expires: published.Unix() + lifetime,
-		Pins: map[string]map[string]Pin{}, Previous: map[string]map[string]Pin{}}
+	m := Manifest{Serial: published.Unix(), Expires: published.Unix() + lifetime, Pins: map[string]map[string]Pin{}, Previous: map[string]map[string]Pin{}}
 	for i := range n {
 		name := fmt.Sprintf("provider%d", i)
 		m.Pins[name], m.Previous[name] = map[string]Pin{}, map[string]Pin{}
@@ -143,8 +142,7 @@ func TestBuild(t *testing.T) {
 		}}
 	}
 	rows := []pins.Pin{
-		{Name: "b", Release: release("2.0", "b"), Released: now.Add(-48 * time.Hour), Previous: ptr(release("1.9", "b")),
-			Withdrawn: []string{sum("b2.0arm64"), sum("b1.8amd64")}},
+		{Name: "b", Release: release("2.0", "b"), Released: now.Add(-48 * time.Hour), Previous: ptr(release("1.9", "b")), Withdrawn: []string{sum("b2.0arm64"), sum("b1.8amd64")}},
 		{Name: "a", Release: release("5", "a"), Released: now.Add(-time.Hour), Withdrawn: []string{sum("b1.8amd64")}},
 		{Name: "c", Released: now}, // unpinned: no entry
 	}
@@ -192,8 +190,7 @@ func FuzzVerify(f *testing.F) {
 	s1, k1 := signer("2026-a")
 	body, _ := json.Marshal(sample(1, now.Add(-time.Hour)))
 	good, _ := Sign(body, []ed25519.PrivateKey{s1})
-	for _, seed := range [][]byte{good, nil, []byte("{}"),
-		[]byte(`{"payloadType":"` + PayloadType + `","payload":"e30=","signatures":[]}`)} {
+	for _, seed := range [][]byte{good, nil, []byte("{}"), []byte(`{"payloadType":"` + PayloadType + `","payload":"e30=","signatures":[]}`)} {
 		f.Add(seed)
 	}
 	f.Fuzz(func(t *testing.T, b []byte) {

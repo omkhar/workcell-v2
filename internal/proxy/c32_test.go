@@ -29,8 +29,7 @@ func TestC32OpaqueRequestTarget(t *testing.T) {
 	t.Parallel()
 	t.Run("token-answer-reaches-guest", func(t *testing.T) {
 		c, _, _, _ := signinFixture(t, &provider{}, &tokenBroker{})
-		code, got := c32do(t, c, "POST", "login.example.com", "https://login.example.com/oauth/token",
-			"application/x-www-form-urlencoded", "grant_type=authorization_code&code=c0de", "")
+		code, got := c32do(t, c, "POST", "login.example.com", "https://login.example.com/oauth/token", "application/x-www-form-urlencoded", "grant_type=authorization_code&code=c0de", "")
 		if code != http.StatusBadRequest || strings.Contains(got, "sk-acc") || strings.Contains(got, "sk-ref") {
 			t.Fatalf("I5: the guest read a real token through an opaque target: (%d, %q), want 400 and no token", code, got)
 		}

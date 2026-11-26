@@ -42,10 +42,7 @@ func TestC34SignInRowDropped(t *testing.T) {
 	if reachable, rewritten, err := c34Load(t, ""); err != nil || !reachable || !rewritten {
 		t.Fatalf("without a repository file: token host reachable %v, answers rewritten %v, %v; want true, true, nil", reachable, rewritten, err)
 	}
-	for name, repo := range map[string]string{
-		"a [[secret]] row of another name":    "[[secret]]\nname = \"x\"\nsource = \"x\"\n",
-		"an allow array without the API host": "[network]\nallow = [\"login.c34.test\", \"other.c34.test\"]\n",
-	} {
+	for name, repo := range map[string]string{"a [[secret]] row of another name": "[[secret]]\nname = \"x\"\nsource = \"x\"\n", "an allow array without the API host": "[network]\nallow = [\"login.c34.test\", \"other.c34.test\"]\n"} {
 		t.Run(name, func(t *testing.T) {
 			if reachable, rewritten, err := c34Load(t, repo); err == nil && reachable && !rewritten {
 				t.Errorf("I5: the session starts with the token host login.c34.test allowed on 443 and no rule that rewrites its token answers")

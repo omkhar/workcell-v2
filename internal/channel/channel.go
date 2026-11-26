@@ -166,8 +166,7 @@ func Select(m *Manifest, name, arch string) (out []Pin) {
 // version under previous, and every withdrawn digest, sorted, so the same rows
 // give the same bytes.
 func Build(rows []pins.Pin, now time.Time) Manifest {
-	m := Manifest{Serial: now.Unix(), Expires: now.Unix() + lifetime,
-		Pins: map[string]map[string]Pin{}, Previous: map[string]map[string]Pin{}}
+	m := Manifest{Serial: now.Unix(), Expires: now.Unix() + lifetime, Pins: map[string]map[string]Pin{}, Previous: map[string]map[string]Pin{}}
 	for _, r := range rows {
 		if r.Version == "" {
 			continue // an unpinned row has nothing to deliver

@@ -65,8 +65,7 @@ var (
 	twoClosed  = doc(entry("A1", npm, rng("SEMVER", zero+fix1+`,{"introduced":"1.1.0"},{"fixed":"1.1.3"}`)))
 	hostileID  = doc(entry(`GHSA-1\n\n@maintainer please merge [x](https://evil.test)`+strings.Repeat("A", 100000), npm, rng("SEMVER", zero+fix1)))
 	longID     = doc(entry(strings.Repeat("A", 65), npm, rng("SEMVER", zero+fix1)))
-	docs       = []string{normal, page1, page2, empty, twoVulns, withdrawn, otherEco, otherName, outOfRange,
-		aboveFixed, gitOnly, lastAff, prerelease, openEnded, twoClosed, hostileID, longID}
+	docs       = []string{normal, page1, page2, empty, twoVulns, withdrawn, otherEco, otherName, outOfRange, aboveFixed, gitOnly, lastAff, prerelease, openEnded, twoClosed, hostileID, longID}
 )
 
 // serve answers every POST with reply(page_token) and counts the requests.

@@ -117,10 +117,7 @@ type Result struct {
 }
 
 // Cooloff holds the normal and the security-lane cool-off of each class.
-var Cooloff = map[Class][2]time.Duration{
-	Guest:   {48 * time.Hour, 12 * time.Hour},
-	Trusted: {7 * 24 * time.Hour, 0},
-}
+var Cooloff = map[Class][2]time.Duration{Guest: {48 * time.Hour, 12 * time.Hour}, Trusted: {7 * 24 * time.Hour, 0}}
 
 // Select picks the newest stable release that is not a pre-release,
 // deprecated or withdrawn, and whose latest timestamp is at least the cool-off

@@ -7,7 +7,7 @@ specification. Run `workcell explain` to see the result for your directory.
 
 - Your grants: `~/.config/workcell/config.toml`, or `$XDG_CONFIG_HOME/workcell/config.toml` when that is set
   to an absolute path (a relative value is ignored). A missing file grants nothing.
-- workcell refuses to run or pull in a directory that holds, or lies inside, its data or config directory, or that holds the file `config.toml` resolves to (a link into a dotfiles repository), because the guest would otherwise get the audit key, other sessions, the images or your policy.
+- workcell refuses to run or pull in a directory that holds, or lies inside, its data or config directory, or that holds the file `config.toml` resolves to (a link into a dotfiles repository, made yet or not), and refuses outright when `config.toml` has more than one name (a hard link), because the guest would otherwise get the audit key, other sessions, the images or your policy.
 - The repository's file: `workcell.toml` in the directory you start the session in. It can only narrow
   your grants (I13). See [Narrowing](#narrowing).
 

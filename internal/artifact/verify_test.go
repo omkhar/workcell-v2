@@ -144,8 +144,7 @@ func (s *signer) bundle(t testing.TB, san string, digest, payload []byte, payloa
 		ph := sha256.Sum256(payload)
 		sig, hash, kind = sign(t, k, pae[:]), ph[:], "dsse"
 		b["dsseEnvelope"] = map[string]any{"payload": payload, "payloadType": payloadType, "signatures": []any{map[string]any{"sig": sig}}}
-		spec = map[string]any{"payloadHash": map[string]any{"algorithm": "sha256", "value": hex.EncodeToString(hash)},
-			"signatures": []any{map[string]any{"signature": sig, "verifier": cert}}}
+		spec = map[string]any{"payloadHash": map[string]any{"algorithm": "sha256", "value": hex.EncodeToString(hash)}, "signatures": []any{map[string]any{"signature": sig, "verifier": cert}}}
 	}
 	body, _ := json.Marshal(map[string]any{"apiVersion": "0.0.1", "kind": kind, "spec": spec})
 	at := signedAt.Add(time.Minute).Unix()
@@ -579,8 +578,7 @@ func TestVerify(t *testing.T) {
 		{name: "33V two-provenance", src: npm, signed: true, mut: func(s *setup) {
 			raw, _ := json.Marshal(statement(subject(purl, map[string]string{"sha512": s.hex512})))
 			b := json.RawMessage(s.sg.bundle(t, s.san, nil, raw, inTotoType))
-			doc, _ := json.Marshal(map[string]any{"attestations": []any{
-				map[string]any{"predicateType": slsaV1, "bundle": b}, map[string]any{"predicateType": slsaV1, "bundle": b}}})
+			doc, _ := json.Marshal(map[string]any{"attestations": []any{map[string]any{"predicateType": slsaV1, "bundle": b}, map[string]any{"predicateType": slsaV1, "bundle": b}}})
 			att(route{body: doc})(s)
 		}},
 		{name: "34E provenance-other-package", src: npm, signed: true, mut: func(s *setup) {

@@ -238,8 +238,7 @@ func TestFirecracker(t *testing.T) {
 				break
 			}
 			if time.Now().After(deadline) {
-				t.Fatalf("after SIGKILL of the supervisor: firecracker pid %d gone=%t, processes naming %s: %v",
-					pid, gone(pid), dir, orphans)
+				t.Fatalf("after SIGKILL of the supervisor: firecracker pid %d gone=%t, processes naming %s: %v", pid, gone(pid), dir, orphans)
 			}
 		}
 		t.Logf("vmm supervisor_killed vmm_gone_ms=%d orphans=0", time.Since(t0).Milliseconds())
@@ -390,8 +389,7 @@ func fetch(t *testing.T) inputs {
 	t.Helper()
 	binary, kernel := pinned(t)
 	dir := t.TempDir()
-	return inputs{binary: binary, kernel: kernel,
-		initrd: initramfs(t, dir, file{"init", build(t, dir, "./testdata/guest")})}
+	return inputs{binary: binary, kernel: kernel, initrd: initramfs(t, dir, file{"init", build(t, dir, "./testdata/guest")})}
 }
 
 // pins holds the pinned binary and kernel, downloaded once per test binary into a directory that TestMain removes.

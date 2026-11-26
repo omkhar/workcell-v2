@@ -117,8 +117,7 @@ func Open(dir string, limit int64) (*Server, error) {
 		return nil, fmt.Errorf("stat export %s: %w", dir, err)
 	}
 	root := &node{id: rootID, ino: st.Ino, dev: st.Dev, mode: unix.S_IFDIR, fd: fd, nlookup: 1}
-	return &Server{nodes: map[uint64]*node{rootID: root}, index: map[key]*node{}, fhs: map[uint64]*handle{},
-		nextID: rootID, fds: 1, limit: limit}, nil
+	return &Server{nodes: map[uint64]*node{rootID: root}, index: map[key]*node{}, fhs: map[uint64]*handle{}, nextID: rootID, fds: 1, limit: limit}, nil
 }
 
 // grow charges the file open on fd, before it does, for reaching end bytes long and for the filesystem's whole blocks a write of [off, end) takes in a hole below the

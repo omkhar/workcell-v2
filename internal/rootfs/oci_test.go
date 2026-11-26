@@ -127,10 +127,7 @@ func (f *fixture) manifest(doc map[string]any) {
 	md := dg(mb)
 	f.routes["registry.test/v2/lib/x/manifests/"+md] = mb
 	plat := func(arch string) map[string]any { return map[string]any{"os": "linux", "architecture": arch} }
-	ib, _ := json.Marshal(map[string]any{"mediaType": ociIdx, "manifests": []map[string]any{
-		{"mediaType": ociMan, "digest": dg([]byte("decoy")), "platform": plat("riscv64")},
-		{"mediaType": ociMan, "digest": md, "platform": plat("arm64")},
-	}})
+	ib, _ := json.Marshal(map[string]any{"mediaType": ociIdx, "manifests": []map[string]any{{"mediaType": ociMan, "digest": dg([]byte("decoy")), "platform": plat("riscv64")}, {"mediaType": ociMan, "digest": md, "platform": plat("arm64")}}})
 	id := dg(ib)
 	f.routes["registry.test/v2/lib/x/manifests/"+id] = ib
 	f.img = Image{Registry: "https://registry.test", Repository: "lib/x", Digest: id, OS: "linux", Arch: "arm64"}
