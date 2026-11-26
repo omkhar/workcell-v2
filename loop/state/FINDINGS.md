@@ -9404,3 +9404,44 @@ After S-F69: sweep 3 stands at two highs (C76 and C77, both fixed), sixteen medi
 C72, C73, C74, C75, C78, C80, C81, C82 and C85, fixed; C86, open) and five lows (C64, C70, C79, C83 and C84, all
 fixed). Nothing waits under escape/_pending/: the test of C86 is held in its record above, and S-F70 re-creates
 it. The next candidate number is C87 and the next fix unit S-F71.
+
+C86 FIXED by S-F70, commits 5e86f95 (cmd/workcell/c86_test.go re-created from the record above, byte for byte,
+checked by cmp), cac3ee2 (the fix) and 7b66681 (the fix round) (PR #346). The fix, all in cmd/workcell: leadsInto
+in data.go judges every prefix of a path by within against the working directory and the data directory, and
+within resolves by resolved, so a link on the way and a link to a file not made yet are followed; session in
+run_vm.go gives that walk to SSL_CERT_FILE and to each filepath.SplitList entry of SSL_CERT_DIR after the TMPDIR
+rule and before newSession, and refuses in one line that names the variable, so no session directory, key or
+export exists; an empty value names nothing. newInstaller in update.go now asks the same leadsInto for an [update]
+ca, in place of its own EvalSymlinks walk, with its message unchanged: the one path it judges differently is a
+link whose target, not made yet, would lie in the working or data directory, which main accepted and then failed
+to read. internal/proxy/terminate.go keeps the relative refusals of C30 and C53 and changed in layout alone; also
+in v1 main: egressproxy/terminate.go, where the same absolute spelling is taken. The reviewer, one round, ran 34
+spellings by overlay and returned one finding that meets R2, I6 and through it I5, for the guest root of a --mount
+session or a malicious repository with the network attacker: the walk judged each SSL_CERT_DIR entry and not its
+members, and Go's loader reads every member and follows one that is a symbolic link out of the directory, so with
+E/certs/corp.pem a link to a file under the working directory and SSL_CERT_DIR=E/certs the session was admitted
+and a leaf of the planted CA verified against upstreamRoots. The fix round: session also judges every member of
+each entry that can be read, by the same leadsInto, under the name SSL_CERT_DIR, and the variable named is the one
+whose list the path came from; the line now says "names or holds". Proved:
+TestC86SSLCertPathUnderTheWorkingDirectory fails with main's product files in its three attacking arms and passes
+on the fix, plain and under -race, its control passing on both (redteam, builder and reviewer, by overlay); the
+record's probe in internal/proxy, run by overlay and not kept, showed the real secret leaving for both variables
+on main; TestSSLCertDirMemberLinkedIntoTheWorkingDirectory, in run_vm_test.go, fails with cac3ee2's run_vm.go in
+its attacking arm and passes on 7b66681, its control passing on both (builder and orchestrator); the C19, C30,
+C53, C79, C84 and C85 tests and go test ./... pass. The builder ran 44 rows by overlay (links made and not made,
+relative targets, a link on the way, doubled slashes and dots, the data directory, the working directory through
+a link, entries first, second and third, members linked into the working or data directory, and the accepted
+shapes: a file elsewhere, a link to a file elsewhere, a member linked to a sibling, an absent entry, an empty
+entry, /etc/ssl/certs) and drove the built binary to the one-line refusal with no session directory made. The
+hosted VM suite's own layout (roots, data directory and working directory in three sibling temp directories)
+is accepted: the hosted gate was green on cac3ee2. Paid by layout folds, 50 lines in 4 test files and 8 in 2
+product files, then 25 in 5 test files and 7 in 2 product files, each proved by the builder's AST comparison and
+the first set again by the reviewer's own go/ast comparison; no longest line grew. No sentence of docs/ names
+these variables, so none was added. Not closed, in PARKED.md: the cost of the member walk at a start, a member
+made after the start, and a relative value that climbs out of the working directory. Product 15000 of 15000,
+test 28500 of 28500.
+
+After S-F70: sweep 3 stands at two highs (C76 and C77, both fixed), sixteen mediums (C65, C66, C67, C68, C69, C71,
+C72, C73, C74, C75, C78, C80, C81, C82, C85 and C86, all fixed) and five lows (C64, C70, C79, C83 and C84, all
+fixed). Nothing waits under escape/_pending/ and no record holds a test that is not in the suite. The next
+candidate number is C87 and the next fix unit S-F71.
