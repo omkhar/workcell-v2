@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Omkhar Arasaratnam
-// Candidate C84 of S-1011, sweep 3 (I14, I13): the user's [update] ca names a file under the data directory that a guest writes by design. Fix unit S-F68 first moves this file to cmd/workcell/c84_test.go and removes this folder (S4). It fails until the fix.
+// Finding C84 of S-1011, sweep 3 (I14, I13): the user's [update] ca names a file under the data directory (<XDG_DATA_HOME>/workcell) that a guest writes by design. Fixed by S-F68.
 package main
 
 import (
