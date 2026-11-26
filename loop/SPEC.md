@@ -42,6 +42,7 @@ Out of scope, and findings against them are parked, not fixed:
 - Hypervisor or CPU zero-days. Mitigation is a minimal device model, nothing more.
 - Compromise of an allowlisted provider's own service.
 - What a human later does with code they pulled out of a session.
+- What the program of a `cmd:` secret source reads through its arguments. The operator names nothing under the working directory there (ADR-006).
 
 ## 3. Invariants
 
