@@ -447,7 +447,7 @@ later comes your decision at H-103, which opens the longest stretch: about forty
    ```
 
 6. **Sweep again** until a whole sweep confirms nothing at medium or above. After three sweeps the loop halts and
-   hands you a design question.
+   hands you a design question. You may then allow one further sweep at a time, by a signed change (SPEC S8).
 7. **Report** in `docs/security-review.md`. You read it and sign (H-1019).
 
 The repository is public. A finding that also affects released v1 code, or someone else's project, stays out of
