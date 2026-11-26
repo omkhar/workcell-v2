@@ -65,6 +65,8 @@ jobs:
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm.rules >/dev/null
           sudo udevadm control --reload-rules && sudo udevadm trigger --name-match=kvm --settle && test -w /dev/kvm
       - run: go test -count=1 -v -run TestInstallToFirstSession ./spikes/install # P2: under 60 s, scripted install to first session.
+      - { id: kept, run: 'echo "key=workcell-escape-$(ls ~/.cache/workcell-escape | paste -sd-)" >> "${GITHUB_OUTPUT}"' } # W8: P2 passed, so this run's own download holds just the pinned kernel and Firecracker, each named by its SHA-256; ci.yml's gate restores the newest key, and a key that exists is kept.
+      - { uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9, with: { path: ~/.cache/workcell-escape, key: "${{ steps.kept.outputs.key }}" } } # v6.1.0
       - { id: fresh, if: "${{ !cancelled() }}", run: 's=0; set -o pipefail; go run ./cmd/bump -newest | tee "${RUNNER_TEMP}/fresh" || s=$?; ! grep -q "^P7 missed:" "${RUNNER_TEMP}/fresh" || echo p7=missed >> "${GITHUB_OUTPUT}"; exit "${s}"' } # A missed P7 exits 0 and gets its own issue; a failed verification fails the step (B5).
       - { if: "${{ !cancelled() }}", run: go run ./escape/cmd/escape -sandbox workcell -only B6 } # The smoke runs whatever the report said.
   issue:

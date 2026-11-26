@@ -30,6 +30,13 @@ jobs:
         with:
           go-version-file: go.mod
           cache: false
+      # W8: the pinned kernel and Firecracker that nightly.yml's `upstream` job kept, newest entry first. A
+      # file is used only if its SHA-256 is the pin, else downloaded. Never save: it would land in main's scope.
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/workcell-escape
+          key: workcell-escape-
+          restore-keys: workcell-escape-
       # The last line is the judge; its words tell the loop that its change is not to blame.
       - name: Make /dev/kvm usable by the runner account
         run: |
