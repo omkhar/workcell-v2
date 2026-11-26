@@ -8489,3 +8489,210 @@ C83's test waits under escape/_pending/S-F67/. The next candidate number is C84 
 After S-F67: sweep 3 stands at two highs (C76 and C77, both fixed), fourteen mediums (C65, C66, C67, C68, C69, C71,
 C72, C73, C74, C75, C78, C80, C81 and C82, all fixed) and four lows (C64, C70, C79 and C83, all fixed). Nothing
 waits under escape/_pending/. The next candidate number is C84 and the next fix unit S-F68.
+
+## S-1011, sweep 3: pins, selector, verification, bump tool, channel manifest, update client (I14, section 10), as built at main 14a66b7
+
+Sweep 3 (S8), the last the SPEC allows, fresh context (S3), the whole surface read in full as built after S-F1 to
+S-F67, not a diff, at the claim commit 858327d. One auditor run on the top tier, finished without a stop: no model
+declined and no safeguard re-ran a request. No hypervisor in the cloud session, and nothing on this surface needed
+a VM: every probe ran by go test -overlay, plain and under -race where order matters, against files and loopback
+processes the probe itself made (T8), with one slip that is recorded under Coverage (S12). Result: one candidate,
+C84 (I14 hardening with I13, low), the row that C79's record left open, given to the redteam as a claim only, run
+by the orchestrator, and ruled on by a verifier who saw the test and its logs and no one's reasoning; the record is
+below. No candidate at medium or above. Nothing was fixed (S1). No file of this surface carries `// Ported from
+v1`, so no v1 line is owed, and nothing is someone else's project (S14).
+
+Trust boundary. Rows 2, 27 to 30 and 32 to 35 of the map. The network attacker who holds the channel host or the
+path, without the key, sends channel.json through installer.manifest and artifact.Fetch (64 KiB cap, no redirect)
+to channel.Verify, and artifact bodies through installer.fetch and artifact.Fetch (512 MiB, https only, three hops)
+to the SHA-256 of the signed pin: no byte is used without the manifest's signature or the pin's digest, so that
+attacker holds availability alone. Guest root sends one Exit frame with an error as its first frame, which reaches
+installer.fail behind the fresh gate (S-F1, S-F31, S-F43); it also writes host files by design, the mount export,
+the image of a writable cache and workspace.ext4, none of which the update path reads unless the operator's `ca`
+names one (C84). The malicious repository brings workcell.toml, where ReadRepo refuses an [update] table (I13), and
+the working directory, which the update path reads only to refuse a `ca` that passes through it. Upstream listings,
+Sigstore bundles, npm attestations and OSV answers reach cmd/bump on the runner only, a dry run until H-905; a
+hostile upstream is the provider's own service, out of scope, as S-1012 ruled. The holder of the channel key and
+the operator's own [update] table are out of scope except where they meet attacker bytes. Authority: update,
+startup (apply and the daily check) and fail run as the operator and write layers/<agent>/ with its images and the
+markers current, previous and failed, channel.serial, channel.day, channel.next and updates.log under the data
+directory; findLayers turns `current` into a drive that both backends attach read-only and that the init mounts
+read-only.
+
+Parsing and resources. The 64 KiB cap is of the decoded body: a channel.json served with Content-Encoding gzip, 33
+KB on the wire and 16 MiB decoded, is refused as over the cap in 1 to 3 ms; a chunked body of the cap plus one with
+no Content-Length is refused; one of exactly the cap verifies; serial and markers stay untouched (probe
+TestProbeChannelOversizedEncodings). An artifact whose Content-Length lies short or long is a transport failure,
+and one declared over the cap is refused before its body (TestProbeArtifactLengthLies). A signed version of 300
+bytes makes the image name pass NAME_MAX, the rename fails and the layer directory stays empty
+(TestProbeVersionNameTooLong). Go's transport decodes a gzip Content-Encoding before the bytes are hashed, in
+cmd/bump and in the client alike, so a pin's digest is of the decoded body; nobody in scope gains, since the digest
+is pinned. Seven fuzz targets ran 20 s each with no crasher: FuzzVerify of the channel (11.6 thousand executions,
+so that run proves little), FuzzTarMember and FuzzProvenance of artifact, FuzzAnswer of advisory, FuzzParse of
+sigstore and of policy, FuzzLayer of rootfs (each above 100 thousand). The tar and ext4 parsers behind unpack see
+digest-pinned bytes only.
+
+Logic and state. Every marker transition was traced and run again: install, --to of the current, the previous, the
+failed image on disk (reused without a fetch) and an unknown version, --rollback, apply's skip of the failed
+digest, and fail's pair check (TestUpdate, TestFail, TestFailSparesALayerThisStartDidNotInstall and TestChannel,
+green plain and under -race). choose applies the user's cool-off to the signed Released only, so it lengthens and
+never shortens (B10); its arithmetic wraps for a Released near the top of int64 (TestProbeChooseReleasedOverflow),
+a field only the key holder signs. Select drops a withdrawn digest from pins and previous; --rollback and --to of
+an image on disk read no manifest (ADR-004, B10). point keeps at most current, previous and failed. Pin names and
+architectures are lookup keys only; the version is the one manifest field that becomes a file name, and since S-F18
+it holds no slash or backslash.
+
+Concurrency and check-to-use gaps. Two applies at one instant on one channel.next: in nine runs, three plain and
+six under -race, one installed and reported fresh, the other read nothing, and one artifact was fetched
+(TestProbeApplyConcurrent); the window is the microseconds between the read and the remove, and PARKED's line
+stands. The serial floor is read, verified and written with no lock, as sweep 2 measured, with honest manifests
+only. The walk of `ca` resolves each prefix and then reads: a mount guest can change only components inside its
+export, and the first prefix that enters the working directory already refuses, so making the walk miss needs a
+writer outside the directory, who is out of scope. The daily goroutine shares no state with the proxy, the broker
+or the session.
+
+Cryptography and identity. The DSSE pre-authentication encoding is over the decoded payload, so base64 spellings
+and duplicate JSON keys cannot split what is signed from what is parsed; ed25519.Verify stands behind the 32-byte
+guard; the key id must match as well as the signature; NotAfter is judged at now; an invalid signature under a
+trusted key id beside a valid one under an untrusted key refuses (TestVerify's rows). Sigstore: the leaf is chained
+at the integrated time to the embedded root, the signed entry timestamp is over Rekor's canonical JSON, the body
+binds leaf, signature and hash, the identity is compared byte for byte, and Rekor v2 is refused closed. The key
+table is empty before H-905, so the compiled rows install with no manifest (S-1018's residual, seen again under
+`hold`).
+
+Failure modes. Every refusal leaves the markers and the serial untouched. marker() maps any read error to the empty
+string: for channel.serial that is a floor of 0, and a directory in its place is caught at the write
+(TestProbeMarkerReadErrors); a serial text past int64 reads as the largest value and refuses every manifest
+(TestProbeSerialFloorOverflowText); an unreadable `current` means no layer, which is less and never more. Nobody in
+scope writes under the data directory, so these are notes. startup's refusal of a bad `ca` is a printed line and
+the session goes on with the zero installer, whose fail reads nothing since S-F43. cmd/bump never turns a failed
+verification into a skip: a token, an issue and exit 1 under -newest.
+
+Downgrade, rollback and replay. The binary built at HEAD against a loopback TLS channel
+(TestProbeRealBinarySequence): serial 1 installed 1.0.0; serial 2 installed 2.0.0 and kept 1.0.0; serial 1 replayed
+was refused as lower than the last one seen, with current, previous and the floor unchanged; --rollback went to
+1.0.0's image and read no manifest (B10); update under serial 2 applied 2.0.0 again; `hold` made no channel
+request; a user cool-off of 8760 hours on the compiled row was refused with the line that nothing pinned passes the
+cool-off. An equal serial passes by design; the replay window is the 14 days plus the skew, per data directory, and
+a fresh data directory accepts any manifest that has not expired (ADR-004).
+
+Interaction between surfaces. The update path reads nothing relative to the working directory (with a relative
+XDG_DATA_HOME the binary used the home and the working directory stayed empty); ReadRepo refuses [update]; run
+orders loadPolicy, startup, findLayers, openCaches and then session's holds(), and startup writes only under the
+data directory; the layer is read-only in both backends and in the guest; pull, diff, bench and attach boot without
+layers. The one crossing found is C84: files that a guest writes by design meet the update path only through the
+operator's `ca`.
+
+The fixes since sweep 2, asked for their second order. S-F43: holds, with TestFail and the C43 and C60 tests green;
+the zero installer reads no marker. S-F44, S-F45, S-F46 and S-F48: update calls none of named, list or holds, and
+holds() never relates `ca` to the directories it guards. S-F63: the prefix walk holds for the working directory,
+with `..` spellings and links in and out; it knows nothing of the data directory or of another session's export
+(C84), and an operator whose working directory is `/` or the home is refused with a `ca` set, the known cost.
+S-F56, S-F59, S-F62 and S-F64 to S-F66 run in loadPolicy before startup and stop run before any fetch; update does
+not call loadPolicy. S-F67 and S-F49 to S-F55, S-F57, S-F58, S-F60 and S-F61 have no path onto this surface.
+
+The parked lines that name this surface, each tried again, none with an in-scope break behind it but C84: Rekor v2
+(fails closed); updates.log outside the chain; the B-826d ideas (each holds by TestChannel's rows and the
+real-binary run); the compiled-rows fallback (seen); two applies at one instant (measured above); the apply delay,
+the refused records per start, the .download residue, two verbs crossing and the odd markers (no in-scope writer);
+fail by the base name of the command and the S-F31 residuals (the operator's own); --rollback to a withdrawn image
+(S-1018's); the docs line (still true: docs/policy.md says the [update] channel and cool-off are not read yet, and
+both are read and honoured); bench dropping the newInstaller error; the floor race, npm withdrawn by digest and a
+cool-off over 56 years; the maintainer's two lines on the kernel and Firecracker having no row in pins/ (read again
+from code: no product path fetches or verifies vmlinux, initrd.cpio, root.ext4 or firecracker, while doctor says
+`workcell update` fills the data directory, so I14 has no reach there and the gap is B1, W6 and P7, for the
+maintainer; no break shown); no row proving the layer drive read-only from inside (both backends set it); the C79
+variants (the link from outside is an arm of c79_test.go now, and the `ca` under the data directory is C84); the
+S-F63 notes (the mount session elsewhere is part (b) of C84's claim, ruled below; the others stand).
+
+Coverage. Read in full: in cmd/workcell update.go, layer.go, data.go, run_vm.go, main.go, policy.go, session.go,
+bench.go, bench_vm.go and the update, layer, C43, C59, C60 and C79 tests; internal/channel; internal/pins (pins.go,
+sources.go and its test); pins/pins.go and the four rows; internal/artifact/verify.go; internal/bump (bump.go,
+github.go); cmd/bump (main.go and its channel test); internal/advisory; internal/sigstore (verify.go, root.go);
+internal/version; internal/policy/policy.go to line 310; internal/provider and its four data files; internal/rootfs
+layer.go, tree.go and ext4file.go; cmd/workcell-init/root.go; escape/suite update.go, rollback.go and layer.go;
+parts of escape/sandbox/workcell_vm.go; docs/adr/004-channel.md; bump.yml as far as it calls the tool; PARKED.md
+whole; the map, both earlier records of this surface, S-1016d and the C19, C59 and C79 records. Skimmed or by grep:
+the drive blocks of internal/vmm/firecracker and internal/vmm/vz, lookPath in cmd/workcell-init, parts of
+escape/suite/smoke.go and tests.go, nightly.yml's bump lines, docs/policy.md and docs/providers.md on updates, and
+the other tests of the surface by name. Not opened: internal/rootfs/oci.go, build.go and the body of ext4.go, the
+trusted root's JSON, explain.go, log.go and the pull files of cmd/workcell, the rest of internal/vmm/vz, the macOS
+adapter, and _legacy/. Run: the unit tests of eleven surface packages; the update, channel, fail, layer and C43,
+C59, C60 and C79 tests of cmd/workcell under -race; seven fuzz targets for 20 s each; nine overlay probes; the
+binary built at HEAD through the replay, rollback, hold, cool-off and relative-XDG sequence. Not done: any VM run,
+any macOS path, cmd/bump against live upstreams, long fuzzing (S10's job), and the unreadable-file arm of the
+serial probe, since the session runs as root. The probes were not kept as tests: none but C84's failed, and the
+test budget has no room. The slip (S12, T8): in the real-binary run the `hold` step made the product install from
+the compiled row, whose pinned URL is the provider's real host, and the binary tried that fetch once; the attempt
+ended as a transport failure inside the 0.44 s run and the step was not repeated. It was the product's own download
+of a public artifact and no probe, but it was a request this audit did not mean to send, so a run of the built
+binary under `hold`, or with an empty key table, needs a data row that points at a loopback server first.
+
+### S-1011 candidates, sweep 3
+
+C84. ID I14 hardening (the trust root of the host's channel and artifact fetches), with I13: the file that the
+user's `[update] ca` names. ATTACKER: guest root, who by design writes some host files, completed by a network
+attacker on the path of a later fetch. SEVERITY: low (S6: hardening with no demonstrated break; the class of C59
+and C79). WHERE: cmd/workcell/update.go, newInstaller, which since S-F63 follows each prefix of `ca` and refuses
+one that lies in or leads into the working directory, and judges it against nothing else; cmd/workcell/data.go,
+where holds() keeps a session out of the data directory and never sees `ca`. INPUT, part (a): the user's
+config.toml says `[update] ca = "<data>/caches/npm.ext4"`; a guest of a session with `--cache npm:rw` writes a file
+into that cache whose bytes hold a newline and then a PEM certificate; then any later `workcell run` or `workcell
+update`, from any working directory. Part (b): `ca` names a file in a tree that the operator later runs `workcell
+run --mount` in; startup prints S-F63's refusal and the session runs all the same; the guest rewrites the file; a
+later run or update from another directory reads it. EFFECT: the installer's HTTPS client trusts the attacker's
+certificate alone for every later channel and artifact fetch, until the file is restored, so an attacker on the
+path presents its own certificate for the channel host and the pin URLs and gains what an on-path attacker without
+the key has: refusal of service, sight of the requests, or the replay of a signed manifest that has not expired.
+The manifest's signature, its serial floor and expiry and each pin's digest still gate every install, so nothing
+installs past I14.
+Reproducing test, by the redteam from the claim alone: TestC84UpdateCAUnderTheDataDirectory, package main of
+cmd/workcell, parked at escape/_pending/S-F68/c84_test.go. Two arms share one body. The attacking arm writes
+<data>/workcell/caches/npm.ext4 as 4 KiB of 0xff, a newline, the PEM certificate of a loopback httptest TLS server,
+and 4 KiB of 0xff, names it as `ca`, changes to an unrelated directory, calls newInstaller and sends a HEAD through
+its client to that server; it wants an error that names ca and no request served. The control arm puts the PEM
+beside config.toml and wants the request served. Run by the orchestrator by overlay, plain and under -race, logs
+saved: the attacking arm fails with "newInstaller, then a fetch through its transport from the server holding the
+certificate in that file, gave <nil> after 1 requests served", and the control passes. The redteam did not run the
+guest's write, which needs a VM, and the test writes the file on the host in its place.
+Outcome: CONFIRMED at low by the verifier, who repeated both runs. On the power the test takes: the product hands
+the guest the whole image of a writable cache as one drive and the host never mounts or reads it, so guest root
+holds every byte of that host file, by raw writes to the device too, and a small file lies whole in one block of an
+ext4 image, so the certificate is found in a real one. Not medium: no invariant is broken, since the key, the
+floor, the expiry and the digest hold, and the precondition is an operator who points `ca` at a cache image, which
+none does by mistake; it counts as the mechanical hardening that C79 was granted, and C79's record named this very
+row as not expressed. Part (b) is no new finding and has no test: the redteam ran its three steps with a host write
+in place of the guest's and found that after the rewrite the file cannot be told from the control arm's, an
+absolute path outside the working and the data directory, so no rule on `ca` alone refuses it without refusing the
+control; the verifier ruled it the row that PARKED's line of S-F63 notes already holds (a `ca` under the export of
+a --mount session run elsewhere), at most low, where the refusal is printed and tells the operator to move the
+file. The verifier's strongest argument against its own ruling: (a) needs a `ca` no operator writes and (b) is
+refused in a line already, so both are the operator's own act and the candidate could be refuted; it kept low
+because C79's verifier accepted this class of precondition. S7 lists a low finding and does not demand its fix; the
+loop adds the unit as it did for C64, C70, C79 and C83, and the maintainer may strike it. Not S14: update.go and
+data.go are v2's own, nothing ported, no v1 line. Fix unit: S-F68, below S-1011 in PLAN.md; its line names two
+shapes, of which the second, a `ca` only within the config directory, would close part (b) as well, at a cost to
+honest use that the line states.
+
+
+The 44 lines of the parked test were paid by 44 lines of layout folds in eight files under escape/ (suite/tests.go
+25, cmd/payload/main.go 6, cmd/escape/main.go 4, suite/repo.go 3, suite/channel.go 2, suite/rebind.go 2,
+suite/bench_test.go 1 and suite/smoke.go 1): no test, row, arm or assertion removed. The price is in the layout,
+and it is the last there is: the 28 lines that held the suite's table `All` are one line of 26,684 characters now,
+with the 28 row comments in row order at its end, and the usage blocks of the two commands' doc comments are one
+line each, joined by semicolons after the word Usage. Proved twice. The redteam compared each file with HEAD by
+go/ast, comments stripped and positions ignored, and every composite literal has HEAD's element count (`All` 143
+direct rows). The orchestrator compared the go/scanner tokens of each file with HEAD by a tool of its own: the code
+tokens are the same in all eight, a layout comma and an automatic semicolon aside, and the words of all comments
+are the same in six and differ in the two usage blocks only by the word Usage and the semicolons. `go run
+./escape/cmd/escape -sandbox control -list` prints the same 147 rows, byte for byte, on HEAD and on this tree, by
+both. The redteam's first join left the const after the table with its comment aligned 26 thousand columns out by
+gofmt, a line of 18,951 characters; the orchestrator asked for one more round, which put that comment above the
+const and paid its two lines with two blank lines of the parked test (48 lines as written, 46 after two joins, 44
+as parked; run again by overlay from the parked path, plain and under -race, with the same two verdicts). The
+layout reserve under escape/ is nil: what is left on several lines there is field lists and function bodies, which
+gofmt keeps apart. Product 14998 of 15000, test 28497 of 28497.
+
+After S-1011: sweep 3 stands at two highs (C76 and C77, both fixed), fourteen mediums (C65, C66, C67, C68, C69,
+C71, C72, C73, C74, C75, C78, C80, C81 and C82, all fixed) and five lows (C64, C70, C79 and C83, fixed; C84, open).
+C84's test waits under escape/_pending/S-F68/. The next candidate number is C85 and the next fix unit S-F69.
