@@ -9369,3 +9369,38 @@ After S-1013: sweep 3 stands at two highs (C76 and C77, both fixed), sixteen med
 C72, C73, C74, C75, C78, C80, C81 and C82, fixed; C85 and C86, open) and five lows (C64, C70, C79, C83 and C84, all
 fixed). Nothing waits under escape/_pending/: the tests of C85 and C86 are held in their records above, and S-F69
 and S-F70 re-create them. The next candidate number is C87 and the next fix unit S-F71.
+
+C85 FIXED by S-F69, commits 2d54590 (cmd/workcell/c85_test.go re-created from the record above, byte for byte,
+checked by cmp), c4ef530 (the fix) and cd561d2 (the fix round) (PR #345). The fix, all in cmd/workcell/data.go:
+holds ranges over the data directory, the config directory and the config file itself, and within resolves each,
+so a working directory or a pull destination that holds the file config.toml resolves to is refused before any
+session directory, key or export exists, in the line of C19 with the words "or config file" and the file's path.
+A link whose target lies elsewhere runs as on main. The reviewer, one round, tried 13 spellings and returned two
+findings that meet R2, both I13 with I5 and I14 by consequence, both for the guest root of a --mount session, each
+carried by its own test to the program run on the host. One: the link's target is not made yet, so resolved fell
+back to the link's own name, the session ran with no policy, and the guest made the file. Two: config.toml is a
+hard link to a file under the working directory, which no link resolution sees and which the file service lets
+the guest rewrite in place. The fix round: resolved follows a link by name where EvalSymlinks fails, at most 40
+hops, so a loop of links ends, and holds refuses a regular config file with more than one name, in its own line
+that says to make it a symbolic link or a copy. That also closes a chain of links whose last hop is absent, a
+config or data directory that is itself such a link, and a link above an absent tail. The orchestrator then ran
+its own overlay test on the round and found a third spelling: a relative target read through a linked config
+directory was joined to the link's unresolved directory, so its `..` climbed by spelling; the builder corrected
+that in the same round, by one changed line, with a row that fails before. Proved:
+TestC85ConfigFileLinkedIntoTheWorkspace fails with main's data.go in its attacking arm and passes on the fix,
+plain and under -race, its control passing on both (redteam, builder, reviewer and orchestrator, by overlay);
+TestC85ConfigFileOfAnotherName, in c19_test.go, five rows and two loops of links, fails in three rows with
+c4ef530's data.go and passes on cd561d2; the C19, C52, C54, C59, C60, C65, C79 and C84 tests and go test ./...
+pass. The builder drove the built binary: run, run --mount and pull are each refused for the link made, the link
+not made and the hard link, with nothing under the data directory's sessions, and a link to a file elsewhere and
+a file of one name pass holds and fail later for want of a VM. Paid by layout folds, 46 lines in 13 test files,
+then 24 in 10 test files and 6 in 4 product files, each proved by the builder's token and AST comparison and
+again by the reviewer's or the orchestrator's own go/scanner comparison, comments included; the longest line made
+is 253 characters. docs/policy.md says both refusals in its one sentence. Not closed, in PARKED.md: a `..` after
+a link inside a link's own target; a second name made after the start. Product 15000 of 15000, test 28499 of
+28500. Not S14: data.go is v2's own.
+
+After S-F69: sweep 3 stands at two highs (C76 and C77, both fixed), sixteen mediums (C65, C66, C67, C68, C69, C71,
+C72, C73, C74, C75, C78, C80, C81, C82 and C85, fixed; C86, open) and five lows (C64, C70, C79, C83 and C84, all
+fixed). Nothing waits under escape/_pending/: the test of C86 is held in its record above, and S-F70 re-creates
+it. The next candidate number is C87 and the next fix unit S-F71.
