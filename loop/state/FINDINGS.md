@@ -8673,6 +8673,34 @@ loop adds the unit as it did for C64, C70, C79 and C83, and the maintainer may s
 data.go are v2's own, nothing ported, no v1 line. Fix unit: S-F68, below S-1011 in PLAN.md; its line names two
 shapes, of which the second, a `ca` only within the config directory, would close part (b) as well, at a cost to
 honest use that the line states.
+C84 FIXED by S-F68, commits b23a088 (the test moved to cmd/workcell/c84_test.go, one comment line reworded, so
+escape/_pending/ is gone) and 437bab9 (the fix) (PR #342). The orchestrator chose the unit line's first shape
+before the redteam ran and wrote it as a contract: newInstaller refuses, before the file is read and before any
+transport exists, an [update] ca any part of whose path lies in or leads into the data directory, by the prefix
+walk and within() that S-F63 gave the working directory; every refusal of main stays; the refusal is one line
+that names the config file, `[update] ca` and the value, which update and run print, fetching nothing; a ca
+outside both directories is accepted as on main, and no test that passes on main changes its verdict. Why the
+first shape: the scout showed that the folder of config.toml is <XDG_CONFIG_HOME>/workcell, so under the second
+shape the control arm of this test, the control arm of c79_test.go, the ca of update_test.go and the ca that the
+VM suite's adapter writes beside its session directory would all be refused, where the accept text wants the
+control unchanged, escape/ has no layout left and S1 lets only the fix land; the first costs honest use nothing
+but a ca kept under the data directory. The fix: four lines of cmd/workcell/update.go changed and none added, the
+walk's verdict being within(cwd, r) || within(in.dir, r), with in.dir the data directory that newInstaller had
+already asked for and whose error it already returns; the one message names both directories; the sentence of
+docs/policy.md on ca names the data directory too. Proved: TestC84UpdateCAUnderTheDataDirectory fails with main's
+update.go in its attacking arm (nil and one request served) and passes on 437bab9, plain and under -race, its
+control arm passing on both (the redteam and the orchestrator on b23a088, the reviewer by overlay); the C59, C60
+and C79 tests, the package and go test ./... pass. The builder and the reviewer each drove the built binary
+against a loopback listener of their own: update exits 2 with the line, run prints it after `workcell: channel:`
+and goes on to the boot, the listener saw no request, and a ca beside the config reached the fetch. The reviewer
+tried 18 spellings by overlay: refused are a file link and a folder link from outside into the data directory, a
+link inside it that leads out, `..` segments, doubled and trailing slashes, a data directory given through a link
+and by its real path, a relative XDG_DATA_HOME, the data directory itself and a path under a session's export;
+accepted as on main are a ca beside the config, one elsewhere, one beside the workcell folder of the data home
+and the data directory's parent. The VM suite's ca lies in a sibling of its data directory, never under it.
+Product 14998 of 15000 and test 28497 of 28497, both as before; Markdown 1370. Review: one round, no finding.
+Not closed, as the contract chose: part (b), a ca under the export of a --mount session run elsewhere, PARKED's
+S-F63 row; and a hard link outside the data directory to a cache image, which only the operator can make.
 
 
 The 44 lines of the parked test were paid by 44 lines of layout folds in eight files under escape/ (suite/tests.go
@@ -8696,3 +8724,7 @@ gofmt keeps apart. Product 14998 of 15000, test 28497 of 28497.
 After S-1011: sweep 3 stands at two highs (C76 and C77, both fixed), fourteen mediums (C65, C66, C67, C68, C69,
 C71, C72, C73, C74, C75, C78, C80, C81 and C82, all fixed) and five lows (C64, C70, C79 and C83, fixed; C84, open).
 C84's test waits under escape/_pending/S-F68/. The next candidate number is C85 and the next fix unit S-F69.
+
+After S-F68: sweep 3 stands at two highs (C76 and C77, both fixed), fourteen mediums (C65, C66, C67, C68, C69, C71,
+C72, C73, C74, C75, C78, C80, C81 and C82, all fixed) and five lows (C64, C70, C79, C83 and C84, all fixed). Nothing
+waits under escape/_pending/. The next candidate number is C85 and the next fix unit S-F69.

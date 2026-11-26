@@ -95,7 +95,7 @@ type installer struct {
 	fresh   []string
 }
 
-// newInstaller reads the user's [update] table (B10): the channel is fetched unless it is "hold" or no key is trusted, the table's alone when it gives one, else the built-in ones; ca's certificates alone are the roots, and ca is read as written, so it must be absolute and no part of its path may lie in or lead into the working directory.
+// newInstaller reads the user's [update] table (B10): the channel is fetched unless it is "hold" or no key is trusted, the table's alone when it gives one, else the built-in ones; ca's certificates alone are the roots, and ca is read as written, so it must be absolute and no part of its path may lie in or lead into the working directory or the data directory.
 func newInstaller() (in installer, err error) {
 	in = installer{client: &http.Client{}, keys: channel.Keys}
 	file, err := configFile()
@@ -126,12 +126,12 @@ func newInstaller() (in installer, err error) {
 	}
 	cwd, err := os.Getwd()
 	refuse := u.CA != "" && (err != nil || !filepath.IsAbs(u.CA))                  // a relative one would be read against the working directory; with no directory to judge by, it is refused too
-	for n, parts := 2, strings.Split(u.CA, "/"); !refuse && n <= len(parts); n++ { // each prefix of the path, followed as the kernel walks it: one that lies in the working directory, or is a link into it, reads a file of the repository as the only root (C59, C79; I13, I14). A prefix that does not resolve is left to the read, which fails on it
+	for n, parts := 2, strings.Split(u.CA, "/"); !refuse && n <= len(parts); n++ { // each prefix of the path, followed as the kernel walks it: one that lies in the working directory, or is a link into it, reads a file of the repository as the only root (C59, C79; I13, I14); one in the data directory reads a file the guest writes by design, a cache image (C84). A prefix that does not resolve is left to the read, which fails on it
 		r, e := filepath.EvalSymlinks(strings.Join(parts[:n], "/"))
-		refuse = e == nil && within(cwd, r)
+		refuse = e == nil && (within(cwd, r) || within(in.dir, r))
 	}
 	if refuse {
-		return in, fmt.Errorf("%s: [update] ca %s must be an absolute path no part of which lies in or leads into the working directory %q, which the guest gets as /workspace: move the file and set that path", file, u.CA, cwd)
+		return in, fmt.Errorf("%s: [update] ca %s must be an absolute path no part of which lies in or leads into the working directory %q, which the guest gets as /workspace, or the data directory %s, whose caches the guest writes: move the file and set that path", file, u.CA, cwd, in.dir)
 	}
 	if u.CA != "" {
 		pool := x509.NewCertPool()
