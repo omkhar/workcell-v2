@@ -9445,3 +9445,46 @@ After S-F70: sweep 3 stands at two highs (C76 and C77, both fixed), sixteen medi
 C72, C73, C74, C75, C78, C80, C81, C82, C85 and C86, all fixed) and five lows (C64, C70, C79, C83 and C84, all
 fixed). Nothing waits under escape/_pending/ and no record holds a test that is not in the suite. The next
 candidate number is C87 and the next fix unit S-F71.
+
+## S-1017: sweep verdict, sweep 3, at main dbca6c7
+
+Sweep 3 is S-1002 to S-1013 as S-1017 reset them at sweep 2's verdict, each surface read again in a fresh context as built
+after the fixes of sweeps 1 and 2 (S3), with the three audits of brought candidates added on the way (S-1020 and S-1021 by
+R-3, S-1009b by the maintainer). Its 24 fix units S-F47 to S-F70 are all `[x]`, S-F54 being the first part of S-F52, and
+nothing is left under `escape/_pending/`. It confirmed 18 findings at medium or above. The sweep count above is 3 and
+stays 3: this was the third such sweep, so by S8 and the unit line S-1017 is marked `[!]` instead of calling a fourth.
+Nothing is reset. `BLOCKED.md` says what the maintainer is asked to decide. S-1014 and S-1016 were not run again, as in
+sweep 2.
+
+| severity | count | records |
+|----------|-------|---------|
+| high | 2 | C76, C77 |
+| medium | 16 | C65, C66, C67, C68, C69, C71, C72, C73, C74, C75, C78, C80, C81, C82, C85, C86 |
+| low, fixed all the same (S7 lists them) | 5 | C64, C70, C79, C83, C84 |
+
+Per surface: S-1002 a low (C64); S-1003 C65; S-1004 C66; S-1005 C67 and C68; S-1006 C69 and a low (C70); S-1007 C71 and
+C72; S-1020 C73 and C74; S-1021 C75; S-1008 the two highs (C76, C77); S-1009 C78 and a low (C79); S-1009b C80, C81 and
+C82; S-1010 a low (C83); S-1011 a low (C84); S-1013 C85 and C86; S-1012 no candidate. Sweep 1 confirmed 21 at medium or
+above, 5 of them high; sweep 2 confirmed 8, none high; sweep 3 confirmed 18, 2 of them high. The count did not fall.
+
+By their fix-unit lines, fourteen of the sixteen mediums name an earlier finding or fix, and they gather in five places:
+
+- The secret-source check of loadPolicy in cmd/workcell/policy.go, six: C72, C75, C78, C80, C81 and C82, each a residue
+  of C54 or of the fix before it (C58 of sweep 2 was the first).
+- The method-and-path rule of a `[[secret]]`, admits in internal/proxy/terminate.go, four: C68 (the sibling of C10 and
+  C33), then C71, C73 and C74, each a residue of the one before.
+- The checks of cmd/workcell that relate a path to the working, data or config directory, three: C65, C85, and C86 (the
+  absolute spelling that C30 and C53 left).
+- The proxy's knowledge of the host's own addresses, two: C66 (the C9 of sweep 1) and C69 (the residue of its fix).
+- The sign-in token answer, one: C67 (the residual of C55).
+
+The first two judge a command line or a request as text, and in each every fix left rows that a later audit confirmed.
+That is the design question S8 names. The two highs are of another kind: C76 and C77 are I10 findings in the file
+service of a `--mount` session, found once and fixed once, with no residue recorded.
+
+Open at this verdict, all in `PARKED.md` and none acted on (R3): eight rows of the secret-source check with a
+reproduction that no verifier has ruled on, under the lines that begin `S-F64 redteam, reviewer and builder notes`,
+`S-F65 redteam and reviewer notes` and `S-F66 redteam notes`; and two reasoned residues with no reproduction, under
+`S-F69 not closed` and `S-F70 not closed`. R-4 weighed them and left them for the maintainer. The next candidate number
+is C87 and the next fix unit S-F71. R-5, S-1018 and H-1019 wait behind this unit, so `docs/security-review.md` is not
+written yet.
