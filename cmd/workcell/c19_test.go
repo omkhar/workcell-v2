@@ -108,7 +108,7 @@ func TestC19PullRefusesADestinationThatHoldsTheDataDirectory(t *testing.T) {
 
 // TestC85ConfigFileOfAnotherName (I13; I5, I14 by consequence): holds judges a config.toml that is a symbolic link to a file not made yet by where it points, since the guest of a --mount session would make it, and refuses one with more than one name (a hard link), whose other names it cannot find; a link to an absent file elsewhere, and a file of one name, run. The config directory is itself a link, as a dotfiles layout has it, so a relative target is read from where that directory really is, as the kernel reads it. resolved ends on a loop of links, at the name it is at.
 func TestC85ConfigFileOfAnotherName(t *testing.T) {
-	work, cfg := filepath.Join(t.TempDir(), "sub", "dot"), t.TempDir() // <cfg>/workcell -> sub/wc, so a target ../dot/config.toml names a file in the workspace
+	work, cfg := filepath.Join(t.TempDir(), "sub", "dot"), must(filepath.EvalSymlinks(t.TempDir())) // <cfg>/workcell -> sub/wc, so a target ../dot/config.toml names a file in the workspace; macOS: /var is /private/var, and a loop of links ends under the spelling resolved gives the directory
 	t.Setenv("XDG_DATA_HOME", t.TempDir())
 	t.Setenv("XDG_CONFIG_HOME", cfg)
 	file, present, loop, a, b := filepath.Join(cfg, "workcell", "config.toml"), filepath.Join(cfg, "present"), filepath.Join(cfg, "loop"), filepath.Join(cfg, "a"), filepath.Join(cfg, "b")
