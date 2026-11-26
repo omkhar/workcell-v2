@@ -317,8 +317,7 @@ func startup(stderr io.Writer) installer {
 	return in
 }
 
-// choose is the candidate to install: with to, the one of that version, any other version refused; without, the first, or the previous one while the user's
-// cool-off (B10) still holds the first at now, or a refusal when there is none.
+// choose is the candidate to install: with to, the one of that version, any other version refused; without, the first, or the previous one while the user's cool-off (B10) still holds the first at now, or a refusal when there is none.
 func choose(cands []channel.Pin, to string, cooloff time.Duration, now time.Time) (channel.Pin, error) {
 	if to != "" {
 		if i := slices.IndexFunc(cands, func(c channel.Pin) bool { return c.Version == to }); i >= 0 {

@@ -31,8 +31,7 @@ func TestClientsValidateSessionLeaf(t *testing.T) {
 		os.WriteFile(filepath.Join(dir, "ca-certificates.crt"), bundle, 0o644)
 	}
 	must(0, guest.WriteTrust(dir, ca.CertPEM(), time.Now()))
-	ln := must(tls.Listen("tcp", ":0", &tls.Config{MinVersion: tls.VersionTLS12,
-		GetCertificate: func(*tls.ClientHelloInfo) (*tls.Certificate, error) { return ca.leaf("localhost") }}))
+	ln := must(tls.Listen("tcp", ":0", &tls.Config{MinVersion: tls.VersionTLS12, GetCertificate: func(*tls.ClientHelloInfo) (*tls.Certificate, error) { return ca.leaf("localhost") }}))
 	defer ln.Close()
 	go func() {
 		_ = http.Serve(ln, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = io.WriteString(w, "ok") }))
@@ -67,8 +66,7 @@ func TestClientsValidateSessionLeaf(t *testing.T) {
 		})
 	}
 	t.Run("go", func(t *testing.T) {
-		// Go reads SSL_CERT_FILE once per process, and on macOS the first TLS handshake in the test binary
-		// fixes the roots, so nil roots would depend on test order: use the file the variable names, as a guest program does.
+		// Go reads SSL_CERT_FILE once per process, and on macOS the first TLS handshake in the test binary fixes the roots, so nil roots would depend on test order: use the file the variable names, as a guest program does.
 		i := slices.IndexFunc(env, func(kv string) bool { return strings.HasPrefix(kv, "SSL_CERT_FILE=") })
 		pem, err := os.ReadFile(strings.TrimPrefix(env[max(i, 0)], "SSL_CERT_FILE=")) // no entry: env[0] is no certificate file either
 		pool := x509.NewCertPool()

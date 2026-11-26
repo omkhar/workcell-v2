@@ -232,11 +232,7 @@ func TestLoadKey(t *testing.T) {
 		name    string
 		content string
 		mode    os.FileMode
-	}{
-		{"readable by others", strings.Repeat("ab", 32), 0o644},
-		{"not a key", "hello", 0o600},
-		{"too short", strings.Repeat("ab", 16), 0o600},
-	}
+	}{{"readable by others", strings.Repeat("ab", 32), 0o644}, {"not a key", "hello", 0o600}, {"too short", strings.Repeat("ab", 16), 0o600}}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := t.TempDir()
@@ -273,8 +269,7 @@ func TestParseLineAndSafeHost(t *testing.T) {
 	}
 }
 
-// FuzzEachLine feeds any bytes to the line reader: no line is over the bound or holds a newline,
-// and the lines with their newlines are exactly the input, or the read fails.
+// FuzzEachLine feeds any bytes to the line reader: no line is over the bound or holds a newline, and the lines with their newlines are exactly the input, or the read fails.
 func FuzzEachLine(f *testing.F) {
 	f.Add([]byte("a\nb\n"))
 	f.Add([]byte("a\r\n\n"))

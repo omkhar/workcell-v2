@@ -113,40 +113,33 @@ func TestWrite(t *testing.T) {
 					t.Errorf("updir/written holds %q", got)
 				}
 			}},
-		{"nothing is written through the symlink without its entry", link, []guest.Entry{fileEntry("updir/written", 6, false)}, "escape", "open its directory",
-			func(t *testing.T, parent, dest string) {
-				if m := mode(t, filepath.Join(dest, "updir")); m&os.ModeSymlink == 0 {
-					t.Errorf("updir is %v, want the symlink", m)
-				}
-			}},
+		{"nothing is written through the symlink without its entry", link, []guest.Entry{fileEntry("updir/written", 6, false)}, "escape", "open its directory", func(t *testing.T, parent, dest string) {
+			if m := mode(t, filepath.Join(dest, "updir")); m&os.ModeSymlink == 0 {
+				t.Errorf("updir is %v, want the symlink", m)
+			}
+		}},
 		{"an existing file is replaced", func(t *testing.T, dest string) {
 			must(0, os.WriteFile(filepath.Join(dest, "f"), []byte("old and longer"), 0o600))
-		}, []guest.Entry{fileEntry("f", 3, false)}, "new", "",
-			func(t *testing.T, parent, dest string) {
-				if got, m := content(t, filepath.Join(dest, "f")), mode(t, filepath.Join(dest, "f")); got != "new" || m.Perm() != 0o644 {
-					t.Errorf("f holds %q with mode %v", got, m)
-				}
-			}},
-		{"an existing directory is kept", full, []guest.Entry{dirEntry("d"), fileEntry("d/new", 1, false)}, "n", "",
-			func(t *testing.T, parent, dest string) {
-				if got := content(t, filepath.Join(dest, "d", "keep")); got != "keep" {
-					t.Errorf("d/keep holds %q", got)
-				}
-			}},
-		{"a directory that is not empty is not replaced", full, []guest.Entry{fileEntry("d", 1, false)}, "n", "remove what is there",
-			func(t *testing.T, parent, dest string) {
-				if got := content(t, filepath.Join(dest, "d", "keep")); got != "keep" {
-					t.Errorf("d/keep holds %q", got)
-				}
-			}},
-		{"an empty directory is replaced by a file", func(t *testing.T, dest string) {
-			must(0, os.Mkdir(filepath.Join(dest, "d"), 0o755))
-		}, []guest.Entry{fileEntry("d", 1, false)}, "n", "",
-			func(t *testing.T, parent, dest string) {
-				if m := mode(t, filepath.Join(dest, "d")); !m.IsRegular() {
-					t.Errorf("d is %v, want a file", m)
-				}
-			}},
+		}, []guest.Entry{fileEntry("f", 3, false)}, "new", "", func(t *testing.T, parent, dest string) {
+			if got, m := content(t, filepath.Join(dest, "f")), mode(t, filepath.Join(dest, "f")); got != "new" || m.Perm() != 0o644 {
+				t.Errorf("f holds %q with mode %v", got, m)
+			}
+		}},
+		{"an existing directory is kept", full, []guest.Entry{dirEntry("d"), fileEntry("d/new", 1, false)}, "n", "", func(t *testing.T, parent, dest string) {
+			if got := content(t, filepath.Join(dest, "d", "keep")); got != "keep" {
+				t.Errorf("d/keep holds %q", got)
+			}
+		}},
+		{"a directory that is not empty is not replaced", full, []guest.Entry{fileEntry("d", 1, false)}, "n", "remove what is there", func(t *testing.T, parent, dest string) {
+			if got := content(t, filepath.Join(dest, "d", "keep")); got != "keep" {
+				t.Errorf("d/keep holds %q", got)
+			}
+		}},
+		{"an empty directory is replaced by a file", func(t *testing.T, dest string) { must(0, os.Mkdir(filepath.Join(dest, "d"), 0o755)) }, []guest.Entry{fileEntry("d", 1, false)}, "n", "", func(t *testing.T, parent, dest string) {
+			if m := mode(t, filepath.Join(dest, "d")); !m.IsRegular() {
+				t.Errorf("d is %v, want a file", m)
+			}
+		}},
 		{"a stream shorter than the manifest", nil, []guest.Entry{fileEntry("f", 5, false)}, "abc", "unexpected EOF", nil},
 		{"a directory entry whose parent is missing", nil, []guest.Entry{fileEntry("a/b", 1, false)}, "x", "open its directory", nil},
 	}
@@ -181,14 +174,11 @@ func TestCompare(t *testing.T) {
 		data    string
 		want    string
 	}{
-		{"the same tree", []guest.Entry{dirEntry("d"), fileEntry("d/gone", 4, false), fileEntry("d/same", 4, false), fileEntry("changed", 3, false), fileEntry("script", 2, true), linkEntry("l", "old")},
-			"gonesameoldok", ""},
+		{"the same tree", []guest.Entry{dirEntry("d"), fileEntry("d/gone", 4, false), fileEntry("d/same", 4, false), fileEntry("changed", 3, false), fileEntry("script", 2, true), linkEntry("l", "old")}, "gonesameoldok", ""},
 		{"every kind of change", []guest.Entry{dirEntry("d"), fileEntry("d/same", 4, false), fileEntry("changed", 3, false), fileEntry("script", 2, false), linkEntry("l", "new"), fileEntry("added", 1, false), dirEntry("new"), fileEntry("new/f", 0, false)},
 			"samenewoka", "M changed\nM script\nM l\nA added\nA new\nA new/f\nD d/gone\n"},
-		{"a kind changes", []guest.Entry{dirEntry("changed"), fileEntry("d", 1, false)},
-			"x", "M changed\nM d\nD d/gone\nD d/same\nD l\nD script\n"},
-		{"a length changes", []guest.Entry{dirEntry("d"), fileEntry("d/gone", 4, false), fileEntry("d/same", 5, false), fileEntry("changed", 3, false), fileEntry("script", 2, true), linkEntry("l", "old")},
-			"gonesame1oldok", "M d/same\n"},
+		{"a kind changes", []guest.Entry{dirEntry("changed"), fileEntry("d", 1, false)}, "x", "M changed\nM d\nD d/gone\nD d/same\nD l\nD script\n"},
+		{"a length changes", []guest.Entry{dirEntry("d"), fileEntry("d/gone", 4, false), fileEntry("d/same", 5, false), fileEntry("changed", 3, false), fileEntry("script", 2, true), linkEntry("l", "old")}, "gonesame1oldok", "M d/same\n"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
