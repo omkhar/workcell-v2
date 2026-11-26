@@ -528,9 +528,7 @@ func TestVerify(t *testing.T) {
 		{name: "19E member-missing", src: gh, signed: true, member: true, mut: func(s *setup) {
 			s.retar("amd64", entry{name: "nope", body: []byte("binary for amd64")})
 		}},
-		{name: "19V member-is-directory", src: gh, signed: true, member: true, mut: func(s *setup) {
-			s.retar("amd64", entry{name: "tool-amd64/", flag: tar.TypeDir})
-		}},
+		{name: "19V member-is-directory", src: gh, signed: true, member: true, mut: func(s *setup) { s.retar("amd64", entry{name: "tool-amd64/", flag: tar.TypeDir}) }},
 		{name: "20E member-duplicated", src: gh, signed: true, member: true, mut: func(s *setup) {
 			s.retar("amd64", entry{name: "tool-amd64", body: []byte("binary for amd64")}, entry{name: "tool-amd64", body: []byte("binary for amd64")})
 		}},
@@ -624,9 +622,7 @@ func TestVerify(t *testing.T) {
 			doc, _ := json.Marshal(map[string]any{"attestations": []any{map[string]any{"predicateType": slsaV1, "bundle": json.RawMessage(s.sign(assetOf(s)))}}})
 			att(route{body: doc})(s)
 		}},
-		{name: "39V npm-signing-names-bundle", src: npm, signed: true, mut: func(s *setup) {
-			s.pin.Signing.Bundles, s.noFetch = map[string]string{"amd64": "x"}, true
-		}},
+		{name: "39V npm-signing-names-bundle", src: npm, signed: true, mut: func(s *setup) { s.pin.Signing.Bundles, s.noFetch = map[string]string{"amd64": "x"}, true }},
 
 		// vendor manifest and OCI
 		{name: "40E identity-on-vendor", src: vendor, mut: signing},

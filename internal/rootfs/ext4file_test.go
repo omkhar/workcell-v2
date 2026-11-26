@@ -151,12 +151,7 @@ func TestFreeSpace(t *testing.T) {
 		name string
 		free int64
 		size int64 // of the one file
-	}{
-		{"none", 0, 10000},
-		{"one group", 64 << 20, 10000},
-		{"unaligned", 100<<20 + 1, 5000},
-		{"several groups", 1 << 30, 130 << 20},
-	}
+	}{{"none", 0, 10000}, {"one group", 64 << 20, 10000}, {"unaligned", 100<<20 + 1, 5000}, {"several groups", 1 << 30, 130 << 20}}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			h, _ := hostFile(t, t.TempDir(), "f", tc.size)

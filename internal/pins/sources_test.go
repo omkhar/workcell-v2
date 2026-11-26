@@ -27,8 +27,7 @@ type route struct {
 	header  map[string]string
 	chunked bool // no Content-Length, so the cap is met while reading
 
-	// A registry's anonymous pull: token, when set, is the bearer the route wants. Without it the route answers 401 and the challenge, which by default names this
-	// server's /token route. A query, when set, is the one the route accepts.
+	// A registry's anonymous pull: token, when set, is the bearer the route wants. Without it the route answers 401 and the challenge, which by default names this server's /token route. A query, when set, is the one the route accepts.
 	token     string
 	challenge string
 	query     string
@@ -107,8 +106,7 @@ func TestCandidates(t *testing.T) {
 	vendorPin := Pin{Name: "claude-code", Source: VendorManifest, Locator: "/root", Assets: map[string]string{"amd64": "linux-x64", "arm64": "linux-arm64"}}
 	ociPin := Pin{Name: "tool", Source: OCI, Locator: "/v2/vendor/tool"}
 	signedPin := Pin{Name: "tool", Source: GitHubReleases, Locator: ghPin.Locator, Assets: map[string]string{"amd64": "tool-linux-amd64.tar.gz"},
-		Signing: Signing{Identity: "https://github.com/vendor/tool/.github/workflows/release.yml@refs/tags/{version}",
-			Issuer: "https://token.actions.githubusercontent.com", Bundles: map[string]string{"amd64": "tool-linux-amd64.sigstore"}}}
+		Signing: Signing{Identity: "https://github.com/vendor/tool/.github/workflows/release.yml@refs/tags/{version}", Issuer: "https://token.actions.githubusercontent.com", Bundles: map[string]string{"amd64": "tool-linux-amd64.sigstore"}}}
 	prefixed := Pin{Name: "tool", Source: GitHubReleases, Locator: ghPin.Locator, TagPrefix: "rust-", Assets: map[string]string{"amd64": "tool.tar.gz"}}
 	npmOK := map[string]route{"/@vendor%2ftool": {file: "npm-tool.json"}}
 	ghOK := map[string]route{"/repos/vendor/tool/releases": {file: "github-releases.json"}}
@@ -140,8 +138,7 @@ func TestCandidates(t *testing.T) {
 		return m
 	}
 	datedPin := Pin{Name: "tool", Source: OCI, Locator: ociPin.Locator, TagPrefix: "trixie-", TagSuffix: "-slim"}
-	datedOK := withRoute(withRoute(withRoute(ociOK, "/v2/vendor/tool/tags/list", route{file: "oci-dated-tags.json", token: "tok"}),
-		"/v2/vendor/tool/manifests/trixie-20261104-slim", route{file: "oci-manifest-1.2.0.json", token: "tok"}),
+	datedOK := withRoute(withRoute(withRoute(ociOK, "/v2/vendor/tool/tags/list", route{file: "oci-dated-tags.json", token: "tok"}), "/v2/vendor/tool/manifests/trixie-20261104-slim", route{file: "oci-manifest-1.2.0.json", token: "tok"}),
 		"/v2/vendor/tool/manifests/trixie-20261027-slim", route{file: "oci-manifest-1.1.0.json", token: "tok"})
 	// failures adds the rows every source shares: an error status, a truncated body, or a redirect off https or in a loop.
 	failures := func(pin Pin, routes map[string]route, paths ...string) []row {
@@ -175,12 +172,9 @@ func TestCandidates(t *testing.T) {
 		}},
 		{name: "npm no version", pin: npmPin, routes: withRoute(npmOK, "/@vendor%2ftool", route{body: `{"versions": {}}`}), want: func(string) []Candidate { return []Candidate{} }},
 		{name: "npm error document", pin: npmPin, routes: withRoute(npmOK, "/@vendor%2ftool", route{body: `{"error": "Not found"}`})},
-		{name: "npm missing time", pin: npmPin, routes: withRoute(npmOK, "/@vendor%2ftool", route{
-			body: `{"versions": {"1.2.0": {"dist": {"tarball": "https://r.example/t.tgz"}}}, "time": {}}`})},
-		{name: "npm bad time", pin: npmPin, routes: withRoute(npmOK, "/@vendor%2ftool", route{
-			body: `{"versions": {"1.2.0": {"dist": {"tarball": "https://r.example/t.tgz"}}}, "time": {"1.2.0": "yesterday"}}`})},
-		{name: "npm http tarball", pin: npmPin, routes: withRoute(npmOK, "/@vendor%2ftool", route{
-			body: `{"versions": {"1.2.0": {"dist": {"tarball": "http://r.example/t.tgz"}}}, "time": {"1.2.0": "2026-10-20T09:30:00Z"}}`})},
+		{name: "npm missing time", pin: npmPin, routes: withRoute(npmOK, "/@vendor%2ftool", route{body: `{"versions": {"1.2.0": {"dist": {"tarball": "https://r.example/t.tgz"}}}, "time": {}}`})},
+		{name: "npm bad time", pin: npmPin, routes: withRoute(npmOK, "/@vendor%2ftool", route{body: `{"versions": {"1.2.0": {"dist": {"tarball": "https://r.example/t.tgz"}}}, "time": {"1.2.0": "yesterday"}}`})},
+		{name: "npm http tarball", pin: npmPin, routes: withRoute(npmOK, "/@vendor%2ftool", route{body: `{"versions": {"1.2.0": {"dist": {"tarball": "http://r.example/t.tgz"}}}, "time": {"1.2.0": "2026-10-20T09:30:00Z"}}`})},
 		{name: "github", pin: ghPin, routes: ghOK, want: func(string) []Candidate {
 			return []Candidate{
 				{Release: Release{Version: "v1.4.0", Artifacts: map[string]Artifact{}}, PreRelease: true, Timestamps: ts("2026-10-30T10:00:00Z")},
@@ -195,8 +189,7 @@ func TestCandidates(t *testing.T) {
 		}},
 		{name: "github no release", pin: ghPin, routes: withRoute(ghOK, "/repos/vendor/tool/releases", route{body: `[]`}), want: func(string) []Candidate { return []Candidate{} }},
 		{name: "github error document", pin: ghPin, routes: withRoute(ghOK, "/repos/vendor/tool/releases", route{body: `{"message": "API rate limit exceeded"}`})},
-		{name: "github stable release lacks an asset", pin: ghPin, routes: withRoute(ghOK, "/repos/vendor/tool/releases", route{
-			body: `[{"tag_name": "v1.2.0", "created_at": "2026-10-20T09:00:00Z", "assets": []}]`})},
+		{name: "github stable release lacks an asset", pin: ghPin, routes: withRoute(ghOK, "/repos/vendor/tool/releases", route{body: `[{"tag_name": "v1.2.0", "created_at": "2026-10-20T09:00:00Z", "assets": []}]`})},
 		{name: "github bad digest", pin: ghPin, routes: withRoute(ghOK, "/repos/vendor/tool/releases", route{
 			body: `[{"tag_name": "v1.2.0", "created_at": "2026-10-20T09:00:00Z", "assets": [
 				{"name": "tool-linux-amd64.tar.gz", "browser_download_url": "https://g.example/a", "digest": "sha512:ab"},
@@ -217,8 +210,7 @@ func TestCandidates(t *testing.T) {
 			body: `[{"tag_name": "v1.2.0", "created_at": "2026-10-20T09:00:00Z", "assets": [
 				{"name": "tool-linux-amd64.tar.gz", "browser_download_url": "https://g.example/a", "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
 				{"name": "tool-linux-amd64.sigstore", "browser_download_url": "https://g.example/a.sigstore"}]}]`}), want: func(string) []Candidate {
-			return []Candidate{{Release: Release{Version: "v1.2.0", Artifacts: map[string]Artifact{"amd64": {URL: "https://g.example/a",
-				SHA256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", Bundle: "https://g.example/a.sigstore"}}}, Timestamps: ts("2026-10-20T09:00:00Z")}}
+			return []Candidate{{Release: Release{Version: "v1.2.0", Artifacts: map[string]Artifact{"amd64": {URL: "https://g.example/a", SHA256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", Bundle: "https://g.example/a.sigstore"}}}, Timestamps: ts("2026-10-20T09:00:00Z")}}
 		}},
 		{name: "github bundle adopted by the newest release", pin: signedPin, routes: withRoute(ghOK, "/repos/vendor/tool/releases", route{
 			body: `[{"tag_name": "v1.3.0", "created_at": "2026-10-28T09:00:00Z", "assets": [
@@ -242,12 +234,9 @@ func TestCandidates(t *testing.T) {
 		}},
 		{name: "vendor latest is not a version", pin: vendorPin, routes: withRoute(vendorOK, "/root/latest", route{body: "../../x\n"})},
 		{name: "vendor manifest missing", pin: vendorPin, routes: withRoute(vendorOK, "/root/latest", route{body: "1.1.0\n"})},
-		{name: "vendor manifest reports another version", pin: vendorPin, routes: withRoute(vendorOK, "/root/1.2.0/manifest.json", route{
-			body: `{"version": "1.1.9", "buildDate": "2026-10-20T08:00:00Z", "platforms": {}}`})},
-		{name: "vendor missing platform", pin: vendorPin, routes: withRoute(vendorOK, "/root/1.2.0/manifest.json", route{
-			body: `{"version": "1.2.0", "buildDate": "2026-10-20T08:00:00Z", "platforms": {"linux-x64": {"checksum": "3333333333333333333333333333333333333333333333333333333333333333"}}}`})},
-		{name: "vendor bad checksum", pin: vendorPin, routes: withRoute(vendorOK, "/root/1.2.0/manifest.json", route{
-			body: `{"version": "1.2.0", "buildDate": "2026-10-20T08:00:00Z", "platforms": {"linux-x64": {"checksum": "XYZ"}, "linux-arm64": {"checksum": "XYZ"}}}`})},
+		{name: "vendor manifest reports another version", pin: vendorPin, routes: withRoute(vendorOK, "/root/1.2.0/manifest.json", route{body: `{"version": "1.1.9", "buildDate": "2026-10-20T08:00:00Z", "platforms": {}}`})},
+		{name: "vendor missing platform", pin: vendorPin, routes: withRoute(vendorOK, "/root/1.2.0/manifest.json", route{body: `{"version": "1.2.0", "buildDate": "2026-10-20T08:00:00Z", "platforms": {"linux-x64": {"checksum": "3333333333333333333333333333333333333333333333333333333333333333"}}}`})},
+		{name: "vendor bad checksum", pin: vendorPin, routes: withRoute(vendorOK, "/root/1.2.0/manifest.json", route{body: `{"version": "1.2.0", "buildDate": "2026-10-20T08:00:00Z", "platforms": {"linux-x64": {"checksum": "XYZ"}, "linux-arm64": {"checksum": "XYZ"}}}`})},
 		{name: "vendor missing binary name", pin: vendorPin, routes: withRoute(vendorOK, "/root/1.2.0/manifest.json", route{
 			body: `{"version": "1.2.0", "buildDate": "2026-10-20T08:00:00Z", "platforms": {"linux-x64": {"checksum": "3333333333333333333333333333333333333333333333333333333333333333", "binary": "claude"}, "linux-arm64": {"checksum": "2222222222222222222222222222222222222222222222222222222222222222"}}}`})},
 		{name: "vendor missing build date", pin: vendorPin, routes: withRoute(vendorOK, "/root/1.2.0/manifest.json", route{body: `{"version": "1.2.0", "platforms": {}}`})},
@@ -261,16 +250,11 @@ func TestCandidates(t *testing.T) {
 		{name: "oci token endpoint gives no token", pin: ociPin, routes: withRoute(ociOK, "/token", route{body: `{}`})},
 		{name: "oci token endpoint fails", pin: ociPin, routes: withRoute(ociOK, "/token", route{status: 500, body: "oops"})},
 		{name: "oci token is refused", pin: ociPin, routes: withRoute(ociOK, "/token", route{body: `{"token": "other"}`})},
-		{name: "oci challenge realm is http", pin: ociPin, routes: withRoute(ociOK, "/v2/vendor/tool/tags/list", route{file: "oci-tags.json", token: "tok",
-			challenge: `Bearer realm="http://auth.example/token",service="registry.example",scope="repository:vendor/tool:pull"`})},
-		{name: "oci challenge is not Bearer", pin: ociPin, routes: withRoute(ociOK, "/v2/vendor/tool/tags/list", route{file: "oci-tags.json", token: "tok",
-			challenge: `Basic realm="registry"`})},
-		{name: "oci header matches", pin: ociPin, routes: withRoute(ociOK, "/v2/vendor/tool/manifests/1.2.0", route{file: "oci-manifest-1.2.0.json",
-			header: map[string]string{"Docker-Content-Digest": "sha256:" + fileDigest(t, "oci-manifest-1.2.0.json")}}), want: ociWant},
-		{name: "oci header differs", pin: ociPin, routes: withRoute(ociOK, "/v2/vendor/tool/manifests/1.2.0", route{file: "oci-manifest-1.2.0.json",
-			header: map[string]string{"Docker-Content-Digest": "sha256:" + fileDigest(t, "oci-manifest-1.1.0.json")}})},
-		{name: "oci paginated tag list", pin: ociPin, routes: withRoute(ociOK, "/v2/vendor/tool/tags/list", route{file: "oci-tags.json",
-			header: map[string]string{"Link": `</v2/vendor/tool/tags/list?last=1.2.0>; rel="next"`}})},
+		{name: "oci challenge realm is http", pin: ociPin, routes: withRoute(ociOK, "/v2/vendor/tool/tags/list", route{file: "oci-tags.json", token: "tok", challenge: `Bearer realm="http://auth.example/token",service="registry.example",scope="repository:vendor/tool:pull"`})},
+		{name: "oci challenge is not Bearer", pin: ociPin, routes: withRoute(ociOK, "/v2/vendor/tool/tags/list", route{file: "oci-tags.json", token: "tok", challenge: `Basic realm="registry"`})},
+		{name: "oci header matches", pin: ociPin, routes: withRoute(ociOK, "/v2/vendor/tool/manifests/1.2.0", route{file: "oci-manifest-1.2.0.json", header: map[string]string{"Docker-Content-Digest": "sha256:" + fileDigest(t, "oci-manifest-1.2.0.json")}}), want: ociWant},
+		{name: "oci header differs", pin: ociPin, routes: withRoute(ociOK, "/v2/vendor/tool/manifests/1.2.0", route{file: "oci-manifest-1.2.0.json", header: map[string]string{"Docker-Content-Digest": "sha256:" + fileDigest(t, "oci-manifest-1.1.0.json")}})},
+		{name: "oci paginated tag list", pin: ociPin, routes: withRoute(ociOK, "/v2/vendor/tool/tags/list", route{file: "oci-tags.json", header: map[string]string{"Link": `</v2/vendor/tool/tags/list?last=1.2.0>; rel="next"`}})},
 		{name: "oci no tags", pin: ociPin, routes: withRoute(ociOK, "/v2/vendor/tool/tags/list", route{body: `{"name": "vendor/tool", "tags": null}`}), want: func(string) []Candidate { return []Candidate{} }},
 		{name: "oci error document", pin: ociPin, routes: withRoute(ociOK, "/v2/vendor/tool/tags/list", route{body: `{"errors": [{"code": "DENIED"}]}`})},
 		{name: "oci bad created", pin: ociPin, routes: withRoute(ociOK, "/v2/vendor/tool/manifests/1.2.0", route{body: `{"annotations": {"org.opencontainers.image.created": "last week"}}`})},
@@ -306,11 +290,7 @@ func TestCandidatesRefusals(t *testing.T) {
 	tests := []struct {
 		name string
 		pin  Pin
-	}{
-		{"unknown source", Pin{Name: "x", Source: "ftp", Locator: "https://example.com/"}},
-		{"plain http locator", Pin{Name: "x", Source: NPM, Locator: "http://example.com/x"}},
-		{"no locator", Pin{Name: "x", Source: NPM}},
-	}
+	}{{"unknown source", Pin{Name: "x", Source: "ftp", Locator: "https://example.com/"}}, {"plain http locator", Pin{Name: "x", Source: NPM, Locator: "http://example.com/x"}}, {"no locator", Pin{Name: "x", Source: NPM}}}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := Candidates(context.Background(), &http.Client{}, tt.pin)

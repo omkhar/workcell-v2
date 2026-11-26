@@ -6,6 +6,7 @@
 package main
 
 import (
+	"cmp"
 	"errors"
 	"io"
 	"net"
@@ -203,5 +204,30 @@ func TestClientEndsAsADetach(t *testing.T) {
 		case <-time.After(10 * time.Second):
 			t.Fatalf("%s: client still running after 10 s", name)
 		}
+	}
+}
+
+// TestSSLCertDirMemberLinkedIntoTheWorkingDirectory (I6, I5; the fix round of C86): the system loader reads every member of an SSL_CERT_DIR entry and follows one that is a symbolic link out of the directory, so an entry outside the working directory whose member links to <cwd>/certs/ca.pem makes a file of the repository, or of the guest under --mount, a root of the proxy's upstream pool, as an entry under cwd did (C86). The session must be refused before newSession in an error naming SSL_CERT_DIR; the same directory whose member links elsewhere (the control arm) is still admitted, to the dummy VMM's boot failure.
+func TestSSLCertDirMemberLinkedIntoTheWorkingDirectory(t *testing.T) {
+	for _, under := range []bool{true, false} {
+		t.Run(map[bool]string{true: "member linked into cwd", false: "control: member linked elsewhere"}[under], func(t *testing.T) {
+			work, data, config, certs := must(filepath.EvalSymlinks(t.TempDir())), filepath.Join(t.TempDir(), "workcell"), filepath.Join(t.TempDir(), "workcell"), filepath.Join(t.TempDir(), "certs") // macOS: /var is /private/var
+			target := cmp.Or(map[bool]string{true: filepath.Join(work, "certs", "ca.pem")}[under], filepath.Join(t.TempDir(), "roots.pem"))                                                            // the member's target: the attacker's file in the repository, or the operator's own elsewhere
+			t.Setenv("XDG_DATA_HOME", filepath.Dir(data))
+			t.Setenv("XDG_CONFIG_HOME", filepath.Dir(config))
+			t.Setenv("TMPDIR", t.TempDir())
+			t.Setenv("SSL_CERT_DIR", certs)
+			must(0, cmp.Or(os.MkdirAll(certs, 0o700), os.MkdirAll(config, 0o700), os.MkdirAll(filepath.Dir(target), 0o700), os.WriteFile(target, []byte("a CA's PEM"), 0o600), os.Symlink(target, filepath.Join(certs, "corp.pem")), os.WriteFile(filepath.Join(config, "config.toml"), []byte("[network]\nallow = [\"api.example.com\"]\n"), 0o600)))
+			a := c19Data(t, data, "/elsewhere")
+			t.Chdir(work)
+			allow, secrets, _, _, err := loadPolicy(nil, io.Discard)
+			if err == nil {
+				err = session([]string{"true"}, limits{DiskMiB: 16}, false, a, allow, secrets).err
+			}
+			ents, _ := os.ReadDir(filepath.Join(data, "sessions"))
+			if started, refused := len(ents) > 1, err != nil && strings.Contains(err.Error(), "SSL_CERT_DIR"); started == under || refused != under { // started: a session directory beside the earlier session's, so newSession ran
+				t.Errorf("I6: SSL_CERT_DIR=%q with the member corp.pem linked to %s, under cwd %t: session gave %v, a session directory made: %t; want refused before newSession in an error naming SSL_CERT_DIR: %t", certs, target, under, err, started, under)
+			}
+		})
 	}
 }

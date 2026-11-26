@@ -86,10 +86,7 @@ func TestCmdline(t *testing.T) {
 	tests := []struct {
 		l    limits
 		want string
-	}{
-		{limits{2, 1024, 0}, "root=/dev/vda ro"},
-		{limits{1, 256, 64}, "root=/dev/vda ro workcell.disk=64"},
-	}
+	}{{limits{2, 1024, 0}, "root=/dev/vda ro"}, {limits{1, 256, 64}, "root=/dev/vda ro workcell.disk=64"}}
 	for _, tc := range tests {
 		if got := tc.l.cmdline(); got != tc.want {
 			t.Errorf("%+v.cmdline() = %q, want %q", tc.l, got, tc.want)

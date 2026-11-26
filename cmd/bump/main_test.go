@@ -108,14 +108,12 @@ func release(f *fixture, name, version string, built time.Time, wrongDigest bool
 	sum := sha256.Sum256([]byte(cmp.Or(map[bool]string{true: "something else"}[wrongDigest], art)))
 	root := "/" + name + "/"
 	f.upstream[root+"latest"] = version + "\n"
-	f.upstream[root+version+"/manifest.json"] = fmt.Sprintf(`{"version":%q,"buildDate":%q,"platforms":{"linux-x64":{"checksum":%q,"binary":%q}}}`,
-		version, built.Format(time.RFC3339), hex.EncodeToString(sum[:]), name)
+	f.upstream[root+version+"/manifest.json"] = fmt.Sprintf(`{"version":%q,"buildDate":%q,"platforms":{"linux-x64":{"checksum":%q,"binary":%q}}}`, version, built.Format(time.RFC3339), hex.EncodeToString(sum[:]), name)
 	f.upstream[root+version+"/linux-x64/"+name] = art
 }
 
 func pin(name string, class pins.Class, version string) pins.Pin {
-	return pins.Pin{Name: name, Class: class, Source: pins.VendorManifest, Assets: map[string]string{"amd64": "linux-x64"},
-		Release: pins.Release{Version: version, Artifacts: map[string]pins.Artifact{"amd64": {SHA256: strings.Repeat("0", 64)}}}}
+	return pins.Pin{Name: name, Class: class, Source: pins.VendorManifest, Assets: map[string]string{"amd64": "linux-x64"}, Release: pins.Release{Version: version, Artifacts: map[string]pins.Artifact{"amd64": {SHA256: strings.Repeat("0", 64)}}}}
 }
 
 func pullJSON(n int, ref, repo string, fork bool, changed int, labels ...string) string {
@@ -123,8 +121,7 @@ func pullJSON(n int, ref, repo string, fork bool, changed int, labels ...string)
 	for _, l := range labels {
 		ls = append(ls, map[string]string{"name": l})
 	}
-	b, _ := json.Marshal(map[string]any{"number": n, "changed_files": changed, "labels": ls, "base": map[string]string{"ref": "main"},
-		"head": map[string]any{"ref": ref, "sha": head, "repo": map[string]any{"full_name": repo, "fork": fork}}})
+	b, _ := json.Marshal(map[string]any{"number": n, "changed_files": changed, "labels": ls, "base": map[string]string{"ref": "main"}, "head": map[string]any{"ref": ref, "sha": head, "repo": map[string]any{"full_name": repo, "fork": fork}}})
 	return string(b)
 }
 
@@ -218,14 +215,10 @@ func datedKit(f *fixture) {
 
 func TestRun(t *testing.T) {
 	cases := []runCase{
-		{name: "dry run plans, posts nothing", dry: true, code: 0,
-			out: []string{"dry-run: nothing is posted or written", "kit trusted 2.0.0 2.1.0 eligible", "tool guest 1.2.0 1.3.0 eligible",
-				"would open pull request: guest", "would open pull request: trusted"}},
-		{name: "an upstream that answers an error: the plan line, and its status alone", dry: true, code: 0, edit: func(f *fixture) { delete(f.upstream, "/tool/latest") },
-			out: []string{"source-error: status 404", "tool guest 1.2.0 none source-error"}},
+		{name: "dry run plans, posts nothing", dry: true, code: 0, out: []string{"dry-run: nothing is posted or written", "kit trusted 2.0.0 2.1.0 eligible", "tool guest 1.2.0 1.3.0 eligible", "would open pull request: guest", "would open pull request: trusted"}},
+		{name: "an upstream that answers an error: the plan line, and its status alone", dry: true, code: 0, edit: func(f *fixture) { delete(f.upstream, "/tool/latest") }, out: []string{"source-error: status 404", "tool guest 1.2.0 none source-error"}},
 		{name: "dated OCI tags: a missing manifest skips the tag, the plan has a verdict", dry: true, code: 0, out: []string{"kit trusted trixie-20261027-slim trixie-20261104-slim eligible"}, edit: datedKit},
-		{name: "one pull request per class", code: 0, out: []string{"opened pull request: guest 7", "opened pull request: trusted 7"},
-			writes: slices.Concat(openGuestPR, openTrustedPR), check: checkOpened},
+		{name: "one pull request per class", code: 0, out: []string{"opened pull request: guest 7", "opened pull request: trusted 7"}, writes: slices.Concat(openGuestPR, openTrustedPR), check: checkOpened},
 		{name: "guest already open and green: merged once with the checked head, no second guest pull request", code: 0, edit: open("guest", nil),
 			out: []string{"merged: 5", "already open: guest", "opened pull request: trusted 7"}, writes: slices.Concat(mergeOnce, openTrustedPR),
 			check: func(t *testing.T, api *standIn) {
@@ -239,22 +232,17 @@ func TestRun(t *testing.T) {
 		{name: "page two of the changed files leaves pins: refused", code: 2, edit: open("guest", map[string]reply{"GET /repos/o/r/pulls/5": {body: pullJSON(5, "bump/guest-20261119", "o/r", false, 2)},
 			files5: {body: rowPatch, link: `<{api}/repos/o/r/pulls/5/files?per_page=100&page=2>; rel="next"`},
 			strings.TrimSuffix(files5, "100") + "100&page=2": {body: `[{"filename":".github/x","status":"added","patch":"@@ -0,0 +1 @@\n+{"}]`}})},
-		{name: "page two of the changed files fails: stopped", code: 1, edit: open("guest", map[string]reply{files5: {body: rowPatch, link: `<{api}/repos/o/r/pulls/5/files?per_page=100&page=2>; rel="next"`},
-			strings.TrimSuffix(files5, "100") + "100&page=2": {status: 500}})},
+		{name: "page two of the changed files fails: stopped", code: 1, edit: open("guest", map[string]reply{files5: {body: rowPatch, link: `<{api}/repos/o/r/pulls/5/files?per_page=100&page=2>; rel="next"`}, strings.TrimSuffix(files5, "100") + "100&page=2": {status: 500}})},
 		{name: "changed_files above the listed entries: refused", code: 2, edit: open("guest", map[string]reply{"GET /repos/o/r/pulls/5": {body: pullJSON(5, "bump/guest-20261119", "o/r", false, 3)}})},
 		{name: "the merge waits for a green gate", code: 0, out: []string{"waits for gate: 5", "already open: guest"}, writes: openTrustedPR, edit: open("guest", map[string]reply{checks5: {body: running}})},
-		{name: "only gate-macos is green: no merge", code: 0, out: []string{"waits for gate: 5"}, writes: openTrustedPR,
-			edit: open("guest", map[string]reply{checks5: {body: checks(checkRun("gate-macos", "completed", "success"))}})},
+		{name: "only gate-macos is green: no merge", code: 0, out: []string{"waits for gate: 5"}, writes: openTrustedPR, edit: open("guest", map[string]reply{checks5: {body: checks(checkRun("gate-macos", "completed", "success"))}})},
 		{name: "the merge answers 409: stopped after one call", code: 1, writes: mergeOnce, edit: open("guest", map[string]reply{merge5: {status: 409, body: `{"message":"Head branch was modified"}`}})},
 		{name: "the merge answers 405: stopped after one call", code: 1, writes: mergeOnce, edit: open("guest", map[string]reply{merge5: {status: 405}})},
-		{name: "a guest security pull request merges once the gate is green", code: 0, out: []string{"merged: 5"}, writes: slices.Concat(mergeOnce, openTrustedPR),
-			edit: open("guest", map[string]reply{"GET /repos/o/r/pulls/5": {body: pullJSON(5, "bump/guest-20261119", "o/r", false, 1, "security")}})},
+		{name: "a guest security pull request merges once the gate is green", code: 0, out: []string{"merged: 5"}, writes: slices.Concat(mergeOnce, openTrustedPR), edit: open("guest", map[string]reply{"GET /repos/o/r/pulls/5": {body: pullJSON(5, "bump/guest-20261119", "o/r", false, 1, "security")}})},
 		{name: "a trusted security pull request is never merged by the tool", code: 0, out: []string{"waits for the maintainer: 5", "already open: trusted"}, writes: openGuestPR, edit: open("trusted", nil, "security")},
 		{name: "a trusted security note in the body without the label: never merged", code: 0, out: []string{"waits for the maintainer: 5"}, writes: openGuestPR,
-			edit: open("trusted", map[string]reply{"GET /repos/o/r/pulls/5": {body: strings.Replace(pullJSON(5, "bump/trusted-20261119", "o/r", false, 1),
-				`"number":5`, `"body":"- x: 1.0.0 to 1.1.0, age 1h, security: an advisory affects the pinned version and this release fixes it\n","number":5`, 1)}})},
-		{name: "a fork's bump branch is neither merged nor counted", code: 0, writes: slices.Concat(openGuestPR, openTrustedPR),
-			edit: open("guest", map[string]reply{listPRs: {body: "[" + pullJSON(5, "bump/guest-20261119", "evil/r", true, 1) + "]"}})},
+			edit: open("trusted", map[string]reply{"GET /repos/o/r/pulls/5": {body: strings.Replace(pullJSON(5, "bump/trusted-20261119", "o/r", false, 1), `"number":5`, `"body":"- x: 1.0.0 to 1.1.0, age 1h, security: an advisory affects the pinned version and this release fixes it\n","number":5`, 1)}})},
+		{name: "a fork's bump branch is neither merged nor counted", code: 0, writes: slices.Concat(openGuestPR, openTrustedPR), edit: open("guest", map[string]reply{listPRs: {body: "[" + pullJSON(5, "bump/guest-20261119", "evil/r", true, 1) + "]"}})},
 		{name: "list pull requests fails: stopped, nothing opened", code: 1, edit: func(f *fixture) { f.routes[listPRs] = reply{status: 500} }},
 		{name: "list pull requests answers HTML: stopped", code: 1, edit: func(f *fixture) { f.routes[listPRs] = reply{body: "<html>hi</html>"} }},
 		{name: "list pull requests times out: stopped", code: 1, edit: func(f *fixture) { f.routes[listPRs] = reply{slow: true, body: "[]"} }},
@@ -267,15 +255,12 @@ func TestRun(t *testing.T) {
 			release(f, "tool", "1.3.0", now.Add(-120*time.Hour), true)
 			f.routes["GET /repos/o/r/issues?state=open&per_page=100"] = reply{body: `[{"title":"bump: verification failed: tool"}]`}
 		}},
-		{name: "dry run: would open issue", dry: true, code: 0, out: []string{"would open issue: tool"},
-			edit: func(f *fixture) { f.pins = f.pins[1:]; release(f, "tool", "1.3.0", now.Add(-120*time.Hour), true) }},
-		{name: "the newest release is the pinned one: no change", code: 0, out: []string{"tool guest 1.3.0 none backwards"},
-			edit: func(f *fixture) { f.pins = f.pins[1:]; f.pins[0].Version = "1.3.0" }},
+		{name: "dry run: would open issue", dry: true, code: 0, out: []string{"would open issue: tool"}, edit: func(f *fixture) { f.pins = f.pins[1:]; release(f, "tool", "1.3.0", now.Add(-120*time.Hour), true) }},
+		{name: "the newest release is the pinned one: no change", code: 0, out: []string{"tool guest 1.3.0 none backwards"}, edit: func(f *fixture) { f.pins = f.pins[1:]; f.pins[0].Version = "1.3.0" }},
 		{name: "trusted with an advisory opens at once, labelled security", code: 0, out: []string{"kit trusted 2.0.0 2.1.0 eligible", "opened pull request: trusted 7"},
 			writes: slices.Concat(openTrustedPR, []call{w("POST", "/repos/o/r/issues/7/labels")}), check: securityNote(true),
 			edit: func(f *fixture) { advised(f, f.pins[0], "2.1.0", now.Add(-time.Hour)) }},
-		{name: "guest with an advisory, released 6 hours ago: no pull request", code: 0, out: []string{"tool guest 1.2.0 none cool-off"},
-			edit: func(f *fixture) { advised(f, f.pins[1], "1.3.0", now.Add(-6*time.Hour)) }},
+		{name: "guest with an advisory, released 6 hours ago: no pull request", code: 0, out: []string{"tool guest 1.2.0 none cool-off"}, edit: func(f *fixture) { advised(f, f.pins[1], "1.3.0", now.Add(-6*time.Hour)) }},
 		{name: "guest with an advisory, past its cool-off: no security note, no label", code: 0, out: []string{"tool guest 1.2.0 1.3.0 eligible", "opened pull request: guest 7"},
 			writes: openGuestPR, check: securityNote(false), edit: func(f *fixture) { advised(f, f.pins[1], "1.3.0", now.Add(-120*time.Hour)) }},
 		{name: "one upstream drips its artifact: that pin fails, the next is planned", code: 0,
@@ -296,21 +281,16 @@ func TestRun(t *testing.T) {
 					t.Errorf("check runs read %d times, want 3; merge body %s", n, b)
 				}
 			}},
-		{name: "the gate stays unfinished for the whole bound: left open, exit 0", code: 0, out: []string{"opened pull request: guest 7"}, writes: openGuestPR, check: polled(10, 1000),
-			edit: func(f *fixture) { opened(f, time.Second, "guest", reply{body: running}) }},
-		{name: "the gate is red for the whole bound: left open, exit 0", code: 0, writes: openGuestPR, check: polled(10, 1000),
-			edit: func(f *fixture) { opened(f, time.Second, "guest", red) }},
-		{name: "the check runs of the pull request it opened fail: stopped", code: 1, writes: openGuestPR,
-			edit: func(f *fixture) { opened(f, time.Second, "guest", reply{status: 500}) }},
+		{name: "the gate stays unfinished for the whole bound: left open, exit 0", code: 0, out: []string{"opened pull request: guest 7"}, writes: openGuestPR, check: polled(10, 1000), edit: func(f *fixture) { opened(f, time.Second, "guest", reply{body: running}) }},
+		{name: "the gate is red for the whole bound: left open, exit 0", code: 0, writes: openGuestPR, check: polled(10, 1000), edit: func(f *fixture) { opened(f, time.Second, "guest", red) }},
+		{name: "the check runs of the pull request it opened fail: stopped", code: 1, writes: openGuestPR, edit: func(f *fixture) { opened(f, time.Second, "guest", reply{status: 500}) }},
 		{name: "a trusted security pull request it opened waits for the maintainer, not for the bound (B4)", code: 0, out: []string{"waits for the maintainer: 7"}, check: polled(1, 1),
 			writes: slices.Concat(openTrustedPR, []call{w("POST", "/repos/o/r/issues/7/labels")}), edit: func(f *fixture) {
 				advised(f, f.pins[0], "2.1.0", now.Add(-time.Hour))
 				opened(f, 8*time.Second, "trusted", reply{body: green}, "security")
 			}},
-		{name: "this day's trusted pull request is there (B13): nothing opened for trusted, exit 0", code: 0, writes: openGuestPR,
-			out: []string{"already proposed today: trusted bump/trusted-20261120"}, edit: func(f *fixture) { proposed(f, "trusted", now) }},
-		{name: "this day's guest pull request is there, merged or not: nothing opened, exit 0", code: 0, check: polled(0, 0),
-			out: []string{"already proposed today: guest bump/guest-20261120"}, edit: func(f *fixture) { f.pins = f.pins[1:]; proposed(f, "guest", now) }},
+		{name: "this day's trusted pull request is there (B13): nothing opened for trusted, exit 0", code: 0, writes: openGuestPR, out: []string{"already proposed today: trusted bump/trusted-20261120"}, edit: func(f *fixture) { proposed(f, "trusted", now) }},
+		{name: "this day's guest pull request is there, merged or not: nothing opened, exit 0", code: 0, check: polled(0, 0), out: []string{"already proposed today: guest bump/guest-20261120"}, edit: func(f *fixture) { f.pins = f.pins[1:]; proposed(f, "guest", now) }},
 		{name: "dry run with a wait: nothing to wait for", dry: true, code: 0, out: []string{"would open pull request: guest"}, check: polled(0, 0), edit: func(f *fixture) { f.wait = 8 * time.Second }},
 	}
 	for _, name := range []string{"../.github/workflows/x", "pins/../x", "/etc/x", `..\x`, "a/b", ".x", "", "x\x00", "x\ny", "UP", strings.Repeat("a", 65)} {
@@ -350,8 +330,7 @@ func TestRun(t *testing.T) {
 func baseFixture() fixture {
 	f := fixture{pins: []pins.Pin{pin("kit", pins.Trusted, "2.0.0"), pin("tool", pins.Guest, "1.2.0")},
 		extra: map[string]string{}, upstream: map[string]string{"/osv": `{"vulns":[]}`},
-		routes: map[string]reply{listPRs: {body: "[]"}, dayPRs("guest", now): {body: "[]"}, dayPRs("trusted", now): {body: "[]"},
-			"GET /repos/o/r/git/ref/heads/main": {body: `{"object":{"sha":"` + head + `"}}`}, "GET /repos/o/r/issues?state=open&per_page=100": {body: "[]"}}}
+		routes: map[string]reply{listPRs: {body: "[]"}, dayPRs("guest", now): {body: "[]"}, dayPRs("trusted", now): {body: "[]"}, "GET /repos/o/r/git/ref/heads/main": {body: `{"object":{"sha":"` + head + `"}}`}, "GET /repos/o/r/issues?state=open&per_page=100": {body: "[]"}}}
 	release(&f, "kit", "2.1.0", now.Add(-19*24*time.Hour), false)
 	release(&f, "tool", "1.3.0", now.Add(-120*time.Hour), false)
 	return f
@@ -382,10 +361,8 @@ func TestNewest(t *testing.T) {
 			f.upstream["/dl"] = "artifact"
 		}, 0, []string{"tool guest 1.2.0 1.4.0 1.4.0 24h0m0s eligible", missed}, map[string]string{"tool.json": "1.2.0"}},
 		{"dry run writes nothing", func(f *fixture) { tool(f); f.args = append(f.args, "-dry-run") }, 0, []string{stale, missed}, map[string]string{"tool.json": "1.2.0"}},
-		{"still cooling off: rewritten", func(f *fixture) { tool(f); release(f, "tool", "1.3.0", now.Add(-6*time.Hour), false) }, 0,
-			[]string{"tool guest 1.2.0 none 1.3.0 0s cool-off"}, map[string]string{"tool.json": "1.3.0"}},
-		{"trusted is reported, never written", func(f *fixture) { f.pins = f.pins[:1]; release(f, "kit", "2.1.0", now.Add(-8*24*time.Hour), false) }, 0,
-			[]string{"kit trusted 2.0.0 2.1.0 2.1.0 24h0m0s eligible"}, map[string]string{"kit.json": "2.0.0"}},
+		{"still cooling off: rewritten", func(f *fixture) { tool(f); release(f, "tool", "1.3.0", now.Add(-6*time.Hour), false) }, 0, []string{"tool guest 1.2.0 none 1.3.0 0s cool-off"}, map[string]string{"tool.json": "1.3.0"}},
+		{"trusted is reported, never written", func(f *fixture) { f.pins = f.pins[:1]; release(f, "kit", "2.1.0", now.Add(-8*24*time.Hour), false) }, 0, []string{"kit trusted 2.0.0 2.1.0 2.1.0 24h0m0s eligible"}, map[string]string{"kit.json": "2.0.0"}},
 		{"source error is reported", func(f *fixture) { tool(f); delete(f.upstream, "/tool/latest") }, 0, []string{"tool guest 1.2.0 none none 0s source-error", "source-error: status 404"}, map[string]string{"tool.json": "1.2.0"}},
 		{"dated OCI tags: the registry wants an OCI Accept, the digest is verified", func(f *fixture) { f.pins = f.pins[:1]; datedKit(f) }, 0, []string{"kit trusted trixie-20261027-slim trixie-20261104-slim trixie-20261104-slim 300h0m0s eligible"}, map[string]string{"kit.json": "trixie-20261027-slim"}},
 		{"verification fails: exit 1, nothing written", func(f *fixture) { tool(f); release(f, "tool", "1.3.0", now.Add(-120*time.Hour), true) }, 1,
@@ -497,8 +474,7 @@ func runFixture(t *testing.T, f fixture, dry bool) (string, int, *standIn, map[s
 	}
 	before := snapshot(t, dir)
 	var out, stderr bytes.Buffer
-	tool := bump.Tool{Pins: dir, Upstream: up.Client(), OSV: up.URL + "/osv", PinTime: 2 * time.Second, Now: cmp.Or(f.now, now), Wait: f.wait, Out: &out,
-		GitHub: bump.GitHub{Client: &http.Client{Timeout: 300 * time.Millisecond}}}
+	tool := bump.Tool{Pins: dir, Upstream: up.Client(), OSV: up.URL + "/osv", PinTime: 2 * time.Second, Now: cmp.Or(f.now, now), Wait: f.wait, Out: &out, GitHub: bump.GitHub{Client: &http.Client{Timeout: 300 * time.Millisecond}}}
 	args := slices.Concat([]string{"-api", gh.URL, "-repo", "o/r"}, f.args, map[bool][]string{true: {"-dry-run"}}[dry])
 	code := run(context.Background(), args, func(k string) string { return map[string]string{"GITHUB_TOKEN": token}[k] }, tool, &stderr)
 	if strings.Contains(stderr.String(), token) {
