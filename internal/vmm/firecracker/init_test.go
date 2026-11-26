@@ -27,9 +27,7 @@ func TestInit(t *testing.T) {
 	needKVM(t)
 	binary, kernel := pinned(t)
 	dir := t.TempDir()
-	in := inputs{binary: binary, kernel: kernel, initrd: initramfs(t, dir,
-		file{"init", build(t, dir, "github.com/omkhar/workcell/v2/cmd/workcell-init")},
-		file{"probe", build(t, dir, "./testdata/probe")})}
+	in := inputs{binary: binary, kernel: kernel, initrd: initramfs(t, dir, file{"init", build(t, dir, "github.com/omkhar/workcell/v2/cmd/workcell-init")}, file{"probe", build(t, dir, "./testdata/probe")})}
 
 	t.Run("commands", func(t *testing.T) {
 		g := connect(t, in)

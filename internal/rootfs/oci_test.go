@@ -167,10 +167,7 @@ func TestPullLayers(t *testing.T) {
 		mem{name: "dev/sda", typ: tar.TypeBlock, major: 8, minor: 0},
 		mem{name: "dev/fifo", typ: tar.TypeFifo},
 	)
-	top := tarOf(
-		reg("etc/hello", "v2"), reg("etc/.wh.gone", ""), reg("opt/.wh..wh..opq", ""), reg("opt/c", "c"),
-		reg("new/deep/file", "d"), reg("a/.wh.absent", ""),
-	)
+	top := tarOf(reg("etc/hello", "v2"), reg("etc/.wh.gone", ""), reg("opt/.wh..wh..opq", ""), reg("opt/c", "c"), reg("new/deep/file", "d"), reg("a/.wh.absent", ""))
 	f := newFixture(t, base, top)
 	tree := NewTree()
 	if err := f.pull(tree); err != nil {

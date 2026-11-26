@@ -304,9 +304,7 @@ func (s *setup) retar(arch string, entries ...entry) {
 func (s *setup) attest(outer, payloadType string, stmt map[string]any) {
 	raw, _ := json.Marshal(stmt)
 	b := s.sg.bundle(s.t, s.san, nil, raw, payloadType)
-	doc, _ := json.Marshal(map[string]any{"attestations": []any{
-		map[string]any{"predicateType": publish, "bundle": map[string]any{}},
-		map[string]any{"predicateType": outer, "bundle": json.RawMessage(b)}}})
+	doc, _ := json.Marshal(map[string]any{"attestations": []any{map[string]any{"predicateType": publish, "bundle": map[string]any{}}, map[string]any{"predicateType": outer, "bundle": json.RawMessage(b)}}})
 	s.routes[key(up+"/-/npm/v1/attestations/@vendor%2ftool@1.2.0")] = route{body: doc}
 }
 

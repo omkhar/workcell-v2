@@ -117,14 +117,7 @@ func TestVerifyRefusesAnotherHostOrSession(t *testing.T) {
 
 func TestOCSF(t *testing.T) {
 	auditSession(t, testRecords)
-	want := []struct{ class, category, activity, typeUID, status int }{
-		{6002, 6, 3, 600203, 1},
-		{4001, 4, 1, 400101, 1},
-		{4001, 4, 5, 400105, 2},
-		{6003, 6, 99, 600399, 1},
-		{6003, 6, 99, 600399, 2},
-		{6002, 6, 4, 600204, 1},
-	}
+	want := []struct{ class, category, activity, typeUID, status int }{{6002, 6, 3, 600203, 1}, {4001, 4, 1, 400101, 1}, {4001, 4, 5, 400105, 2}, {6003, 6, 99, 600399, 1}, {6003, 6, 99, 600399, 2}, {6002, 6, 4, 600204, 1}}
 	var out bytes.Buffer
 	if got := logs([]string{"--format", "ocsf", testID}, &out, &out); got != 0 {
 		t.Fatalf("exit %d: %s", got, out.String())

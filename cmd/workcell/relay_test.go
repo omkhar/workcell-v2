@@ -292,9 +292,7 @@ func TestRelayCloseEndsAdapters(t *testing.T) {
 
 // TestStreamAfterAdaptersClosed: a stream whose header completes after the relay has ended (I11) is closed, not queued behind a Serve loop that has returned, for every port and for a stream that is delivered by a goroutine that began before the end.
 func TestStreamAfterAdaptersClosed(t *testing.T) {
-	for _, tc := range []struct{ name, dst string }{
-		{"served port", "203.0.113.5:443"}, {"other served port", "203.0.113.5:8443"},
-	} {
+	for _, tc := range []struct{ name, dst string }{{"served port", "203.0.113.5:443"}, {"other served port", "203.0.113.5:8443"}} {
 		t.Run(tc.name, func(t *testing.T) {
 			served := newAdapters([]uint16{443, 8443})
 			served.closeAll()

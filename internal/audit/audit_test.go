@@ -126,12 +126,7 @@ func TestVerifyFindsAChangedSealOrKey(t *testing.T) {
 }
 
 func TestRecordsAreBoundedAndEscaped(t *testing.T) {
-	tests := []struct{ name, host string }{
-		{"a line break", "a.example\n{\"event\":\"session_start\"}"},
-		{"an escape sequence", "\x1b[2J.example"},
-		{"a long name", strings.Repeat("a", 1000)},
-		{"bytes that are no text", "\xff\xfe\x00"},
-	}
+	tests := []struct{ name, host string }{{"a line break", "a.example\n{\"event\":\"session_start\"}"}, {"an escape sequence", "\x1b[2J.example"}, {"a long name", strings.Repeat("a", 1000)}, {"bytes that are no text", "\xff\xfe\x00"}}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := t.TempDir()
