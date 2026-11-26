@@ -250,10 +250,7 @@ dd if=/dev/zero of=/var/tmp/b bs=1M count=80 2>&1 | grep -o 'No space left on de
 				}
 			}
 		}
-		hello := map[string]string{
-			"go.mod":  "module hello\n\ngo " + strings.TrimPrefix(runtime.Version(), "go") + "\n",
-			"main.go": "package main\n\nimport \"fmt\"\n\nfunc main() { fmt.Println(\"hello\") }\n",
-		}
+		hello := map[string]string{"go.mod": "module hello\n\ngo " + strings.TrimPrefix(runtime.Version(), "go") + "\n", "main.go": "package main\n\nimport \"fmt\"\n\nfunc main() { fmt.Println(\"hello\") }\n"}
 		if err := os.Mkdir(filepath.Join(own, "hello"), 0o755); err != nil {
 			t.Fatal(err)
 		}

@@ -103,8 +103,7 @@ func TestCandidates(t *testing.T) {
 	const reg = "https://registry.example/@vendor/tool/-/tool-"
 	const gh = "https://github.example/vendor/tool/releases/download/"
 	npmPin := Pin{Name: "tool", Source: NPM, Locator: "/@vendor%2ftool"}
-	ghPin := Pin{Name: "tool", Source: GitHubReleases, Locator: "/repos/vendor/tool/releases",
-		Assets: map[string]string{"amd64": "tool-linux-amd64.tar.gz", "arm64": "tool-linux-arm64.tar.gz"}}
+	ghPin := Pin{Name: "tool", Source: GitHubReleases, Locator: "/repos/vendor/tool/releases", Assets: map[string]string{"amd64": "tool-linux-amd64.tar.gz", "arm64": "tool-linux-arm64.tar.gz"}}
 	vendorPin := Pin{Name: "claude-code", Source: VendorManifest, Locator: "/root", Assets: map[string]string{"amd64": "linux-x64", "arm64": "linux-arm64"}}
 	ociPin := Pin{Name: "tool", Source: OCI, Locator: "/v2/vendor/tool"}
 	signedPin := Pin{Name: "tool", Source: GitHubReleases, Locator: ghPin.Locator, Assets: map[string]string{"amd64": "tool-linux-amd64.tar.gz"},
@@ -202,10 +201,8 @@ func TestCandidates(t *testing.T) {
 			body: `[{"tag_name": "v1.2.0", "created_at": "2026-10-20T09:00:00Z", "assets": [
 				{"name": "tool-linux-amd64.tar.gz", "browser_download_url": "https://g.example/a", "digest": "sha512:ab"},
 				{"name": "tool-linux-arm64.tar.gz", "browser_download_url": "https://g.example/b"}]}]`})},
-		{name: "github no timestamp", pin: ghPin, routes: withRoute(ghOK, "/repos/vendor/tool/releases", route{
-			body: `[{"tag_name": "v1.4.0", "draft": true, "assets": []}]`})},
-		{name: "github asset no release carries", pin: Pin{Name: "tool", Source: GitHubReleases, Locator: ghPin.Locator,
-			Assets: map[string]string{"amd64": "nope.tar.gz"}}, routes: ghOK},
+		{name: "github no timestamp", pin: ghPin, routes: withRoute(ghOK, "/repos/vendor/tool/releases", route{body: `[{"tag_name": "v1.4.0", "draft": true, "assets": []}]`})},
+		{name: "github asset no release carries", pin: Pin{Name: "tool", Source: GitHubReleases, Locator: ghPin.Locator, Assets: map[string]string{"amd64": "nope.tar.gz"}}, routes: ghOK},
 		{name: "github no asset row", pin: Pin{Name: "tool", Source: GitHubReleases, Locator: ghPin.Locator}, routes: ghOK},
 		{name: "github tag prefix keeps the prefixed tags, stripped", pin: prefixed, routes: withRoute(ghOK, "/repos/vendor/tool/releases", route{body: `[
 	{"tag_name": "v9.9.9", "created_at": "2026-10-21T09:00:00Z", "assets": [{"name": "tool.tar.gz", "browser_download_url": "https://g.example/9"}]},
@@ -253,8 +250,7 @@ func TestCandidates(t *testing.T) {
 			body: `{"version": "1.2.0", "buildDate": "2026-10-20T08:00:00Z", "platforms": {"linux-x64": {"checksum": "XYZ"}, "linux-arm64": {"checksum": "XYZ"}}}`})},
 		{name: "vendor missing binary name", pin: vendorPin, routes: withRoute(vendorOK, "/root/1.2.0/manifest.json", route{
 			body: `{"version": "1.2.0", "buildDate": "2026-10-20T08:00:00Z", "platforms": {"linux-x64": {"checksum": "3333333333333333333333333333333333333333333333333333333333333333", "binary": "claude"}, "linux-arm64": {"checksum": "2222222222222222222222222222222222222222222222222222222222222222"}}}`})},
-		{name: "vendor missing build date", pin: vendorPin, routes: withRoute(vendorOK, "/root/1.2.0/manifest.json", route{
-			body: `{"version": "1.2.0", "platforms": {}}`})},
+		{name: "vendor missing build date", pin: vendorPin, routes: withRoute(vendorOK, "/root/1.2.0/manifest.json", route{body: `{"version": "1.2.0", "platforms": {}}`})},
 		{name: "oci", pin: ociPin, routes: ociOK, want: ociWant},
 		{name: "oci dated tags: the point tags stay unfetched, the tag without a manifest is skipped", pin: datedPin, routes: datedOK, want: func(base string) []Candidate {
 			w := ociWant(base)
@@ -277,8 +273,7 @@ func TestCandidates(t *testing.T) {
 			header: map[string]string{"Link": `</v2/vendor/tool/tags/list?last=1.2.0>; rel="next"`}})},
 		{name: "oci no tags", pin: ociPin, routes: withRoute(ociOK, "/v2/vendor/tool/tags/list", route{body: `{"name": "vendor/tool", "tags": null}`}), want: func(string) []Candidate { return []Candidate{} }},
 		{name: "oci error document", pin: ociPin, routes: withRoute(ociOK, "/v2/vendor/tool/tags/list", route{body: `{"errors": [{"code": "DENIED"}]}`})},
-		{name: "oci bad created", pin: ociPin, routes: withRoute(ociOK, "/v2/vendor/tool/manifests/1.2.0", route{
-			body: `{"annotations": {"org.opencontainers.image.created": "last week"}}`})},
+		{name: "oci bad created", pin: ociPin, routes: withRoute(ociOK, "/v2/vendor/tool/manifests/1.2.0", route{body: `{"annotations": {"org.opencontainers.image.created": "last week"}}`})},
 	}
 	tests = append(tests, failures(npmPin, npmOK, "/@vendor%2ftool")...)
 	tests = append(tests, failures(ghPin, ghOK, "/repos/vendor/tool/releases")...)

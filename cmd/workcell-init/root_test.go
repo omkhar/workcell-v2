@@ -40,11 +40,7 @@ func TestRootDevice(t *testing.T) {
 }
 
 func TestWorkspaceDevice(t *testing.T) {
-	parses(t, workspaceDevice, []parse[string]{
-		{"none", "root=/dev/vda ro", ""},
-		{"set", "root=/dev/vda ro workcell.workspace=/dev/vdb", "/dev/vdb"},
-		{"another name", "other.workcell.workspace=/dev/vdb", ""},
-	})
+	parses(t, workspaceDevice, []parse[string]{{"none", "root=/dev/vda ro", ""}, {"set", "root=/dev/vda ro workcell.workspace=/dev/vdb", "/dev/vdb"}, {"another name", "other.workcell.workspace=/dev/vdb", ""}})
 }
 
 func TestLayers(t *testing.T) {

@@ -15,9 +15,7 @@ import (
 )
 
 func TestBuild(t *testing.T) {
-	f := newFixture(t,
-		tarOf(dir("etc/"), reg("etc/old", "x"), reg("bin", "y")),
-		tarOf(reg("etc/new", "z"), reg("etc/.wh.old", ""), sym("etc/link", "new")))
+	f := newFixture(t, tarOf(dir("etc/"), reg("etc/old", "x"), reg("bin", "y")), tarOf(reg("etc/new", "z"), reg("etc/.wh.old", ""), sym("etc/link", "new")))
 	var err error
 	var out [2]bytes.Buffer
 	var res [2]Result

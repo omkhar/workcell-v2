@@ -29,9 +29,7 @@ func TestC33PathBindingReleasesSecretOutsideBinding(t *testing.T) {
 	px, _, _ := testProxy(t, "v.example.com:443", []netip.Addr{netip.MustParseAddr("8.8.8.8")}, up.Listener.Addr().String())
 	px.upstreamRoots = roots
 	ca := must(NewSessionCA([]string{"v.example.com"}, time.Now().Add(time.Hour)))
-	must(0, px.Terminate(ca, &tokenBroker{access: []byte("real-secret")}, []TerminateRule{
-		{Host: "v.example.com", Header: "x-api-key", Placeholder: testPlaceholder, Method: "POST", Path: "/v1/"},
-	}))
+	must(0, px.Terminate(ca, &tokenBroker{access: []byte("real-secret")}, []TerminateRule{{Host: "v.example.com", Header: "x-api-key", Placeholder: testPlaceholder, Method: "POST", Path: "/v1/"}}))
 	c := clientVia(listen(t, px, 443), caPool(t, ca))
 	for _, tc := range []struct {
 		target string

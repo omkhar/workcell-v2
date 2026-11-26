@@ -127,10 +127,7 @@ func (f *fixture) manifest(doc map[string]any) {
 	md := dg(mb)
 	f.routes["registry.test/v2/lib/x/manifests/"+md] = mb
 	plat := func(arch string) map[string]any { return map[string]any{"os": "linux", "architecture": arch} }
-	ib, _ := json.Marshal(map[string]any{"mediaType": ociIdx, "manifests": []map[string]any{
-		{"mediaType": ociMan, "digest": dg([]byte("decoy")), "platform": plat("riscv64")},
-		{"mediaType": ociMan, "digest": md, "platform": plat("arm64")},
-	}})
+	ib, _ := json.Marshal(map[string]any{"mediaType": ociIdx, "manifests": []map[string]any{{"mediaType": ociMan, "digest": dg([]byte("decoy")), "platform": plat("riscv64")}, {"mediaType": ociMan, "digest": md, "platform": plat("arm64")}}})
 	id := dg(ib)
 	f.routes["registry.test/v2/lib/x/manifests/"+id] = ib
 	f.img = Image{Registry: "https://registry.test", Repository: "lib/x", Digest: id, OS: "linux", Arch: "arm64"}
@@ -167,10 +164,7 @@ func TestPullLayers(t *testing.T) {
 		mem{name: "dev/sda", typ: tar.TypeBlock, major: 8, minor: 0},
 		mem{name: "dev/fifo", typ: tar.TypeFifo},
 	)
-	top := tarOf(
-		reg("etc/hello", "v2"), reg("etc/.wh.gone", ""), reg("opt/.wh..wh..opq", ""), reg("opt/c", "c"),
-		reg("new/deep/file", "d"), reg("a/.wh.absent", ""),
-	)
+	top := tarOf(reg("etc/hello", "v2"), reg("etc/.wh.gone", ""), reg("opt/.wh..wh..opq", ""), reg("opt/c", "c"), reg("new/deep/file", "d"), reg("a/.wh.absent", ""))
 	f := newFixture(t, base, top)
 	tree := NewTree()
 	if err := f.pull(tree); err != nil {

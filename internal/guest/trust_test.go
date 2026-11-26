@@ -15,11 +15,7 @@ import (
 func TestWriteTrust(t *testing.T) {
 	ca := "-----BEGIN CERTIFICATE-----\nAAEC\n-----END CERTIFICATE-----\n"
 	old := "-----BEGIN CERTIFICATE-----\nAwQF\n-----END CERTIFICATE-----"
-	cases := []struct{ name, bundle, want string }{
-		{"create", "", ca},
-		{"append", old, old + "\n" + ca},
-		{"present", old + "\n" + ca, old + "\n" + ca},
-	}
+	cases := []struct{ name, bundle, want string }{{"create", "", ca}, {"append", old, old + "\n" + ca}, {"present", old + "\n" + ca, old + "\n" + ca}}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := filepath.Join(t.TempDir(), "certs")

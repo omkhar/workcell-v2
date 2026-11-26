@@ -392,8 +392,7 @@ func chain(root *Root, certs []*x509.Certificate, at time.Time) error {
 		for _, c := range certs[1:] {
 			inter.AddCert(c)
 		}
-		_, err := leaf.Verify(x509.VerifyOptions{Roots: ca.roots, Intermediates: inter, CurrentTime: at,
-			KeyUsages: []x509.ExtKeyUsage{x509.ExtKeyUsageCodeSigning}})
+		_, err := leaf.Verify(x509.VerifyOptions{Roots: ca.roots, Intermediates: inter, CurrentTime: at, KeyUsages: []x509.ExtKeyUsage{x509.ExtKeyUsageCodeSigning}})
 		if err == nil {
 			return nil
 		}

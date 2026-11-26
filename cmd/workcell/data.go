@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 
 	"github.com/omkhar/workcell/v2/internal/vmm"
 )
@@ -27,18 +28,21 @@ func xdgDir(env string, home ...string) (string, error) {
 	return filepath.Join(append(append([]string{h}, home...), "workcell")...), err
 }
 
-// holds is the error for a directory that holds, or lies inside, workcell's data or config directory, named: a session there would carry the audit key, other sessions, their records and the images into the guest, and pull would write the guest's versions back (I7, I9, I13).
+// holds is the error for a directory that holds, or lies inside, workcell's data or config directory, or holds the file config.toml resolves to (a link into a dotfiles repository, made yet or not, C85), named: a session there would carry the audit key, other sessions, their records, the images or the policy into the guest, and pull would write the guest's versions back (I7, I9, I13). A config.toml with more than one name (a hard link) is refused outright: its other names cannot be found without walking every directory.
 // So is one that holds a mount point: a bind mount is neither a symlink nor an ancestor, so within relates it to nothing, and it can show those directories under another name, which no mount is told apart from (C65). So is one that holds the VMM directory of a running session (vmm, under its TMPDIR): the sockets there would lie in the guest's view, or under a pull, for the guest to swap for a link to any host socket of the operator's (I1, I4, I7). A stale record refuses nothing.
 func holds(dir string) error {
 	data, err := dataDir()
 	if err != nil {
 		return err
 	}
-	config, _ := xdgDir("XDG_CONFIG_HOME", ".config") // fails only as dataDir does
-	for _, held := range []string{data, config} {
-		if within(dir, held) || within(held, dir) { // neither need exist yet
-			return fmt.Errorf("%q lies inside or holds workcell's own directory %s, which no session may see: use another directory", dir, held)
+	file, _ := configFile() // fails only as dataDir does; the file is judged resolved, as within resolves, so a link's target counts
+	for _, held := range []string{data, filepath.Dir(file), file} {
+		if within(dir, held) || within(held, dir) { // none need exist yet
+			return fmt.Errorf("%q lies inside or holds workcell's own directory or config file %s, which no session may see: use another directory", dir, held)
 		}
+	}
+	if fi, err := os.Stat(file); err == nil && fi.Mode().IsRegular() && fi.Sys().(*syscall.Stat_t).Nlink > 1 {
+		return fmt.Errorf("workcell's config file %s has %d names, and another may lie in a directory a session sees, where the guest would rewrite it: make it a symbolic link or a copy instead", file, fi.Sys().(*syscall.Stat_t).Nlink)
 	}
 	// Linux lists the mount points in /proc/self/mountinfo by the kernel's own spelling, with a space, tab, newline and backslash escaped as octal. macOS has no such file, and no mount gives a directory a second name there (a firmlink is the system's own): nothing is listed, nothing refused.
 	b, _ := os.ReadFile("/proc/self/mountinfo")
@@ -74,13 +78,17 @@ func within(dir, p string) bool {
 	return false
 }
 
-// resolved is p absolute, with its symlinks followed: where p does not exist yet, the longest prefix that does is followed and the rest appended.
+// resolved is p absolute, with its symlinks followed: a link to a file not made yet is followed by name, as the kernel will once the file is made, and where p does not exist yet, the longest prefix that does is followed and the rest appended.
 func resolved(p string) string {
 	p, _ = filepath.Abs(p)
-	if r, err := filepath.EvalSymlinks(p); err == nil {
-		return r
-	} else if d := filepath.Dir(p); d != p { // not the root
-		return filepath.Join(resolved(d), filepath.Base(p))
+	for range 40 { // the kernel's own bound on a chain of links: a loop of them ends here, at the name it is at
+		if r, err := filepath.EvalSymlinks(p); err == nil {
+			return r
+		} else if t, err := os.Readlink(p); err == nil { // a relative target is read from the link's directory as the kernel reads it, resolved, so that its .. climbs from where that directory really is
+			p = filepath.Join(map[bool]string{false: resolved(filepath.Dir(p))}[filepath.IsAbs(t)], t)
+		} else if d := filepath.Dir(p); d != p { // not the root
+			return filepath.Join(resolved(d), filepath.Base(p))
+		}
 	}
 	return p
 }

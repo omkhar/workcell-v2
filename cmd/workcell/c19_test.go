@@ -9,6 +9,7 @@ package main
 
 import (
 	"bytes"
+	"cmp"
 	"os"
 	"path/filepath"
 	"strings"
@@ -103,4 +104,30 @@ func TestC19PullRefusesADestinationThatHoldsTheDataDirectory(t *testing.T) {
 		t.Errorf("pull exited %d with %q, want 1 and one line refusing a destination that holds %s", code, stderr.String(), data)
 	}
 	c19Untouched(t, data)
+}
+
+// TestC85ConfigFileOfAnotherName (I13; I5, I14 by consequence): holds judges a config.toml that is a symbolic link to a file not made yet by where it points, since the guest of a --mount session would make it, and refuses one with more than one name (a hard link), whose other names it cannot find; a link to an absent file elsewhere, and a file of one name, run. The config directory is itself a link, as a dotfiles layout has it, so a relative target is read from where that directory really is, as the kernel reads it. resolved ends on a loop of links, at the name it is at.
+func TestC85ConfigFileOfAnotherName(t *testing.T) {
+	work, cfg := filepath.Join(t.TempDir(), "sub", "dot"), must(filepath.EvalSymlinks(t.TempDir())) // <cfg>/workcell -> sub/wc, so a target ../dot/config.toml names a file in the workspace; macOS: /var is /private/var, and a loop of links ends under the spelling resolved gives the directory
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	t.Setenv("XDG_CONFIG_HOME", cfg)
+	file, present, loop, a, b := filepath.Join(cfg, "workcell", "config.toml"), filepath.Join(cfg, "present"), filepath.Join(cfg, "loop"), filepath.Join(cfg, "a"), filepath.Join(cfg, "b")
+	must(0, cmp.Or(os.MkdirAll(work, 0o700), os.MkdirAll(filepath.Join(filepath.Dir(work), "wc"), 0o700), os.Symlink(filepath.Join(filepath.Dir(work), "wc"), filepath.Dir(file)), os.WriteFile(present, []byte("# C85\n"), 0o600), os.Symlink(loop, loop), os.Symlink("b", a), os.Symlink("a", b)))
+	make := map[string]func(string, string) error{"symlink": os.Symlink, "link": os.Link, "file": func(_, name string) error { return os.WriteFile(name, []byte("# C85\n"), 0o600) }}
+	for _, tc := range []struct{ name, kind, target, want string }{{"a link to a file not made yet under the workspace", "symlink", filepath.Join(work, "dotfiles", "config.toml"), file},
+		{"a link to a file not made yet elsewhere", "symlink", filepath.Join(cfg, "dotfiles", "config.toml"), ""}, {"a hard link to a file elsewhere", "link", present, file + " has 2 names"}, {"a file of one name", "file", "", ""},
+		{"a link with a relative target, read through the linked config directory", "symlink", filepath.Join("..", "dot", "config.toml"), file}} {
+		t.Run(tc.name, func(t *testing.T) {
+			os.Remove(file)
+			must(0, make[tc.kind](tc.target, file))
+			if err := holds(work); (err != nil) != (tc.want != "") || err != nil && !strings.Contains(err.Error(), tc.want) {
+				t.Errorf("holds(%s) = %v, want %q (empty: a session there runs)", work, err, tc.want)
+			}
+		})
+	}
+	for _, p := range []string{loop, a} { // a -> a, and a -> b -> a: resolved returns, at the name it is at
+		if got := resolved(p); got != p {
+			t.Errorf("resolved(%s) = %s on a loop of links, want %s", p, got, p)
+		}
+	}
 }

@@ -96,14 +96,7 @@ func TestFold(t *testing.T) {
 }
 
 func TestShown(t *testing.T) {
-	tests := []struct{ in, want string }{
-		{"a/b.txt", "a/b.txt"},
-		{"with space", "with space"},
-		{"café", "café"},
-		{"new\nline", `"new\nline"`},
-		{"esc\x1b[0m", `"esc\x1b[0m"`},
-		{`quo"te`, `"quo\"te"`},
-	}
+	tests := []struct{ in, want string }{{"a/b.txt", "a/b.txt"}, {"with space", "with space"}, {"café", "café"}, {"new\nline", `"new\nline"`}, {"esc\x1b[0m", `"esc\x1b[0m"`}, {`quo"te`, `"quo\"te"`}}
 	for _, tc := range tests {
 		if got := shown(tc.in); got != tc.want {
 			t.Errorf("shown(%q) = %s, want %s", tc.in, got, tc.want)
