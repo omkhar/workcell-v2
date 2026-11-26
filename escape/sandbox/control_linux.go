@@ -197,12 +197,9 @@ func (c *control) Pull(ctx context.Context, dest string) error {
 			return fmt.Errorf("control: read %s: %w", name, err)
 		}
 		p := filepath.Join(dest, string(name))
-		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
-			return err
-		}
-		if f[0] == "120000" {
+		if err = os.MkdirAll(filepath.Dir(p), 0o755); err == nil && f[0] == "120000" {
 			err = os.Symlink(string(b), p)
-		} else {
+		} else if err == nil {
 			err = os.WriteFile(p, b, 0o755)
 		}
 		if err != nil {

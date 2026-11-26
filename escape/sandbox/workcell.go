@@ -7,7 +7,6 @@ import (
 	"cmp"
 	"context"
 	"fmt"
-	"io"
 	"path/filepath"
 	"runtime"
 	"slices"
@@ -121,30 +120,15 @@ func runCommand(cfg Config, command ...string) []string {
 	return append(append(argv, "--"), command...)
 }
 
-// cpioEntry writes one newc ("070701") cpio entry: a header of the magic and thirteen 8-digit hex fields, the name with its NUL, and the data, each of the last two padded to four bytes. A trailer is the entry named "TRAILER!!!" with no data.
-func cpioEntry(w io.Writer, name string, mode uint32, data []byte) error {
-	const magic = "070701"
-	ino := uint32(1)
-	if name == "TRAILER!!!" {
-		ino = 0
-	}
-	fields, b := []uint32{ino, mode, 0, 0, 1, 0, uint32(len(data)), 0, 0, 0, 0, uint32(len(name) + 1), 0}, []byte(magic)
+// cpioEntry appends to b one newc ("070701") cpio entry: a header of the magic and thirteen 8-digit hex fields, the name with its NUL, and the data, each of the last two padded to four bytes. A trailer is the entry named "TRAILER!!!" with no data and no mode, so inode 0.
+func cpioEntry(b []byte, name string, mode uint32, data []byte) []byte {
+	fields, b := []uint32{min(mode, 1), mode, 0, 0, 1, 0, uint32(len(data)), 0, 0, 0, 0, uint32(len(name) + 1), 0}, append(b, "070701"...)
 	for _, f := range fields {
 		b = fmt.Appendf(b, "%08X", f)
 	}
-	b = append(b, name...)
-	b = append(b, 0)
-	b = pad4(b)
-	b = append(b, data...)
-	_, err := w.Write(pad4(b))
-	return err
+	return pad4(append(pad4(append(append(b, name...), 0)), data...))
 }
-func pad4(b []byte) []byte {
-	for len(b)%4 != 0 {
-		b = append(b, 0)
-	}
-	return b
-}
-func (*workcell) Channel(context.Context) (Channel, error) { return Channel{Addr: "vsock:2:5000"}, nil } // Channel is where the guest's init dialled the host: AF_VSOCK, the host's CID 2, port 5000. A probe finds the init's connection by that peer and may dial the same port afresh.
-func (*workcell) Relay(context.Context) (Channel, error)   { return Channel{Addr: "vsock:2:5001"}, nil } // Relay is where the guest's init opens one vsock stream per relayed connection (ADR-003): the host's CID 2, port 5001. Files is where it holds the one connection a `--mount` session's export is served on (ADR-005): port 5002.
+func pad4(b []byte) []byte                                 { return append(b, make([]byte, (4-len(b)%4)%4)...) } // pad4 pads b with zeros to a multiple of four bytes.
+func (*workcell) Channel(context.Context) (Channel, error) { return Channel{Addr: "vsock:2:5000"}, nil }         // Channel is where the guest's init dialled the host: AF_VSOCK, the host's CID 2, port 5000. A probe finds the init's connection by that peer and may dial the same port afresh.
+func (*workcell) Relay(context.Context) (Channel, error)   { return Channel{Addr: "vsock:2:5001"}, nil }         // Relay is where the guest's init opens one vsock stream per relayed connection (ADR-003): the host's CID 2, port 5001. Files is where it holds the one connection a `--mount` session's export is served on (ADR-005): port 5002.
 func (*workcell) Files(context.Context) (Channel, error)   { return Channel{Addr: "vsock:2:5002"}, nil }
