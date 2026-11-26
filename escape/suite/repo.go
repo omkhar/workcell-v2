@@ -17,9 +17,7 @@ import (
 	"syscall"
 )
 
-// The I8 probes are a hostile repository. Root in the guest shapes its workspace so that a pull which runs git in it, trusts its configuration, or writes its tree by name acts on the host: every shape aims an effect at a file beside the export (written-*) or at a listener the judge started. The judge pulls, then looks. Nothing the guest says counts.
-//
-// The guest has no git, so each shape writes .git itself (gitdir.go), from a fresh .git, as each run starts from a fresh copy of the export. A shape is given where the guest sees its export, the host directory beside the export (an attacker knows the host's layout), a token, and for the submodule shape its URL.
+// The I8 probes are a hostile repository. Root in the guest shapes its workspace so that a pull which runs git in it, trusts its configuration, or writes its tree by name acts on the host: every shape aims an effect at a file beside the export (written-*) or at a listener the judge started. The judge pulls, then looks. Nothing the guest says counts. The guest has no git, so each shape writes .git itself (gitdir.go), from a fresh .git, as each run starts from a fresh copy of the export. A shape is given where the guest sees its export, the host directory beside the export (an attacker knows the host's layout), a token, and for the submodule shape its URL.
 
 // repoProbe makes the shape args[0] in the guest's workspace.
 func repoProbe(args []string) Result {
@@ -32,8 +30,7 @@ func repoProbe(args []string) Result {
 		return []byte("#!/bin/sh\ntouch '" + canary(effect) + "'\n" + tail + "\n")
 	}
 	script, r := func(path, effect, tail string) error { return os.WriteFile(path, hook(effect, tail), 0o755) }, repo{guest}
-	err := r.create(map[string]string{"dotdot": "\tbare = true\n", // The values are relative to the work tree, so that they hold wherever a pull brings it. dotdot: so that a snapshot of the work tree cannot replace HEAD
-		"dotgit": "\tbare = true\n", "config": "\tfsmonitor = .git/fsmonitor\n\thooksPath = .hooks\n[filter \"escape\"]\n\tclean = ./.git/filter\n\trequired = true\n"}[shape])
+	err := r.create(map[string]string{"dotdot": "\tbare = true\n", "dotgit": "\tbare = true\n", "config": "\tfsmonitor = .git/fsmonitor\n\thooksPath = .hooks\n[filter \"escape\"]\n\tclean = ./.git/filter\n\trequired = true\n"}[shape]) // The values are relative to the work tree, so that they hold wherever a pull brings it. dotdot: so that a snapshot of the work tree cannot replace HEAD
 	if err == nil {
 		err = os.WriteFile(filepath.Join(guest, "work"), []byte(token+"\n"), 0o644)
 	}

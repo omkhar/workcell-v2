@@ -56,8 +56,7 @@ func pinSmoke() []Test {
 	var out []Test
 	for _, p := range all {
 		if p.Install.Method == "binary" && len(p.Secrets) > 0 && len(p.Hosts) > 1 {
-			out = append(out, Test{ID: "B6", Name: "pin-smoke-" + p.Name, Probe: smokeProbe, Host: smokeJudge(p), Bound: 15 * time.Minute, // a download may be 100 MB or more
-				Want: Want{Workspace: true, Allow: p.Hosts, Header: p.Secrets[0].Header, Resolver: judgeResolver, Isolated: true, Secret: true}})
+			out = append(out, Test{ID: "B6", Name: "pin-smoke-" + p.Name, Probe: smokeProbe, Host: smokeJudge(p), Bound: 15 * time.Minute, Want: Want{Workspace: true, Allow: p.Hosts, Header: p.Secrets[0].Header, Resolver: judgeResolver, Isolated: true, Secret: true}}) // a download may be 100 MB or more
 		}
 	}
 	return out

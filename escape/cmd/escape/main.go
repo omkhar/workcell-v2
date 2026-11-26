@@ -1,11 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Omkhar Arasaratnam
 
-// Escape runs the escape suite against a sandbox and prints a JSON report.
-//
-//	escape -sandbox control|workcell [-list] [-only I1,I2,...]
-//
-// It exits 0 only when every selected test passed. "not-implemented" and "error" exit non-zero too: an invariant that was not tested is not proven.
+// Escape runs the escape suite against a sandbox and prints a JSON report. Usage: escape -sandbox control|workcell [-list] [-only I1,I2,...]. It exits 0 only when every selected test passed. "not-implemented" and "error" exit non-zero too: an invariant that was not tested is not proven.
 package main
 
 import (
