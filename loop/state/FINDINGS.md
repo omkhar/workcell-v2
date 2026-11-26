@@ -8728,3 +8728,212 @@ C84's test waits under escape/_pending/S-F68/. The next candidate number is C85 
 After S-F68: sweep 3 stands at two highs (C76 and C77, both fixed), fourteen mediums (C65, C66, C67, C68, C69, C71,
 C72, C73, C74, C75, C78, C80, C81 and C82, all fixed) and five lows (C64, C70, C79, C83 and C84, all fixed). Nothing
 waits under escape/_pending/. The next candidate number is C85 and the next fix unit S-F69.
+
+## S-1012, sweep 3: workflows, release, signing, image build and dependencies as a supply chain (section 9), as built at main 333f966
+
+Sweep 3 (S8), the last the SPEC allows, at the claim commit 7f81176 (main 333f966 plus one log line), in a
+fresh context (S3): the whole surface read in full as built after S-F1 to S-F68, not a diff. One auditor run. One
+of its turns was stopped by a safety classifier and withheld; the audit went on without reproducing that text and
+no request was rephrased (S11). One batched tool command was refused by the session's permission system (gpg is on
+the deny list of .claude/settings.json), so the maintainer key was not decoded again and the guard's signature path
+was not exercised; neither was retried. No hypervisor in the session, and nothing on this surface needed a VM:
+every probe ran against files, local processes and the module proxy, and the kit's own gate test ran here for the
+first time in an audit of this surface (loop/test/gate-test.sh: 207 ok, 0 wrong). Result: no candidates at any
+severity. Two of the three S10 tool passes ran here (zizmor 1.33.1, actionlint v1.7.12 with shellcheck 0.11.0) and
+gave nothing new; govulncheck v1.10.0 could not reach its database through the agent proxy and was not routed
+around, so the orchestrator ran it on the three hosted jobs through a spike test, as sweep 2 did (Tools, below):
+nothing new there either. No file of this surface carries `// Ported from v1`, and nothing concerns released v1
+code or a weakness of
+someone else's project (S14): no NEEDS-YOU.
+
+Trust boundary. Rows 31, 34, 36, 37 and 38 of the map. Attacker bytes enter in five places, as sweeps 1 and 2 drew
+them. (1) The hosted runner: ci.yml runs the pull request head's own loop/gate.sh under pull_request_target with
+contents: read, passwordless sudo, no secret, no environment and no id-token; authors are collaborators only
+(loop/settings.sh:39, non-expiring); the Actions policy admits pull_request_target and schedule, always from main;
+the merge job holds contents and pull-requests write, runs no pull request code and calls only the merge API, which
+the ruleset judges (gate, gate-macos and guard from app 15368, strict, squash, no bypass). (2) Network bytes into
+the runner, all over TLS so that N holds availability only: Firecracker v1.17.0 and the x86_64 kernel by URL and
+SHA-256 from constants in free paths (escape/sandbox/workcell_linux.go:24, internal/vmm/firecracker/
+firecracker_test.go:41-45, spikes/install/install_test.go:33-37; the arm64 pair in workcell_darwin.go:20 and
+internal/vmm/vz/vz_test.go:36-37), Debian by digest from pins/debian.json through internal/rootfs/oci.go, provider
+listings, artifacts, bundles and advisories for cmd/bump, the Go toolchain and modules through proxy.golang.org and
+sum.golang.org, and the six actions by SHA. (3) The maintainer's signature chain: guard.yml checks out live main
+and runs main's loop/guard.sh over the pull request's objects, gpg against .github/maintainer.asc. (4) The user's
+machine: scripts/install.sh, Formula/workcell.rb (zero digests, fails closed) and cmd/workcell/data.go, which stats
+vmlinux, initrd.cpio, root.ext4 and firecracker that no product code fetches. (5) The loop's own free-path output
+(go.mod, go.sum, pins/, cmd/, internal/, escape/, spikes/), outside section 2 for candidates as both earlier sweeps
+ruled. Authority (W11 holds): sign holds id-token and attestations write, publish contents write, merge contents
+and pull-requests write (loop only), nightly's issue job issues write with no checkout, bump.yml reads only. Build
+identity: go 1.27.4 by go-version-file in all ten setup-go uses, each with cache: false, no cache action anywhere;
+the linux binaries link golang.org/x/sys/unix alone beyond the standard library (cmd/bump nothing); darwin/arm64
+cmd/workcell adds vz v3.8.0, go-infinity-channel v1.0.0 and x/mod/semver; go mod verify: all modules verified.
+
+Parsing and resources. Every workflow expression reaches a shell through env; actionlint's template-injection and
+shellcheck passes and zizmor's template-injection audit found nothing. The fuzz plan takes package paths from go
+list and Fuzz names through a strict sed and jq, consumed through env; escape/fuzz-minutes.txt is digits only and
+capped at 240 (10 now). gate.sh's go.mod flattening, tree checks, ratchets and budgets were this time run and not
+reasoned: loop/test/gate-test.sh with the go1.27.4 toolchain on PATH gave GATE RESULT: 207 ok, 0 wrong, over every
+crafted go.mod and tree shape that sweeps 1 and 2 could only read from its case names (module line spellings, pins
+dropped, moved or commented, a vendor stub, go.work, underscore and dash names, a symlinked import, each budget at
+its edge, the enforced lists emptied, commented, with CR or NUL bytes or swapped for a directory, a saboteur test,
+broken wc, xargs and gofmt, a foreign gofmt, no go on PATH, a Mac with and without GATE_MACOS). shellcheck 0.11.0 is
+clean on loop/gate.sh, loop/guard.sh, loop/lib.sh and scripts/install.sh. internal/rootfs is as sweep 2 read it (the
+manifest capped at 64 KiB and hashed against the requested digest before JSON; blobs streamed through sha256 and a
+byte count within their declared size under 512 MiB; 128 layers; 2 GiB of raw tar and file data; 400 MiB of image;
+an https-only token realm; the token sent to registry URLs alone and dropped on a host change); its tests pass here
+and FuzzLayer had its four hours in S-1014. install.sh's five loopback tests pass here; the KVM one skipped.
+
+Logic and state. The required checks are gate, gate-macos and guard from app 15368, strict, squash only, no bypass
+(loop/github-main.json); merge needs gate and gate-macos and the ruleset adds guard; a try: title never merges and
+the title is read again at each attempt. release.yml's verify accepts a commit only with completed, successful gate
+and gate-macos runs from app 15368, or the merged pull request's head when its tree equals HEAD's, which the strict
+rule makes sound; guard is not checked there and need not be, since the commit reached main under the ruleset.
+guard.sh passes free-only changes in any shape and admits a locked change only as one commit on the live tip,
+signed by the pinned key with the reviewed trailer as the last line, at most two hours old and ten minutes ahead.
+Run here: `loop/guard.sh 333f966 7f81176` GUARD PASS (only free paths changed); the reverse GUARD FAIL (not built on
+the current tip); `loop/guard.sh 3ca7c42^ 3ca7c42`, the kernel re-pin, GUARD PASS: only free paths changed. No
+commit since the sweep-2 base a41a9eb touched a locked path. internal/bump and cmd/bump are unchanged since sweep 2
+and their tests pass: Load refuses a misnamed row, a class outside the two and a bad version; Newest rewrites guest
+rows only, never in a dry run, and exits 1 on a failed verification; FilesOK, class and Green as S-1011 read them.
+
+Concurrency and check-to-use gaps. gate.sh reads the lists and the tree before any repository code runs and runs
+the suite before the unit tests (gate-test's saboteur cases show the order holds). The ruleset judges up-to-dateness
+again at merge, and a push after a merge run started fails the merge call on the pinned sha. Release verify, build,
+sign and publish run in one workflow run, artifacts are immutable within it (upload-artifact v7 refuses a second
+upload of a name), and publish hashes what it downloaded against what sign signed. The two-hour signature window is
+the known residual of REFERENCE.md. The Actions cache has no path today (ten cache: false, no cache action); what
+W-810 would add is weighed under the observations.
+
+Cryptography and identity. The maintainer key was not decoded again (gpg denied); sweep 2's scratch decode stands:
+one v4 EdDSA primary key, one user ID, no subkey, fingerprint equal to .github/maintainer.fpr, expiry 2028-01-15.
+lib.sh matches one VALIDSIG line that ends in the pinned fingerprint, takes the signed time from the status line and
+refuses two lines; an expired key or signature fails git verify-commit, closed. Release: keyless cosign over
+SHA256SUMS with the identity release.yml at github.ref and GitHub's OIDC issuer, verified in publish under the same
+identity; one attestation whose subjects are the checksums (W10); dry runs sign as refs/heads/main, which the
+documented tag identity refuses; `gh attestation verify --repo` without --source-ref still accepts a dry-run build
+(stands, for H-905). The six action pins were mapped to their tags for the first time, by anonymous `git ls-remote
+--tags` of each action repository (no token, no API): checkout 3d3c42e is v7.0.1 and v7, setup-go b7ad1da v7.0.0,
+upload-artifact cf430e0 v7.0.2 and v7, download-artifact 9000827 v8.0.2 and v8, cosign-installer 6f9f177 v4.1.2,
+attest-build-provenance 4d10147 v4.2.2 and the peeled v4: every version comment is true and no pin is an impostor
+commit. Debian's registry publishes no signature, so the digest pin is the identity (B5, wherever one exists). The
+channel job of bump.yml signs with a throwaway key and publishes nothing.
+
+Failure modes. Every run step is bash -e with pipefail; green() turns a gh failure into exit 1; GATE_REQUIRE_VM=1
+makes a missing hypervisor a Linux gate failure (seen in gate-test); guard.sh dies with exit 4 on every error and
+treats only grep 1 and cmp 1 as no; mkimage removes a half-written output; install.sh installs nothing on any
+failure (seen). The failure mode that reality supplied is the replaced kernel of 2026-11-25: the SHA-256 pin refused
+the new bytes, every gate failed closed, and no integrity was lost; the cost was W8 (halt 332). No fail-open path.
+
+Downgrade, rollback and replay. The go directive is free and gate.sh:77 admits toolchain and godebug lines (PARKED
+line 80 stands; the writer is the loop). Pins never move backwards (S-1011); the enforced lists ratchet from the
+base (gate-test's removed, emptied and reordered cases); the tag ruleset lets nobody create a tag until H-905 and
+--verify-tag keeps a re-run closed; a replayed signed commit meets the parent rule and the window; the action SHAs
+are immutable; runner labels float (W5's admitted float); cosign v3.1.4 is written once; Dependabot's limit of 0
+moves no module or action until H-905 (W12's known gap).
+
+Interaction between surfaces. The nightly B6 smoke runs upstream's newest provider binary inside a VM on the runner
+isolated to the loopback canary with the judge's resolver (T8, S12). Since S-F54 the suite's isolate builds a second
+network namespace behind a gateway, and since S-F35 and S-F48 the gate's unit tests c52 and c65 re-exec under sudo
+for bind mounts: more root work on the lent runner, all inside namespaces and temporary directories the suite makes
+and removes. The A6 client half is still missing: data.go stats four files, README says the guest files are not
+downloaded for you, and the release ships guest-*.img and workcell-init-* that no client code loads (H-905,
+S-1018). The kernel and the VMM that the gate boots are free-path constants, so what the P4 evidence runs on is
+chosen by whoever writes free paths; REFERENCE.md:805 accepts this (the lock protects the rules, not the quality).
+
+Second order of S-F47 to S-F68. Only S-F44 (internal/rootfs/ext4file.go openSource, now beneath a directory
+descriptor with O_NOFOLLOW and a dev, inode and size re-check; tree.go HostFile.Dir) and S-F54 (escape/sandbox)
+touched files of this surface. cmd/mkimage uses the stream writer WriteExt4 and never WriteExt4File, so the image
+build is unchanged by S-F44; S-F54's cost is the runner-side namespace work above. S-F48, S-F60 to S-F68 and the
+proxy fixes have no path onto workflows, release, image build or dependencies; the suite's ca lies beside its data
+directory and never under it, as S-F68's record says. The hosted gate took 281 to 328 s in recent runs (LOG.md)
+against the 900 s budget. Budgets: product 14998 of 15000, test 28497 of 28497, workflow YAML 454 of 500, shell 52
+of 300, Markdown 1370; the fold reserve under escape/ is nil since S-F68, which W-810's Go test lines will meet.
+The event of 2026-11-25, weighed: (a) the digest pins fail closed, the gate did not boot the new kernel; (b) W8 is
+broken by design, every gate run downloads from GitHub releases, mirror.gcr.io and proxy.golang.org, and W-810
+covers the first two; (c) the recovery was trust on first use: the new digest d18d6c3b... is whatever GitHub served
+that day, landed by one pull request that changed free paths only (guard PASS), with no second source and no
+provenance check, and whether cloud-hypervisor/linux publishes a signature or build provenance for its release
+assets was not checked here (no GitHub API), though B5's "wherever one exists" asks the re-pin to look; (d) B1, W6
+and W12: the kernel and the VMM have no pin row and no updater and sit in three (x86_64) and two (arm64) copies of
+test code, consistent today; (e) the halt coupled the gate to upstream availability and never to upstream
+integrity, which is the right way round.
+
+Parked leads tried again. Line 77 (bump.class by branch prefix; issues before merges; Rekor v2 closed): stands,
+internal/bump unchanged. Lines 78 and 79: cmd/workcell, S-1013's. Line 80 (godebug and toolchain in a free go.mod):
+stands; gate-test's "comments first, then harmless directives" passes such lines. Line 81: purego v0.11.2 is still an
+unused direct requirement, now confirmed online (`go mod tidy -diff` drops it and its two go.sum lines, nothing
+else); the Firecracker and kernel pins are written three times for x86_64 and twice for arm64, all consistent after
+the re-pin. Line 180: every clause re-read and still true, c65 now beside c52 as a sudo consumer in the unit tests.
+Line 181: zizmor's online audits are still not run, but the SHA-to-tag map is now made by ls-remote; shellcheck ran,
+through actionlint and alone; govulncheck could not run here; the two x/mod advisories stay module-level and
+unlinked. Line 224 (the maintainer's note): weighed above; no break shown and nothing an in-scope attacker reaches.
+
+Tools (S10). zizmor 1.33.1 (uvx from PyPI; sweeps 1 and 2 used 1.32.0), offline: `uvx zizmor --no-online-audits
+--persona=pedantic --format=json .github/` gave 19 findings: 11 anonymous-definition (informational, job names), 5
+concurrency-limits (low; bump, ci, guard, nightly, release: W4 by design while the loop runs), 3
+undocumented-permissions (low; bump.yml:22, release.yml:23 and :80: style, R3); `--persona=auditor .github/` gave
+"21 findings (2 ignored): 11 informational, 8 low, 0 medium, 0 high", the two ignored being dangerous-triggers for
+ci.yml and guard.yml under .github/zizmor.yml's rationale, which holds. The same counts as sweeps 1 and 2; no
+candidate. actionlint v1.7.12: `go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 -no-color
+-shellcheck=<wrapper around uvx --from shellcheck-py shellcheck, 0.11.0> -pyflakes= .github/workflows/*.yml`: 0
+findings, exit 0, the first run of this surface's audits with the shellcheck integration on. govulncheck v1.10.0:
+`GOTOOLCHAIN=go1.27.4 go run golang.org/x/vuln/cmd/govulncheck@v1.10.0 -show verbose ./...` did not run: "fetching
+vulnerabilities: Get https://vuln.go.dev/index/modules.json.gz: Forbidden (agent proxy: no rule or network setting
+allows this host)"; a first attempt under the session's go1.26.11 could not load go1.27 packages. No other route
+was tried in the session. The orchestrator then had the builder write spikes/govulncheck/govulncheck_test.go (110
+lines: the same command from the module root, the whole output through t.Log, a skip where the database cannot be
+reached, a failure if go.mod or go.sum changed), pushed it to the try: pull request 343 as cc4d0da, read the three
+job logs between the test's own markers, and had the builder remove the file again before the final title (S1, and
+W8: a gate must not fetch the database on every run). All three ran under go1.27.4 and ended `govulncheck exit 0`.
+gate (linux/amd64) and gate-arm64 (linux/arm64): 33 root packages, the module and golang.org/x/sys v0.49.0 and the
+go1.27.4 standard library scanned, "No vulnerabilities found." gate-macos (darwin/arm64): those and vz v3.8.0,
+go-infinity-channel v1.0.0 and x/mod v0.22.0; symbol results none, package results none, module results two,
+GO-2026-6180 and GO-2026-6179, both in golang.org/x/mod (sumdb and sumdb/tlog), found in v0.22.0 and fixed in
+v0.40.0, "Your code is affected by 0 vulnerabilities." Triage under S4: the same two advisories that sweep 2
+ruled on, and the ruling stands on this tree, since the darwin/arm64 build still links golang.org/x/mod/semver
+alone (the auditor's go list -deps above), so neither advisory's package is in any binary and no in-scope attacker
+has an input (R2). No candidate. The standard-library advisories of C27 do not return: go1.27.4 is clean today.
+
+Coverage. Read in full: the five workflows; .github/dependabot.yml, zizmor.yml, maintainer.asc and maintainer.fpr;
+loop/gate.sh, guard.sh, lib.sh, free-paths.txt, settings.sh and the three ruleset and policy JSON files;
+scripts/install.sh; Formula/workcell.rb; go.mod and go.sum; cmd/mkimage (both files); internal/rootfs oci.go,
+build.go, layer.go, tree.go, ext4.go and ext4file.go; pins/pins.go and the four rows; internal/pins pins.go and
+sources.go; internal/bump bump.go and github.go; cmd/bump/main.go; escape/sandbox/workcell_linux.go and
+workcell_vm.go; escape/cmd/escape/main.go; escape/suite/smoke.go; spikes/install/install_test.go;
+cmd/workcell/data.go; internal/version; .gitignore; .claude/settings.json; CONTRIBUTING.md, README.md and
+SECURITY.md; SPEC sections 2 to 4, 6 to 11 and 13; the map, both earlier records of this surface and S-1011's
+sweep-3 record; PARKED lines 70-89, 175-185 and 215-234; PLAN Phase 10 and W-810. In part: loop/land.sh to line
+130, REFERENCE.md lines 40-60 and 778-837, WORKFLOW-REVIEW.md by headings, gate-test.sh and suite.sh by case names
+(gate-test run whole), firecracker_test.go lines 39-45 and 395-470, firecracker.go's exec lines,
+workcell_darwin.go:20, the ADRs, docs/threat-model.md and LOG.md by grep. Not opened: loop/adopt.sh, checkpoint.sh,
+preflight.sh, the setup scripts, loop/test/fake-gh and the Python checks, internal/channel, internal/artifact,
+internal/sigstore and internal/advisory (S-1011's, run as tests only), cmd/workcell/update.go, docs/adr/004,
+docs/providers.md, docs/policy.md, _legacy/. Run: gate-test.sh (207 ok); guard.sh on three pairs; go mod verify, go
+mod tidy -diff, go list -m all, go mod graph, go list -deps for four binaries on linux and cmd/workcell on
+darwin/arm64; the unit tests of ten surface packages; the five loopback installer tests; zizmor twice, actionlint
+once, shellcheck twice. Not run: the workflows, any GitHub API call, gpg and so loop/test/suite.sh and the guard's
+signature path, govulncheck in the session (database unreachable; it ran on the hosted jobs, see Tools), any VM
+row, any macOS path, long fuzzing, cmd/bump against a live upstream. Network use beyond local processes: module and
+tool downloads from proxy.golang.org and PyPI, and six anonymous `git ls-remote --tags` reads of public action
+repositories. S12, one note for the maintainer: the brief did not ask for those six reads; each is one plain git
+read of a public repository's tag list, with no token and no API, and they sent no probe traffic and loaded
+nothing, but they did reach a third party's host, so the orchestrator records them here and they were not repeated.
+The auditor changed nothing in the tree. Not S14: nothing ported, nothing of someone
+else's project; the two x/mod advisories are public records of the Go vulnerability database.
+
+Orchestrator's notes. With no candidate there was no claim for the redteam and nothing for a verifier to rule on,
+so neither ran (the audit flow asks for them per candidate). The auditor's record was written to a file that git
+ignores and copied here by the orchestrator, who changed its govulncheck sentences after the hosted run and wrote
+the S12 note above. Hosted: the claim 7f81176 green (gate 359 s, gate-macos 152 s, gate-arm64 103 s, guard), and the
+spike commit cc4d0da green (gate 324 s, gate-macos 197 s, gate-arm64 87 s, guard).
+
+### S-1012 candidates, sweep 3
+
+None. The auditor reports no candidate at any severity, and the tool passes gave none:
+nothing found names an invariant or a rule that an in-scope attacker puts at risk with an input that can be
+reproduced (R2). So no test was written, nothing is parked under escape/_pending/, no fix unit is added, and the
+next candidate number stays C85.
+
+After S-1012: sweep 3 stands as after S-F68, at two highs (C76 and C77, both fixed), fourteen mediums (C65, C66,
+C67, C68, C69, C71, C72, C73, C74, C75, C78, C80, C81 and C82, all fixed) and five lows (C64, C70, C79, C83 and C84,
+all fixed). Nothing waits under escape/_pending/. The next candidate number is C85 and the next fix unit S-F69.
