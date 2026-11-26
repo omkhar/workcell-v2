@@ -8741,7 +8741,9 @@ every probe ran against files, local processes and the module proxy, and the kit
 first time in an audit of this surface (loop/test/gate-test.sh: 207 ok, 0 wrong). Result: no candidates at any
 severity. Two of the three S10 tool passes ran here (zizmor 1.33.1, actionlint v1.7.12 with shellcheck 0.11.0) and
 gave nothing new; govulncheck v1.10.0 could not reach its database through the agent proxy and was not routed
-around. No file of this surface carries `// Ported from v1`, and nothing concerns released v1 code or a weakness of
+around, so the orchestrator ran it on the three hosted jobs through a spike test, as sweep 2 did (Tools, below):
+nothing new there either. No file of this surface carries `// Ported from v1`, and nothing concerns released v1
+code or a weakness of
 someone else's project (S14): no NEEDS-YOU.
 
 Trust boundary. Rows 31, 34, 36, 37 and 38 of the map. Attacker bytes enter in five places, as sweeps 1 and 2 drew
@@ -8878,8 +8880,19 @@ findings, exit 0, the first run of this surface's audits with the shellcheck int
 `GOTOOLCHAIN=go1.27.4 go run golang.org/x/vuln/cmd/govulncheck@v1.10.0 -show verbose ./...` did not run: "fetching
 vulnerabilities: Get https://vuln.go.dev/index/modules.json.gz: Forbidden (agent proxy: no rule or network setting
 allows this host)"; a first attempt under the session's go1.26.11 could not load go1.27 packages. No other route
-was tried; the hosted jobs of sweep 2 remain its last run (no vulnerabilities on linux; GO-2026-6180 and
-GO-2026-6179 at module level in x/mod on darwin, unlinked).
+was tried in the session. The orchestrator then had the builder write spikes/govulncheck/govulncheck_test.go (110
+lines: the same command from the module root, the whole output through t.Log, a skip where the database cannot be
+reached, a failure if go.mod or go.sum changed), pushed it to the try: pull request 343 as cc4d0da, read the three
+job logs between the test's own markers, and had the builder remove the file again before the final title (S1, and
+W8: a gate must not fetch the database on every run). All three ran under go1.27.4 and ended `govulncheck exit 0`.
+gate (linux/amd64) and gate-arm64 (linux/arm64): 33 root packages, the module and golang.org/x/sys v0.49.0 and the
+go1.27.4 standard library scanned, "No vulnerabilities found." gate-macos (darwin/arm64): those and vz v3.8.0,
+go-infinity-channel v1.0.0 and x/mod v0.22.0; symbol results none, package results none, module results two,
+GO-2026-6180 and GO-2026-6179, both in golang.org/x/mod (sumdb and sumdb/tlog), found in v0.22.0 and fixed in
+v0.40.0, "Your code is affected by 0 vulnerabilities." Triage under S4: the same two advisories that sweep 2
+ruled on, and the ruling stands on this tree, since the darwin/arm64 build still links golang.org/x/mod/semver
+alone (the auditor's go list -deps above), so neither advisory's package is in any binary and no in-scope attacker
+has an input (R2). No candidate. The standard-library advisories of C27 do not return: go1.27.4 is clean today.
 
 Coverage. Read in full: the five workflows; .github/dependabot.yml, zizmor.yml, maintainer.asc and maintainer.fpr;
 loop/gate.sh, guard.sh, lib.sh, free-paths.txt, settings.sh and the three ruleset and policy JSON files;
@@ -8899,11 +8912,20 @@ docs/providers.md, docs/policy.md, _legacy/. Run: gate-test.sh (207 ok); guard.s
 mod tidy -diff, go list -m all, go mod graph, go list -deps for four binaries on linux and cmd/workcell on
 darwin/arm64; the unit tests of ten surface packages; the five loopback installer tests; zizmor twice, actionlint
 once, shellcheck twice. Not run: the workflows, any GitHub API call, gpg and so loop/test/suite.sh and the guard's
-signature path, govulncheck (database unreachable), any VM row, any macOS path, long fuzzing, cmd/bump against a
-live upstream. Network use beyond local processes: module and tool downloads from proxy.golang.org and PyPI, and
-six anonymous `git ls-remote --tags` reads of public action repositories, a data fetch of the kind `go run` makes
-and no probe (S12); the orchestrator may discount that step. Nothing in the tree changed; the record is this file
-under loop/private/. Not S14: nothing ported, nothing of someone else's project.
+signature path, govulncheck in the session (database unreachable; it ran on the hosted jobs, see Tools), any VM
+row, any macOS path, long fuzzing, cmd/bump against a live upstream. Network use beyond local processes: module and
+tool downloads from proxy.golang.org and PyPI, and six anonymous `git ls-remote --tags` reads of public action
+repositories. S12, one note for the maintainer: the brief did not ask for those six reads; each is one plain git
+read of a public repository's tag list, with no token and no API, and they sent no probe traffic and loaded
+nothing, but they did reach a third party's host, so the orchestrator records them here and they were not repeated.
+The auditor changed nothing in the tree. Not S14: nothing ported, nothing of someone
+else's project; the two x/mod advisories are public records of the Go vulnerability database.
+
+Orchestrator's notes. With no candidate there was no claim for the redteam and nothing for a verifier to rule on,
+so neither ran (the audit flow asks for them per candidate). The auditor's record was written to a file that git
+ignores and copied here by the orchestrator, who changed its govulncheck sentences after the hosted run and wrote
+the S12 note above. Hosted: the claim 7f81176 green (gate 359 s, gate-macos 152 s, gate-arm64 103 s, guard), and the
+spike commit cc4d0da green (gate 324 s, gate-macos 197 s, gate-arm64 87 s, guard).
 
 ### S-1012 candidates, sweep 3
 
@@ -8911,3 +8933,7 @@ None. The auditor reports no candidate at any severity, and the tool passes gave
 nothing found names an invariant or a rule that an in-scope attacker puts at risk with an input that can be
 reproduced (R2). So no test was written, nothing is parked under escape/_pending/, no fix unit is added, and the
 next candidate number stays C85.
+
+After S-1012: sweep 3 stands as after S-F68, at two highs (C76 and C77, both fixed), fourteen mediums (C65, C66,
+C67, C68, C69, C71, C72, C73, C74, C75, C78, C80, C81 and C82, all fixed) and five lows (C64, C70, C79, C83 and C84,
+all fixed). Nothing waits under escape/_pending/. The next candidate number is C85 and the next fix unit S-F69.
