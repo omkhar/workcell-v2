@@ -78,6 +78,14 @@ func within(dir, p string) bool {
 	return false
 }
 
+// leadsInto says whether a prefix of the path p, each followed as the kernel walks it (a link on the way too, and one not made yet by name, as resolved does), is the working directory cwd or the data directory dir or lies in one: a file there is the repository's, or the guest's under --mount, or a cache the guest writes by design, so none may be a root the host trusts (C59, C79, C84, C86; I13, I14, I6). A relative p is read against cwd, so it leads there.
+func leadsInto(p, cwd, dir string) (in bool) {
+	for n, parts := 1, strings.SplitAfter(p, "/"); !in && n <= len(parts); n++ {
+		in = within(cwd, strings.Join(parts[:n], "")) || within(dir, strings.Join(parts[:n], ""))
+	}
+	return in
+}
+
 // resolved is p absolute, with its symlinks followed: a link to a file not made yet is followed by name, as the kernel will once the file is made, and where p does not exist yet, the longest prefix that does is followed and the rest appended.
 func resolved(p string) string {
 	p, _ = filepath.Abs(p)

@@ -90,6 +90,11 @@ func session(argv []string, caps limits, mount bool, a artifacts, allow *proxy.A
 	if err == nil && mount && within(cwd, os.TempDir()) { // the VMM's sockets would lie in the guest's view, for it to swap for a link to any host socket of the operator's (I1, I4)
 		err = fmt.Errorf("%q holds the temp directory %s, where the VMM's sockets would lie in the guest's view: set TMPDIR elsewhere or run without --mount", cwd, os.TempDir())
 	}
+	for _, p := range append(filepath.SplitList(os.Getenv("SSL_CERT_DIR")), os.Getenv("SSL_CERT_FILE")) { // the proxy's upstream roots come from these (upstreamRoots), so none may lie in or lead into the working directory, where the repository or the guest under --mount writes it, or the data directory, where a cache lies (I6, I5; C86). An empty value names nothing
+		if v := map[bool]string{true: "SSL_CERT_FILE", false: "SSL_CERT_DIR"}[p == os.Getenv("SSL_CERT_FILE")]; err == nil && p != "" && leadsInto(p, cwd, a.dir) { // the variable named is the one that holds p, and SSL_CERT_FILE does whenever its value is p
+			err = fmt.Errorf("%s names %s, a path that lies in or leads into the working directory %q, which the guest gets as /workspace, or the data directory %s, whose caches the guest writes: the proxy may trust no upstream root there; move the file and set that path", v, p, cwd, a.dir)
+		}
+	}
 	if err == nil { // the export and the live mount take this process's own directory, ".", so the name judged must still be its own (C61)
 		err = named(unix.AT_FDCWD, cwd)
 	}
@@ -371,8 +376,7 @@ type mountService interface {
 	Close()
 }
 
-// serveMount answers the guest's FUSE stream, the one connection to fileserve.Port, from the export until either side ends. Nothing is left to release but what
-// close releases.
+// serveMount answers the guest's FUSE stream, the one connection to fileserve.Port, from the export until either side ends. Nothing is left to release but what close releases.
 func serveMount(ln net.Listener, s mountService) {
 	if c, err := ln.Accept(); err == nil { // an error: the session ended before the guest dialled
 		defer c.Close()
@@ -643,8 +647,7 @@ func (t *tail) Write(p []byte) (int, error) {
 
 func (t *tail) bytes() []byte { t.mu.Lock(); defer t.mu.Unlock(); return slices.Clone(t.b) }
 
-// lastLines is the last n lines of console output, safe to print on a terminal: the guest chose these bytes, so anything but printable ASCII becomes '?', and
-// carriage returns go.
+// lastLines is the last n lines of console output, safe to print on a terminal: the guest chose these bytes, so anything but printable ASCII becomes '?', and carriage returns go.
 func lastLines(b []byte, n int) string {
 	s := strings.Map(func(r rune) rune {
 		switch {

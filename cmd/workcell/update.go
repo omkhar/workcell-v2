@@ -125,12 +125,7 @@ func newInstaller() (in installer, err error) {
 		in.channel = u.Channel
 	}
 	cwd, err := os.Getwd()
-	refuse := u.CA != "" && (err != nil || !filepath.IsAbs(u.CA))                  // a relative one would be read against the working directory; with no directory to judge by, it is refused too
-	for n, parts := 2, strings.Split(u.CA, "/"); !refuse && n <= len(parts); n++ { // each prefix of the path, followed as the kernel walks it: one that lies in the working directory, or is a link into it, reads a file of the repository as the only root (C59, C79; I13, I14); one in the data directory reads a file the guest writes by design, a cache image (C84). A prefix that does not resolve is left to the read, which fails on it
-		r, e := filepath.EvalSymlinks(strings.Join(parts[:n], "/"))
-		refuse = e == nil && (within(cwd, r) || within(in.dir, r))
-	}
-	if refuse {
+	if u.CA != "" && (err != nil || !filepath.IsAbs(u.CA) || leadsInto(u.CA, cwd, in.dir)) { // a relative one would be read against the working directory; with no directory to judge by, it is refused too. One that lies in the working directory, or is a link into it, reads a file of the repository as the only root (C59, C79; I13, I14); one in the data directory reads a file the guest writes by design, a cache image (C84)
 		return in, fmt.Errorf("%s: [update] ca %s must be an absolute path no part of which lies in or leads into the working directory %q, which the guest gets as /workspace, or the data directory %s, whose caches the guest writes: move the file and set that path", file, u.CA, cwd, in.dir)
 	}
 	if u.CA != "" {

@@ -353,13 +353,7 @@ func sameHost(host, sni, port string) bool {
 // serveTerminated terminates TLS for host with a session leaf and proxies HTTP/1.1 requests to the real host, swapping the placeholder headers. It refuses a request that names another host than the SNI did (I6), one that sends a placeholder outside the method and path its rule binds it to, with a routing override beside it or, under a method rule, in a form or JSON body (I5), and one that still carries a placeholder after the swap.
 func (p *Proxy) serveTerminated(client net.Conn, host string, replay []byte) {
 	rules := p.terminate[host]
-	tlsConn := tls.Server(&replayConn{Conn: client, r: io.MultiReader(bytes.NewReader(replay), client)}, &tls.Config{
-		MinVersion: tls.VersionTLS12,
-		NextProtos: []string{"http/1.1"},
-		GetCertificate: func(*tls.ClientHelloInfo) (*tls.Certificate, error) {
-			return p.ca.leaf(host)
-		},
-	})
+	tlsConn := tls.Server(&replayConn{Conn: client, r: io.MultiReader(bytes.NewReader(replay), client)}, &tls.Config{MinVersion: tls.VersionTLS12, NextProtos: []string{"http/1.1"}, GetCertificate: func(*tls.ClientHelloInfo) (*tls.Certificate, error) { return p.ca.leaf(host) }})
 	ln := &oneConnListener{conn: make(chan net.Conn, 1), done: make(chan struct{}), addr: client.LocalAddr()}
 	ln.conn <- &closeNotifyConn{Conn: tlsConn, ln: ln}
 	_, port, _ := net.SplitHostPort(ln.addr.String())

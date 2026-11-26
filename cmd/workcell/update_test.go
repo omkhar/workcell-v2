@@ -357,9 +357,7 @@ func TestChannel(t *testing.T) {
 		now           time.Time
 		want          bool
 		gets          int
-	}{
-		{"the first start of the day checks once", in.channel, time.Now(), true, 1}, {"a second start the same day does not", in.channel, time.Now(), false, 1}, {"a held channel on a new day does not", "", time.Now().Add(24 * time.Hour), false, 1},
-	} {
+	}{{"the first start of the day checks once", in.channel, time.Now(), true, 1}, {"a second start the same day does not", in.channel, time.Now(), false, 1}, {"a held channel on a new day does not", "", time.Now().Add(24 * time.Hour), false, 1}} {
 		d := in
 		d.channel = s.channel
 		got := d.daily(s.now)
