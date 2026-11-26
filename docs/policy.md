@@ -57,7 +57,7 @@ Use the flags instead:
 - `--cpus` (1 to 32, default 2), `--memory` (at least 128MiB, default 1GiB) and `--disk` (default 1GiB).
 - `workcell update` installs provider CLIs. The `[update]` channel and cool-off of SPEC B10 are not read yet.
 - The `[update]` `ca` key, the only TLS root of the host's channel and artifact fetches, must be an absolute path no part
-  of which lies in, or is a link into, the directory the session is run in, which the guest gets as `/workspace`.
+  of which lies in, or is a link into, the directory the session is run in (the guest's `/workspace`) or the data directory.
 
 ## File format
 
