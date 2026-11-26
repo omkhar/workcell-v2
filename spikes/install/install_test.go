@@ -9,6 +9,7 @@ package install
 import (
 	"archive/tar"
 	"bytes"
+	"cmp"
 	"compress/gzip"
 	"context"
 	"crypto/sha256"
@@ -24,6 +25,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -378,8 +380,18 @@ func prepare(ctx context.Context, repo, tmp, data string) error {
 	return errors.Join(errs...)
 }
 
-// fetch downloads url and returns its bytes only if their SHA-256 is sum.
+// fetch returns the bytes at url only if their SHA-256 is sum: from the file named sum in the
+// escape harness's download folder when that holds them (W8: the gate restores the folder from a
+// nightly run of main), else from upstream, kept there afterwards. A link is not followed.
 func fetch(ctx context.Context, url, sum string) ([]byte, error) {
+	dir, _ := os.UserCacheDir()
+	kept := filepath.Join(cmp.Or(dir, os.TempDir()), "workcell-escape", sum)
+	if f, err := os.OpenFile(kept, os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0); err == nil {
+		b, err := io.ReadAll(io.LimitReader(f, maxDownload))
+		if got := sha256.Sum256(b); f.Close() == nil && err == nil && hex.EncodeToString(got[:]) == sum {
+			return b, nil
+		}
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, err
@@ -398,6 +410,9 @@ func fetch(ctx context.Context, url, sum string) ([]byte, error) {
 	}
 	if got := sha256.Sum256(b); hex.EncodeToString(got[:]) != sum {
 		return nil, fmt.Errorf("download %s: sha256 %x, want %s", url, got, sum)
+	}
+	if err := os.Remove(kept); os.MkdirAll(filepath.Dir(kept), 0o755) == nil && (err == nil || errors.Is(err, os.ErrNotExist)) {
+		_ = os.WriteFile(kept, b, 0o644) // best effort, as a new file: whatever was under the name is gone first
 	}
 	return b, nil
 }

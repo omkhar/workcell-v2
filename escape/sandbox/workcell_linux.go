@@ -164,15 +164,9 @@ func EachProcess(f func(pid, ppid, pgid int)) error {
 	}
 	for _, e := range es {
 		pid, err := strconv.Atoi(e.Name())
-		if err != nil {
-			continue
-		}
-		b, err := os.ReadFile("/proc/" + e.Name() + "/stat")
-		if err != nil {
-			continue // gone between the listing and the read
-		}
+		b, rerr := os.ReadFile("/proc/" + e.Name() + "/stat")           // gone between the listing and the read, or no process at all: skipped
 		fl := strings.Fields(string(b[bytes.LastIndexByte(b, ')')+1:])) // after the comm, which may hold spaces: state ppid pgrp ...
-		if len(fl) < 3 {
+		if err != nil || rerr != nil || len(fl) < 3 {
 			continue
 		}
 		ppid, err1 := strconv.Atoi(fl[1])

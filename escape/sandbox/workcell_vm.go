@@ -157,11 +157,7 @@ func prepareWorkcell(ctx context.Context, dir string) error {
 		if err != nil {
 			return err
 		}
-		var cpio bytes.Buffer
-		if err := errors.Join(cpioEntry(&cpio, "init", 0o100755, b), cpioEntry(&cpio, "TRAILER!!!", 0, nil)); err != nil {
-			return err
-		}
-		return os.WriteFile(filepath.Join(data, "initrd.cpio"), cpio.Bytes(), 0o644)
+		return os.WriteFile(filepath.Join(data, "initrd.cpio"), cpioEntry(cpioEntry(nil, "init", 0o100755, b), "TRAILER!!!", 0, nil), 0o644)
 	}, func() error {
 		mkimage := filepath.Join(tmp, "mkimage")
 		if err := hostBuild(ctx, repo, mkimage, module+"/cmd/mkimage", ""); err != nil {
@@ -199,8 +195,16 @@ func parallel(fns ...func() error) error {
 	return errors.Join(errs...)
 }
 
-// fetch downloads url and returns its bytes only if their SHA-256 is sum.
+var cache = filepath.Join(cmp.Or(func() string { d, _ := os.UserCacheDir(); return d }(), os.TempDir()), "workcell-escape") // cache is where fetch keeps each download it verified, named by its digest, for the next run (W8: a runner restores the folder from a cache made by a run of main): under the user's cache folder ($XDG_CACHE_HOME or ~/.cache on Linux, ~/Library/Caches on a Mac), or the temporary one where the host names none. Its content is trusted as far as the digest says and no further.
+// fetch returns the bytes at url only if their SHA-256 is sum: from the file named sum under cache when that holds them, else from upstream, kept there afterwards. The kept file is read as a regular file, in full, and hashed before use; a link or a pipe under its name is not followed, and a wrong file costs one download and nothing else.
 func fetch(ctx context.Context, url, sum string) ([]byte, error) {
+	kept := filepath.Join(cache, sum)
+	if f, err := os.OpenFile(kept, os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0); err == nil {
+		b, err := io.ReadAll(io.LimitReader(f, maxDownload))
+		if f.Close(); err == nil && digest(b) == sum {
+			return b, nil
+		}
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, err
@@ -217,11 +221,15 @@ func fetch(ctx context.Context, url, sum string) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("download %s: %w", url, err)
 	}
-	if got := sha256.Sum256(b); hex.EncodeToString(got[:]) != sum {
-		return nil, fmt.Errorf("download %s: sha256 %x, want %s", url, got, sum)
+	if got := digest(b); got != sum {
+		return nil, fmt.Errorf("download %s: sha256 %s, want %s", url, got, sum)
+	}
+	if err := os.Remove(kept); os.MkdirAll(cache, 0o755) == nil && (err == nil || errors.Is(err, fs.ErrNotExist)) { // kept as a new file, best effort: whatever was under the name, a planted link included, is gone first, so nothing is written through it
+		os.WriteFile(kept, b, 0o644)
 	}
 	return b, nil
 }
+func digest(b []byte) string { h := sha256.Sum256(b); return hex.EncodeToString(h[:]) } // digest is the SHA-256 of b, in hex.
 
 // goBuild compiles pkg of the module at repo into out with env added to the environment, under the build overlay file named when one is.
 func goBuild(ctx context.Context, repo, out, pkg, overlay string, env ...string) error {
@@ -251,38 +259,31 @@ func (w *workcell) Start(_ context.Context, cfg Config) (string, error) {
 		return "", err
 	}
 	source := filepath.Join(dir, "secret") // The secret's value, where only the host reads it: a file of the session's own, mode 0600, beside the policy and outside any export. A row with a source of its own (a sign-in flow) has no value to write.
-	if cfg.Secret != nil && cfg.Secret.Source == "" {
-		if err := os.WriteFile(source, []byte(cfg.Secret.Value), 0o600); err != nil {
-			os.RemoveAll(dir)
-			return "", fmt.Errorf("workcell: write the secret: %w", err)
-		}
-	}
 	policy, err := policyTOML(cfg, source)
+	if err == nil && cfg.Secret != nil && cfg.Secret.Source == "" {
+		err = os.WriteFile(source, []byte(cfg.Secret.Value), 0o600)
+	}
 	if err == nil && cfg.Update != nil { // the [update] table, after the policy: every run of the session reads it
 		var table []byte
 		if table, err = updateTable(dir, *cfg.Update); err == nil {
 			policy = append(policy, table...)
 		}
 	}
+	file := filepath.Join(dir, "config", policyFile) // The session's policy, where `workcell run` reads it with XDG_CONFIG_HOME at the session's config directory: <dir>/config/workcell/config.toml.
+	if err == nil {
+		err = errors.Join(os.MkdirAll(filepath.Dir(file), 0o755), os.Mkdir(filepath.Join(dir, "cwd"), 0o755))
+	}
+	if err == nil {
+		err = os.WriteFile(file, policy, 0o644)
+	}
+	if err == nil && cfg.Isolated {
+		w.ns, err = isolate(dir, cfg.Payload, cfg.OnLink)
+	}
 	if err != nil {
 		os.RemoveAll(dir)
 		return "", fmt.Errorf("workcell: %w", err)
 	}
-	file := filepath.Join(dir, "config", policyFile) // The session's policy, where `workcell run` reads it with XDG_CONFIG_HOME at the session's config directory: <dir>/config/workcell/config.toml.
-	if err := errors.Join(os.MkdirAll(filepath.Dir(file), 0o755), os.Mkdir(filepath.Join(dir, "cwd"), 0o755)); err == nil {
-		err = os.WriteFile(file, policy, 0o644)
-	}
-	if err != nil {
-		os.RemoveAll(dir)
-		return "", fmt.Errorf("workcell: write the policy: %w", err)
-	}
 	w.dir, w.payload, w.cfg = dir, cfg.Payload, cfg
-	if cfg.Isolated {
-		if w.ns, err = isolate(dir, cfg.Payload, cfg.OnLink); err != nil {
-			os.RemoveAll(dir)
-			return "", fmt.Errorf("workcell: %w", err)
-		}
-	}
 	if cfg.Workspace != "" {
 		return "/workspace", nil // where `workcell run` shows a copy of its working directory
 	}
@@ -313,23 +314,17 @@ func (w *workcell) Exec(ctx context.Context, args ...string) (Output, error) {
 
 // Pull is one `workcell pull <dest>` in the export; a non-zero exit is a refusal, an error holding the product's stderr.
 func (w *workcell) Pull(ctx context.Context, dest string) error {
-	if w.dir == "" {
-		return errors.New("workcell: Pull before Start")
+	if w.dir == "" || w.cfg.Workspace == "" {
+		return errors.New("workcell: Pull before Start, or the session has no workspace to pull")
 	}
-	if w.cfg.Workspace == "" {
-		return errors.New("workcell: the session has no workspace to pull")
+	out, err := Output{}, os.MkdirAll(dest, 0o755)
+	if err == nil {
+		out, err = w.cli(ctx, nil, "pull", dest)
 	}
-	if err := os.MkdirAll(dest, 0o755); err != nil {
-		return err
+	if err == nil && out.Exit != 0 {
+		err = fmt.Errorf("workcell pull: exit %d: %s", out.Exit, bytes.TrimSpace(out.Stderr))
 	}
-	out, err := w.cli(ctx, nil, "pull", dest)
-	if err != nil {
-		return err
-	}
-	if out.Exit != 0 {
-		return fmt.Errorf("workcell pull: exit %d: %s", out.Exit, bytes.TrimSpace(out.Stderr))
-	}
-	return nil
+	return err
 }
 
 // Bench is one `workcell bench start` with the session's artifacts (P1).
@@ -430,23 +425,19 @@ func (w *workcell) Audit(ctx context.Context) (string, []string, error) {
 		return "", nil, errors.New("workcell: Audit before Start")
 	}
 	ids, err := w.sessions()
+	if err == nil && len(ids) == 0 {
+		var out Output
+		if out, err = w.cli(ctx, nil, runArgs(w.cfg, "exit 0")...); err == nil && out.Exit != 0 {
+			err = fmt.Errorf("workcell run (for the record's start): exit %d: %s", out.Exit, bytes.TrimSpace(out.Stderr))
+		}
+		if err == nil {
+			if ids, err = w.sessions(); err == nil && len(ids) == 0 {
+				err = errors.New("workcell: the run left no session with a record")
+			}
+		}
+	}
 	if err != nil {
 		return "", nil, err
-	}
-	if len(ids) == 0 {
-		out, err := w.cli(ctx, nil, runArgs(w.cfg, "exit 0")...)
-		if err != nil {
-			return "", nil, err
-		}
-		if out.Exit != 0 {
-			return "", nil, fmt.Errorf("workcell run (for the record's start): exit %d: %s", out.Exit, bytes.TrimSpace(out.Stderr))
-		}
-		if ids, err = w.sessions(); err != nil {
-			return "", nil, err
-		}
-		if len(ids) == 0 {
-			return "", nil, errors.New("workcell: the run left no session with a record")
-		}
 	}
 	var path string
 	var records []string
@@ -469,11 +460,8 @@ func (w *workcell) Verify(ctx context.Context) error {
 		return errors.New("workcell: Verify before Start")
 	}
 	ids, err := w.sessions()
-	if err != nil {
-		return err
-	}
-	if len(ids) == 0 {
-		return errors.New("workcell: no session to verify")
+	if err != nil || len(ids) == 0 {
+		return cmp.Or(err, errors.New("workcell: no session to verify"))
 	}
 	for _, id := range ids {
 		out, err := w.cli(ctx, nil, "verify", id)
@@ -527,7 +515,7 @@ func (w *workcell) Install(ctx context.Context, l Layer) (string, error) {
 	}
 	sum := l.Digest
 	if l.Artifact != nil {
-		sum = fmt.Sprintf("%x", sha256.Sum256(l.Artifact))
+		sum = digest(l.Artifact)
 	}
 	row, dir := fmt.Sprintf(`{"Name":%q,"Class":"guest","Version":%q,"Artifacts":{%q:{"URL":%q,"SHA256":%q}}}`, name, l.Version, runtime.GOARCH, l.URL, sum), filepath.Join(w.dir, "overlay")
 	file, bin := filepath.Join(dir, name+".json"), filepath.Join(dir, "workcell")
