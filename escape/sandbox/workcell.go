@@ -39,7 +39,7 @@ func unsupported(cfg Config) string {
 }
 
 const policyFile = "workcell/config.toml" // policyFile is where, under the session's config directory, the product reads its policy: `$XDG_CONFIG_HOME/workcell/config.toml`.
-// policyTOML is the session policy of SPEC section 5 for cfg: a [network] table whose allow array holds each of cfg.Allow (a bare name is port 443 by SNI; `name:port` a forward entry), and, for cfg.Secret, one [[secret]] table binding it to its host and header, with its value in the file source (or the source the entry names, such as a sign-in flow), the guest's placeholder in its variable, and any method, path prefix and repositories. A quote, a backslash or a byte outside printable ASCII would change what the file says, so such an entry is refused. It is written even with no entry, so that nothing under the runner's ~/.config reaches a session. cfg.Deny writes nothing; a name in both lists is a mistake, and refused.
+// policyTOML is the session policy of SPEC section 5 for cfg: a [network] table whose allow array holds each of cfg.Allow (a bare name is port 443 by SNI; `name:port` a forward entry), and, for cfg.Secret, one [[secret]] table binding it to its host and header, with its value in the file source (or the source the entry names, such as a sign-in flow), the guest's placeholder in its variable, and any path prefix and repositories. A quote, a backslash or a byte outside printable ASCII would change what the file says, so such an entry is refused. It is written even with no entry, so that nothing under the runner's ~/.config reaches a session. cfg.Deny writes nothing; a name in both lists is a mistake, and refused.
 func policyTOML(cfg Config, source string) ([]byte, error) {
 	for _, name := range cfg.Allow {
 		if slices.Contains(cfg.Deny, name) {
@@ -55,7 +55,7 @@ func policyTOML(cfg Config, source string) ([]byte, error) {
 			return nil, fmt.Errorf("policy: the secret's host %q is not an allowed name", sec.Host)
 		}
 		b = append(b, "\n[[secret]]\n"...)
-		for _, kv := range []struct{ key, value string }{{"name", sec.Name}, {"source", cmp.Or(sec.Source, "file:"+source)}, {"host", sec.Host}, {"header", sec.Header}, {"env", sec.Env}, {"method", sec.Method}, {"path", sec.Path}} {
+		for _, kv := range []struct{ key, value string }{{"name", sec.Name}, {"source", cmp.Or(sec.Source, "file:"+source)}, {"host", sec.Host}, {"header", sec.Header}, {"env", sec.Env}, {"path", sec.Path}} {
 			if kv.value == "" {
 				continue // an optional key, or one the product defaults
 			}

@@ -162,6 +162,7 @@ func TestParseRefuses(t *testing.T) {
 		{"key defined twice", "[network]\nallow = []\nallow = []\n", "config.toml:3: key \"allow\" is defined twice"},
 		{"unknown key in network", "[network]\nallow = []\ndeny = []\n", "config.toml:3: unknown key \"deny\" in [network]"},
 		{"unknown key in secret", "[[secret]]\nname = \"a\"\nvalue = \"sk\"\n", "config.toml:3: unknown key \"value\" in [[secret]]"},
+		{"method in secret", "[[secret]]\nname = \"a\"\nsource = \"file:/s\"\nhost = \"h\"\nheader = \"k\"\npath = \"/v1/\"\nmethod = \"POST\"\n", "config.toml:7: unknown key \"method\" in [[secret]]"}, // S-F72 (ADR-006, check two): the rule names no method, so the key is refused at load, naming the line; this row replaces the tests of C71, C73 and C74
 		{"unknown key in update", "[update]\nchannel = \"hold\"\nmirror = \"x\"\n", "config.toml:3: [update] mirror is not one of"},
 		{"update channel that is not a word or an https URL", "[update]\nchannel = \"http://a.test/c.json\"\n", "config.toml:2: [update] channel must be"},
 		{"update cooloff that is not a duration", "[update]\ncooloff = \"3 days\"\n", "config.toml:2: [update] cooloff time"},
