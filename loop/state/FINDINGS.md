@@ -9824,3 +9824,108 @@ macOS has no --mount. Review: one round, no finding. Not S14: none of the three 
 
 After S-F73: sweep 4 holds one finding at medium, C87, now fixed; S-1017 still counts it as confirmed in this sweep
 (S8). Nothing waits under escape/_pending/. The next candidate number is C88 and the next fix unit S-F74.
+
+## S-1003, sweep 4: VM configuration and device model, Linux and macOS backends (I1, I4, A7), as built at main 98a20bd
+
+Sweep 4 (S8), the one further sweep that the maintainer allowed on 2026-11-26 after ADR-006, fresh context (S3),
+the whole surface read as built after S-F73, not a diff. Auditor on the top tier in the cloud session, which has
+no hypervisor and is Linux, as root, so the bind-mount tests ran for real and nothing ran on a VM or on macOS.
+The auditor wrote its own trust boundary and worked every lens before it opened any earlier record. No candidate.
+
+Trust boundary. Attacker bytes reach this surface by three routes. (1) What guest root does with the devices the
+host hands it: virtio-blk requests to the root drive (read-only on both backends), the workspace image (read-write,
+the session's own 0600 file), layer drives (read-only) and cache drives (read-only, or read-write by the operator's
+`--cache NAME:rw`); AF_VSOCK connects to CID 2 at any port, which Firecracker turns into connect(2) on
+<Dir>/vsock_<port> (only 5000, 5001 and 5002 ever exist; 5000 and 5002 take one connection through once{} and are
+unlinked) and vz into a registered listener; bytes on the console, read on Linux through a paced blocking pipe
+into a 4 KiB tail that is printed, sanitised, only when a boot fails; reboot, panic and halt (reboot=k and
+panic=-1 end Firecracker; on vz a Ping every 2 s ends a restarted guest). (2) Guest-written ext4 images attached
+again later: workspace.ext4 to the pull guest (no network, no layers, no caches) and rw caches to later guests by
+the operator's flag; the host never mounts or parses either. (3) The repository and the live export, judged on
+this surface only by the layout of cwd: holds (data and config directory in both directions, config.toml hard
+links, every mount point beneath cwd from /proc/self/mountinfo, the vmm records of running sessions), the TMPDIR
+rules of --mount, boot and fetch, and named(). Host-built and out of the guest's reach: firecracker.json (0600 in a
+0700 MkdirTemp directory under an absolute TMPDIR), the kernel command line (integers, fixed words, compiled-in
+provider names, cache names of a fixed alphabet, uint16 ports, device letters), drive paths under the data
+directory and sessions/<id>/, the lock, repo, vmm, inodes and marker files. The operator's environment is
+trusted, with layouts refused where they would show the product's state to a guest. Authority: the supervisor is
+the operator's uid; it execs <data>/firecracker by absolute path with Pdeathsig SIGKILL, Setpgid, stdin /dev/null
+and a CLOEXEC pipe, from a locked thread whose CPU mask is cut to --cpus; the child has the same uid, the default
+seccomp filter, no jailer and no rlimit; on macOS the VM lives in the entitled supervisor and Apple's helper.
+No file of this surface carries `// Ported from v1`.
+
+Lenses (S9). Parsing and resources: no parser of guest bytes lies on this surface; encode is json.Marshal of
+host strings, the init reads a host-written command line, the console goes to a bounded tail through a bounded
+sanitiser, the vz state is an enum; CPU is bounded by pin() and the paced pipe on Linux, memory by mem_size_mib,
+Firecracker's own vsock connection limit, the relay's 1024 slots and vz's 16-deep backlog, disk by images of fixed
+sparse size and charged growth in mount mode; a console flood fills the pipe and blocks the guest's own vCPU.
+Logic and state: Listen before Start, Start once, Kill and Close idempotent and safe before Start; the drive order
+and the init's device letters agree on both backends; once{} takes one connection and then removes the listener;
+openCaches stats, locks (shared for readers, exclusive for the writer), creates under a temporary name and
+renames, with the lock held for the session; findLayers refuses a marker that is not a bare name. Concurrency and
+check-to-use: the Pdeathsig thread stays locked for the child's life and the child inherits the narrowed mask;
+exitErr is written before exited closes; holds, the TMPDIR rule, the SSL_CERT_DIR walk, named(), newSession,
+Export and boot run in that order, and recordBoot precedes Start; the windows that remain are the recorded
+operator-timed ones (a mount session started between another session's MkdirTemp and its recordBoot; the
+unrecorded directory of a bench), unchanged. Cryptography and identity: none on this surface by design; the vsock
+peer is the VMM through a 0700 per-session directory or a per-VM device. Failure modes: every exit from boot runs
+closeAll; accept ends on the connection, the VMM's death, 20 s or a signal; a missing socket is a reset to the
+guest; a failed layer or cache mount in the init gives less, never more; the nil audit log of pull and bench is
+nil-safe; nothing fails open. Downgrade, rollback and replay: markers are host-written; the pull guest boots the
+image with no more authority than the first guest had; a stale vmm record removes only an absolute, existing
+directory named wc* that is not a link. Interaction: the listeners of 5001 and 5002 end with the machine's Close,
+which ends the proxy's Serve loops (A9); an rw cache is a channel between guests by the operator's own flag
+(S-1013's ruling, unchanged); a mount point equal to cwd is admitted and one strictly beneath it is refused, and
+the mountinfo decoder handles the kernel's four octal escapes.
+
+Refuted before anything was raised: a TMPDIR through a symlink inside a live mount export (the host resolves the
+directory only at MkdirTemp, Listen and Start, before any guest code runs, and a later connect needs the random
+wc name that the guest cannot see; the sweep-2 and S-1013 rulings stand); drive-letter overflow and command-line
+truncation (the operator's, and less, never more); a cache named root or workspace (the drive id is prefixed);
+pull attaching the image read-write (no gain); SIGHUP inherited by Firecracker (its own group and handler); a
+guest that halts without restart (stop ends it); two --mount sessions on nested trees (explicit, A5).
+
+Recorded fixes, each checked as built, all holding: C6 (S-F3: pin(), the affinity cut and the paced console
+pipe), C5 (S-F24: the 2 s probe on vz, read and not run), C52 (S-F35), C65 (S-F48: the mountinfo refusal in holds
+and RESOLVE_NO_XDEV on the three openat2 masks of pull_linux.go), C19 and C29 (S-F12, S-F21), C28 (S-F20), C56
+(S-F39), C61 (S-F44), C63 (S-F46), C26 (S-F18), the once{} wrapper, C83 (S-F67), C85 and C86 (S-F69, S-F70) and
+C87 (S-F73). TestC52BindMountAliasEvadesWithin and TestC65DataDirectoryBindMountedBeneathCwd ran as root, not
+skipped, and pass; go test -count=1 is green on cmd/workcell, cmd/workcell-init, internal/vmm/firecracker,
+internal/vmm/vz (its Go-only test) and internal/workspace, and go vet is clean on the three trees.
+
+Ran, by the auditor, in a scratch directory and with nothing added to the repository. Ten-second fuzz bursts
+through overlay test files: lastLines in cmd/workcell (printable ASCII and newlines only, at most n lines, a tail
+never over 4096 bytes), 263,932 executions; the init's reading of the command line in cmd/workcell-init (no
+panic, no name with a slash or a dot, no device outside /dev/, no port 0, no negative disk), 463,066; encode in
+internal/vmm/firecracker (root read-only, workspace read-write, layers read-only, caches read-only unless
+writable, in order, with the machine and vsock fields intact), 117,700 with valid UTF-8 paths; no failure of the
+product in any. Two probes, each against a process the probe started: the paced reader copied from
+firecracker.go, against a child that writes one byte at a time for 3 s, made 870 reads a second and spent 0.31
+CPU s where the unpaced reader made 433,784 a second and spent 1.96; and Start's process pattern (locked thread,
+mask cut to one CPU, exec with Pdeathsig and Setpgid) left the child with one allowed CPU of four and gone after
+SIGKILL of its parent.
+
+Coverage. Read in full: internal/vmm/vmm.go; every file of internal/vmm/firecracker and internal/vmm/vz with
+their tests and test guests; in cmd/workcell the files backend_linux, backend_darwin, run_vm, session, caps,
+run_other, main, data, layer, cache, cache_vm, pull_vm, pull, pull_linux, pull_darwin, bench_vm, term_vm,
+term_linux, term_darwin, mount_linux, mount_darwin, relay, policy and update, and the tests of run_vm, session,
+caps, data, layer, cache and cache_vm; cmd/workcell-init (main, mount, net, exec, root, pull); internal/workspace,
+internal/guest, internal/wire and internal/relay; the parts of internal/proxy and internal/audit that boot calls;
+the size cap and openSource of internal/rootfs; the escape suite's and the harness's files of this surface; the
+accepted ADR-001 and ADR-006; and, as data, the sources of the pinned Code-Hex/vz v3.8.0 that the backend calls.
+Not examined: the bodies of internal/fileserve, resolver, secret, policy, provider, channel, pins, artifact and
+sigstore, cmd/mkimage and cmd/bump, which are other surfaces. Not run: anything on a real VM, the escape suite,
+any macOS path. The darwin backend could not be compiled here (cgo cannot target darwin from this session), so
+vz.go and backend_darwin.go were read and the hosted gate-macos is their only build.
+
+### S-1003 candidates, sweep 4
+
+None. The auditor raised no candidate: nothing at medium or above, and nothing at low that names an invariant an
+in-scope attacker puts at risk with a reproducible input (R2). So no reproducing test was written, no verifier
+ran, no fix unit is added and escape/_pending/ stays absent; the next candidate number is still C88 and the next
+fix unit S-F74. Three shapes are R3 notes, copied to PARKED.md with the evidence gaps that stand from earlier
+sweeps.
+
+Sweep 4 verdict for this surface: no candidates, so it adds nothing at medium or above; sweep 4 already holds one
+confirmed medium on S-1002 (C87, fixed), which S-1017 counts (S8). No model declined and no safeguard re-ran a
+request.
