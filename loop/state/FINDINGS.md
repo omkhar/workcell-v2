@@ -10277,3 +10277,41 @@ Sweep 4 verdict for this surface: one candidate, C88, confirmed at medium by the
 reading alike, open, with fix unit S-F74. Sweep 4 now holds two confirmed mediums, C87 on S-1002 (fixed) and C88
 here, which S-1017 counts (S8). No model declined and no safeguard re-ran a request in the audit, the redteam or the
 verifier, and no tool permission was refused to any of them.
+
+C88 FIXED by S-F74, commits 8fddd81 (the test moved, with a `repos` row) and edff113 (the fix) (PR #365). The fix
+is one byte in internal/proxy/terminate.go: canonical's last clause reads strings.ContainsAny(p, `;\%`), so a
+decoded path that holds a literal `%`, which is sent as `%25`, has no single reading and is refused as `;` and the
+backslash are; the comment on that line and the doc comment of canonical say so. No product line was added (the
+file stays at 483). docs/policy.md's `path` bullet now also lists "no literal percent sign (`%25`), which a front
+end decoding once would read as a second path", one Markdown line more. also in v1 main: egressproxy/terminate.go.
+
+Test (S4). TestC88DoubledEscapeLeavesTheBinding moved from escape/_pending/S-F74/ to internal/proxy/c88_test.go
+with its body unchanged and one head line reworded, and escape/_pending/ is gone. The `repos` twin is one row at
+the end of TestTerminateNarrowedRule in terminate_test.go, by the redteam, before any fix: under repos
+`octo/allowed`, `POST /octo/allowed.git/%252e%252e/%252e%252e/other.git/git-receive-pack` with the placeholder,
+want 403 and no secret. On 8fddd81, go1.27.4, plain and with -race, run by the redteam and again by the
+orchestrator: `c88_test.go:54: I5: the upstream served "/admin" with the real secret`, and for the row `got (200,
+"r.example.com  auth=Basic ...")`, whose value decodes to the real secret, with the broker and deny counts off by
+that one swap; both controls of c88_test.go pass there. On edff113 both pass, the whole package passes plain and
+under -race with the fuzz seed corpora, c10_test.go, c33_test.go, c68_test.go and sf72_test.go included, and the
+arm `/v1/%E2%9C%93` is still admitted. The reviewer ran the same before and after by overlay.
+
+Cost, measured by the builder with a throwaway test that is not kept: under a narrowed rule a path with `%25` and
+the placeholder is 403 binding_mismatch, and without the placeholder it passes as before; under a rule that is not
+narrowed it is swapped as before, since admits returns before canonical; on a sign-in host every path with `%25`
+is 400 target_refused, placeholder or not; the API host of a sign-in rule is not judged. No file under cmd/,
+internal/, escape/ or docs/ sends such a path through a narrowed rule or a sign-in host, and no provider or policy
+data names a path or repository with a percent. No edge of a shipped provider was asked (T8).
+
+Where code and ADR differ, for the maintainer. The Path row of docs/adr/accepted/006-judge-structure.md admits a
+path that is Go's own escaping of the decoded path, clean but for one trailing slash, with no `;` and no backslash.
+The code now refuses one byte more, a literal `%` in the decoded path, toward refusal. The loop did not edit the
+ADR: amend that row to name the `%`, or rule the row as written and take the byte out again.
+
+Review, one round, no finding that meets R2. The reviewer probed the fixed canonical: every spelling it tried that
+carries `%25` is refused (`%2525`, a trailing `%25`, `%252F`, `%25%32%65`, mixed with `%2e`), and `/v1/a%20b`,
+`/v1/x%3F/admin`, `/v1/x%23/admin` and `/v1/%E2%9C%93` stay admitted, none of which one decoding turns into a
+slash, a percent or a dot segment. Its notes are one line in PARKED.md. Not shown: nothing here ran on a real VM
+or on macOS before the hosted gate, and no real front end was run against the fix, only the Go model of the test.
+With C88 fixed, sweep 4 holds two confirmed mediums, C87 and C88, both fixed; S-1017 still counts them (S8).
+Nothing waits under escape/_pending/. The next candidate number is C89 and the next fix unit S-F75.
