@@ -9791,3 +9791,36 @@ no file involved is ported, and none is someone else's project.
 Sweep 4 verdict for this surface: one candidate, C87, confirmed at medium by the verifier's reading of S6 (claimed
 low by the auditor), open, with fix unit S-F73. No model declined and no safeguard re-ran a request in the audit,
 the redteam or the verifier, and no tool permission was refused to any of them.
+
+## S-F73: compare opens without blocking and reads only a regular file (I12 with R6), finding C87
+
+C87 is FIXED by S-F73 at f9a2ed2. fileBeneath in cmd/workcell/pull_linux.go and pull_darwin.go opens with O_NONBLOCK,
+so a FIFO that took a regular file's name after the walk cannot hold the open. sameBytes in cmd/workcell/pull_vm.go
+then fstats the opened descriptor, by openSource's idiom, and what is not a regular file differs and is never read,
+so a FIFO whose writer writes nothing cannot hold the read either. `workcell diff` prints `M` for such a name and
+returns. Product grew by two lines, both in pull_vm.go. What a regular file prints is unchanged.
+
+Test (S4). TestC87CompareFIFOReturns moved from escape/_pending/S-F73/ to cmd/workcell/c87_test.go, and that folder
+is gone. Before it moved the redteam gave it two arms over one body: `unheld`, the arm of the audit, where no writer
+holds the FIFO and the open parks; and `held`, new, where the test holds a writer that writes no byte, so the open
+returns and the read parks. Each arm has a 3 s bound and frees the reader on a timeout. 75 lines.
+
+Proof, each run by the orchestrator with `go test -overlay` and main's files kept outside the tree. Against main's
+pull_linux.go and pull_vm.go both arms fail at 3.00 s, plain and with -race: `compare is still parked 3s after a
+FIFO (writer held: false) took a regular file's name: workcell diff hangs (I12)`, and the same with `true`. With the
+fix both pass in 0.00 s, and three times with -race. Each half is needed: with O_NONBLOCK and main's sameBytes only
+`held` fails; with the fstat arm and main's fileBeneath only `unheld` fails. `go test -race ./cmd/workcell` passes,
+TestCompare and TestWrite among it. The reviewer repeated the fail-on-main run, the pass and the first half alone.
+
+Hosted, on f9a2ed2: gate green in 366 s on a real VM (/dev/kvm writable, sandbox ready in 3 s), 147 rows passed and
+none failed, among them the seven pull rows (pull-runs-hook, pull-obeys-git-config, pull-fetches-submodule,
+pull-dotdot-path, pull-through-symlink, pull-case-collision, pull-writes-dotgit), and the package cmd/workcell `ok`;
+gate-macos green in 168 s, which is the only build of the darwin twin; gate-arm64 and guard green.
+
+Not shown. The suite has no row that runs `workcell diff`, so the accept's "diff rows" are the package tests of
+compare, not a row on a VM. No run on a VM shows a guest's rename met by the fix end to end: the test places the
+rename by its callback, as the audit's did. The darwin flag is built by gate-macos and exercised by no route, since
+macOS has no --mount. Review: one round, no finding. Not S14: none of the three files is ported.
+
+After S-F73: sweep 4 holds one finding at medium, C87, now fixed; S-1017 still counts it as confirmed in this sweep
+(S8). Nothing waits under escape/_pending/. The next candidate number is C88 and the next fix unit S-F74.
