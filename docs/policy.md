@@ -37,7 +37,8 @@ that one TCP port as it is. IP addresses are refused. With no entry, the guest h
 - `env` is the guest variable that holds the placeholder. Leave it out and the guest gets no variable.
 - `path` narrows the swap to requests under that path prefix, judged on the path as the upstream
   receives it, which must have one reading: no `.` or `..` segment, no empty segment, no `;`, no
-  backslash and no percent-escape the proxy would not write itself (`%2F` for a slash, `%41` for `A`).
+  backslash, no percent-escape the proxy would not write itself (`%2F` for a slash, `%41` for `A`) and
+  no literal percent sign (`%25`), which a front end decoding once would read as a second path.
   Any other request gets a 403, and the value is not read; so does one carrying an `X-Original-URL` or
   `X-Rewrite-URL` header in any spelling a CGI-style server folds to it. The method, the query and the
   body are not judged: the rule names no method, so nothing in them can move it.
