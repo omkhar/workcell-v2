@@ -9544,3 +9544,53 @@ gate-macos alone.
 After S-F71: the counts of sweep 3 stand as its verdict above gives them. Of its mediums, C82 stays fixed and C72,
 C75, C78, C80 and C81 are now accepted rows outside the attacker of SPEC section 2. Nothing waits under
 escape/_pending/. The next candidate number is C87 and the next fix unit S-F73; S-F72 is next in PLAN.md.
+
+## S-F72: the method-and-path rule as ADR-006 decides it (I6), the class of C10, C33, C68, C71, C73 and C74
+
+S-F72 built check two, decision (d), of docs/adr/accepted/006-judge-structure.md, commits 06647e5 (the tests) and
+bcabe43 (the fix) (PR #358). In internal/proxy/terminate.go an unnarrowed rule swaps on any request. A rule with a
+`path` or `repos` swaps only when canonical(req.URL) holds, when no header folds under the one RFC 3875 fold
+(cgiName) to x_original_url or x_rewrite_url, and when the path as sent is under the rule's path (or the path as
+sent plus "/" is the rule's path) or within a repository. canonical is one function: EscapedPath() equals Go's own
+escaping of the decoded path, path.Clean leaves it as it is but for one trailing slash, and it holds no `;` and no
+backslash. The rule names no method: the `method` key left the `[[secret]]` row, and internal/policy refuses it at
+load as an unknown key, naming the line. On a sign-in host a path that is not canonical is refused 400 in the
+target_refused check, and tokenEndpoint in signin.go claims the path by EqualFold alone. methodPattern, Method, the
+method checks, readable, folded, fold, opaque, params, sep, the PHP fold, four of the six override names and the
+scope switch are gone. The proxy forwards with httputil.ReverseProxy, whose Rewrite sets scheme and host only, so
+the path judged is the request line sent. docs/policy.md says the rule in 8 lines where it had 11.
+
+Closed, FIXED by S-F72 at bcabe43:
+- C10: TestFoldedPathEscapesTheEndpointAndTheRule (c10_test.go), rewritten under its name: each spelling gets no
+  token and no secret, and on the sign-in host each gets 400.
+- C33: TestC33PathBindingReleasesSecretOutsideBinding (c33_test.go), rewritten under its name: the served arm
+  `/v1/a%2Fb/c` is a refused arm, with `%5C` and GET beside it.
+- C68: TestC68RoutingOverrideHeaders (c68_test.go), rewritten under its name: the three method-override rows are
+  served inside the rule, since nothing names a method, and the two path-override headers are refused under every
+  spelling the fold covers.
+- C71, C73 and C74: TestC71FormMethodOverride, TestC73JSONMethodOverride and TestC74DotMethodQuery are deleted with
+  their files. The row `method in secret` of TestParseRefuses in internal/policy/policy_test.go replaces the three:
+  `method = "POST"` in a `[[secret]]` row is refused as `config.toml:7: unknown key "method" in [[secret]]`.
+- New: TestSF72AdmittedPathReachesUpstreamAsJudged (sf72_test.go). A local upstream records the request line it
+  receives. An admitted path arrives byte for byte as judged, with the real secret, under GET, POST and DELETE.
+  `//v1/x`, `/v1%00/x`, a doubled slash, dot segments, `%2e%2e`, `%2F`, `%41`, `;`, `%3B`, `%5C`, `/v2/x` and
+  `/v1x` are refused and never reach it.
+
+Proof. Against main's product code the four tests of internal/proxy fail with 41 error lines, counted by the
+orchestrator (c10 20, c33 3, c68 3, sf72 15), and the row `method in secret` fails; with the fix all pass, as does
+go test ./internal/... ./cmd/... ./escape/... The hosted gate on bcabe43 ran the suite on a real VM: the five I6
+rows (sni-host-mismatch-h1, sni-authority-mismatch-h2, ech-hidden-sni, terminated-session-leaf and
+upstream-leaf-mismatch) pass, and so does the I5 row placeholder-narrowed, which now narrows by path alone and
+fails on `control`. Product 14974 of 15000, test 28198 of 28461, Markdown 1442 of 2500.
+
+Not closed by the design, and left to the maintainer. The reviewer, one round, found the design built as decided
+and gave one finding against the design itself: canonical holds for `/v1/%EF%BC%8E%EF%BC%8E/admin` (two fullwidth
+stops), `/v1/%252e%252e/admin` and `/v1/%C0%AE%C0%AE/admin`, so a `/v1/` rule swaps on them, and an upstream that
+maps such bytes to `.` or decodes a second time would read `/admin`. The orchestrator ran the four spellings
+against main and against the fix: both admit them, so the fix did not open this. No such upstream was run, so no
+break was reproduced (R2), and the remedy offered, to refuse every byte outside ASCII and every `%` in a decoded
+path, changes what the accepted ADR-006 admits, which is the maintainer's to decide. It is parked in PARKED.md
+(`S-F72 reviewer finding`) for S-1005 of sweep 4 and for the maintainer.
+
+After S-F72: both checks of ADR-006 are built. Sweep 4, S-1002 to S-1013, is next. Nothing waits under
+escape/_pending/. The next candidate number is C87 and the next fix unit S-F73.
