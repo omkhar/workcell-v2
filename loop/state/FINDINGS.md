@@ -9488,3 +9488,59 @@ reproduction that no verifier has ruled on, under the lines that begin `S-F64 re
 `S-F69 not closed` and `S-F70 not closed`. R-4 weighed them and left them for the maintainer. The next candidate number
 is C87 and the next fix unit S-F71. R-5, S-1018 and H-1019 wait behind this unit, so `docs/security-review.md` is not
 written yet.
+
+## S-F71: the secret-source check as ADR-006 decides it (I5), the class of C54, C58, C72, C75, C78, C80, C81 and C82
+
+S-F71 built check one, decision (a), of docs/adr/accepted/006-judge-structure.md, commits d95fab2 (the tests) and
+25b0488 (the fix) (PR #357). loadPolicy in cmd/workcell/policy.go keeps one loop over p.Secret, the user's rows
+whatever workcell.toml kept. The scheme must be exactly file, cmd, secret-service, keychain or signin. The one path
+the host itself opens or runs, the `file:` path or the first field of a `cmd:` source as strings.Fields splits it
+for Resolve, must be absolute and must not lie in or lead into the working directory or the data directory, by
+leadsInto of data.go over every prefix. A `file:` path must also name, by os.Stat at load, a regular file with one
+name; a program is not held to one name. No word after the program is read. sep, the word loop, the separator
+grammar and the twelve characters are gone. Every refusal is made at load, before a session directory exists.
+docs/policy.md says so in two sentences where it had six, and its `file:` bullet names the newly refused rows.
+
+Closed, FIXED by S-F71 at 25b0488, each refused at load:
+- C54, for `file:` and for a program in, or linked from, the directory: TestC54SecretSourceUnderTheWorkspace keeps
+  those arms (under the directory, through `..`, a program under it, a program and a file through a link in it).
+- C58: TestC58RepositoryCannotSwitchOffTheSourceCheck, unchanged, since the loop walks the user's rows.
+- C82: TestC82RelativeFileSource, unchanged, since a `file:` path that is not absolute is refused.
+- The three rows of the parked line `S-F66 redteam notes`: a scheme in capitals or unknown (`FILE:`, `File:`,
+  `foo:`, `Cmd:`); `file://localhost<path>`, which names no regular file; and a hard link outside the directory to
+  the key inside, which has two names.
+- Newly refused with them: a `file:` that is absent, a directory, a FIFO or a link to a file not made yet; a `cmd:`
+  with no program or a relative one; a `file:` path or a program in the data directory or reached through a link
+  that leads into it.
+
+Accepted, out of scope by SPEC section 2 (what the program of a `cmd:` secret source reads through its arguments),
+with the ADR's reason: each is a word after the program, read by the program, naming a key or script that the
+operator placed under the directory; without the row the key is in the export just the same and no check sees it;
+and a rule over such words did not converge, eight rows after six fixes. docs/policy.md states the duty.
+- C72, C75, C78, C80 and C81. Their tests are deleted: TestC72SecretPathInsideAnOptionWord,
+  TestC75WorkspaceBeforeAListSeparator, TestC78SecretPathSpelledFromHome, TestC80RelativeWordReadFromRoot and
+  TestC81RelativeTextAfterASeparator. The fixes of S-F56, S-F59, S-F62, S-F64 and S-F65 went with the word loop.
+- The two `cmd:/bin/sh <script in the directory>` arms of C54, clone and mount, deleted from its test. This is the
+  one accepted row that reaches past the key: under --mount the guest can rewrite a script that the host then runs.
+- The five rows of the parked lines `S-F64 redteam, reviewer and builder notes` and `S-F65 redteam and reviewer
+  notes` (xargs -a, a file URL with a host, env -C, grep -rh from the parent, a percent-encoded file URL).
+- The residues of `S-F69 not closed` and `S-F70 not closed`, as the ADR's table rules them: a link that the
+  operator made outside the directory, a name or a member made while a session runs, and a cost at start. The
+  reviewer ran the first as a probe: it loads, and neither the guest nor a repository can make that link.
+Those five parked lines are deleted from PARKED.md.
+
+Proved: TestSF71SecretSourceJudgedAsTheHostOpensIt, new in cmd/workcell/sf71_test.go, has 30 arms. With main's
+policy.go 21 of them fail: 19 rows that main loaded and made a session for, and 2 rows that main refused and the
+ADR admits (C72's `--key=<cwd>/...` and `/bin/cat <cwd>/...`). The other 9 pass on main and on the fix: the five
+admitted sources (a `file:` of one name outside, `cmd:/bin/sh <outside>/get-key.sh --verbose`, secret-service,
+keychain and signin rows), and four rows that main already refused (an empty `file:` path, `cmd:<cwd>/tool` where
+tool is a link to /bin/sh, and a program and a file reached from outside through a link into the directory, the
+rows the ADR left to be proved by running). With the fix all 30 pass, as do the C54, C58 and C82 tests and
+go test ./... (counted by the orchestrator by overlay; run by the redteam, the builder and the reviewer too). No test was replaced: the three kept
+tests stand as they were but for C54's two deleted arms. The reviewer, one round, returned no finding. Product
+14998 of 15000, test 28285 of 28497, Markdown 1445 of 2500. The Nlink cast on darwin is proved by the hosted
+gate-macos alone.
+
+After S-F71: the counts of sweep 3 stand as its verdict above gives them. Of its mediums, C82 stays fixed and C72,
+C75, C78, C80 and C81 are now accepted rows outside the attacker of SPEC section 2. Nothing waits under
+escape/_pending/. The next candidate number is C87 and the next fix unit S-F73; S-F72 is next in PLAN.md.
