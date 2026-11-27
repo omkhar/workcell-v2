@@ -9594,3 +9594,200 @@ path, changes what the accepted ADR-006 admits, which is the maintainer's to dec
 
 After S-F72: both checks of ADR-006 are built. Sweep 4, S-1002 to S-1013, is next. Nothing waits under
 escape/_pending/. The next candidate number is C87 and the next fix unit S-F73.
+
+## S-1002, sweep 4: host-guest channel, guest init, supervisor lifecycle (I7, I10, I12), as built at main cfa8d5f
+
+Sweep 4 (S8), the one further sweep that the maintainer allowed on 2026-11-26 after ADR-006, fresh context (S3),
+the whole surface read as built after S-F47 to S-F72, not a diff. Auditor on the top tier in the cloud session,
+which has no hypervisor. The auditor wrote its own trust boundary and worked every lens before it opened any
+earlier record. One candidate, C87, confirmed by the verifier, who reads it as medium where the auditor claimed low.
+
+Trust boundary. The supervisor (`workcell run`, `pull`, `diff`, `bench`; the operator's uid) owns the VMM
+child (Firecracker: Pdeathsig SIGKILL, Setpgid, the forking thread locked and its affinity cut to --cpus; vz:
+in-process), the in-process proxy, resolver, broker and audit log, the host key, the session directory, the layer
+markers through installer.fail, the operator's terminal in raw mode, and the export and the pull destination as
+descriptors. Attacker bytes enter at six points. (1) vsock 5000, one connection taken by `once`: wire frames (6-byte
+header, version 1, length checked before allocation at 64 KiB, 5 s per frame once begun, bufio, every error sticky);
+output() takes Stdout and Stderr (coalesced, paced at 2^16 frames per 64 ms, raw to the seat and the operator's
+terminal by design), Ack (4 bytes), Exit (2 to 257 bytes, Err printed %q); on pull, Entry, Data and Exit through
+manifest.add, checkPath, fold, put (openat2 RESOLVE_BENEATH, NO_SYMLINKS and NO_XDEV beneath the destination)
+and compare. What they can change: the exit code, terminal bytes, the `first` flag that drives installer.fail
+inside the fresh window alone, and bytes under the destination. (2) vsock 5001, many connections, 1024 slots:
+a 20-byte header within 5 s, then TCP bytes to the proxy's adapter for a served port, or one 2-byte-framed DNS
+query to the resolver; what they change: audit Notes (soft 8 MiB) and dials to allowlisted names. (3) vsock
+5002 under --mount, one connection: raw FUSE requests to internal/fileserve (16 workers, 4096 descriptors, 2^17
+nodes, growth charged to --disk, paced at 1024 requests per 64 ms); what they change: the operator's own tree,
+live, by the (handle, name) grammar. (4) The serial console through a paced blocking pipe into a 4 KiB tail,
+printed sanitised only when a boot fails. (5) Guest-written disks: workspace.ext4 (never mounted on the host;
+booted again for pull), rw caches (attached to later guests only by the operator's --cache). (6) The repository:
+exported by a descriptor walk whose files are opened again with O_NOFOLLOW and O_NONBLOCK and a device, inode
+and size check, its cwd judged by holds, within, leadsInto and the TMPDIR rule, then compared by named() against
+".", which is what Export and openMount use. Host-written and out of the guest's reach: lock (pid), repo, vmm,
+inodes, the markers, the attach socket (0700 directory, same uid), firecracker.json and the kernel command line
+(integers, fixed words, compiled-in provider names, cache names of a fixed alphabet, uint16 ports). No file
+of this surface carries `// Ported from v1` (the markers are in internal/proxy/{proxy,terminate,allowlist}.go,
+internal/secret/{broker,source}.go, internal/audit/lines.go and three tests; checked as built), so nothing here
+falls under S14.
+
+Lenses (S9). Parsing and resources: readFrame clears the deadline only when nothing is buffered, arms it once at
+the first read that must wait, refuses a length over 64 KiB before allocating and never resyncs; output()'s held
+buffer never passes MaxPayload and its backing array is reused; guest.DecodeExit, Ack and Entry, relay.Decode
+and ReadFrame, resolver.question and fileserve.parse are bounded and round-trip; ten-second fuzz bursts on wire
+FuzzReadFrame (1.07M execs), guest FuzzDecode (555k), relay FuzzDecode (20k) and FuzzReadFrame (1.19M), fileserve
+FuzzRequest (359k), resolver FuzzAnswer (1.49M) and cmd/workcell FuzzPath (103k), no crasher. The pull manifest
+is bounded by MaxEntries, MaxNames and the image's bytes plus a block per inode; the console tail cannot grow;
+the relay's slots and the audit soft limit bound a flood of refused streams; host CPU on both guest streams
+is paced (S-F34, S-F47). Logic and state: output() ends on Exit, a bad Ack or an unknown type and flushes held
+output before any frame of another kind; `first` is true only for the guest's first frame, and fail acts only
+while fresh pairs this start's install with what it replaced (the C2 residual stands as accepted); session()
+orders holds, the --mount TMPDIR rule, the SSL_CERT_DIR member walk, named(), newSession, Export(".") and boot;
+boot refuses a TMPDIR under a running mount session's repo before MkdirTemp and records the VMM directory before
+Start; the init's serve loop halts on anything a host never sends; pull's manifest, data, end sequence is strict
+and charges apparent sizes; the lock protocol is unchanged and tested. Concurrency and check-to-use: `once` closes
+the listener after the first accept; the first connection to 5000 and 5002 is the init's because no guest code runs
+before Exec; the seat mutex covers send against sit; the channel has one writer goroutine and one reader; named()
+closes C61's swap and Export reads beneath one descriptor with a device, inode and size check; fileserve's `at`
+checks every link of a node's chain by identity again, and openFlags admit O_ACCMODE and O_TRUNC alone. The one
+check-to-use gap found is C87: compare judges a name by the walk's fstatat and opens it later without O_NONBLOCK,
+where openSource, the export's twin, has it. The windows that remain (a mount session the operator starts between
+another session's MkdirTemp and its recordBoot, stop's pid reuse, two sessions in one nanosecond with the same
+32 random bits) are operator-timed or chance, as recorded. Cryptography and identity: none on the channel by
+design; the vsock peer is the VMM through a 0700 per-session directory (Firecracker) or a per-VM device (vz);
+the session CA goes to the guest as the public certificate alone, capped at 16 KiB; the audit key stays under
+the data directory, which holds() keeps out of every export in both directions, by inode and by mount point (c52
+and c65 ran in the auditor's session as root and passed); a relayed stream's LocalAddr reaches the proxy only
+as a listener address whose port is read and never dialled. Failure modes: every exit from boot runs closeAll;
+session_end is recorded after the VM is gone and before the lock is released; an export failure keeps the session
+directory with its failed end (S-F67) and removes the image; named() refuses when either stat fails; fileserve
+maps unknown errors to EIO, ends Serve on any stream error and closes every descriptor; the init treats every
+setup failure as less, never more. No error path fails open. The one unbounded wait a guest can arrange is C87's
+open. Downgrade, rollback and replay: wire version 1 and relay version 1 alone; FUSE major 7 alone, a second INIT
+is EIO; no sequence numbers by design; frames after Exit are never read; the fresh-window first-frame rollback
+is the accepted C2 residual, unchanged. Interaction between surfaces: Exec carries placeholders and the CA only
+(I5, I6); S-F71's loadPolicy judges the one path the host opens or runs with os.Stat, no open, so a FIFO as a
+`file:` source cannot park the load, and does so before any session directory exists; the pull VM boots with no
+allowlist, no layers and no caches, its relay denies every header and its resolver answers nothing; a mount guest
+on an ancestor can still steer pull, log and attach among the operator's own sessions by the spelling of repo
+(parked, no gain) and, new here, can park `workcell diff` on a FIFO that the operator's tree holds (C87).
+
+Refuted by the auditor before anything was raised: a guest that connects to 5000 or 5002 before the init (only
+the init runs before Exec, and 5002 is dialled in setup); Stdout and Stderr floods (coalesced, paced, dropped
+when the seat's client stalls past 5 s); forged Acks and extra Pings or Pulls from the guest (they end its own
+session with 125); a halted guest (the same as a command that never ends); a guest that stops the init reading
+(the host's Stdin writes fail after 5 s); SIGINT during a long export (buffered, then forwarded once and honoured
+twice); the SSL_CERT_DIR member walk against a huge directory under cwd (ReadDir only, then refused by leadsInto);
+terminal answerbacks (C4, parked); the forged first frame (C2, accepted). In fileserve: MKNOD and LINK are ENOSYS,
+setattr strips setuid bits and refuses chown, an open of a FIFO, socket or device is EPERM after a non-blocking
+open, links are ELOOP, files with more than one name are read-only, writes are charged for holes and growth, and
+a stolen 5002 connection has exactly the init's authority. The relay: a UDP header for any port but 53 and a TCP
+header for an unserved port close with nothing dialled, and slots are released on every path. The export: a swap
+of an intermediate component or of the final file between walk and copy is refused by device, inode and size, and
+a FIFO at the final component is opened non-blocking and refused as not regular. Pull: put never opens an existing
+file (unlink, then O_CREAT with O_EXCL) and dirBeneath is O_DIRECTORY, so only diff's read path can block (C87). A
+second `--mount` session of one directory (explicit and labelled, A5); bench and pull leaving directories after
+a SIGKILL (recorded, operator action); a diff whose newest session is the running mount session itself (refused
+by the lock); a FIFO planted by the guest for C87 (it cannot make one, so the operator's tree must already hold one).
+
+Recorded fixes of this surface, checked as built by the auditor: C1 and C2 (S-F1), C3 (S-F2), C5 (S-F24), C19
+and C29, C28 and C56, C50 (S-F33), C51 (S-F34), C52 and C65, C61, C62, C63, C64 (S-F47, TestPace), C83 (S-F67),
+C85 and C86 (S-F69, S-F70) and S-F71's one-path judge. Each still holds; `go test -count=1` of cmd/workcell,
+cmd/workcell-init, internal/{wire,guest,relay,fileserve,resolver,workspace,audit,rootfs} and internal/vmm/... passed
+and `go vet` was clean.
+
+Coverage. Read in full:
+cmd/workcell/{main,run_vm,session,relay,caps,data,layer,cache,cache_vm,pull,pull_vm,pull_linux,pull_darwin,policy,explain,update,log,ocsf,bench,bench_vm,backend_linux,backend_darwin,mount_linux,mount_darwin,term_vm,term_linux,run_other}.go;
+cmd/workcell-init/{main,exec,mount,net,pull,root}.go; internal/wire/wire.go; internal/guest/{guest,trust,walk}.go;
+internal/vmm/vmm.go, firecracker/firecracker.go, vz/{vz,args}.go; internal/relay/relay.go;
+internal/fileserve/{codec,serve_linux,ops_linux}.go; internal/audit/{audit,key,lines}.go;
+internal/workspace/workspace.go; internal/resolver/resolver.go; internal/rootfs/{ext4file,ext4,tree,layer,build}.go;
+internal/proxy/proxy.go and allowlist.go (ported, S-1004's; only what boot uses) and the
+LocalAddr use in terminate.go; docs/adr/accepted/006-judge-structure.md; escape/enforced.txt. Tests read in full:
+cmd/workcell/{run_vm,relay,session,pull_vm,pull,caps,data,layer,cache,cache_vm,log,verify,c19,c20,c21,c22,c28,c29,c34,c43,c44,c50,c52,c54,c56,c57,c58,c59,c60,c61,c62,c63,c65,c79,c82,c83,c84,c85,c86,sf71}_test.go;
+cmd/workcell-init/root_test.go; internal/wire/wire_test.go;
+internal/guest/{guest,trust,c31}_test.go; internal/relay/relay_test.go;
+internal/fileserve/{adversarial_linux,bounds_linux,harness_linux,c17,c18,c41,c76,c77}_test.go;
+internal/workspace/{workspace,clone,c31,c38}_test.go; internal/rootfs/ext4file_test.go;
+internal/resolver/resolver_test.go; internal/audit/audit_test.go;
+internal/vmm/firecracker/{firecracker,run,init,mount}_test.go
+and testdata/{guest,probe}/main.go; internal/vmm/vz/vz_test.go. Under escape/:
+suite/{channel,channel_linux,floods,floods_linux,lifecycle,relay,files,files_linux,helpers,suite,tests,device,layer,priv_linux,host_linux,gitdir,repo,smoke,audit,rollback}.go
+and suite/{channel,floods_linux,relay}_test.go;
+sandbox/{sandbox,workcell,workcell_vm,workcell_linux,workcell_darwin,control_linux,control_channel_linux,control_relay_linux,control_resolver_linux}.go
+and sandbox/{workcell_linux,workcell_vm}_test.go; cmd/escape/main.go and cmd/payload/main.go. Records: this file's
+S-1001 map, the three earlier S-1002 sections with the heads of the S-1003 sections after them, and the S-1007, C20
+and S-1008 sweep-3 lines that touch C87's shape; PARKED.md in full. Not opened: internal/fileserve/codec_test.go,
+internal/proxy/{signin,routes_linux}.go and the proxy tests, internal/secret, internal/policy, internal/channel,
+internal/pins, internal/artifact, internal/sigstore, internal/advisory, internal/bump, internal/provider,
+cmd/bump, cmd/mkimage, cmd/workcell/{update,policy,explain,bench}_test.go, internal/vmm/vz/args_test.go, the
+other tests of internal/rootfs, the suite files and adapters of other surfaces, docs/threat-model.md, ADR-001
+to ADR-005, pins/*.json, spikes/, _legacy/. Ran: go vet and go test of the surface's packages (all pass; the VM
+tests skip without /dev/kvm); the seven fuzz bursts; three overlay probes against the real compare, fileBeneath
+and fileserve.Server, with pipes and FIFOs the probes themselves made (S12, T8). Not run by the auditor: any VM
+row, the escape suite, any macOS path, any control adapter run, fuzzing beyond ten seconds a target.
+
+Evidence gaps, not findings, unchanged from earlier records (R3): no escape row exercises `workcell stop` or `rm`
+on a running session; the host-disk bound of the workspace image rests on run_test.go's workspace-cap alone;
+the vz console copy is unpaced and I10 is not enforced on macOS; the file service's 4096 descriptors assume
+headroom under RLIMIT_NOFILE, and the relay's exit on EMFILE is a fail-closed self-denial.
+
+### S-1002 candidates, sweep 4
+
+C87. ID I12 (a host process, here `workcell diff`, hangs on what a guest shaped through the file service's channel),
+with R6 (the host reads a tree the guest controlled without non-blocking handling). Attacker: guest root of a
+`--mount` session, by hostile model output or a malicious repository's hook running as the agent, whose export
+is an ancestor of the directory in which the operator runs `workcell diff` (the C61 layout). Preconditions the
+attacker does not control: the operator runs `diff` in a subdirectory of a live `--mount` tree, and a FIFO already
+lies somewhere in that tree, because the file service answers MKNOD with ENOSYS and git carries no FIFO, so the
+guest can only move one. Where: cmd/workcell/pull_linux.go:24 fileBeneath (openat2 with O_RDONLY, O_NOFOLLOW
+and O_CLOEXEC, RESOLVE_BENEATH, NO_SYMLINKS and NO_XDEV, and no O_NONBLOCK), called from sameBytes inside
+compare in cmd/workcell/pull_vm.go; the twin in pull_darwin.go:26 has the same shape and no in-scope route,
+since macOS has no --mount. internal/rootfs/ext4file.go:98 opens with O_NONBLOCK "so that a file swapped for
+a FIFO cannot hold the open", and compare does not. Input: session A is `workcell run --mount` in /work, live;
+the operator runs `workcell diff` in /work/proj, which has an earlier clone session. Guest root in A, through its
+own mount: LOOKUP of an existing FIFO under /work, then RENAME of it over /work/proj/README, after the diff's walk
+(guest.Walk skips a FIFO by fstatat) and before compare opens README; the window is the rest of the walk and the
+transfer of every file that precedes README in the manifest, and the guest may swap in a loop. Effect claimed:
+`workcell diff` parks in open(2) for as long as no writer opens the FIFO, holding the clone session's lock, so
+`workcell rm` refuses. No byte leaves the host and nothing is written: a hang of one operator verb, not a break
+of I1 or I8. Severity claimed by the auditor: low, as hardening.
+
+Reproducing test (S4): TestC87CompareFIFOReturns, a Go test of package main in cmd/workcell, 56 lines, written by
+the redteam from the claim alone, with no VM and so no T2: a temporary directory with regular files a and b and
+a FIFO f; the manifest is the host's own walk on a separate descriptor; the source callback renames f over b at
+its first call, which compare makes after its walk judged b and before sameBytes opens b; the judged property is
+only that compare returns within 3 s, and on a timeout the test fails, opens b for writing and waits, so nothing
+is left behind. It waits in escape/_pending/S-F73/c87_test.go (commit ab4e460), which Go does not compile. Run by
+the orchestrator on 0f6ee5b with `go test -overlay`, plain and with -race: `--- FAIL: TestC87CompareFIFOReturns
+(3.00s)`, `compare is still parked 3s after opening a FIFO that no writer holds: workcell diff hangs (I12)`. The
+redteam's cross-check: with O_NONBLOCK added to fileBeneath by overlay the test passes in 0.00 s, so it does
+not fail whatever the code. The power the test gives itself: it places the rename in the window by the callback,
+where the attacker must win a race; the window is real and wide, but no run on a VM showed the race won end to end.
+
+Outcome: CONFIRMED by the verifier, from its own run of the test and three probes of its own, and read by it as
+medium, not low. Its evidence. One: the test fails as recorded. Two: through the real file service by overlay,
+`LOOKUP f: errno 0 mode=010000`, `RENAME f -> b: errno 0`, b on disk is then a FIFO, and `MKNOD g (FIFO): function
+not implemented`; so a mount guest can rename an existing FIFO over a regular file and cannot make one, and the
+test claims no power the guest lacks beyond the timing. holds() and fetch do not refuse a diff directory inside
+a running mount session's export. Three: the S-1008 sweep-3 record refuted "compare blocking on a FIFO" because
+"only a host actor can place one after the walk"; that refutation missed RENAME by a mount guest and does not
+cover this. Four: the operator cannot end it by Ctrl-C: a probe sent SIGINT and SIGTERM to the parked process and
+compare was still parked 3 s later with both signals buffered, because fetch's signal.Notify takes them and they
+are read only inside pulled.frame; `workcell stop` reaches it at its SIGKILL rung, after about 10 s, or a writer
+opens the FIFO. The auditor reported the same of SIGINT; the redteam supposed the opposite without running it, and
+the verifier's probe settles it. Severity (S6): the verifier holds that a hang of a host process is demonstrated
+and is reached through the file-service channel, with preconditions the attacker does not control, which is the
+letter of medium, and that "hardening with no demonstrated break" understates it. The auditor's case for low was
+that only a verb parks, with two preconditions, until the operator stops it. The record follows the independent
+verifier: C87 is CONFIRMED at medium, and S-1017 counts it so. S7 asks for the fix before cutover at either level.
+
+Fix unit: S-F73 (boundary, fable, env:any), directly below S-1002 in PLAN.md: add O_NONBLOCK to fileBeneath's
+flags in pull_linux.go and pull_darwin.go, no added line, and in sameBytes fstat the opened descriptor and treat
+anything but a regular file as differing, about two lines, so that a FIFO with a writer that never writes cannot
+park the read either. Product has 26 lines of room and test 207 with the parked file counted. Variants not written
+(redteam): a FIFO whose writer never writes (the read parks; the fstat arm covers it); the macOS twin; the same
+swap against `workcell pull`, where put unlinks and creates with O_EXCL and so meets EEXIST, not a hang. Not S14:
+no file involved is ported, and none is someone else's project.
+
+Sweep 4 verdict for this surface: one candidate, C87, confirmed at medium by the verifier's reading of S6 (claimed
+low by the auditor), open, with fix unit S-F73. No model declined and no safeguard re-ran a request in the audit,
+the redteam or the verifier, and no tool permission was refused to any of them.
