@@ -17,7 +17,7 @@ import (
 	"testing"
 )
 
-// TestC54SecretSourceUnderTheWorkspace (I5): the operator's key file, or the program that prints the key, lies under cwd. Neither loadPolicy nor session compares a source path with cwd, so the session starts and the guest gets the file as part of /workspace: in the clone image, or live under --mount, where it can also rewrite the program the host runs for every later lookup. The session must be refused before a session directory or an export exists, as a cwd that holds the data directory is (C19), or at least the key bytes must not reach the image. The VMM is a dummy: a session not refused fails at boot, after both. The same holds when only an argument of a cmd: source lies under cwd (the program runs it), and when the spelling does but the target does not: under --mount the guest owns every link in cwd.
+// TestC54SecretSourceUnderTheWorkspace (I5): the operator's key file, or the program that prints the key, lies under cwd. Neither loadPolicy nor session compares a source path with cwd, so the session starts and the guest gets the file as part of /workspace: in the clone image, or live under --mount, where it can also rewrite the program the host runs for every later lookup. The session must be refused before a session directory or an export exists, as a cwd that holds the data directory is (C19), or at least the key bytes must not reach the image. The VMM is a dummy: a session not refused fails at boot, after both. The same holds when the spelling lies under cwd but the target does not: under --mount the guest owns every link in cwd. An argument of a cmd: source that names a file under cwd is the program's own and out of scope (SPEC section 2, ADR-006): the two `/bin/sh <script under cwd>` arms went with S-F71.
 func TestC54SecretSourceUnderTheWorkspace(t *testing.T) {
 	const key = "sk-ant-c54-real-key-0123456789"
 	for _, tc := range []struct {
@@ -27,7 +27,6 @@ func TestC54SecretSourceUnderTheWorkspace(t *testing.T) {
 		{"clone, file: under cwd", "file:WORK/.secrets/anthropic.key", false}, {"mount, file: under cwd", "file:WORK/.secrets/anthropic.key", true},
 		{"clone, file: through ..", "file:WORK/../BASE/.secrets/anthropic.key", false},
 		{"mount, cmd: under cwd", "cmd:WORK/tools/get-key.sh", true}, {"clone, cmd: under cwd", "cmd:WORK/tools/get-key.sh", false},
-		{"clone, cmd: interpreter outside, script under cwd", "cmd:/bin/sh WORK/tools/get-key.sh", false}, {"mount, cmd: interpreter outside, script under cwd", "cmd:/bin/sh WORK/tools/get-key.sh", true},
 		{"mount, cmd: through a link inside cwd", "cmd:WORK/tool", true}, {"mount, file: through a link inside cwd", "file:WORK/link", true}, // the targets lie outside: the guest may replace the links
 	} {
 		t.Run(tc.name, func(t *testing.T) {
