@@ -10053,3 +10053,227 @@ written here and stays in the run's transcript, for the maintainer.
 Sweep 4 verdict for this surface: no candidates, so it adds nothing at medium or above; sweep 4 already holds one
 confirmed medium on S-1002 (C87, fixed), which S-1017 counts (S8). No model declined and no safeguard re-ran a
 request.
+
+## S-1005, sweep 4: TLS termination and HTTP handling: smuggling, HTTP/2, WebSocket, redirects, CONNECT, CA handling (I5, I6), as built at main 62d606a
+
+Sweep 4 (S8), the one further sweep that the maintainer allowed on 2026-11-26 after ADR-006, fresh context (S3), the
+whole surface read as built after S-F73, not a diff. Auditor on the top tier in the cloud session, which has no
+hypervisor and is Linux, as root, so nothing ran on a VM or on macOS. The auditor wrote its own trust boundary and
+worked every lens before it opened any earlier record, and then took up the parked `S-F72 reviewer finding`, as the
+entries of S-F72 and S-1004 asked. One candidate, C88, which is that row's doubled escape with the upstream it
+lacked.
+
+Trust boundary. Guest root and hostile model output own every byte of a 443 relay stream after the 20-byte header
+that stream() in cmd/workcell/relay.go reads: the ClientHello (peeked under the 16 KiB cap on S-1004's path and
+replayed byte for byte into the per-connection tls.Server of serveTerminated), then the whole HTTP/1.1 stream that
+net/http parses: request line, target, method, headers (64 KiB), bodies, trailers, pipelining, Upgrade and Expect,
+their count, rate and timing, and the body of a token-endpoint request, which tokenRequest reads whole (256 KiB).
+They own the relay header's address too, used only for sameHost's port, which the adapter fixes at 443. The
+malicious repository owns the supervisor's working directory (judged by session() for SSL_CERT_FILE and
+SSL_CERT_DIR: C30, C53, C86) and workcell.toml, which only narrows. The network attacker owns every host off the
+allowlist and, in the I4 model, the resolver's answers for allowed names; it does not own an allowed host's x509
+identity. Trusted without checking: crypto/tls, net/http and httputil of go1.27.4; the host resolver and root store;
+the compiled-in provider data; the operator's config and environment; and every byte an allowlisted upstream
+answers, its router's reading of a path included, which is where C88 lies. Authority of the code that handles these
+bytes: the supervisor's uid, the session CA key (leaves for allowed names only, name-constrained), the broker (file,
+cmd and keychain reads per use; sign-in tokens held one generation), the audit log (one Allowed record per
+connection, one refusal per refused request, one ledger line per release), and a transport that dials only the
+terminated hosts on 443 through p.connect with the SNI host as ServerName. The handler's order: an opaque target, a
+scheme without a host, or a path that is not canonical on a sign-in host (400); TRACE and CONNECT (405); sameHost
+against the SNI (421); per rule placeholderForm, then admits (403), then Lookup; tokenEndpoint then tokenRequest
+(502); carriesPlaceholder (502); then the ReverseProxy, whose Rewrite forces scheme, URL host and Host to the SNI
+host and whose ModifyResponse is tokenResponse. Ported (`// Ported from v1`): internal/proxy/terminate.go, proxy.go
+and allowlist.go with their three tests, internal/secret/broker.go and source.go, internal/audit/lines.go. Not
+ported: signin.go, relay.go, run_vm.go, policy.go, internal/guest/trust.go.
+
+Lenses (S9). Parsing and resources: the hello is capped at 16 KiB and 10 s; the header block at 64 KiB with a 10 s
+ReadHeaderTimeout, under which the handshake also runs, since the server sees a closeNotifyConn and handshakes on
+the first read; a token body and a token answer at 256 KiB plus one byte before and after gzip, other encodings
+refused; a Basic value at 4 KiB of strict base64; 1024 slots; MaxConnsPerHost 1024, IdleConnTimeout 90 s,
+TLSHandshakeTimeout 10 s; no idle or body deadline, by design and recorded. Inbound smuggling: net/http deletes
+Content-Length where the body is chunked and refuses differing duplicates, and the ReverseProxy writes its own
+framing, so no second inbound parser exists to desynchronise; an undeclared trailer is merged into the inbound
+request only after the body and the outgoing request carries the declared set alone, and a declared one is refused.
+Every index on guest bytes is guarded and no panic path from guest bytes was found. Logic and state: sameHost's
+ASCII-only fold with its length check, the port rule and Go's reading of an absolute-form target over Host hold;
+Rewrite forces the upstream Host, so the upstream never sees the guest's spelling; admits judges the bytes that the
+ReverseProxy sends, and canonical makes them Go's own escaping of the decoded path with no dot or empty segment, no
+`;` and no backslash; the override check folds header names the CGI way; tokenEndpoint claims by EqualFold on a path
+already canonical; swapRefresh swaps only the row's own field of a form or a top-level JSON object; learn wants one
+JSON object at 2xx and hides the broker's tokens, the carried token and the issued pair in three spellings;
+tokenAnswer refuses an unclaimed 2xx of a sign-in host that looks like a token answer. What no code does: refuse a
+literal `%` in a judged path (C88). Concurrency and check-to-use: the fields that Terminate writes are written once
+before any Serve goroutine starts; the leaf cache is under a mutex and keyed by allowed names; the broker is under a
+mutex and hands out clones; the token context rides the request context into the cloned outgoing request; nothing
+changes r.URL between admits and the clone; the peek and the terminating server parse the same replayed bytes with
+the same library; the rotation race of C15 is covered by the carried swap. Cryptography and identity: a P-256
+session CA of at most 24 h, NotBefore one minute back, critical PermittedDNSDomains equal to the 443 allowlist,
+every IP range excluded, path length 0; one leaf per lowered allowed name with ServerAuth and a 128-bit random
+serial, minted only for the routed host; the key never leaves the host and the guest gets the PEM (16 KiB cap) as
+data; a fresh tls.Config per connection, so no ticket resumption across connections, no 0-RTT, no renegotiation and
+no client certificate; the upstream is verified against the explicit pool (system roots, an absolute SSL_CERT_FILE,
+SSL_CERT_DIR members judged absolute and outside the working and data directories) with the SNI host as ServerName,
+TLS 1.2 at least, HTTP/1.1 only and no proxy from the environment. Failure modes: every error path refuses or
+closes: a leaf error fails the handshake; an upstreamRoots error fails Terminate before any boot; a broker error is
+502 broker_denied; a token reason is 502 with nothing forwarded; a ModifyResponse error is an empty 502 before any
+upstream header or byte is copied; a failed Note half-closes before any dial (I9); a 2xx of a sign-in host in br or
+zstd, or over 256 KiB, is 502; `Connection: X-Api-Key` drops the swapped header, a self-harm. Nothing fails open but
+the admitted `%25` of C88. Downgrade, rollback and replay: TLS 1.2 at least on both sides; an h2-only ALPN is
+refused; the h2 preface is 421 without Host and crosses as the method PRI with one (parked); HTTP/1.0 without Host
+is 421; a placeholder is fresh per session and refused anywhere else; a replayed request meets every check anew; the
+guest never holds a real refresh token, and the broker keeps one generation and zeroes the replaced one; a replayed
+or attacker-chosen code grant replaces the operator's tokens with the attacker's own and gains nothing. Interaction:
+the resolver's vetted address is the one dialled, per dial (S-1004, S-1006); every refusal and every release is
+recorded, and S-F16 refuses connections once the log is full, a loss and never a gain (S-1010); loadPolicy refuses a
+dropped sign-in row whose token host stays (C34) and judges the trust-store variables (C86) (S-1009); the guest
+trust store is a convenience (A1); the one gap between surfaces is the one ADR-006 accepted, the upstream's own
+reading of the bytes the proxy sends, and C88 names a front end that reads them twice.
+
+Refuted before anything was raised: CL.TE and TE.CL (chunked wins and the proxy frames anew; sweeps 1 and 3 ran the
+bytes, not run again); undeclared chunked trailers (dropped) and declared ones (refused, by test); `Connection:
+X-Api-Key` (self-harm); WebSocket or any Upgrade (the secret is only in the judged 101 request and the tunnel goes
+to the verified SNI host; the parked notes stand); HTTP/2 (ALPN http/1.1 alone, by test; upstream HTTP/1.1 only); an
+absolute-form target that names another host (421) and userinfo in a target (in RequestURI, so a placeholder there
+is refused, and the transport makes no Authorization of it); `//evil/path` (not canonical, by S-F72's test) and
+`OPTIONS *` (C27); `Host: example.com:` with an empty port (false in the product, where the port is 443); a
+percent-encoded placeholder in a header or a body (not swapped, crosses, useless upstream), in the query (decoded
+once and refused) and encoded twice (crosses, useless); a lowercase `basic` scheme (crosses unswapped, parked); bare
+`!'()*[]` and lowercase hex escapes in a path (refused under a narrowed rule and 400 on a sign-in host, a cost and
+no break, parked); `/v1/x/..%00/admin` and NUL (nginx and Apache answer 400 themselves, run); `%2F` decoded to `/`
+by nginx's proxy_pass with a URI part and `%3B` decoded to `;` by Apache's ProxyPass, ProxyPassMatch and RewriteRule
+[P], both seen here (canonical refuses both spellings already); nested tokens, id_token, Set-Cookie or a token in a
+header or trailer of a token answer (the provider's shape, no lever, parked); a 101 at a token endpoint (parked); br
+on an unclaimed 2xx of a sign-in host (502, the cost S-F50 records); two concurrent sign-ins; X-Forwarded-Prefix,
+X-Original-URI and X-Accel-Redirect as path overrides (no framework shown to route by them, the parked line stands);
+session resumption and 0-RTT; a relative or in-tree SSL_CERT_FILE or SSL_CERT_DIR (refused before boot: C30, C53,
+C86). Of the parked row's four spellings, three are ruled out by run: the fullwidth stops
+`/v1/%EF%BC%8E%EF%BC%8E/admin` and fullwidth slashes `/v1/x%EF%BC%8F..%EF%BC%8F..%EF%BC%8Fadmin` pass nginx 1.24 and
+Apache 2.4.58 in every shape as bytes that neither maps, and Go's, nginx's and Apache's normalisers see no `.` or
+`/` in them; Tomcat and Jetty decode them to the fullwidth code points and normalise ASCII dots alone (by their
+documents, not run), and the one named ASCII best-fit of fullwidth characters is a file-system behaviour of Windows
+ANSI APIs and no HTTP routing; the overlong `/v1/%C0%AE%C0%AE/admin` passes nginx and Apache as bytes, Tomcat
+refuses invalid UTF-8 in a URI, Java's and Python's decoders yield U+FFFD, and the one server that decoded it to `.`
+dates from 2000. The fourth, the doubled escape, is C88.
+
+Recorded fixes, each traced as built and run, all holding: C10 (S-F5, then S-F72: canonical refuses `;`, backslash,
+`%2e`, `%5C` and dot segments; c10_test green), C11 (S-F6, MaxHeaderBytes), C12 (S-F7, hide's three spellings;
+FuzzHide green), C13 (S-F8, the three transport limits), C15 (S-F9, the carried refresh token; c15_test green with
+the real broker and ledger), C23 and C24 (S-F16, handle acts only on a recorded connection, both ports), C27
+(S-F19), C30 and C53 (S-F22, S-F36: upstreamRoots; c53_test with its three re-execs), C32 (S-F25, the opaque and
+scheme-without-host refusal is the handler's first statement), C33 (S-F26, then S-F72), C34 (S-F27, traced in
+policy.go), C55 and C67 (S-F38, S-F50: every unclaimed 2xx of a sign-in host read whole and judged), C68 (S-F51,
+then S-F72: the two override names under the CGI fold), C69 (S-F52, in a user namespace here), C86 (S-F70, run_vm.go
+judges SSL_CERT_FILE and every SSL_CERT_DIR member), S-F71 (the secret-source check as the ADR decides; sf71_test
+green), S-F72 (canonical, and `method` refused at load; sf72_test green) and B-835 (the 16 KiB hello cap).
+
+Ran, by the auditor, in a scratch directory and with nothing added to the repository; every target a loopback
+process that the audit itself started and stopped (S12, T8); no third-party host. go vet clean on internal/proxy; go
+test -race -count=1 ./internal/proxy/ ok in 19.1 s, 55 top-level tests and none failing; go test -count=1 green on
+cmd/workcell, internal/secret, internal/guest, internal/policy and internal/provider. Fuzz bursts of 20 s on a copy
+of the tree, no crasher: FuzzCarriesPlaceholder 318,726 executions, FuzzSwapRefresh 475,104, FuzzHide 204,271,
+FuzzPeekSNI 338,141. Real servers on loopback: nginx 1.24.0 and Apache 2.4.58, installed into the session from the
+distribution, with a Go recorder behind them; 10 probes of nginx as a front, 5 of nginx as a backend, 7 of Apache as
+an origin and 30 of Apache's proxy shapes (five shapes by six spellings). What each forwards for
+`/%252e%252e/admin`: nginx's proxy_pass with a URI part, its rewrite with proxy_pass, and its proxy_pass without one
+all forward `%252e%252e`; Apache's ProxyPass, ProxyPass nocanon, ProxyPassMatch and RewriteRule [P] forward
+`%252e%252e`; Apache's RewriteRule [P,NE] alone forwards `%2e%2e`. As a backend nginx serves `/api/%2e%2e/admin` as
+`/admin` and `/api/%252e%252e/admin` as `/api/%2e%2e/admin`; Apache as an origin serves `/v1/%2e%2e/admin` as the
+admin file and answers the doubled, fullwidth and overlong forms 404.
+
+Coverage. Read in full: internal/proxy (terminate, signin, proxy, allowlist, routes_linux, routes_other and all 25
+test files); internal/secret (broker, source); internal/audit (audit, lines, key); internal/guest (guest, trust);
+internal/relay/relay.go; internal/policy/policy.go; internal/provider/provider.go; in cmd/workcell the files run_vm,
+policy, relay, explain, data and c86_test; cmd/workcell-init (net, exec); the suite's files secrets, signin,
+terminate and https; docs/policy.md, docs/providers.md, docs/threat-model.md; the accepted ADR-006; PARKED.md whole;
+the S-1005 records of sweeps 1, 2 and 3 and the S-F71 and S-F72 sections, after the audit's own pass. Skimmed or by
+grep: cmd/workcell-init/main.go, cmd/workcell/sf71_test.go (run, not read), and of Go 1.27.4
+httputil/reverseproxy.go and net/http/transfer.go at the places named. Not opened: the four provider TOML files,
+escape/suite/tests.go, net/http/server.go, internal/resolver, internal/vmm, internal/wire, internal/fileserve,
+internal/workspace, escape/sandbox, the tests of internal/secret, the rest of cmd/workcell, the other ADRs. Not run:
+anything on a real VM, the escape suite by the auditor, any macOS path, the four-hour fuzz of S10, and Tomcat,
+Jetty, Undertow or IIS, whose behaviour is cited from their documents. No edge of a shipped provider was probed,
+since T8 forbids it, so nothing here says how any of the four reads a path.
+
+### S-1005 candidates, sweep 4
+
+C88. ID I5 (a placeholder is useless at any destination other than the one it is bound to: docs/policy.md binds a
+`[[secret]]` row narrowed by `path` or `repos` to that path, "judged on the path as the upstream receives it, which
+must have one reading"), the class that S-F72 records under I6. Attacker: guest root or hostile model output,
+choosing the path of its own request. Preconditions the attacker does not control: the operator narrowed the row by
+`path` or `repos` (a row that is not narrowed swaps anywhere on its host by design); the bound host's front end
+decodes the path once and forwards the decoded form; and the backend behind it decodes an encoded dot segment and
+normalises it. Where: internal/proxy/terminate.go:127-130, canonical, used at :116 by admits for every narrowed rule
+and at :369 for every request on a sign-in host; the promise is docs/policy.md:38-40. The file is ported. also in v1
+main: egressproxy/terminate.go. Input: on a terminated connection with SNI v.example.com, under the rule {Host:
+v.example.com, Header: x-api-key, Path: "/v1/"}: `POST /v1/%252e%252e/admin` with `X-Api-Key:` the session's
+placeholder. Effect claimed: canonical holds, because `%25` is Go's own escaping of a literal `%` and path.Clean
+sees a segment `%2e%2e` and no `..`; admits returns true, the broker releases the secret with a granted record, and
+the proxy sends the line byte for byte. A front end that decodes once and forwards the decoded path, named as Apache
+httpd with `RewriteRule ^/v1/(.*)$ http://backend/api/$1 [P,NE]`, hands the backend `/api/%2e%2e/admin`, which nginx
+normalises to `/admin` and serves with the real secret: the secret is used on the bound host at a path outside its
+binding, with no refusal. It never reaches the guest and never leaves the bound host (I6 holds). The auditor's unit
+probe found the `repos` twin admitted as well, `/octo/allowed.git/%252e%252e/other.git/git-receive-pack` under repos
+`octo/allowed`, with no git host's front end shown to forward it decoded. Severity claimed: medium, as C10, C33 and
+C68 were. No claim is made about the edge of any shipped provider, which T8 forbids probing.
+
+The auditor's evidence, run and not reasoned, with the two real servers on loopback: through the product by `go test
+-overlay`, a terminating proxy before Apache 2.4.58 with mod_ssl and that RewriteRule, and nginx 1.24.0 behind it:
+`POST /v1/x` is served with the real secret (control); `/v1/%2e%2e/admin` and `/v1/../admin` are 403 from the proxy;
+`/v1/%252e%252e/admin` is answered 200 by the backend at uri `/admin` with the real secret; the fullwidth and
+overlong forms are served as bytes under `/v1/` and nothing maps them. Refuted by the same runs: Apache's ProxyPass,
+ProxyPass nocanon, ProxyPassMatch and RewriteRule [P] without NE, and nginx as a front in three shapes, all of which
+hand the backend `%252e%252e` again. The probe and its configuration lived in a scratch directory and are not kept.
+
+Reproducing test (S4): TestC88DoubledEscapeLeavesTheBinding, a Go test of package proxy, 57 lines, written by the
+redteam from the claim alone, with no VM and so no T2: the package's own terminating proxy with a rule of path
+`/v1/`, and a loopback TLS upstream whose one handler models the two readings (url.PathUnescape once for the front
+end, then again with path.Clean for the backend) and records the path it finally serves with the key it saw. It
+fails when the real secret is served at a path outside `/v1/`, and it does not judge how a fix answers. Controls:
+`POST /v1/x` is served at `/v1/x` with the real secret, and `/v1/%2e%2e/admin` is refused with the secret withheld.
+It waits in escape/_pending/S-F74/c88_test.go, which Go does not compile. Run by the orchestrator on 55649f7 with
+`go test -overlay`, go1.27.4, plain and with -race, one error line each: `--- FAIL:
+TestC88DoubledEscapeLeavesTheBinding`, `c88_test.go:54: I5: the upstream served "/admin" with the real secret: the
+credential bound to /v1/ was used outside its binding`; both controls pass. go vet with the overlay is clean. The
+power the test gives itself: its upstream is a model in Go, and the model leaves out the rewrite to `/api/`; the
+redteam had no httpd and did not check it against one.
+
+Outcome: CONFIRMED by the verifier at medium, from its own run of the test and its own run of the named front end.
+Its evidence. One: the test fails as recorded and both controls pass. Two: the model is faithful to shipping
+software: Apache 2.4.58 on loopback with `RewriteRule ^/v1/(.*)$ http://127.0.0.1:18082/api/$1 [P,NE]`, before a
+backend that logs the raw line and before nginx 1.24.0; for `POST /v1/%252e%252e/admin` with a key the raw backend
+logged `POST /api/%2e%2e/admin HTTP/1.1` with the key, and nginx answered 200 with `uri=/admin
+request_uri=/api/%2e%2e/admin` and the key; `/v1/x` went to `/api/x`, and `/v1/%2e%2e/admin` was 403 from Apache
+itself. So decode once and forward (Apache with NE) before decode and clean (nginx) is what two shipping servers do,
+and the test gives itself no power the guest lacks: it uses the package's standard fixtures and a request line and a
+header that the guest chooses. Three: it is not intended behaviour: docs/policy.md promises one reading and `%25` is
+what canonical admits, yet the upstream reads it twice; ADR-006's rulings on C10 and C33 never rule on `%252e`. It
+was carried only as a residual with no reproduction: the sweep-1 record of this surface ("double decoding"), the
+S-1016b tool note and the `S-F72 reviewer finding` in PARKED.md. The verifier holds it an accepted residual that now
+has a reproduction, and so a finding under S4. Four, severity by S6's letter: medium. I5 is broken only with the
+three preconditions above, none of which the attacker controls; the secret reaches only the bound host and never the
+guest, so it is not high; a break is demonstrated, so it is not low. Five: not S14: the file is ported and no v1
+release holds it, and Apache's NE flag and nginx's normalisation are documented behaviour, not weaknesses of those
+projects.
+
+On ADR-006, for the maintainer. Decision (d) stands as built, and C88 does not ask for a second reading or a model
+of a router. The Path row of the accepted ADR says a path is admitted when it is Go's own escaping of the decoded
+path, clean, with no `;` and no backslash, and calls that one reading; for a literal `%` that is too strong, since a
+documented front end reads `%25` twice. The fix narrows what that row admits by one byte, toward refusal. The loop
+does not edit an accepted ADR: S-F74 builds the narrower rule in free paths and its record says where code and ADR
+then differ, and the maintainer amends the ADR or rules the row residual instead.
+
+Fix unit: S-F74 (boundary, fable, env:any), directly below S-1005 in PLAN.md: in canonical refuse a literal `%` in
+the decoded path as `;` and backslash are refused, one character in the set of strings.ContainsAny and no added
+product line, with the comment on that line and the sentence of docs/policy.md saying so. The auditor ran that
+change by overlay: the probe's claim row became 403 and the whole package passed under -race, the admitted arm
+`/v1/%E2%9C%93` of sf72_test.go included. Its cost: under a narrowed rule a path that carries `%25` is 403, and on a
+sign-in host 400; no path of a shipped provider and no git smart-HTTP path carries a literal percent. Product has 24
+lines of room and test 134 with the parked file counted. Variants not written (redteam): `%25%32%65` for a front end
+that decodes twice; `%252F`, `%255C` and `%253B`, a doubled slash, backslash and `;`; the `repos` twin; a `+` in the
+path for a front end that reads it as a space; the mixed case `%252E`. The one character refuses every one of them
+that holds `%25`.
+
+Sweep 4 verdict for this surface: one candidate, C88, confirmed at medium by the auditor's claim and the verifier's
+reading alike, open, with fix unit S-F74. Sweep 4 now holds two confirmed mediums, C87 on S-1002 (fixed) and C88
+here, which S-1017 counts (S8). No model declined and no safeguard re-ran a request in the audit, the redteam or the
+verifier, and no tool permission was refused to any of them.
