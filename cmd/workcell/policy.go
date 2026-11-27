@@ -13,6 +13,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"syscall"
 	"unicode"
 
 	"github.com/omkhar/workcell/v2/internal/policy"
@@ -28,11 +29,6 @@ func configFile() (string, error) {
 }
 
 const repoFile = "workcell.toml" // the policy a repository may carry, in the directory a session starts in
-
-// sep says whether r, read from a word of a cmd: source, begins or ends a path there: every ASCII byte that is not a letter, a digit, '.', '_', '-' or '/'. A byte of 0x80 or above is part of a name, so no cut falls inside a UTF-8 rune.
-func sep(r rune) bool {
-	return r < 0x80 && !unicode.IsLetter(r) && !unicode.IsDigit(r) && !strings.ContainsRune("._-/", r)
-}
 
 // loadPolicy reads the policy and builds what a session needs from it: the proxy's allowlist (nil: nothing is relayed) and the secret bindings. The user's file is narrowed by the workcell.toml of the current directory, which may take grants away and give none (I13), then this session's --allow entries are added (the operator typed them on the host, and the repository may not undo that). A repository file that is not a regular file is ignored, with a line on stderr. An error names the file and line, or the flag; note is a line for `explain` about what the repository file took away.
 func loadPolicy(extra []string, stderr io.Writer) (allow *proxy.Allowlist, secrets []binding, note, file string, err error) {
@@ -76,25 +72,27 @@ func loadPolicy(extra []string, stderr io.Writer) (allow *proxy.Allowlist, secre
 			return nil, nil, "", "", fmt.Errorf("%s:%d: secret %q: %s drops this sign-in row but keeps its token host %q: name the row there, or drop the host", file, s.Line, s.Name, repoFile, si.Host)
 		}
 	}
-	secrets, err = bindings(narrowed, allow, file)
-	for _, s := range p.Secret { // a file: or cmd: source under cwd would be exported into, or served live as, the guest's /workspace, whether or not the repository kept the row (I5)
-		scheme, rest, _ := strings.Cut(s.Source, ":")                // cmd: the words are the program and each argument, split as the broker splits them (it runs the program from /, so a relative word is read from there: home/u/repo/k names cwd's key when cwd is /home/u/repo); file: the path, one word; the other schemes name no path
-		if err == nil && scheme == "file" && !filepath.IsAbs(rest) { // the broker reads a file: path from no directory and refuses one that is not absolute, but only at first use, after the export; from cwd such a path names cwd's key, and the check below, which judges a word from its first slash, would pass it (C82)
-			return nil, nil, "", "", fmt.Errorf("%s:%d: secret %q: file: path %q is not absolute: a file: path must be absolute, as the broker reads it from no directory", file, s.Line, s.Name, rest)
-		}
-		words := strings.FieldsFunc(rest, func(r rune) bool { return scheme == "cmd" && unicode.IsSpace(r) })
-		for _, w := range words { // a word is judged from its first slash on, so a path inside an option word, --key=/x or -k/x, is judged as /x (C72), and, under cmd:, as read from /, so a relative a/b as /a/b (C80); either is refused when it lies in cwd
-			if err == nil && (scheme == "file" || scheme == "cmd") && strings.ContainsAny(w, "~$`\\'\"*?[{;&") { // this check reads literal paths only: a shell the helper runs rewrites these in a word (a home, a variable or substitution, an escape or quote pair, a glob, a brace), or runs a second command on `;` or `&` (a cd before a relative path), so such a word can spell a path under cwd that no reading of its text finds (C78)
-				return nil, nil, "", "", fmt.Errorf("%s:%d: secret %q: word %s holds one of ~ $ ` \\ ' \" * ? [ { ; &, which a shell rewrites or runs as a second command, and this check reads literal paths only: spell the path out, or put the line in a script outside the directory %q, which the guest gets as /workspace", file, s.Line, s.Name, w, cwd)
-			}
-			for i := 0; i < len(w); i += 1 + strings.IndexFunc(w[i:]+":", sep) { // and so is the text from the first slash after each separator of a list word, --files=/a:/b, to the word's end: cwd itself may hold a separator, so the word is never split
-				for k, p := range []string{w[i+max(strings.IndexByte(w[i:], '/'), 0):], "/" + w[i:]} { // k == 1 (cmd: only): the text at the word's start or after a separator, read from / as the program runs there, when it does not begin with a slash (C80, C81): cat<a/b is judged as /cat<a/b here and, from its separator on, as /a/b
-					for j := len(p); err == nil && (scheme == "file" && k == 0 || scheme == "cmd" && (k == 0 || w[i] != '/')) && filepath.IsAbs(p) && j > 0; j-- { // the spelling, each prefix that ends before a slash (its lexical ancestors) and, under cmd:, each that ends before a separator (C75), resolved: under --mount the guest may replace any of them
-						if (j == len(p) || p[j] == '/' || scheme == "cmd" && sep(rune(p[j]))) && within(cwd, p[:j]) {
-							return nil, nil, "", "", fmt.Errorf("%s:%d: secret %q: source %s lies inside the directory %q, which the guest gets as /workspace: keep it outside", file, s.Line, s.Name, p, cwd)
-						}
-					}
-				}
+	data, err := dataDir()
+	if err == nil {
+		secrets, err = bindings(narrowed, allow, file)
+	}
+	for _, s := range p.Secret { // the user's rows, whatever workcell.toml kept (I13, C58): the one path the host opens or runs, a file: path or the program of a cmd: source, is judged as the kernel walks it, since a prefix in cwd (the guest's under --mount) or in the data directory lets the guest serve the key or swap the program, and a key in cwd goes into the export (I5, C54). What a program reads through its arguments is its own (ADR-006, SPEC section 2).
+		scheme, rest, _ := strings.Cut(s.Source, ":")
+		at, path := fmt.Sprintf("%s:%d: secret %q: source %s", file, s.Line, s.Name, s.Source), map[bool]string{false: rest, true: append(strings.Fields(rest), "")[0]}[scheme == "cmd"] // the file: path, or the program as Resolve splits argv
+		switch {
+		case err != nil:
+		case !slices.Contains([]string{"file", "cmd", "secret-service", "keychain", "signin"}, scheme):
+			err = fmt.Errorf("%s: the scheme %q is not file, cmd, secret-service, keychain or signin", at, scheme)
+		case scheme != "file" && scheme != "cmd": // the other schemes name no path
+		case !filepath.IsAbs(path):
+			err = fmt.Errorf("%s: %q is not an absolute path, and the broker reads a file: path or runs a cmd: program from no directory", at, path)
+		case leadsInto(path, cwd, data):
+			err = fmt.Errorf("%s: %s lies inside the directory %q, which the guest gets as /workspace, or inside workcell's data directory %s, or a prefix of it leads into one: keep it outside", at, path, cwd, data)
+		case scheme == "file": // one regular file with one name, by Stat so that a FIFO does not hang the load: a hard link's other name may lie where the guest writes, as holds() refuses for config.toml; a program is not held to one name, since a store such as Nix hard-links binaries
+			if fi, e := os.Stat(path); e != nil {
+				err = fmt.Errorf("%s: %w", at, e)
+			} else if n := fi.Sys().(*syscall.Stat_t).Nlink; !fi.Mode().IsRegular() || n > 1 {
+				err = fmt.Errorf("%s: %s must be a regular file with one name: it has mode %v and %d names", at, path, fi.Mode(), n)
 			}
 		}
 	}

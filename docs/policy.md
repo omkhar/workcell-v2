@@ -113,7 +113,7 @@ secrets: swapped in by the session proxy; the guest holds a placeholder
 
 ## Secret sources
 
-- `file:/abs/path` reads a regular file of at most 64 KiB. Its value is its one line. The path is absolute: a row whose `file:` path is not is refused before a session starts.
+- `file:/abs/path` reads a regular file of at most 64 KiB. Its value is its one line. The path is absolute and names, when the session starts, one regular file with one name: a row whose path is relative, absent, not a regular file or hard-linked is refused before a session starts.
 - `cmd:/abs/program args` runs a program with no shell. Arguments are split on spaces, with no quoting.
   The environment is cleared, except `PATH`, `LC_ALL`, `HOME`, the D-Bus address and `XDG_RUNTIME_DIR`.
   The program has two minutes. It runs with `/` as its working directory, so nothing in the repository
@@ -121,12 +121,8 @@ secrets: swapped in by the session proxy; the guest holds a placeholder
 - `secret-service:SERVICE/ACCOUNT` runs `/usr/bin/secret-tool lookup` (Linux).
 - `keychain:SERVICE/ACCOUNT` runs `/usr/bin/security find-generic-password -w` (macOS login keychain).
 
-A `file:` path, and every path a word of a `cmd:` source names, must lie outside the directory `workcell run` is started in, which the guest gets as `/workspace`: such a row is refused before a session starts.
-A word is read as paths from its first `/` and from the first `/` after any separator, each to the word's end or to the next separator, where a separator is any ASCII character other than a letter, a digit, `.`, `_`, `-` or `/`.
-So, run in `/work`, `--dir=/work:/out/b` is refused, and so is a sibling named `/work+old`, where `/work-keys` is not.
-A word of a `cmd:` source is also read from `/`, where the program runs: its text from the start and from after any separator, when it does not begin with `/`, is read with `/` put before it, so run in `/home/u/repo`, `home/u/repo/key` is refused where `tmp/key` is not.
-The check reads literal paths only, so a word of a `file:` or `cmd:` source that holds any of `~`, `$`, `` ` ``, `\`, `'`, `"`, `*`, `?`, `[` or `{`, which a shell the program runs would rewrite into a path the check cannot read, or `;` or `&`, on which it would run a second command, such as `cd` before a relative path, is refused wherever it points.
-Spell the path out, or put the line in a script outside the directory.
+The `file:` path and the `cmd:` program are judged as the kernel walks them, every prefix resolved: each must be absolute and must neither lie in nor lead into, through a link, the directory `workcell run` is started in, which the guest gets as `/workspace`, or workcell's data directory, and such a row is refused before a session starts.
+What a program reads through its arguments is yours, so name nothing under the directory in them: under `--mount` the guest can rewrite whatever they name.
 
 The value is read on each use, never at start. An error never prints the value or a program's stderr.
 A `signin:HOST/PATH` source is a sign-in flow, which this page does not cover.
