@@ -91,7 +91,7 @@ func TestGitOverHTTPS(t *testing.T) {
 
 	p, _, _ := testProxy(t, "localhost:443", []netip.Addr{netip.MustParseAddr("8.8.8.8")}, server.Listener.Addr().String())
 	p.upstreamRoots = caPool(t, authority)
-	rule := must(NewTerminateRule("localhost", "authorization", "", "", []string{"octo/allowed"}))
+	rule := must(NewTerminateRule("localhost", "authorization", "", []string{"octo/allowed"}))
 	must(0, os.WriteFile(filepath.Join(home, "token"), []byte(token+"\n"), 0o600))
 	broker := must(secret.NewBroker([]secret.Grant{{Name: "git", Source: "file:" + filepath.Join(home, "token"), Host: rule.Host, Header: rule.Header}}, testLedger(t)))
 	sessionCA := must(NewSessionCA([]string{"localhost"}, time.Now().Add(time.Hour)))

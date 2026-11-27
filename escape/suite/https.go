@@ -336,11 +336,11 @@ func parseExchange(spec string) (exchange, bool) {
 	return exchange{f[0], f[1], f[2], f[3]}, true
 }
 
-// admitted says whether the binding swaps the exchange's credential: it is in the bound header, to the bound name, of the bound method, under the bound path, and, when the binding names repositories, the path as sent and the path decoded and cleaned both lie within one of them (SPEC I5: a placeholder is useless anywhere else).
+// admitted says whether the binding swaps the exchange's credential: it is in the bound header, to the bound name, of any method, under the bound path, and, when the binding names repositories, the path as sent and the path decoded and cleaned both lie within one of them (SPEC I5: a placeholder is useless anywhere else).
 func (e exchange) admitted(sec sandbox.Secret) bool {
 	raw, _, _ := strings.Cut(e.path, "?")
 	decoded, _ := url.PathUnescape(raw)
-	return e.name == "bound" && strings.EqualFold(headerOf[e.where], sec.Header) && (sec.Method == "" || sec.Method == e.method) && strings.HasPrefix(e.path, sec.Path) && (len(sec.Repos) == 0 || slices.ContainsFunc(sec.Repos, func(repo string) bool { return within(raw, repo) && within(path.Clean(decoded), repo) }))
+	return e.name == "bound" && strings.EqualFold(headerOf[e.where], sec.Header) && strings.HasPrefix(e.path, sec.Path) && (len(sec.Repos) == 0 || slices.ContainsFunc(sec.Repos, func(repo string) bool { return within(raw, repo) && within(path.Clean(decoded), repo) }))
 }
 
 // within says whether p is /repo or /repo.git, or lies under either.

@@ -60,7 +60,7 @@ func TestScriptedProviderSession(t *testing.T) {
 			t.Cleanup(fake.Close)
 			p, _, _ := testProxy(t, pv.host+":443 other.example:443", []netip.Addr{netip.MustParseAddr("8.8.8.8")}, fake.Listener.Addr().String())
 			p.upstreamRoots = caPool(t, authority)
-			rule := must(NewTerminateRule(pv.host, pv.header, "", "", nil))
+			rule := must(NewTerminateRule(pv.host, pv.header, "", nil))
 			broker := must(secret.NewBroker([]secret.Grant{{Name: pv.secret, Source: "file:" + keyFile, Host: rule.Host, Header: rule.Header}}, testLedger(t)))
 			sessionCA := must(NewSessionCA([]string{pv.host, "other.example"}, time.Now().Add(time.Hour)))
 			must(0, p.Terminate(sessionCA, broker, []TerminateRule{rule}))

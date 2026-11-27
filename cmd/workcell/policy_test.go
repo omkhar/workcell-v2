@@ -83,17 +83,16 @@ func TestBindings(t *testing.T) {
 	}{
 		{"none", nil, "secrets: none\n", ""},
 		{"a row", []policy.Secret{row}, swapped + "  k: in x-api-key to https://a.example\n", ""},
-		{"every key", []policy.Secret{with(func(s *policy.Secret) { s.Env, s.Method, s.Path = "A_KEY", "POST", "/v1/" })}, swapped + "  k: in x-api-key to https://a.example, POST only, under /v1/, as $A_KEY\n", ""},
+		{"every key", []policy.Secret{with(func(s *policy.Secret) { s.Env, s.Path = "A_KEY", "/v1/" })}, swapped + "  k: in x-api-key to https://a.example, under /v1/, as $A_KEY\n", ""},
 		{"two headers on one host", []policy.Secret{row, with(func(s *policy.Secret) { s.Header, s.Line = "authorization", 9 })}, swapped + "  k: in x-api-key to https://a.example\n  k: in authorization to https://a.example\n", ""},
 		{"host not allowed", []policy.Secret{with(func(s *policy.Secret) { s.Host = "b.example" })}, "", "config.toml:5: secret \"k\": host \"b.example\" is not a bare name in [network] allow: add \"b.example\" there, or pass --allow b.example"},
 		{"a provider's secret", []policy.Secret{{Name: "anthropic", Source: "file:/s", Line: 5}}, swapped + "  anthropic: in x-api-key to https://api.anthropic.com, as $ANTHROPIC_API_KEY\n", ""},
-		{"a provider's secret, the row's env and method win", []policy.Secret{{Name: "anthropic", Source: "file:/s", Env: "MY_KEY", Method: "POST", Line: 5}}, swapped + "  anthropic: in x-api-key to https://api.anthropic.com, POST only, as $MY_KEY\n", ""},
+		{"a provider's secret, the row's env and path win", []policy.Secret{{Name: "anthropic", Source: "file:/s", Env: "MY_KEY", Path: "/v1/", Line: 5}}, swapped + "  anthropic: in x-api-key to https://api.anthropic.com, under /v1/, as $MY_KEY\n", ""},
 		{"no host or header, and no such provider secret", []policy.Secret{{Name: "nope", Source: "file:/s", Line: 5}}, "", "config.toml:5: secret \"nope\": host and header are missing: name a provider's secret or give host and header"},
 		{"a header without a host", []policy.Secret{with(func(s *policy.Secret) { s.Host = "" })}, "", "config.toml:5: secret \"k\": host and header are missing: name a provider's secret or give host and header"},
 		{"host allowed on a forward port alone", []policy.Secret{with(func(s *policy.Secret) { s.Host = "db.example" })}, "", "config.toml:5: secret \"k\": host \"db.example\" is not a bare name"},
 		{"an IP host", []policy.Secret{with(func(s *policy.Secret) { s.Host = "10.0.0.1" })}, "", "config.toml:5: secret \"k\": terminate rule"},
 		{"a bad header", []policy.Secret{with(func(s *policy.Secret) { s.Header = "x api key" })}, "", "config.toml:5: secret \"k\": terminate rule has an invalid header name"},
-		{"a bad method", []policy.Secret{with(func(s *policy.Secret) { s.Method = "post" })}, "", "config.toml:5: secret \"k\": terminate rule method"},
 		{"a bad path", []policy.Secret{with(func(s *policy.Secret) { s.Path = "v1" })}, "", "config.toml:5: secret \"k\": terminate rule path"},
 		{"a bad env", []policy.Secret{with(func(s *policy.Secret) { s.Env = "1KEY=" })}, "", "config.toml:5: secret \"k\": env \"1KEY=\" is not a variable name"},
 		{"a sign-in source", []policy.Secret{with(func(s *policy.Secret) {
@@ -104,7 +103,7 @@ func TestBindings(t *testing.T) {
 		{"repos", []policy.Secret{with(func(s *policy.Secret) {
 			s.Header, s.Env, s.Repos = "authorization", "GITHUB_TOKEN", []string{"octo/allowed", "octo/docs"}
 		})}, swapped + "  k: in authorization to https://a.example, for octo/allowed, octo/docs, as $GITHUB_TOKEN\n", ""},
-		{"repos and a path", []policy.Secret{with(func(s *policy.Secret) { s.Path, s.Repos = "/octo/", []string{"octo/allowed"} })}, "", "config.toml:5: secret \"k\": terminate rule repos cannot go with a method or a path"},
+		{"repos and a path", []policy.Secret{with(func(s *policy.Secret) { s.Path, s.Repos = "/octo/", []string{"octo/allowed"} })}, "", "config.toml:5: secret \"k\": terminate rule repos cannot go with a path"},
 		{"a bad repo", []policy.Secret{with(func(s *policy.Secret) { s.Repos = []string{"octo/allowed.git"} })}, "", "config.toml:5: secret \"k\": terminate rule repository must be owner/name"},
 		{"repos and a sign-in source", []policy.Secret{with(func(s *policy.Secret) { s.Source, s.Repos = "signin:a.example/t", []string{"octo/allowed"} })}, "", "config.toml:5: secret \"k\": repos cannot narrow a sign-in source"},
 	}

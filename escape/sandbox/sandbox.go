@@ -46,10 +46,10 @@ type Config struct {
 	Head                     bool          // Head makes the operator's stdout a reader that goes away after its first read, as `| head -1` does, for every command of the session (I9).
 }
 
-// Secret is one [[secret]] entry: Value, bound to Host, goes in Header; the guest sees only a placeholder in Env (A4, I5, I6). Method and Path narrow the binding, Repos scopes it to `owner/name` repositories as a git credential is. Source, when set, names the product's own source instead of a file holding Value: `signin:<host><path>` is a sign-in flow. Control stages Value itself, and nothing for a sign-in row.
+// Secret is one [[secret]] entry: Value, bound to Host, goes in Header; the guest sees only a placeholder in Env (A4, I5, I6). Path narrows the binding, Repos scopes it to `owner/name` repositories as a git credential is. Source, when set, names the product's own source instead of a file holding Value: `signin:<host><path>` is a sign-in flow. Control stages Value itself, and nothing for a sign-in row.
 type Secret struct {
-	Name, Value, Host, Header, Env, Method, Path, Source string
-	Repos                                                []string
+	Name, Value, Host, Header, Env, Path, Source string
+	Repos                                        []string
 }
 
 // UpdateConfig is the product's update client against a channel and an upstream the judge serves (T8); every field is a parameter a user could give (A11).
