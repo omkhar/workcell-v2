@@ -77,16 +77,16 @@ func TestParse(t *testing.T) {
 
 // TestParseSecret: each [[secret]] row comes back with its keys and its line, the optional keys "" or nil when left out; the Allow entries are TestParse's concern.
 func TestParseSecret(t *testing.T) {
-	full := "[[secret]]\nname = \"a\"\nsource = \"file:/s\"\nhost = \"a.example\"\nheader = \"X-Api-Key\"\nenv = \"A_KEY\"\nmethod = \"POST\"\npath = \"/v1/\"\n"
+	full := "[[secret]]\nname = \"a\"\nsource = \"file:/s\"\nhost = \"a.example\"\nheader = \"X-Api-Key\"\nenv = \"A_KEY\"\npath = \"/v1/\"\n"
 	tests := []struct {
 		name string
 		text string
 		want []Secret
 	}{
 		{"the SPEC example", specExample, []Secret{{Name: "anthropic", Source: "keychain:workcell/anthropic", Host: "api.anthropic.com", Header: "x-api-key", Line: 5}}},
-		{"every key", full, []Secret{{"a", "file:/s", "a.example", "X-Api-Key", "A_KEY", "POST", "/v1/", nil, 1}}},
+		{"every key", full, []Secret{{"a", "file:/s", "a.example", "X-Api-Key", "A_KEY", "/v1/", nil, 1}}},
 		{"two rows, the second after another table", full + "[network]\n[[secret]]\nname = \"b\"\nsource = \"cmd:/bin/b\"\nhost = \"b.example\"\nheader = \"authorization\"\n",
-			[]Secret{{"a", "file:/s", "a.example", "X-Api-Key", "A_KEY", "POST", "/v1/", nil, 1}, {Name: "b", Source: "cmd:/bin/b", Host: "b.example", Header: "authorization", Line: 10}}},
+			[]Secret{{"a", "file:/s", "a.example", "X-Api-Key", "A_KEY", "/v1/", nil, 1}, {Name: "b", Source: "cmd:/bin/b", Host: "b.example", Header: "authorization", Line: 9}}},
 		{"name and source alone", "[[secret]]\nname = \"anthropic\"\nsource = \"file:/s\"\n", []Secret{{Name: "anthropic", Source: "file:/s", Line: 1}}},
 		{"repos, over two lines", "[[secret]]\nname = \"git\"\nsource = \"file:/s\"\nhost = \"github.com\"\nheader = \"authorization\"\nrepos = [\"octo/allowed\",\n \"octo/docs\"]\n",
 			[]Secret{{Name: "git", Source: "file:/s", Host: "github.com", Header: "authorization", Repos: []string{"octo/allowed", "octo/docs"}, Line: 1}}},
@@ -272,7 +272,7 @@ func TestNarrow(t *testing.T) {
 		return es
 	}
 	row := func(name, host string) Secret {
-		return Secret{Name: name, Source: "file:/k", Host: host, Header: "x-api-key", Method: "GET", Path: "/v1"}
+		return Secret{Name: name, Source: "file:/k", Host: host, Header: "x-api-key", Path: "/v1"}
 	}
 	user := Policy{AllowSet: true, Allow: allow("bound.test", "other.test"), Secret: []Secret{row("a", "bound.test"), row("b", "other.test")}}
 	tests := []struct {
@@ -291,7 +291,7 @@ func TestNarrow(t *testing.T) {
 		{"an empty allow array allows nothing", Policy{AllowSet: true}, nil, nil, nil},
 		{"a secret goes with its narrowed host", Policy{AllowSet: true, Allow: allow("other.test")}, []string{"other.test"}, []string{"b"}, nil},
 		{"names a secret with another host, header, source", Policy{Secret: []Secret{{Name: "a", Source: "cmd:id", Host: "evil.test", Header: "authorization"}}}, []string{"bound.test", "other.test"}, []string{"a"}, nil},
-		{"drops method and path", Policy{Secret: []Secret{{Name: "b", Source: "file:/etc/hostname"}}}, []string{"bound.test", "other.test"}, []string{"b"}, nil},
+		{"drops the path", Policy{Secret: []Secret{{Name: "b", Source: "file:/etc/hostname"}}}, []string{"bound.test", "other.test"}, []string{"b"}, nil},
 		{"a secret the user lacks", Policy{Secret: []Secret{row("a", "bound.test"), row("c", "bound.test")}}, []string{"bound.test", "other.test"}, []string{"a"}, []string{`secret "c"`}},
 		{"a row without a name", Policy{Secret: []Secret{{Source: "file:/k"}}}, []string{"bound.test", "other.test"}, nil, []string{`secret ""`}},
 	}

@@ -70,7 +70,7 @@ func terminateFixture(t *testing.T, broker Broker) (proxyAddr string, ca *Sessio
 	ca = must(NewSessionCA([]string{"example.com", "a.example.com", "n.example.com", "r.example.com"}, time.Now().Add(time.Hour)))
 	must(0, p.Terminate(ca, broker, []TerminateRule{ // Mixed-case header names: the broker must still get the lowercase form its grants use (TestTerminateSwapsOnlyExactPlaceholder checks the call).
 		{Host: "example.com", Header: "X-Api-Key", Placeholder: testPlaceholder}, {Host: "example.com", Header: "Authorization", Placeholder: testAuthPlaceholder},
-		{Host: "n.example.com", Header: "X-Api-Key", Placeholder: testPlaceholder, Method: "POST", Path: "/v1/"}, {Host: "r.example.com", Header: "Authorization", Placeholder: testAuthPlaceholder, Repos: []string{"octo/allowed"}},
+		{Host: "n.example.com", Header: "X-Api-Key", Placeholder: testPlaceholder, Path: "/v1/"}, {Host: "r.example.com", Header: "Authorization", Placeholder: testAuthPlaceholder, Repos: []string{"octo/allowed"}},
 	}))
 	return listen(t, p, 443), ca, p, buf
 }
@@ -330,44 +330,43 @@ func TestNewSessionCARefusesBadInput(t *testing.T) {
 	}
 }
 
-func TestNewTerminateRule(t *testing.T) { // the host comes back canonical and the header lowercase, each rule gets a placeholder of its own, and a bad host, header, method, path or repository is refused, as are repositories beside a method or path
+func TestNewTerminateRule(t *testing.T) { // the host comes back canonical and the header lowercase, each rule gets a placeholder of its own, and a bad host, header, path or repository is refused, as are repositories beside a path
 	t.Parallel()
 	repo := func(repos ...string) []string { return repos }
 	cases := []struct {
-		host, header, method, path string
-		repos                      []string
-		ok                         bool
+		host, header, path string
+		repos              []string
+		ok                 bool
 	}{
-		{"API.example.com", "X-Api-Key", "", "", nil, true}, {"api.example.com.", "x-api-key", "POST", "/v1/", nil, true}, {"api.example.com", "x-api-key", "GET", "/", nil, true},
-		{"api.example.com", "authorization", "", "", repo("octo/allowed", "octo-org/my.repo_1", "0/0"), true},
-		{"192.0.2.1", "x-api-key", "", "", nil, false}, {"", "x-api-key", "", "", nil, false}, {"example.com", "x api key", "", "", nil, false}, {"example.com", "", "", "", nil, false},
-		{"example.com", "x-api-key", "post", "", nil, false}, {"example.com", "x-api-key", "P O", "", nil, false},
-		{"example.com", "x-api-key", "", "v1/", nil, false}, {"example.com", "x-api-key", "", "/v1?x", nil, false}, {"example.com", "x-api-key", "", "/v1#f", nil, false},
-		{"example.com", "x-api-key", "", "/v 1", nil, false}, {"example.com", "x-api-key", "", "/caf\u00e9", nil, false},
-		{"example.com", "authorization", "POST", "", repo("octo/allowed"), false}, {"example.com", "authorization", "", "/octo/", repo("octo/allowed"), false},
-		{"example.com", "authorization", "", "", repo("octo"), false}, {"example.com", "authorization", "", "", repo("octo/allowed/x"), false},
-		{"example.com", "authorization", "", "", repo("Octo/allowed"), false}, {"example.com", "authorization", "", "", repo("octo/allowed.git"), false},
-		{"example.com", "authorization", "", "", repo("octo/"), false}, {"example.com", "authorization", "", "", repo("/allowed"), false},
-		{"example.com", "authorization", "", "", repo("octo/.."), false}, {"example.com", "authorization", "", "", repo("./allowed"), false},
-		{"example.com", "authorization", "", "", repo("octo/a b"), false}, {"example.com", "authorization", "", "", repo("octo/allowed", ""), false},
+		{"API.example.com", "X-Api-Key", "", nil, true}, {"api.example.com.", "x-api-key", "/v1/", nil, true}, {"api.example.com", "x-api-key", "/", nil, true},
+		{"api.example.com", "authorization", "", repo("octo/allowed", "octo-org/my.repo_1", "0/0"), true},
+		{"192.0.2.1", "x-api-key", "", nil, false}, {"", "x-api-key", "", nil, false}, {"example.com", "x api key", "", nil, false}, {"example.com", "", "", nil, false},
+		{"example.com", "x-api-key", "v1/", nil, false}, {"example.com", "x-api-key", "/v1?x", nil, false}, {"example.com", "x-api-key", "/v1#f", nil, false},
+		{"example.com", "x-api-key", "/v 1", nil, false}, {"example.com", "x-api-key", "/caf\u00e9", nil, false},
+		{"example.com", "authorization", "/octo/", repo("octo/allowed"), false},
+		{"example.com", "authorization", "", repo("octo"), false}, {"example.com", "authorization", "", repo("octo/allowed/x"), false},
+		{"example.com", "authorization", "", repo("Octo/allowed"), false}, {"example.com", "authorization", "", repo("octo/allowed.git"), false},
+		{"example.com", "authorization", "", repo("octo/"), false}, {"example.com", "authorization", "", repo("/allowed"), false},
+		{"example.com", "authorization", "", repo("octo/.."), false}, {"example.com", "authorization", "", repo("./allowed"), false},
+		{"example.com", "authorization", "", repo("octo/a b"), false}, {"example.com", "authorization", "", repo("octo/allowed", ""), false},
 	}
 	seen := map[string]bool{}
 	for _, tc := range cases {
-		got, err := NewTerminateRule(tc.host, tc.header, tc.method, tc.path, tc.repos)
+		got, err := NewTerminateRule(tc.host, tc.header, tc.path, tc.repos)
 		if (err == nil) != tc.ok {
-			t.Errorf("NewTerminateRule(%q, %q, %q, %q, %q) = %v, want ok %t", tc.host, tc.header, tc.method, tc.path, tc.repos, err, tc.ok)
+			t.Errorf("NewTerminateRule(%q, %q, %q, %q) = %v, want ok %t", tc.host, tc.header, tc.path, tc.repos, err, tc.ok)
 		}
 		if err != nil {
 			continue
 		}
-		if got.Host != "api.example.com" || got.Header != strings.ToLower(tc.header) || got.Method != tc.method || got.Path != tc.path || !slices.Equal(got.Repos, tc.repos) || !IsPlaceholder(got.Placeholder) || seen[got.Placeholder] {
-			t.Errorf("NewTerminateRule(%q, %q, %q, %q, %q) = %+v", tc.host, tc.header, tc.method, tc.path, tc.repos, got)
+		if got.Host != "api.example.com" || got.Header != strings.ToLower(tc.header) || got.Path != tc.path || !slices.Equal(got.Repos, tc.repos) || !IsPlaceholder(got.Placeholder) || seen[got.Placeholder] {
+			t.Errorf("NewTerminateRule(%q, %q, %q, %q) = %+v", tc.host, tc.header, tc.path, tc.repos, got)
 		}
 		seen[got.Placeholder] = true
 	}
 }
 
-// TestTerminateNarrowedRule: a rule naming a method and a path prefix swaps a placeholder only on a request of that method under that prefix, and one naming repositories only on a request to /owner/name or /owner/name.git or under either, the placeholder bare, as a bearer or as a Basic password (as git sends a token), judged on the path as sent and as decoded; any other request carrying the placeholder in the bound header is refused before the broker hears of it, with nothing forwarded, and a request carrying no placeholder passes as is. The bytes the broker gave are wiped once the request carries them. Drop the check → the broker is asked and the upstream sees the value → FAIL.
+// TestTerminateNarrowedRule: a rule naming a path prefix swaps a placeholder only on a request under that prefix, of any method, and one naming repositories only on a request to /owner/name or /owner/name.git or under either, the placeholder bare, as a bearer or as a Basic password (as git sends a token), judged on the path as sent, which must be canonical; any other request carrying the placeholder in the bound header is refused before the broker hears of it, with nothing forwarded, and a request carrying no placeholder passes as is. The bytes the broker gave are wiped once the request carries them. Drop the check → the broker is asked and the upstream sees the value → FAIL.
 func TestTerminateNarrowedRule(t *testing.T) {
 	t.Parallel()
 	broker := &fakeBroker{value: "real-secret"}
@@ -380,10 +379,10 @@ func TestTerminateNarrowedRule(t *testing.T) {
 		code                                    int
 		body                                    string
 	}{
-		{"method and path match", n, "POST", "/v1/messages", "X-Api-Key", testPlaceholder, 200, "n.example.com real-secret"}, {"the prefix itself", n, "POST", "/v1/", "X-Api-Key", testPlaceholder, 200, "n.example.com real-secret"},
-		{"bearer under the prefix with a query", n, "POST", "/v1/x?q=1", "X-Api-Key", "Bearer " + testPlaceholder, 200, "n.example.com Bearer real-secret"}, {"other method", n, "GET", "/v1/messages", "X-Api-Key", testPlaceholder, 403, ""},
-		{"method in another case", n, "post", "/v1/messages", "X-Api-Key", testPlaceholder, 403, ""}, {"other path", n, "POST", "/v2/no", "X-Api-Key", testPlaceholder, 403, ""},
-		{"the prefix without its slash", n, "POST", "/v1", "X-Api-Key", testPlaceholder, 403, ""}, {"dot segments leading out", n, "POST", "/v1/../v2/no", "X-Api-Key", testPlaceholder, 403, ""},
+		{"path match", n, "POST", "/v1/messages", "X-Api-Key", testPlaceholder, 200, "n.example.com real-secret"}, {"the prefix itself", n, "POST", "/v1/", "X-Api-Key", testPlaceholder, 200, "n.example.com real-secret"},
+		{"bearer under the prefix with a query", n, "POST", "/v1/x?q=1", "X-Api-Key", "Bearer " + testPlaceholder, 200, "n.example.com Bearer real-secret"}, {"another method", n, "GET", "/v1/messages", "X-Api-Key", testPlaceholder, 200, "n.example.com real-secret"},
+		{"other path", n, "POST", "/v2/no", "X-Api-Key", testPlaceholder, 403, ""},
+		{"the prefix without its slash", n, "POST", "/v1", "X-Api-Key", testPlaceholder, 200, "n.example.com real-secret"}, {"dot segments leading out", n, "POST", "/v1/../v2/no", "X-Api-Key", testPlaceholder, 403, ""},
 		{"encoded dot segments", n, "POST", "/v1/%2e%2e/v2/no", "X-Api-Key", testPlaceholder, 403, ""}, {"encoded slash", n, "POST", "/v1%2Fx", "X-Api-Key", testPlaceholder, 403, ""},
 		{"no placeholder", n, "GET", "/v2/no", "X-Api-Key", "user-key", 200, "n.example.com user-key"},
 		{"a clone's refs within the repository", r, "GET", "/octo/allowed.git/info/refs?service=git-upload-pack", auth, basic(testAuthPlaceholder), 200, swapped}, {"a fetch", r, "POST", "/octo/allowed.git/git-upload-pack", auth, basic(testAuthPlaceholder), 200, swapped},

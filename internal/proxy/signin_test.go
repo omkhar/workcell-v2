@@ -93,7 +93,7 @@ func TestHide(t *testing.T) {
 	}
 }
 
-func TestTokenEndpoint(t *testing.T) { // a path a case-folding router, or one that drops a ;param suffix from a segment, would serve as the endpoint is the endpoint; another path is not. Match only the exact spelling → the guest reads the unrewritten answer of /OAUTH/TOKEN → FAIL (I5).
+func TestTokenEndpoint(t *testing.T) { // the endpoint's path in any letter case is the endpoint, since a case-folding router serves it so; another path is not, and a spelling that is not canonical (a ;param, an escape, a dot segment) is not claimed here: serveTerminated refuses it on a sign-in host before this runs (c10_test.go). Match only the exact spelling → the guest reads the unrewritten answer of /OAUTH/TOKEN → FAIL (I5).
 	t.Parallel()
 	rule := TerminateRule{Host: "api.example.com", SignIn: &SignIn{Host: "login.example.com", Path: tokenEndpointPath}}
 	p := &Proxy{signin: map[string][]TerminateRule{"login.example.com": {rule}}}
@@ -101,9 +101,9 @@ func TestTokenEndpoint(t *testing.T) { // a path a case-folding router, or one t
 		host, target string
 		want         bool
 	}{
-		{"login.example.com", "/oauth/token", true}, {"login.example.com", "/OAUTH/TOKEN", true}, {"login.example.com", "/oauth/Token", true},
-		{"login.example.com", "/oauth/token;jsessionid=1", true}, {"login.example.com", "/oauth;v=2/token", true}, {"login.example.com", "/oauth/token%3Bx", true},
-		{"login.example.com", "/oauth/%54oken/", true}, {"login.example.com", "/oauth/./x/../token?refresh_token=1", true}, {"login.example.com", "/oauth/token;", true},
+		{"login.example.com", "/oauth/token", true}, {"login.example.com", "/OAUTH/TOKEN", true}, {"login.example.com", "/oauth/Token", true}, {"login.example.com", "/oauth/token?refresh_token=1", true},
+		{"login.example.com", "/oauth/token;jsessionid=1", false}, {"login.example.com", "/oauth;v=2/token", false}, {"login.example.com", "/oauth/token%3Bx", false},
+		{"login.example.com", "/oauth/%54oken/", false}, {"login.example.com", "/oauth/./x/../token?refresh_token=1", false}, {"login.example.com", "/oauth/token;", false},
 		{"login.example.com", "/oauth/tokens", false}, {"login.example.com", "/oauth/token/x", false}, {"login.example.com", "/oauth/revoke", false},
 		{"login.example.com", "/oauth/token%2Fx", false}, {"api.example.com", "/oauth/token", false},
 	}
@@ -280,7 +280,7 @@ func send(t *testing.T, c *http.Client, method, target, ctype, body string, head
 	return code, got
 }
 
-// TestSignInFlow: before a sign-in the access placeholder is refused; a sign-in's answer reaches the guest with the two placeholders in place of the tokens and a fresh Content-Length; the access placeholder then goes out as the real access token, the refresh placeholder in a form or a JSON grant as the real refresh token, and after a refresh the same access placeholder is the new token; a 400 that echoes the refresh token is hidden too; and either placeholder anywhere else is refused or passed as it is. Drop tokenResponse → the guest reads a real token → FAIL.
+// TestSignInFlow: before a sign-in the access placeholder is refused; a sign-in's answer reaches the guest with the two placeholders in place of the tokens and a fresh Content-Length; the access placeholder then goes out as the real access token, the refresh placeholder in a form or a JSON grant as the real refresh token, and after a refresh the same access placeholder is the new token; a 400 that echoes the refresh token is hidden too; either placeholder anywhere else is refused or passed as it is; and a spelling of the endpoint that is not canonical is refused before the provider sees it. Drop tokenResponse → the guest reads a real token → FAIL.
 func TestSignInFlow(t *testing.T) {
 	t.Parallel()
 	p := &provider{}
@@ -308,7 +308,7 @@ func TestSignInFlow(t *testing.T) {
 		{"refresh in the endpoint's query", "GET", login + tokenEndpointPath + "?refresh_token=" + testRefreshPlaceholder, "", "", "", 502, "", ""},
 		{"refresh in another field", "POST", login + tokenEndpointPath, js, `{"code":"` + testRefreshPlaceholder + `"}`, "", 502, "", ""},
 		{"access in the grant", "POST", login + tokenEndpointPath, form, "grant_type=refresh_token&refresh_token=" + testPlaceholder, "", 502, "", ""},
-		{"encoded endpoint path", "POST", login + "/oauth/%74oken", form, "grant_type=authorization_code&code=c0de", "", 200, tokens, ""},
+		{"encoded endpoint path", "POST", login + "/oauth/%74oken", form, "grant_type=authorization_code&code=c0de", "", 400, "", ""}, // not canonical: refused before any judge, and the provider never sees it (ADR-006)
 		{"refresh at the API host", "POST", api + tokenEndpointPath, form, "refresh_token=" + testRefreshPlaceholder, "", 200, "", "POST api.example.com/oauth/token auth= body=refresh_token=" + testRefreshPlaceholder},
 		{"refresh at another path", "POST", login + "/oauth/revoke", form, "token=" + testRefreshPlaceholder, "", 200, "", "POST login.example.com/oauth/revoke auth= body=token=" + testRefreshPlaceholder},
 	}
@@ -329,7 +329,7 @@ func TestSignInFlow(t *testing.T) {
 	for _, d := range denies(t, px, log) {
 		reasons[d.Reason]++
 	}
-	if want := map[string]uint64{"broker_denied": 1, "placeholder_unswapped": 6}; fmt.Sprint(reasons) != fmt.Sprint(want) {
+	if want := map[string]uint64{"broker_denied": 1, "placeholder_unswapped": 6, "target_refused": 1}; fmt.Sprint(reasons) != fmt.Sprint(want) {
 		t.Errorf("deny reasons = %v, want %v", reasons, want)
 	}
 }

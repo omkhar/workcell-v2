@@ -57,14 +57,14 @@ type Update struct {
 
 // Secret is one [[secret]] row: the secret Name, read on the host from Source, is sent only
 // in Header to Host (both "" when a provider's secret of that name is to fill them in). Env names
-// the guest variable that carries its placeholder, Method and Path narrow the swap to requests of
-// that method under that path prefix; each is "" when the row leaves it out. Repos is the repos
-// array, the git repositories "owner/name" the swap is narrowed to instead; nil when left out.
-// Line is the row's, for an error that names it.
+// the guest variable that carries its placeholder, Path narrows the swap to requests under that
+// path prefix; each is "" when the row leaves it out. Repos is the repos array, the git
+// repositories "owner/name" the swap is narrowed to instead; nil when left out. Line is the row's,
+// for an error that names it.
 type Secret struct {
-	Name, Source, Host, Header, Env, Method, Path string
-	Repos                                         []string
-	Line                                          int
+	Name, Source, Host, Header, Env, Path string
+	Repos                                 []string
+	Line                                  int
 }
 
 // Entry is one string of an array and the line it stands on, for an error that names it.
@@ -275,13 +275,13 @@ func Tables(text, name string) ([]Table, error) {
 	return doc, nil
 }
 
-// secretRow reads one [[secret]] table: name and source, each a string, with host, header, env,
-// method and path optional, repos an optional array of strings, and nothing else. An empty string
+// secretRow reads one [[secret]] table: name and source, each a string, with host, header, env
+// and path optional, repos an optional array of strings, and nothing else. An empty string
 // or array is as good as no key. A row without host and header names a provider's secret, which
 // supplies them (cmd/workcell).
 func secretRow(t Table, name string) (Secret, error) {
 	s := Secret{Line: t.Line}
-	fields := map[string]*string{"name": &s.Name, "source": &s.Source, "host": &s.Host, "header": &s.Header, "env": &s.Env, "method": &s.Method, "path": &s.Path}
+	fields := map[string]*string{"name": &s.Name, "source": &s.Source, "host": &s.Host, "header": &s.Header, "env": &s.Env, "path": &s.Path}
 	for key, v := range t.Keys {
 		if key == "repos" {
 			if !v.List {
@@ -294,7 +294,7 @@ func secretRow(t Table, name string) (Secret, error) {
 		}
 		field, ok := fields[key]
 		if !ok {
-			return Secret{}, fmt.Errorf("%s:%d: unknown key %q in [[secret]]: name, source, host, header, env, method, path and repos are the keys", name, v.Line, key)
+			return Secret{}, fmt.Errorf("%s:%d: unknown key %q in [[secret]]: name, source, host, header, env, path and repos are the keys", name, v.Line, key)
 		}
 		if v.List || v.Int {
 			return Secret{}, fmt.Errorf("%s:%d: %s must be a string", name, v.Line, key)

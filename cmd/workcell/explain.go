@@ -69,9 +69,9 @@ func cacheText(caches []vmm.Cache) (string, error) {
 	return b.String(), nil
 }
 
-// bound is the secrets part: each by name, with the host and header it goes out in, the method
-// and path prefix or the repositories it is narrowed to, the token endpoint that issues it when its source is a
-// sign-in flow, and and the guest variable that holds its placeholder. Never its value (I5).
+// bound is the secrets part: each by name, with the host and header it goes out in, the path
+// prefix or the repositories it is narrowed to, the token endpoint that issues it when its source is a
+// sign-in flow, and the guest variable that holds its placeholder. Never its value (I5).
 func bound(secrets []binding) string {
 	if len(secrets) == 0 {
 		return "secrets: none\n"
@@ -80,9 +80,6 @@ func bound(secrets []binding) string {
 	b.WriteString("secrets: swapped in by the session proxy; the guest holds a placeholder\n")
 	for _, s := range secrets {
 		fmt.Fprintf(&b, "  %s: in %s to https://%s", s.grant.Name, s.rule.Header, s.rule.Host)
-		if s.rule.Method != "" {
-			fmt.Fprintf(&b, ", %s only", s.rule.Method)
-		}
 		if s.rule.Path != "" {
 			fmt.Fprintf(&b, ", under %s", s.rule.Path)
 		}

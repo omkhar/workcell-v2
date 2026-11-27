@@ -13,7 +13,6 @@ import (
 	"mime"
 	"net/http"
 	"net/url"
-	"path"
 	"regexp"
 	"strconv"
 	"strings"
@@ -51,28 +50,18 @@ func validPath(p string) bool {
 	return p != "" && p[0] == '/' && !strings.ContainsAny(p, "?#") && strings.IndexFunc(p, func(c rune) bool { return c < '!' || c > '~' }) < 0
 }
 
-// tokenEndpoint returns the rule whose token endpoint a request to u on host goes to: one whose path a common router would read as u's, taken as sent or under either fold, in any case. The match is wide because a request taken for the endpoint is only read whole and rewritten, while an answer to a request not taken for it passes unread unless tokenResponse can tell it for a token answer (I5).
+// tokenEndpoint returns the rule whose token endpoint a request to u on host goes to: one whose path is u's in any letter case. The path is canonical, since serveTerminated refuses any other on a sign-in host, so a case-folding router is the one reading left; the over-claim is kept because a request taken for the endpoint is only read whole and rewritten, while an answer to a request not taken for it passes unread unless tokenResponse can tell it for a token answer (I5).
 func (p *Proxy) tokenEndpoint(host string, u *url.URL) (TerminateRule, bool) {
-	sent := u.EscapedPath()
 	for _, r := range p.signin[host] {
-		if strings.EqualFold(sent, r.SignIn.Path) || strings.EqualFold(fold(sent), r.SignIn.Path) || strings.EqualFold(fold(opaque(sent)), r.SignIn.Path) {
+		if strings.EqualFold(u.EscapedPath(), r.SignIn.Path) {
 			return r, true
 		}
 	}
 	return TerminateRule{}, false
 }
 
-// params is a ;param suffix of a path segment; sep an encoded slash or backslash; tokenName either key of a token answer, in any case, for tokenAnswer.
-var params, sep, tokenName = regexp.MustCompile(`;[^/]*`), regexp.MustCompile(`(?i)%(2F|5C)`), regexp.MustCompile(`(?i)access_token|refresh_token`)
-
-// fold reads a path as sent the way a router that cuts ;params from each segment before it decodes (so a param hides an encoded slash) and again after, takes a backslash for a slash and then resolves dot segments does. PathUnescape cannot fail on a path as sent; were it to, "." matches nothing.
-func fold(escaped string) string {
-	p, _ := url.PathUnescape(params.ReplaceAllString(escaped, ""))
-	return path.Clean(strings.ReplaceAll(params.ReplaceAllString(p, ""), `\`, "/"))
-}
-
-// opaque doubly encodes each encoded separator of a path as sent, so that fold reads it as a router that resolves dot segments before it decodes does (C33).
-func opaque(escaped string) string { return sep.ReplaceAllString(escaped, "%25$1") }
+// tokenName is either key of a token answer, in any case, for tokenAnswer.
+var tokenName = regexp.MustCompile(`(?i)access_token|refresh_token`)
 
 // tokenRequest reads the body of a request to rule's token endpoint and swaps the refresh placeholder in its refresh_token field for the refresh token the broker releases. It returns the body the request now carries and a copy of that refresh token, both for the caller to wipe once the request has gone, and a reason to refuse the request: a body over the bound, a broker that withholds the token, or a placeholder the body still carries anywhere else (I5). Accept-Encoding is dropped so that the answer comes back plain, or gzipped by a server that insists, which tokenResponse undoes.
 func (p *Proxy) tokenRequest(r *http.Request, rule TerminateRule) (body, refresh []byte, reason string) {

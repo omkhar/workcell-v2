@@ -118,7 +118,7 @@ func placeholderEnv(secrets []binding) (env []string) {
 
 var envName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`) // a variable name as the guest's environment takes it
 
-// bindings turns the policy's [[secret]] rows into the session's bindings, one fresh placeholder each. The proxy judges host, header, method, path and repos (A3); the host must then be a bare name of the allow list, so that the proxy terminates it and swaps there (I6), as must the host of a sign-in source, and env must be a variable name. Two rows on one header of one host, or on one token endpoint, are refused by the proxy. A row with a name and source but no host and no header takes them, and env unless it gives one, from the provider secret of that name: a convenience that grants nothing, since the host must still be in the allow list (I13); the provider's prefix needs no rule, as the proxy keeps a "Bearer " the guest sends before the placeholder. A fault is reported with its line.
+// bindings turns the policy's [[secret]] rows into the session's bindings, one fresh placeholder each. The proxy judges host, header, path and repos (A3); the host must then be a bare name of the allow list, so that the proxy terminates it and swaps there (I6), as must the host of a sign-in source, and env must be a variable name. Two rows on one header of one host, or on one token endpoint, are refused by the proxy. A row with a name and source but no host and no header takes them, and env unless it gives one, from the provider secret of that name: a convenience that grants nothing, since the host must still be in the allow list (I13); the provider's prefix needs no rule, as the proxy keeps a "Bearer " the guest sends before the placeholder. A fault is reported with its line.
 func bindings(p policy.Policy, allow *proxy.Allowlist, file string) ([]binding, error) {
 	var out []binding
 	for _, s := range p.Secret {
@@ -134,7 +134,7 @@ func bindings(p policy.Policy, allow *proxy.Allowlist, file string) ([]binding, 
 		if s.Host == "" || s.Header == "" {
 			return nil, fmt.Errorf("%s: host and header are missing: name a provider's secret or give host and header", at)
 		}
-		rule, err := proxy.NewTerminateRule(s.Host, s.Header, s.Method, s.Path, s.Repos)
+		rule, err := proxy.NewTerminateRule(s.Host, s.Header, s.Path, s.Repos)
 		if err == nil && strings.HasPrefix(s.Source, "signin:") {
 			rule.SignIn, err = proxy.NewSignIn(s.Source)
 			if err == nil && len(s.Repos) > 0 {

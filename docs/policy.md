@@ -35,17 +35,14 @@ that one TCP port as it is. IP addresses are refused. With no entry, the guest h
   both, or neither and let a provider fill them in ([providers](providers.md)). A host and header pair
   can be bound once.
 - `env` is the guest variable that holds the placeholder. Leave it out and the guest gets no variable.
-- `method` and `path` narrow the swap to requests with that method, under that path prefix. Any other
-  request gets a 403, and the value is not read; so does one carrying a method or path override such as
-  `X-HTTP-Method-Override` or `_method` as a header or query parameter, in any spelling a server folds
-  to it (letter case, leading spaces, a NUL ending the name, `-`, `.` or a space for `_`). A `method`
-  rule also refuses a request whose body a web framework could read the method from:
-  `application/x-www-form-urlencoded`, any `multipart/*`, a body with no readable `Content-Type`, one
-  whose `Content-Type` holds `json` in any letter case, or any body sent beside a second spelling of
-  that header, such as `Content_Type`, which some servers read instead. The body itself is never read.
-  So `method` suits requests without a body; for an API that takes JSON, narrow with `path` alone.
-- `repos` is a list of `owner/name` repositories. It narrows the swap to git requests for them, and
-  cannot be combined with `method` or `path`.
+- `path` narrows the swap to requests under that path prefix, judged on the path as the upstream
+  receives it, which must have one reading: no `.` or `..` segment, no empty segment, no `;`, no
+  backslash and no percent-escape the proxy would not write itself (`%2F` for a slash, `%41` for `A`).
+  Any other request gets a 403, and the value is not read; so does one carrying an `X-Original-URL` or
+  `X-Rewrite-URL` header in any spelling a CGI-style server folds to it. The method, the query and the
+  body are not judged: the rule names no method, so nothing in them can move it.
+- `repos` is a list of `owner/name` repositories. It narrows the swap to git requests for them, at
+  such paths, and cannot be combined with `path`.
 
 ### [workspace], [resources], [update]
 
