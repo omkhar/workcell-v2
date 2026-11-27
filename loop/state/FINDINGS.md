@@ -9929,3 +9929,127 @@ sweeps.
 Sweep 4 verdict for this surface: no candidates, so it adds nothing at medium or above; sweep 4 already holds one
 confirmed medium on S-1002 (C87, fixed), which S-1017 counts (S8). No model declined and no safeguard re-ran a
 request.
+
+## S-1004, sweep 4: network path and proxy core: routing, SNI, ECH, connection handling, fail-closed behaviour (I2, I4, I11), as built at main 5dd34dd
+
+Sweep 4 (S8), the one further sweep that the maintainer allowed on 2026-11-26 after ADR-006, fresh context (S3),
+the whole surface read as built after S-F73, not a diff. Auditor on the top tier in the cloud session, which has
+no hypervisor and is Linux, as root, so the namespace probes ran for real and nothing ran on a VM or on macOS.
+The auditor wrote its own trust boundary and worked every lens before it opened any earlier record. No candidate.
+
+Trust boundary. Guest root owns every byte of every AF_VSOCK stream it opens to host port 5001, and their count,
+rate, timing and closing: on Linux Firecracker connects each to the unix socket vsock_5001 in the session's 0700
+MkdirTemp directory (muxer cap 1023), on macOS to vz's listener (backlog 16). First host code is serveRelay in
+cmd/workcell/relay.go (1024 slots), then stream: a 5 s deadline, io.ReadFull of exactly 20 bytes, relay.Decode
+(length 20, version 1, proto 6 or 17). Proto 17 at port 53: one ReadFrame of at most 65535 bytes to
+resolver.Answer under the same deadline, one reply, close. Proto 6 to a port in allow.Ports(): the deadline is
+lifted and the connection goes to that port's adapter, which proxy.Serve (1024 slots) takes into handle and
+route: the forward map, or the crypto/tls ClientHello peek on a 16 KiB recording connection under 10 s, ECH
+extension 0xfe0d refused, ToLower with a length check, exact allowlist membership; then one Allowed record that
+gates admission (I9); then serveTerminated for every SNI host (443 is never spliced in the product) or connect:
+one rooted LookupNetIP (10 s), hostNets read on every connection (interface prefixes plus the netlink route dump
+of routes_linux.go: every local row and every on-link unicast row of more than 0 bits, both families, all
+tables; routes_other.go returns nothing on a Mac), blockedAddr on every answer before any dial, a 30 s budget
+shared across answers, the dial by literal, a splice with no idle timeout. Anything else closes the stream; a TCP
+header to an unserved port is recorded port_not_allowed. The network attacker owns the host resolver's answers
+for allowed names (the rebind model) and the upstream bytes after the dial, raw on a forward port and x509-bound
+on 443. The repository reaches this surface only by narrowing (S-1009) and, under --mount, by the working
+directory (C86, fixed). Authority: the supervisor `workcell run`, one process (A9), with the operator's uid and
+network reach, holding the VMM child, the session CA key, the broker and the audit log. The guest-side code of
+cmd/workcell-init/net.go enforces nothing (A1); no backend has a network device, so I2 reduces to the relay's
+and the proxy's admission. Ported (`// Ported from v1`): internal/proxy/proxy.go, allowlist.go, terminate.go
+and their tests, and internal/audit/lines.go. Not ported: routes_linux.go, routes_other.go, signin.go,
+internal/relay, internal/resolver, cmd/workcell/relay.go, run_vm.go, the init and both backends.
+
+Lenses (S9). Parsing and resources: the header is a fixed 20-byte array read under an absolute deadline before
+any allocation, and Decode is total; a DNS frame is one allocation of at most 65535 bytes; the hello is parsed by
+crypto/tls on a connection capped at 16 KiB under 10 s; forward ports are never parsed; slots cap at 1024 twice
+and Firecracker's 1023 keeps the relay below its cap; the route dump is read in parts with truncation checked.
+The cost of hostNets on each connection, measured: 52 microseconds with a base table and 1.21 ms with 3072 extra
+routes, bounded in total by the audit log's soft limit of about 55 thousand admissions (I10). Logic and state: a
+port other than 443 routes to the forward map's one host and 443 by SNI; no non-ASCII name of equal length
+matches an ASCII key; crypto/tls rejects a trailing-dot or duplicate server_name; the lowered name serves the
+leaf, the rewrite and the record; the served ports are the init's list; ParseAllowlist refuses IP literals, port
+0, names that are not DNS names and two hosts on one forward port; routes() keeps local rows of any table and
+on-link unicast rows, skips gateway, default, broadcast, multicast and unreachable rows, and refuses a malformed
+row, a cut part and a netlink error. Concurrency and check-to-use: one lookup per connection, every answer vetted
+before any dial, the dial by literal, no second lookup; the terminated transport's dial re-enters connect for each
+upstream connection and refuses a host outside the terminated set; the fields that Terminate writes are written
+before any Serve goroutine starts; every relay connection is closed once and frees its slot once; the Allowed
+record precedes the dial. Cryptography and identity: SNI is routing identity only; the leaf is issued for the
+lowered SNI under a CA with critical name constraints; ALPN is http/1.1 alone; ECH is refused by extension type
+on the outer hello before any name is read; upstream identity on 443 is x509 with the SNI host as ServerName,
+TLS 1.2 at least, and no proxy from the environment; forward ports carry no identity, by the operator's grant
+(ADR-003); DNS answers are vetted, never trusted. Failure modes: every error path refuses or closes: a deadline
+or a failed peek is no_sni, a lookup error or an empty set resolve_failed, an unreadable interface list or route
+dump or one blocked answer blocked_address, a dial failure dial_failed; a failed record dials nothing (S-F16); a
+nil log refuses everything; serveRelay ends on any Accept error and closes every adapter, which ends every Serve
+loop; a panic in handle would end the supervisor and so the VM (I11); Firecracker dies with the supervisor by
+Pdeathsig and vz's VM with the process. Downgrade, rollback and replay: header version 1 only; TLS 1.2 at
+least on both sides; a replayed stream is another connection that meets the same checks; the relay holds no
+state across streams; there is no DNS cache; the transport reuses a connection only to a host it vetted.
+Interaction: DNS frames to the resolver in the same process (S-1006), 443 to serveTerminated (S-1005; the
+hand-off, the choice of leaf and the host closure belong to this surface and ADR-006 did not change them), every
+refusal and admission to the audit log (S-1010), the sockets in the 0700 directory that S-F20, S-F21, S-F35 and
+S-F48 keep out of every export (S-1003); the machine's Close ends the listeners and so the Serve loops (A9).
+
+Refuted before anything was raised: a macOS twin of C66 and C69 (routes_other.go reads no table; S-F49 left it
+for a unit of its own and PARKED.md holds it; no Mac here and no new evidence); VPN on-link half-defaults and a
+local default in a marked table (they block everything, toward refusal); a stream shed at the 1024 cap leaving
+no record (C8's refutation stands); GREASE ECH clients refused as no_sni (parked); a route change during the
+dump (host root's act, parked); multipath routes read as on-link (over-blocking, parked); serveRelay ending on
+EMFILE (fails closed, parked); a forward port whose host is also terminated at 443 (raw by the operator's
+grant); a non-ASCII SNI of equal byte length (never an allowlist key); /etc/hosts entries for allowed names
+(loopback is blocked); X-Forwarded-For showing the relay address (the rewrite strips it); a secret or a CA in
+the kernel command line (none); the proxy as a pivot to networks behind a routed gateway (outside I4's list,
+C9's residual, for the report); UDP to a port other than 53 leaving no record (C14, intended).
+
+Recorded fixes, each traced as built and run, all holding: C7 (S-F4, the 168.63.129.16/32 row and TestBlockedAddr),
+C70 (S-F53, 192.80.8.124/32), C66 (S-F49) and C69 (S-F52) (hostNets appends the route dump to the interface
+prefixes; TestRoutes and TestC69AnyIPLocalRoute pass as root), C13 (S-F8, the three transport limits,
+TestUpstreamHandshakeEndsWithTheGuest green under -race), C23 and C24 (S-F16, handle acts only on a recorded
+connection), B-835 (the 16 KiB hello cap), C11 (S-F6), C27 (S-F19), C30 and C53 (S-F22, S-F36, upstreamRoots),
+and the hand-off of S-F72 into serveTerminated (TestSF72AdmittedPathReachesUpstreamAsJudged green). C8 refuted
+and C14 intended stand.
+
+Ran, by the auditor, in a scratch directory and with nothing added to the repository; every target a process,
+socket or namespace that the probe itself started (S12, T8). go test -count=1 green on internal/proxy,
+internal/relay, internal/resolver and cmd/workcell; the relay, routing, connect, peek, forward, unrecorded, C13,
+C27, C11, SF72, C69 and TestRoutes tests green under -race; go vet clean on the five packages. By an overlay test
+in package proxy, in a user and network namespace of its own with 192.175.48.1/32 on lo, an on-link
+192.175.48.0/25, a local 192.175.49.0/25, 192.175.50.0/24 by a gateway and an on-link /24 in table 100: nine
+blockedAddr rows, connect with a recording dial over eight addresses and one real connect to a listener at the
+AnyIP address, all as the fixes say (the on-link, AnyIP, own-address, table-100 and mapped rows blocked; the
+gateway row, .129 outside the /25 and a public address dialled); and 3072 routes added by netlink came back as
+3075 prefixes across a multi-part dump. Fuzz bursts with no failure: FuzzDecode 2.10 million executions in 15 s,
+FuzzReadFrame 2.01 million in 15 s, FuzzPeekSNI 171,471 in 20 s (about 8,500 a second here, where sweep 3 had 45
+a second). A 20 s fuzz of routes() over hand-built dumps, which no guest byte reaches, gave one input that is
+the subject of the first note below.
+
+Coverage. Read in full: internal/proxy (proxy, allowlist, routes_linux, routes_other, terminate, signin and the
+tests of this surface); internal/relay; internal/resolver/resolver.go; internal/audit (audit, lines);
+internal/wire/wire.go; internal/guest/trust.go; internal/vmm/vmm.go, firecracker/firecracker.go and vz (vz,
+args); in cmd/workcell the files relay, run_vm, session, backend_linux, backend_darwin, caps, policy, data, main,
+log, ocsf, pull_vm, bench_vm and cache_vm; cmd/workcell-init as data (A1); the suite's and the harness's files of
+this surface; ADR-003 and the accepted ADR-006; the S-1004 records of sweeps 1, 2 and 3 and PARKED.md, after the
+audit's own pass. Skimmed: internal/secret/broker.go by its signatures. Not examined: the tests c10, c33, c55,
+c67 and c68 of internal/proxy (S-1005's), internal/resolver's tests, internal/fileserve, internal/workspace,
+the bodies of internal/secret and internal/policy, docs/policy.md and docs/threat-model.md, `_legacy/`. Not run:
+anything on a real VM, the escape suite by the auditor, any macOS or vz path (vz.go was read only), any IPv6
+layout (this session's kernel has no IPv6, so the IPv6 half of routes() rests on TestRoutes' hand-built rows, as
+in sweep 3), the four-hour fuzz of S10. The clone is shallow, so the change since sweep 3 was taken from the
+records and not from git.
+
+### S-1004 candidates, sweep 4
+
+None. The auditor raised no candidate: nothing at medium or above, and nothing at low that names an invariant an
+in-scope attacker puts at risk with a reproducible input (R2). So no reproducing test was written, no verifier
+ran, no fix unit is added and escape/_pending/ stays absent; the next candidate number is still C88 and the next
+fix unit S-F74. Four shapes are R3 notes, in PARKED.md. The first is a hardening note on how routes() reads the
+kernel's route dump: no attacker of section 2 writes those bytes, and if it were reached the supervisor would
+end and the VM with it (I11, fail closed), so it is no weakness as section 13 defines one; its detail is not
+written here and stays in the run's transcript, for the maintainer.
+
+Sweep 4 verdict for this surface: no candidates, so it adds nothing at medium or above; sweep 4 already holds one
+confirmed medium on S-1002 (C87, fixed), which S-1017 counts (S8). No model declined and no safeguard re-ran a
+request.
