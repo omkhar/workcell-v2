@@ -407,6 +407,8 @@ func sameBytes(root int, e guest.Entry, data source, check bool) (bool, error) {
 		}
 		f = os.NewFile(uintptr(fd), shown(e.Path))
 		defer f.Close()
+		var st unix.Stat_t // what took the name since the walk and is not a regular file differs, and is never read: a FIFO with a silent writer would park the read (I12, C87)
+		check = unix.Fstat(fd, &st) == nil && uint32(st.Mode)&unix.S_IFMT == unix.S_IFREG
 	}
 	mine := make([]byte, wire.MaxPayload)
 	for left := e.Size; left > 0; {

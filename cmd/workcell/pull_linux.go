@@ -19,7 +19,7 @@ func createBeneath(dir int, name string, mode uint32) (int, error) {
 	return unix.Openat2(dir, name, &unix.OpenHow{Flags: unix.O_WRONLY | unix.O_CREAT | unix.O_EXCL | unix.O_NOFOLLOW | unix.O_CLOEXEC, Mode: uint64(mode), Resolve: unix.RESOLVE_BENEATH | unix.RESOLVE_NO_SYMLINKS | unix.RESOLVE_NO_XDEV})
 }
 
-// fileBeneath opens the file rel beneath root for reading.
+// fileBeneath opens the file rel beneath root for reading. O_NONBLOCK, so that a FIFO at the name cannot hold the open (I12, C87).
 func fileBeneath(root int, rel string) (int, error) {
-	return unix.Openat2(root, rel, &unix.OpenHow{Flags: unix.O_RDONLY | unix.O_NOFOLLOW | unix.O_CLOEXEC, Resolve: unix.RESOLVE_BENEATH | unix.RESOLVE_NO_SYMLINKS | unix.RESOLVE_NO_XDEV})
+	return unix.Openat2(root, rel, &unix.OpenHow{Flags: unix.O_RDONLY | unix.O_NOFOLLOW | unix.O_NONBLOCK | unix.O_CLOEXEC, Resolve: unix.RESOLVE_BENEATH | unix.RESOLVE_NO_SYMLINKS | unix.RESOLVE_NO_XDEV})
 }

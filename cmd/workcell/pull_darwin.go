@@ -21,7 +21,7 @@ func createBeneath(dir int, name string, mode uint32) (int, error) {
 	return unix.Openat(dir, name, unix.O_WRONLY|unix.O_CREAT|unix.O_EXCL|unix.O_NOFOLLOW_ANY|unix.O_CLOEXEC, mode)
 }
 
-// fileBeneath opens the file rel beneath root for reading.
+// fileBeneath opens the file rel beneath root for reading. O_NONBLOCK, so that a FIFO at the name cannot hold the open (I12, C87).
 func fileBeneath(root int, rel string) (int, error) {
-	return unix.Openat(root, rel, unix.O_RDONLY|unix.O_NOFOLLOW_ANY|unix.O_CLOEXEC, 0)
+	return unix.Openat(root, rel, unix.O_RDONLY|unix.O_NOFOLLOW_ANY|unix.O_NONBLOCK|unix.O_CLOEXEC, 0)
 }
