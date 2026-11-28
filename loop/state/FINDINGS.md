@@ -11931,3 +11931,29 @@ Source of internal/audit/c94_test.go (69 lines):
     		}
     	})
     }
+
+C94 FIXED by S-F80, commit d3c9caa (PR #377), in the shape its unit line chose. append in
+internal/audit/audit.go ends the log at the end record: when the write of a session_end record has returned nil
+it sets the log's failed state to ErrClosed in the same critical section, so every later Note and Record returns
+`audit: the log is closed` and adds no line to the log or the seal, and Close goes on closing both files and
+returns what it returned before. Nothing in cmd/workcell/run_vm.go changed and no handler is joined, so the
+broker's writer is under the same rule as the proxy's. Against main: audit.go 11 lines added and 8 removed, the
+two `return ErrFull` arms of the overflow branch folded into one with one log_full marker and then ErrFull as
+before, and the Proxy literal of New in internal/proxy/proxy.go three lines shorter to pay the rest; product
+15000 of 15000, test 28498 of 28500, the test's 69 lines paid by 65 lines of folds in sixteen test files, line
+breaks alone (checked by the orchestrator, with all white space and a comma before a closing bracket taken out
+of both sides, and by the reviewer on the token stream). The test is internal/audit/c94_test.go, the source
+above with lines 4 to 6 of its head reworded and no other byte changed: on the claim f0d99e1 its finding arm
+fails in 10 of 10 runs plain and 10 of 10 under -race, 256 to 263 records after session_end with Verify nil,
+and on d3c9caa it passes 10 of 10 both ways, its control arm passing on both trees. The variants the test does
+not express, each run by the builder and again by the reviewer on both trees: a durable Record of a secret use
+after the end, a session_start after it, a Note and a second session_end are each refused with no byte added,
+where main took all four; a session whose end record itself fails is left as on main, failed with the write's
+error and not ErrClosed, later writers refused with that error, Close closing the log file, and verify calling
+it incomplete, which is true of it; Close after a good end returns nil. Nothing honest records after the end
+today: the only writers are session() and newSession in run_vm.go, Deny in proxy.go and record in
+internal/secret/broker.go, the VMM is dead before the end record is written, a start that fails in newSession
+writes no end, a start that fails at the export or the boot writes session_end failed last, and the pull and
+bench boots hold a nil log. No Event is taken from guest bytes, so a guest cannot have the end record written
+early. Not shown: no real session ran on a VM in the cloud session; the hosted gate ran its I9 rows on d3c9caa.
+also in v1 main: egressproxy/proxy.go, the trigger alone (the `no_sni` refusal); the defect was v2's own.
