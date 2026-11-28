@@ -10315,3 +10315,153 @@ slash, a percent or a dot segment. Its notes are one line in PARKED.md. Not show
 or on macOS before the hosted gate, and no real front end was run against the fix, only the Go model of the test.
 With C88 fixed, sweep 4 holds two confirmed mediums, C87 and C88, both fixed; S-1017 still counts them (S8).
 Nothing waits under escape/_pending/. The next candidate number is C89 and the next fix unit S-F75.
+
+## S-1006, sweep 4: resolver: tunnelling, rebinding, cache and case tricks (I3, I4), as built at main 5e69a02
+
+Sweep 4 (S8), the one further sweep that the maintainer allowed on 2026-11-26 after ADR-006, fresh context (S3),
+the whole surface read as built after S-F74, not a diff. Auditor on the top tier in the cloud session, which has
+no hypervisor and is Linux, as root, so the namespace probes ran for real and nothing ran on a VM or on macOS.
+The auditor wrote its own trust boundary and worked every lens before it opened any earlier record. No
+candidate.
+
+Trust boundary. Attacker bytes enter at three places. One: guest root, and through it the repository and the
+model's output, owns every byte and the timing of each AF_VSOCK stream to host port 5001. serveRelay in
+cmd/workcell/relay.go admits it into one of 1024 slots, stream reads exactly 20 bytes under a 5 s deadline,
+relay.Decode wants version 1 and proto 6 or 17, and a UDP header to port 53 at any address hands one frame of at
+most 65535 bytes (relay.ReadFrame) to resolver.Answer under the same deadline. Answer replies from the policy
+map alone and calls back with a refused name (lower-case [a-z0-9.-] of at most 253 bytes, or the empty string),
+which p.Deny turns into one audit Note. The guest's resolv.conf, routes and listeners (cmd/workcell-init/net.go)
+enforce nothing (A1). Two: the same guest owns the SNI and the HTTP bytes of a 443 stream and nothing else that
+chooses a name: route returns a host only from the allowlist, the terminated transport's DialContext refuses a
+host outside p.terminate, and Rewrite forces the upstream URL host and Host to the SNI host, so the only names
+the host ever resolves are allowlist strings with a trailing dot. Three: the network attacker (LAN DNS, any host
+off the allowlist) owns the answers that the host's system resolver returns for those rooted names (A and AAAA
+sets, CNAME chains, off-bailiwick records, TTL, truncation) and every upstream byte at the address it steers the
+host to. Those enter proxy.connect: one LookupNetIP per connection, then hostNets (interface prefixes plus one
+netlink RTM_GETROUTE dump of every table of both families; kept rows are RTN_LOCAL of any table and RTN_UNICAST
+with no gateway and more than 0 bits), then blockedAddr on every address before any dial, then a dial by literal
+of the unmapped address under a shared 30 s budget. Authority: the supervisor at the operator's uid, which can
+open any TCP connection the host can and holds the VMM child, the session CA key, the broker and the audit log.
+Host configuration that the attacker does not control (routes, /etc/hosts, resolv.conf) is a precondition, not
+an input. Ported: internal/proxy/proxy.go, allowlist.go and terminate.go. Not ported: internal/resolver,
+internal/relay, cmd/workcell/relay.go, routes_linux.go and routes_other.go.
+
+Lenses (S9). Parsing and resources: question wants QDCOUNT 1, plain labels of at most 63 bytes and a text of at
+most 253 bytes with the separating dot counted before the check, and reads type and class only when four bytes
+remain; a label byte above 63 (extended types, pointers) is FORMERR; non-plain bytes make the name empty, so it
+matches nothing; reply copies at most the header, the question and the 16-byte record, so maxReply 287 holds;
+TC, AA, Z, AD and CD are masked, RD echoed, RA clear, NSCOUNT and ARCOUNT zeroed. ReadFrame allocates at most
+65535 bytes per stream under the stream's absolute deadline, 64 MiB at the slot cap. Logic and state: both sides
+fold ASCII only and the allowlist is lower-case ASCII, so no non-ASCII spelling, Kelvin sign or dotted I can
+match; wire names have no trailing dot and canonicalHost strips one from the policy; punycode is compared
+literally; wildcards and underscores are refused; AAAA, TXT, ANY, HTTPS or any other type of an allowed name is
+NOERROR with no record, so there is no HTTPS-record path to ECH; a class other than IN or an opcode other than
+QUERY is REFUSED with no callback; a response (QR set) gets silence, so nothing is reflected; the hint 127.0.0.1
+is never dialled; forward-port hosts are answered too and the proxy scopes by port afterwards. Concurrency and
+check-to-use: one lookup per connection, the host's networks read after it, every answer vetted before any dial,
+the dial by literal of the vetted address, no second lookup and no Happy Eyeballs; a pooled upstream connection
+reuses the address vetted at its dial; p.terminate, p.signin and the transport are written once before any Serve
+goroutine; the resolver's map is read-only after New; the refused callback runs with no lock and p.Deny
+serialises on the audit mutex; relayConn frees its slot once. Cryptography and identity: none on the resolver,
+and DNSSEC is not consulted; the one identity check of the dial path is the terminated upstream's x509 for the
+SNI host (TLS 1.2 at least, an explicit root pool, HTTP/2 off, no proxy from the environment), which is why a
+rebind on a 443 name stops at the handshake and matters only on a forward port, where the operator's grant
+trusts DNS (ADR-003). Failure modes: a lookup error or an empty set is resolve_failed; an unreadable interface
+list, a failed or cut route dump, a malformed row or one blocked answer is blocked_address; a dial failure is
+dial_failed; a ReadFrame error or a nil Answer closes the stream with nothing written; a failed Allowed record
+dials nothing (S-F16); a nil log refuses everything; an Accept error of serveRelay closes every adapter; past
+the soft limit every admission is refused while the hint still answers, a loss and never a gain. No error path
+reaches a dial or a splice. Downgrade, rollback and replay: header version 1 only; the resolver is stateless and
+echoes the id, so a replayed frame gets the same reply; EDNS and TC on a query are ignored; the product caches
+no DNS answer and vets per connection, so a stale or poisoned entry of the host's cache can only change which
+vetted address is dialled, or give resolve_failed. Interaction: the refused name reaches the audit log clipped
+at 253 bytes and JSON-escaped, and the readers pass it through SafeHost (S-1010); tunnelling moves at most 253
+bytes per refused query into the host's own log and nothing off the host; the host's only outbound DNS is A and
+AAAA of a rooted allowlist name, set off by a guest connect, which carries timing and no data; the terminated
+transport (S-1005) and the sign-in and git paths all dial through the one connect; the relay's slot cap and the
+proxy's are equal (S-1004); explain and the resolver read the same allow.Hosts().
+
+Refuted before anything was raised, by the auditor's own derivation and run unless marked. Search suffixes on
+the host: the rooted name makes Go ask for it alone (under `search corp.internal` and `ndots:5` the product's
+lookups were A and AAAA of `api.example.com.` and nothing else, where an unrooted control asked
+`api.example.com.corp.internal.` first). /etc/hosts on the host: read for the rooted name with no DNS query, and
+the result is vetted. CNAME chains: the stub does not chase, and the A records of the recursive answer are
+vetted. Off-bailiwick A records: taken by Go, vetted. A mixed public and loopback set: the whole set refused.
+IPv4-mapped loopback in AAAA, the unspecified address, an interface address on lo, an AnyIP address of the local
+table (C69's layout), and a truncated UDP answer followed by loopback over TCP: all blocked_address, and the TCP
+retry asked for the same rooted name only. A guest-side search suffix, 0x20 case, trailing dots, IDNA U-labels,
+wildcards and non-ASCII: refused and recorded, or matched exactly. Zoned IPv6 addresses from a hosts entry: no
+prefix contains a zoned address, so publicIPv6 refuses them (reasoned, toward refusal). Re-used from earlier
+records and not derived again: DoT, DoH, TCP DNS and DoQ from the guest (TCP 53 and 853 are not served unless
+the operator forwards one, UDP is relayed on 53 alone, and DoH to an allowed 443 host is HTTPS to an allowed
+host); the macOS twin of C66 and C69 (routes_other.go reads no table; parked, no Mac here); networks behind a
+routed gateway, VPN split tunnels and multipath rows (C9's residual, toward refusal); a route change during the
+dump (parked by S-F52 and S-1004, with one refinement in the notes below); UDP to a port other than 53 and a
+stream shed at the cap leaving no record (C14 intended, C8 refuted); the soft limit filled by refused queries,
+the clear RA bit, the absent OPT and address-shaped names (parked); Mac resolver caches (parked, reasoned only).
+
+Recorded fixes of this surface, each traced as built and run by the auditor, all holding: C7 (S-F4, the
+168.63.129.16/32 row and Unmap first in blockedAddr) and C70 (S-F53, 192.80.8.124/32), by TestBlockedAddr under
+-race; C13 (S-F8, TLSHandshakeTimeout and MaxConnsPerHost in Terminate's transport), by
+TestUpstreamHandshakeEndsWithTheGuest under -race in 10.22 s; C66 and C69 (S-F49, S-F52: hostNets appends the
+netlink dump of every table to the interface prefixes, and routes refuses a malformed part), by TestRoutes and
+TestC69AnyIPLocalRoute under -race and by the live probe below; C23 and C24 (S-F16), in the plain run; C53
+(S-F36), by TestRelativeSSLCertDirIsRefused under -race. S-F54's rows (rebind-host-network-forward and -sni with
+Isolated, and rebind-on-link-neighbour-forward) were traced in the suite and not run, since they need a VM. C14
+intended stands.
+
+Ran, by the auditor, in a scratch directory and with nothing added to the repository; every target a process,
+socket or namespace that the probe itself started (S12, T8). go test -count=1 green on internal/resolver,
+internal/relay, internal/proxy and cmd/workcell (0.017 s, 0.015 s, 12.961 s, 6.660 s); go vet clean on the four;
+under -race the eight tests of the recorded fixes in internal/proxy (15.3 s), the six relay tests of
+cmd/workcell (2.0 s), and the whole of internal/resolver and internal/relay. Fuzz bursts in a copy of the tree,
+with no crasher: FuzzAnswer 2,694,020 executions in 45 s, FuzzDecode 2,915,208 in 45 s, FuzzReadFrame 2,482,975
+in 45 s, FuzzPeekSNI 168,265 in 30 s when run alone. A live chain, as an overlay test in package proxy, as root
+in a network and mount namespace of its own with a resolv.conf of `nameserver 127.0.0.1`, `search corp.internal`
+and `options ndots:5`, a hosts file naming an allowed name at 127.0.0.1, 192.175.48.129/25 on lo and `local
+192.175.48.0/25 dev lo` by netlink, canaries at three addresses, and a scripted DNS server on 127.0.0.1:53 over
+UDP and TCP that recorded every question; the real connect, the real net.DefaultResolver and the real hostNets:
+twelve cases, pass in 0.21 s. A public answer was dialled (dial_failed, no route in the namespace); loopback,
+the interface address, the AnyIP address, the mixed set, the CNAME to loopback, the off-bailiwick A, the mapped
+AAAA, 0.0.0.0, the truncated answer with loopback over TCP and the hosts entry were each blocked_address; an
+empty answer was resolve_failed; no canary was reached and every question the host asked was A or AAAA of the
+one rooted name. An exchange probe as an overlay test in cmd/workcell, through the real serveRelay and resolver
+with a 300 ms wait, pass in 0.80 s: a frame that promises 65535 bytes and sends ten was dropped after 301 ms, a
+reply never read ended the stream at the deadline, and a 65535-byte frame of one letter was answered with a
+12-byte FORMERR and a close.
+
+Coverage. Read in full: internal/resolver (resolver and its test); internal/relay (relay and its test); in
+cmd/workcell the files relay, relay_test, run_vm, session, policy and backend_linux; internal/proxy (proxy,
+allowlist, routes_linux, routes_other, terminate, signin, proxy_test, routes_linux_test, c69_test, c13_test,
+sf72_test, c53_test); internal/audit (audit, lines); internal/secret (broker, source); internal/vmm/vmm.go and
+firecracker/firecracker.go; cmd/workcell-init (net, main) as data (A1); in escape/suite the files dns, dnstests,
+resolver, rebind, relay and tests; in escape/sandbox the files control_resolver_linux, workcell_linux and
+workcell_vm; loop/SPEC.md; and, after the audit's own pass, the S-1001 map, the S-1006 records of sweeps 1, 2
+and 3, the sweep-4 records of S-1004 and S-1005, and PARKED.md whole. Skimmed or by search: terminate_test,
+signin_test and providers_test of internal/proxy for helper names; the on-link row in
+escape/suite/priv_linux.go; the boot call of cmd/workcell/pull_vm.go. Not examined: explain, log, ocsf and
+update of cmd/workcell and the other c-tests of cmd/workcell and internal/proxy; internal/policy,
+internal/provider, internal/guest, internal/wire, internal/fileserve, internal/workspace and internal/vmm/vz;
+escape/sandbox/workcell_darwin.go and the adapter tests; the suite's other files; docs/; `_legacy/`; the sources
+of Go's standard library, whose behaviour was taken from the runs. Not run: anything on a real VM, the escape
+suite by the auditor, any macOS or vz path, any IPv6 layout (this session's kernel has no IPv6, so the IPv6 half
+of routes rests on TestRoutes' hand-built rows, as in sweep 3), the four-hour fuzz of S10, govulncheck. The
+clone is shallow, so the change since sweep 3 was taken from the records and not from git.
+
+### S-1006 candidates, sweep 4
+
+None. The auditor raised no candidate: nothing at medium or above, and nothing at low that names an invariant an
+in-scope attacker puts at risk with a reproducible input (R2). So no reproducing test was written, no verifier
+ran, no fix unit is added and escape/_pending/ stays absent; the next candidate number is still C89 and the next
+fix unit S-F75. Four shapes are R3 notes, in PARKED.md: routes() does not read the kernel's mark of an
+interrupted dump, a hardening note with no input that reproduces it; a hosts entry comes back from the lookup in
+mapped form and is vetted after Unmap, which a test pins; the fuzz rate of FuzzPeekSNI depends on what runs
+beside it; and Go's stub takes an A record whatever its owner name, which gives the attacker who already owns
+the answer nothing more, since every address is vetted. Nothing falls under S14: no weakness of Go, the kernel
+or any other project was found, and the ported files of the surface hold nothing new.
+
+Sweep 4 verdict for this surface: no candidates, so it adds nothing at medium or above; sweep 4 holds two
+confirmed mediums, C87 (S-1002) and C88 (S-1005), both fixed, which S-1017 counts (S8). S11: a safety classifier
+stopped one turn of the auditor and withheld it; the tool calls of that turn did not run, the auditor went on
+without sending that content again, and the orchestrator rephrased nothing. No model declined a request and no
+safeguard re-ran one on another model.
