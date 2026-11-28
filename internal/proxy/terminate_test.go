@@ -395,6 +395,7 @@ func TestTerminateNarrowedRule(t *testing.T) {
 		{"dot segments leading out of the repository", r, "GET", "/octo/allowed.git/../other.git/info/refs", auth, basic(testAuthPlaceholder), 403, ""}, {"an encoded slash out of the repository", r, "GET", "/octo/allowed.git%2F..%2Fother.git/info/refs", auth, basic(testAuthPlaceholder), 403, ""},
 		{"a doubled slash", r, "GET", "//octo/allowed.git/info/refs", auth, basic(testAuthPlaceholder), 403, ""}, {"a bearer to another repository", r, "GET", "/octo/other.git/git-upload-pack", auth, "Bearer " + testAuthPlaceholder, 403, ""},
 		{"a doubled escape out of the repository (C88: a front end decoding once forwards %2e%2e, its backend serves /octo/other.git)", r, "POST", "/octo/allowed.git/%252e%252e/%252e%252e/other.git/git-receive-pack", auth, basic(testAuthPlaceholder), 403, ""},
+		{"a control byte in the repository path (C90: a front end decoding once meets a blank line, its backend serves GET /admin)", r, "POST", "/octo/allowed.git/git-receive-pack%0D%0A%0D%0AGET%20/admin", auth, basic(testAuthPlaceholder), 403, ""},
 	}
 	refused, swaps := map[string]uint64{}, 0
 	for _, tc := range cases {
