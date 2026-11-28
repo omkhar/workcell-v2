@@ -11680,3 +11680,254 @@ diff with a config.toml that cannot be read or parsed is refused; a relative sec
 against the directory pull is started in, so only a pull into that directory is refused for it, and no run starts
 with such a value. Not shown: the real verb on a VM beyond the hosted suite's own pull rows; the three corrections
 after the review were measured by the builder's probes, which are not kept, and no second review ran (R1).
+
+## S-1010, sweep 4: audit log, seal, key storage, `verify` (I9), as built at main aac1c8f
+
+Sweep 4 (S8), the one further sweep that the maintainer allowed on 2026-11-26 after ADR-006, fresh context
+(S3), the whole surface read in full as built after S-F71 to S-F79, not a diff, at the claim commit fad9318. One
+auditor run on the top tier, finished without a stop: no model declined and no safeguard re-ran a request. No
+hypervisor in the cloud session, and nothing on this surface was run on a VM: every probe ran by `go test
+-overlay` from a scratch directory outside the repository, on go1.27.4, against files, processes and loopback
+connections that the probe itself made (S12, T8). The auditor wrote its own trust boundary and worked every
+lens before it opened the records of this surface, then traced and ran every recorded fix and tried the parked
+leads again. Result: one candidate, C94 (I9, low by the auditor), given to the redteam as a claim only, run
+by the orchestrator and ruled on by a verifier that saw none of the auditor's reasoning: CONFIRMED at low; the
+record is under the next heading. Nothing was fixed (S1). The files of the defect, internal/audit/audit.go and
+cmd/workcell/run_vm.go, carry no `// Ported from v1`; internal/proxy/proxy.go, where the trigger lies, does,
+so the record holds its v1 line. Nothing is someone else's project (S14).
+
+Trust boundary, as the auditor wrote it before the records were opened. Attacker bytes that reach a record:
+the raw SNI of a refused 443 connection (route in internal/proxy/proxy.go returns it as sent; crypto/tls
+refuses only a trailing dot; bounded by the 16 KiB hello), the lower-cased name of a refused DNS question (the
+resolver's question: letters, digits, dot and dash within 253 bytes, or the empty string when any other byte),
+the port of a relay header to an unserved TCP port (a uint16), the command's exit status (one byte, as `exit
+N`), and the rate and timing of every attempt, which drive the log's volume to SoftLimit and choose the moment
+of the session's end. Every other field is a host constant, an allowlist key (canonical: lower case, checked
+by dnsName) or the operator's config (a secret's name and header; the repository's policy can only keep the
+user's own rows). Time is the host clock. The network attacker reaches no record (dial_failed, resolve_failed
+and blocked_address are constants beside the canonical host), and the repository reaches none: it can only have a
+start refused before any record, or fail the export (C83, fixed). Entry: append in internal/audit/audit.go clips
+the five string fields to 253 bytes and marshals by encoding/json, so no raw byte below 0x20 and no second line;
+one mutex; one write for a line; the seal (ed25519 over `workcell-audit-seal-v2 `, the session id and the SHA-256
+chain head, 194 bytes) rewritten in place after every line; Record also syncs both files. Exits: audit.Verify,
+ParseLine (a strict decoder, unknown fields refused, 16 KiB), eachLine (ported; MaxBytes is HardLimit and two
+lines), the log verb's feed, and denyMessage and ocsfLine, which pass the one free field through SafeHost; raw
+lines are printed only for records whose fields are host or config strings. Authority: the supervisor, as the
+operator's uid, owns sessions/<id>/audit.log and audit.seal (0600) and audit.key in the data directory (0600,
+made with O_EXCL at first use, refused with any group or other bit, read into memory only); log and verify read
+as the same uid. Writers: the proxy's Deny (the Allowed record before the terminate check and before the dial,
+and the refusals), the relay's port_not_allowed and the resolver's name_not_allowed through the one closure
+in boot, the broker's durable record (it acts on nil alone), and the supervisor's session_start (newSession)
+and session_end (deferred). The boots of pull and bench pass a nil log, every Note of which is ErrClosed, and
+have no listeners. The guest never reaches the files: judge() refuses a working directory or a pull destination
+that holds, lies in or is another name of the data directory (by spelling, inode and mount point), and the key
+goes to no kernel command line, environment, CA or secret program. The offline editor of I9's last clause is,
+in scope, an actor without the key: the chain and the seal show any changed byte, and an editor with the key
+is the operator.
+
+Lenses (S9), each worked, in this order. One, parsing and resources: the writer's most, HardLimit with the
+log_full marker and two lifecycle lines, is under the reader's MaxBytes, every field is clipped and a line
+stays under the reader's line limit; FuzzEachLine for 180 s, 23495 executions, no crasher (the engine is slow
+on this target, as sweep 3 found); nothing. Two, logic and state: one note, in PARKED.md (newSession). Three,
+concurrency and check-to-use: C94. Four, cryptography and identity: the domain string, a session id that holds
+no space, the fixed width of the head, the length guard on the public key before ed25519.Verify, the fixed
+length of the seal and the mode check of the key; a probe fuzz of package audit (a sealed log of five records,
+one random insertion and deletion at a random place, Verify must fail unless the bytes are unchanged) for 180 s,
+326867 executions, no failure; nothing. Five, failure modes: every caller of Deny traced again: proxy.go 137,
+140 (acts on nil, then closes the write side and drains) and 152; terminate.go 279 (the dial callback fails
+closed either way), 370, 376, 381, 395, 401, 413 and 420 (each refuses whatever the Note did); signin.go 146;
+the closure at run_vm.go 310 for relay.go 147 and the resolver; broker.go 218 (released on nil alone; tokens
+stored before a failing record can never be released, since every later record fails too); run_vm.go 107
+(the end record's error is printed) and 222 (a failed start record removes the directory); nothing. Six,
+downgrade, rollback and replay: only the v2 seal string exists, a roll back to an earlier pair of files
+reads incomplete, a copied or renamed session fails on its id, and an older seal needs access to the host;
+nothing. Seven, interaction: the nil log of the pull and bench boots (ruled; no listeners and no command);
+by the auditor's probe a TCP header to port 8080 is recorded while UDP to 8080 and to 443, a header of version
+2 and one of protocol 1 are not, as C14 (intended) and C8 (refuted) already rule, and the shed above the slot
+cap is unrecorded as the S-F8 line says; nothing new.
+
+Earlier fixes of this surface, each traced in the code as built and its test run by the auditor, all
+passing: C23 and C24 of S-F16 (TestUnrecordedConnectionIsNotServed, plain and under -race), C25 of S-F17
+(TestVerifyRefusesAnotherHostOrSession and the row of TestVerify for a log cut before session_end and not
+running), C83 of S-F67 (TestC83ExportFailureKeepsTheSessionRecord, both arms), C19 of S-F12 and C29 of S-F21,
+C52 of S-F35 and C65 of S-F48, which bind-mount and ran as root in the session without a skip, S-F71 and S-F72
+(their tests, the second under -race), S-F33 (TestClientEndsAsADetach) and S-F46 (TestLockDiesWithProcess). The
+packages internal/audit, internal/secret, internal/relay and internal/resolver passed whole under -race; of
+internal/proxy and cmd/workcell the tests named for this surface passed under -race. Parked leads tried again,
+each ending as its line says: the seal for each append and the nil log of a pull, the key that verify mints,
+the malformed UDP-53 frame, the window of the S-F8 shed, times out of order, port 0, bytes after the seal, raw
+U+0085, U+009B and U+202E in the file, the slack after log_full, the lock a pull holds against the completeness
+rule, class CH queries, the missing flood row (R5), the passing `incomplete` between a read and the lock probe,
+and the granted line before carriesPlaceholder refuses.
+
+Coverage. Read in full by the auditor, with lines: internal/audit audit.go 261, key.go 66, lines.go 55 (ported)
+and audit_test.go 291; of cmd/workcell log.go 196, ocsf.go 87, verify_test.go 156, log_test.go 100, session.go
+250, data.go 162, main.go 41, run_vm.go 697, pull_vm.go 436, bench_vm.go 50, relay.go 168 and the tests c19,
+c29, c52, c65, c83 and sf71; internal/proxy proxy.go 269, terminate.go 484 and allowlist.go 100 (all three
+ported), signin.go 282, unrecorded_test.go and sf72_test.go; internal/secret broker.go 223 and source.go 131
+(both ported); internal/resolver resolver.go 139; internal/relay relay.go 71; escape/suite audit.go 242 and
+lifecycle.go 60; loop/SPEC.md. In part: escape/sandbox/workcell_vm.go (Audit and Verify), the log probe of
+escape/suite/floods.go, the I9 and I10 rows of escape/suite/tests.go, the UDP sites of cmd/workcell-init/net.go,
+DecodeExit in internal/guest/guest.go, Narrow and secretRow in internal/policy/policy.go, and the I9 block of
+docs/threat-model.md. Records, after the lenses: the S-1001 map, S-1010 of sweeps 1 to 3 in full, the rulings
+on C8 and C14, and every PARKED.md line that names the audit log, the seal, verify, I9, session_end, log_full,
+no_sni or a fix unit of this surface. Not examined: nothing ran on a real VM or on macOS, the compiled binary
+did not run and no session ran end to end, so the verify verb's rule was met through TestVerify and modelled
+in the probes; internal/vmm, fileserve, workspace and wire, update.go, policy.go, explain.go and caps.go
+of cmd/workcell, the tests of other surfaces and _legacy/ were not opened; the four-hour fuzz of S10 and
+govulncheck did not run here.
+
+### S-1010 candidates, sweep 4
+
+C94. ID I9, in the order of the record and the verdict of `workcell verify`: the host writes connection
+records after session_end, and verify then calls an honest, whole and unedited record `incomplete: the
+session's end was not recorded`. Attacker: root in the guest, or hostile model output that runs a few lines
+of shell there. Precondition: none. Where: cmd/workcell/run_vm.go, the deferred end of session() (:102-111),
+which calls Record(session_end) and then Close() as two critical sections, with b.close() (:126) run before
+it, so that the VM's death wakes every proxy handler first and nothing joins them; internal/audit/audit.go,
+append (:108-141) and Close (:171-181), where nothing ends the log at the end record; internal/proxy/proxy.go,
+handle (:133-138), where a 443 connection that ends before a ClientHello is refused with a `no_sni` Note;
+cmd/workcell/log.go, the completeness rule of the verify verb (S-F17). Input: in the guest, open about 1000
+TCP connections to an allowed name on port 443, send nothing, keep them open and exit 0. The proxy waits up
+to 10 s for a hello on each; when the VMM dies every wait ends at once, about 1000 handlers call Note, and
+the supervisor writes session_end in the same instant and holds the mutex through its syncs. Under that crowd
+the mutex is handed to the waiting Notes before Close() takes it. Effect: audit.log ends with connect records
+whose times are after session_end; audit.Verify returns nil, chain and seal intact, and `workcell verify <id>`
+exits 1 with `incomplete: the session's end was not recorded`, for good, for that session; `workcell log`
+shows refusals after the end. No record is suppressed, forged or altered, and every offline edit is still found.
+
+Evidence of the auditor, by probes that are not kept. In package audit, 256 goroutines that Note while
+Record(session_end) and Close() run as session() runs them: 20 of 20 rounds held records after session_end, 256
+to 381 a round, Verify nil and the last event connect. In package proxy, the real Proxy and a real audit.Log,
+400 idle 443 connections closed in a loop and then the end record and the close with no delay: 402 records,
+session_end at index 393 and 8 connect records after it; with a delay of 1 ms or 5 ms, none. The same with
+200, 600 and 1000 connections held by a child process that is killed: 0 of 9 on the session's tmpfs, which
+the auditor reported as not reproduced.
+
+The earlier records, weighed by the auditor and by the verifier. Sweep 1 took `a late Deny during teardown
+lands after session_end or gets ErrClosed` as a note. Sweep 2 (TestProbeLateNoteAfterSessionEnd, one parked
+Note, 0 of 50) and sweep 3 (TestProbeNoteRacesSessionEnd, one spinning goroutine, 0 of 300) kept it a note
+because no record ever landed, and said that one that landed would be a false alarm with nothing suppressed,
+forged or altered. Their measured ground does not stand: each probe had one writer, which loses the lock to the
+Close() already running, while a crowd of waiters is served first. Their judgement of the consequence stands,
+and it is the grade here. PARKED.md also holds, from S-F17, a passing `incomplete` between verify's read and
+its lock probe, which is another thing: it is gone at the next run of verify, and this one is not.
+
+The test. The redteam wrote it from the claim alone, as a Go test of package audit with no VM:
+TestC94NothingIsRecordedAfterTheSessionEnds, 69 lines, a control arm with no writer and a finding arm of ten
+rounds with 256 writers. Run by the orchestrator on fad9318 with go1.27.4 by `go test -overlay`, three times
+plain and three times with -race: the control arm passed in all six, and the finding arm failed in all six,
+`10 of 10 rounds recorded after session_end` in five and 9 of 10 in one under -race, each with `256 records
+after session_end; Verify = <nil>, last.Event = "connect"`; no data race was reported. The redteam's own runs:
+10 of 10 plain and 5 of 5 under -race failed in the finding arm, the control passing in all, about 0.34 s a
+run plain and 2.6 s under -race.
+
+Ruling of the verifier, who saw the claim, the test and the two logs and none of the auditor's reasoning:
+CONFIRMED at low, the grade claimed. It ran the test again, 3 of 3 failing in the finding arm with the control
+passing. It then built the shape of the product, with no power that the guest lacks, in a probe of package
+main of cmd/workcell that is not kept: the wiring of boot() (newAdapters, proxy.New and serveRelay) on a unix
+listener in a temp directory, a child process in the VMM's place that opens 1000 relayed streams to port 443
+with a header and no hello, the child killed and reaped, then Record(session_end) and Close() in the order
+of session()'s defers. One round gave session_end at line 59 with 943 records after it and the verify verb's
+exit 1 with the incomplete line; of 20 further rounds 4 showed it (396, 396, 208 and 134 records after the end)
+and 16 did not, about one session in five on this machine; the control with no connection verified intact with
+exit 0. On the grade: no record is suppressed, forged or altered, no edited log verifies (TestVerify passes:
+dropped, altered, truncated, repeated, swapped, emptied, another key and a renamed session each exit 1),
+and verify fails closed with a different word for an edit (`changed`) than for this (`incomplete`); so I9
+holds and only the completeness rule of S-F17 misfires, which is hardening with no break, low under S6. It
+is a finding and not nothing because an in-scope attacker brings about, at will and for good, a false alarm
+in the operator's own check. The verifier corrects one clause of the claim: the operator can tell this from a
+SIGKILL by reading the log, where a killed session has no session_end at all, though not by verify's verdict
+alone. S14: nothing private. The defect is the order in audit.go and run_vm.go, v2's own; proxy.go, where
+the trigger lies, is ported and holds no weakness here. also in v1 main: egressproxy/proxy.go (the `no_sni`
+refusal at the end of a connection, the trigger alone).
+
+Fix, for S-F80, as the auditor gave it: end the log at the end record, in the critical section that writes
+it. In append, once the write of a session_end record has succeeded, set the log's failed state to ErrClosed,
+so that every later Note and Record fails and adds no line; Close keeps closing the files. About two product
+lines, paid by folding the two `return ErrFull` arms of the overflow branch into one. The verifier named
+a second shape, joining the handlers before the end record, which is more code in run_vm.go and leaves the
+broker's and the resolver's writers to the same gap; the unit line takes the first. Variants that the redteam
+could not express and that the first shape also closes, to be asked by the reviewer of S-F80: a durable Record
+of a secret use from the broker that lands after session_end, and a session_start record after it.
+
+Not shown: nothing ran on a real VM or on macOS, and no real session ran, so no `workcell verify` of a session
+that a guest ended this way was seen; the product shape is the verifier's probe, one session in five here,
+and was not run under -race; how often it lands on a real disk, where the end record's syncs hold the lock for
+longer, was not measured. The head comment of the test says in its lines 4 and 5 that Verify accepts the log as
+complete, where audit.Verify returns nil and the verify verb then says incomplete; S-F80 rewords those lines. The
+test is not parked under escape/_pending/, since the test budget has six lines of room: this record holds it,
+byte for byte behind four spaces (sha256 0a2f7b9b6b1b88d41fe44a58021252a4c6dcb740f08a14c1f5cdd417887e256c),
+and the fix unit re-creates it, paid by folds outside escape/.
+
+Source of internal/audit/c94_test.go (69 lines):
+
+    // SPDX-License-Identifier: Apache-2.0
+    // Copyright 2026 Omkhar Arasaratnam
+    
+    // C94 (I9): between Record(session_end) and Close the lock is free, so a guest-driven connect
+    // record can land after session_end and Verify accepts the log as complete. Fails until S-F80's
+    // fix lands; S-F80 puts it at internal/audit/c94_test.go.
+    
+    package audit
+    
+    import (
+    	"crypto/ed25519"
+    	"fmt"
+    	"os"
+    	"path/filepath"
+    	"strings"
+    	"sync"
+    	"testing"
+    	"time"
+    )
+    
+    // c94Round ends a session while writers Note refused connections. It returns how many records
+    // follow session_end, whether Verify accepts the log as ended, and a line describing both.
+    func c94Round(t *testing.T, writers int) (after int, ended bool, got string) {
+    	t.Helper()
+    	key, _ := LoadKey(t.TempDir())
+    	dir := filepath.Join(t.TempDir(), "ws-c94")
+    	os.Mkdir(dir, 0o700)
+    	l, _ := Create(dir, key, time.Now)
+    	l.Record(Record{Event: SessionStart})
+    	var wg sync.WaitGroup
+    	for range writers {
+    		wg.Go(func() {
+    			for l.Note(Record{Event: Connect, Port: 443, Result: "no_sni"}) == nil {
+    			}
+    		})
+    	}
+    	time.Sleep(3 * time.Millisecond)
+    	l.Record(Record{Event: SessionEnd, Result: "exit 0"})
+    	l.Close()
+    	wg.Wait()
+    	if l.Note(Record{Event: Connect, Port: 443, Result: "no_sni"}) == nil {
+    		t.Error("a Note after Close returned nil")
+    	}
+    	b, _ := os.ReadFile(filepath.Join(dir, LogName))
+    	lines := strings.Split(strings.TrimSuffix(string(b), "\n"), "\n")
+    	after = len(lines) - 1 - strings.Count(string(b[:max(strings.Index(string(b), `"event":"`+SessionEnd+`"`), 0)]), "\n")
+    	last, err := Verify(dir, key.Public().(ed25519.PublicKey))
+    	got = fmt.Sprintf("last line %s; %d records after session_end; Verify = %v, last.Event = %q", lines[len(lines)-1], after, err, last.Event)
+    	return after, err == nil && last.Event == SessionEnd, got
+    }
+    
+    func TestC94NothingIsRecordedAfterTheSessionEnds(t *testing.T) {
+    	t.Run("control: no writer", func(t *testing.T) {
+    		if after, ended, got := c94Round(t, 0); after != 0 || !ended {
+    			t.Error(got)
+    		}
+    	})
+    	t.Run("finding: 256 writers racing the end", func(t *testing.T) {
+    		bad, got := 0, ""
+    		for range 10 {
+    			if after, _, g := c94Round(t, 256); after > 0 {
+    				bad, got = bad+1, g
+    			}
+    		}
+    		if bad > 0 {
+    			t.Errorf("%d of 10 rounds recorded after session_end; %s", bad, got)
+    		}
+    	})
+    }
