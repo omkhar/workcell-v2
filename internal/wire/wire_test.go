@@ -54,21 +54,13 @@ func TestReadFrame(t *testing.T) {
 				t.Errorf("got %+v", fs[0])
 			}
 		}},
-		{"type zero handed up", frame(1, 0, 0, ""), 1, io.EOF, nil},
-		{"zero-length flood", flood, 5000, io.EOF, nil},
-		{"exactly MaxPayload", frame(1, 1, MaxPayload, big), 1, io.EOF, nil},
-		{"MaxPayload plus one", frame(1, 1, MaxPayload+1, "x"), 0, ErrTooLarge, nil},
-		{"length 0xFFFFFFFF", frame(1, 1, 0xffffffff, "abc"), 0, ErrTooLarge, nil},
-		{"length 2^31, negative as signed", frame(1, 1, 1<<31, "abc"), 0, ErrTooLarge, nil},
-		{"length 2^63 as 8 bytes", []byte{1, 1, 0x80, 0, 0, 0, 0, 0, 0, 0, 'a'}, 0, ErrTooLarge, nil},
-		{"length one short of body", frame(1, 1, 2, "abc"), 1, ErrVersion, nil},
-		{"length one long of body", frame(1, 1, 4, "abc"), 0, io.ErrUnexpectedEOF, nil},
-		{"truncated header", []byte{1, 1, 0}, 0, io.ErrUnexpectedEOF, nil},
-		{"version only", []byte{1}, 0, io.ErrUnexpectedEOF, nil},
-		{"version 0", frame(0, 1, 0, ""), 0, ErrVersion, nil},
-		{"version 2", frame(2, 1, 0, ""), 0, ErrVersion, nil},
-		{"version 255", frame(255, 1, 0, ""), 0, ErrVersion, nil},
-		{"mixed versions", cat(frame(1, 1, 1, "a"), frame(2, 1, 1, "b"), frame(1, 1, 1, "c")), 1, ErrVersion, nil},
+		{"type zero handed up", frame(1, 0, 0, ""), 1, io.EOF, nil}, {"zero-length flood", flood, 5000, io.EOF, nil},
+		{"exactly MaxPayload", frame(1, 1, MaxPayload, big), 1, io.EOF, nil}, {"MaxPayload plus one", frame(1, 1, MaxPayload+1, "x"), 0, ErrTooLarge, nil},
+		{"length 0xFFFFFFFF", frame(1, 1, 0xffffffff, "abc"), 0, ErrTooLarge, nil}, {"length 2^31, negative as signed", frame(1, 1, 1<<31, "abc"), 0, ErrTooLarge, nil},
+		{"length 2^63 as 8 bytes", []byte{1, 1, 0x80, 0, 0, 0, 0, 0, 0, 0, 'a'}, 0, ErrTooLarge, nil}, {"length one short of body", frame(1, 1, 2, "abc"), 1, ErrVersion, nil},
+		{"length one long of body", frame(1, 1, 4, "abc"), 0, io.ErrUnexpectedEOF, nil}, {"truncated header", []byte{1, 1, 0}, 0, io.ErrUnexpectedEOF, nil},
+		{"version only", []byte{1}, 0, io.ErrUnexpectedEOF, nil}, {"version 0", frame(0, 1, 0, ""), 0, ErrVersion, nil}, {"version 2", frame(2, 1, 0, ""), 0, ErrVersion, nil},
+		{"version 255", frame(255, 1, 0, ""), 0, ErrVersion, nil}, {"mixed versions", cat(frame(1, 1, 1, "a"), frame(2, 1, 1, "b"), frame(1, 1, 1, "c")), 1, ErrVersion, nil},
 		{"no resync after a bad frame", cat(frame(1, 1, 1<<20, ""), frame(1, 1, 0, "")), 0, ErrTooLarge, nil},
 	}
 	for _, tt := range tests {
@@ -150,11 +142,9 @@ func TestTimeLimits(t *testing.T) {
 	}{
 		{"header then no body", drip(frame(1, 1, 10, ""), 0), false, os.ErrDeadlineExceeded},
 		{"truncated header held open", drip([]byte{1, 1, 0}, 0), false, os.ErrDeadlineExceeded},
-		{"huge length then idle", drip(frame(1, 1, 0xffffffff, "ab"), 0), false, ErrTooLarge},
-		{"slow drip", drip(frame(1, 1, 0, ""), limit/3), false, os.ErrDeadlineExceeded},
+		{"huge length then idle", drip(frame(1, 1, 0xffffffff, "ab"), 0), false, ErrTooLarge}, {"slow drip", drip(frame(1, 1, 0, ""), limit/3), false, os.ErrDeadlineExceeded},
 		{"reset mid-frame", func(p net.Conn) { drip(frame(1, 1, 5, "ab"), 0)(p); p.Close() }, false, io.ErrUnexpectedEOF},
-		{"idle peer then close", func(p net.Conn) { time.Sleep(3 * limit); p.Close() }, false, io.EOF},
-		{"peer refuses to read", func(net.Conn) {}, true, os.ErrDeadlineExceeded},
+		{"idle peer then close", func(p net.Conn) { time.Sleep(3 * limit); p.Close() }, false, io.EOF}, {"peer refuses to read", func(net.Conn) {}, true, os.ErrDeadlineExceeded},
 		{"peer reads part then stops", func(p net.Conn) { io.ReadFull(p, make([]byte, 3)) }, true, os.ErrDeadlineExceeded},
 	}
 	for _, tt := range tests {

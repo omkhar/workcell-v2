@@ -41,16 +41,12 @@ func TestResolveFile(t *testing.T) {
 		path string
 		want []byte // nil means the source must fail
 	}{
-		{"value", writeFile(t, "v", []byte("sk-file"), 0o600), []byte("sk-file")},
-		{"one trailing newline", writeFile(t, "n", []byte("sk-file\n"), 0o600), []byte("sk-file")},
-		{"two trailing newlines", writeFile(t, "nn", []byte("sk-file\n\n"), 0o600), nil},
-		{"empty", writeFile(t, "e", nil, 0o600), nil},
-		{"newline only", writeFile(t, "nl", []byte("\n"), 0o600), nil},
-		{"multi-line", writeFile(t, "m", []byte("a\nb\n"), 0o600), nil},
+		{"value", writeFile(t, "v", []byte("sk-file"), 0o600), []byte("sk-file")}, {"one trailing newline", writeFile(t, "n", []byte("sk-file\n"), 0o600), []byte("sk-file")},
+		{"two trailing newlines", writeFile(t, "nn", []byte("sk-file\n\n"), 0o600), nil}, {"empty", writeFile(t, "e", nil, 0o600), nil},
+		{"newline only", writeFile(t, "nl", []byte("\n"), 0o600), nil}, {"multi-line", writeFile(t, "m", []byte("a\nb\n"), 0o600), nil},
 		{"carriage return", writeFile(t, "cr", []byte("sk-file\r\n"), 0o600), nil},
 		{"largest", writeFile(t, "max", bytes.Repeat([]byte("k"), maxFileBytes), 0o600), bytes.Repeat([]byte("k"), maxFileBytes)},
-		{"oversized", writeFile(t, "big", bytes.Repeat([]byte("k"), maxFileBytes+1), 0o600), nil},
-		{"missing", filepath.Join(dir, "absent"), nil}, {"directory", dir, nil},
+		{"oversized", writeFile(t, "big", bytes.Repeat([]byte("k"), maxFileBytes+1), 0o600), nil}, {"missing", filepath.Join(dir, "absent"), nil}, {"directory", dir, nil},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

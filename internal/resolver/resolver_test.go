@@ -124,12 +124,9 @@ func TestAnswerReportsRefusedNames(t *testing.T) {
 	}{
 		{"a name no policy allows", query(0, 1, "Registry.NPMJS.org", typeA, classIN), []string{"registry.npmjs.org"}},
 		{"AAAA for it", query(0, 1, "denied.example.", 28, classIN), []string{"denied.example"}},
-		{"a name with a byte no host name has", query(0, 1, "a b.example", typeA, classIN), []string{""}},
-		{"an allowed name", query(0, 1, "allowed.example", typeA, classIN), nil},
-		{"AAAA for an allowed name", query(0, 1, "allowed.example", 28, classIN), nil},
-		{"FORMERR", query(0, 2, "denied.example", typeA, classIN), nil},
-		{"a response", append([]byte{0x12, 0x34, 0x81}, query(0, 1, "denied.example", typeA, classIN)[3:]...), nil},
-		{"class CH", query(0, 1, "denied.example", typeA, 3), nil},
+		{"a name with a byte no host name has", query(0, 1, "a b.example", typeA, classIN), []string{""}}, {"an allowed name", query(0, 1, "allowed.example", typeA, classIN), nil},
+		{"AAAA for an allowed name", query(0, 1, "allowed.example", 28, classIN), nil}, {"FORMERR", query(0, 2, "denied.example", typeA, classIN), nil},
+		{"a response", append([]byte{0x12, 0x34, 0x81}, query(0, 1, "denied.example", typeA, classIN)[3:]...), nil}, {"class CH", query(0, 1, "denied.example", typeA, 3), nil},
 		{"opcode UPDATE", query(5, 1, "denied.example", typeA, classIN), nil},
 	}
 	for _, tc := range tests {
@@ -155,10 +152,8 @@ func TestAnswerSaysNothing(t *testing.T) {
 		in   []byte
 		want []byte
 	}{
-		{"one byte", New([]string{"allowed.example"}, nil), []byte{0x55}, nil},
-		{"eleven bytes", New([]string{"allowed.example"}, nil), make([]byte, 11), nil},
-		{"nothing", New([]string{"allowed.example"}, nil), nil, nil},
-		{"a response", New([]string{"allowed.example"}, nil), response, nil},
+		{"one byte", New([]string{"allowed.example"}, nil), []byte{0x55}, nil}, {"eleven bytes", New([]string{"allowed.example"}, nil), make([]byte, 11), nil},
+		{"nothing", New([]string{"allowed.example"}, nil), nil, nil}, {"a response", New([]string{"allowed.example"}, nil), response, nil},
 		{"an empty policy", New(nil, nil), allowed, reply(allowed, refused, nil)},
 	}
 	for _, tc := range tests {

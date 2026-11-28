@@ -52,13 +52,10 @@ func TestC68RoutingOverrideHeaders(t *testing.T) {
 		served         string   // the whole answer a row inside the rule gets
 		outside        string   // "METHOD PATH" the row reaches, which must never come back with the secret
 	}{
-		{"POST", n + "/v1/x", key, "POST /v1/x real-secret", ""},
-		{"DELETE", n + "/v1/x", key, "DELETE /v1/x real-secret", ""},
-		{"GET", r + "/octo/allowed.git/info/refs", bearer, "GET /octo/allowed.git/info/refs Bearer real-secret", ""},
-		{"POST", n + "/v2/admin", key, "", "POST /v2/admin"},
+		{"POST", n + "/v1/x", key, "POST /v1/x real-secret", ""}, {"DELETE", n + "/v1/x", key, "DELETE /v1/x real-secret", ""},
+		{"GET", r + "/octo/allowed.git/info/refs", bearer, "GET /octo/allowed.git/info/refs Bearer real-secret", ""}, {"POST", n + "/v2/admin", key, "", "POST /v2/admin"},
 		{"POST", n + "/v1/x", append(key, "X-HTTP-Method-Override", "DELETE"), "DELETE /v1/x real-secret", ""},
-		{"POST", n + "/v1/x", append(key, "X_HTTP_Method_Override", "GET"), "GET /v1/x real-secret", ""},
-		{"POST", n + "/v1/x?_method=PUT", key, "PUT /v1/x real-secret", ""},
+		{"POST", n + "/v1/x", append(key, "X_HTTP_Method_Override", "GET"), "GET /v1/x real-secret", ""}, {"POST", n + "/v1/x?_method=PUT", key, "PUT /v1/x real-secret", ""},
 		{"POST", n + "/v1/x", append(key, "Content-Type", "application/json"), "POST /v1/x real-secret", ""},
 		{"POST", n + "/v1/x", append(key, "X-Original-URL", "/v2/admin"), "", "POST /v2/admin"},
 		{"POST", n + "/v1/x", append(key, "X-Rewrite-URL", "/v2/admin"), "", "POST /v2/admin"},

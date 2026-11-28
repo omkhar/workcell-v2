@@ -43,10 +43,8 @@ func TestParse(t *testing.T) {
 		want []Entry // nil for nothing allowed
 	}{
 		{"the SPEC example", specExample, []Entry{{"api.anthropic.com", 3}, {"github.com", 3}, {"proxy.golang.org", 3}}},
-		{"empty file", "", nil}, {"comments and blank lines alone", "# nothing\n\n   # here\n", nil},
-		{"no network table", "[workspace]\nmode = \"clone\"\n", nil},
-		{"network without allow", "[network]\n", nil}, {"empty allow", "[network]\nallow = []\n", nil},
-		{"empty allow with room", "[network]\nallow = [ ]", nil},
+		{"empty file", "", nil}, {"comments and blank lines alone", "# nothing\n\n   # here\n", nil}, {"no network table", "[workspace]\nmode = \"clone\"\n", nil},
+		{"network without allow", "[network]\n", nil}, {"empty allow", "[network]\nallow = []\n", nil}, {"empty allow with room", "[network]\nallow = [ ]", nil},
 		{"the escape adapter's forward entry", "[network]\nallow = [\"allowed.escape.test:8443\"]\n", []Entry{{"allowed.escape.test:8443", 2}}},
 		{"bare name and name:port", "[network]\nallow = [\"a.example\", \"b.example:80\"]\n", []Entry{{"a.example", 2}, {"b.example:80", 2}}},
 		{"an array over lines, with comments and a trailing comma", "[network]\nallow = [ # names\n  \"a.example\",\n\n  \"b.example:80\", # forward\n]\n", []Entry{{"a.example", 3}, {"b.example:80", 5}}},
@@ -56,8 +54,7 @@ func TestParse(t *testing.T) {
 		{"no final newline", "[network]\nallow = [\"a.example\"]", []Entry{{"a.example", 2}}},
 		{"tabs and comments after a header", "[network]\t# the table\nallow\t=\t[\"a.example\"]\n", []Entry{{"a.example", 2}}},
 		{"two secrets", "[[secret]]\nname = \"a\"\nsource = \"file:/a\"\nhost = \"h\"\nheader = \"k\"\n[[secret]]\nname = \"b\"\nsource = \"file:/b\"\nhost = \"h\"\nheader = \"j\"\n[network]\nallow = [\"a.example\"]\n", []Entry{{"a.example", 12}}},
-		{"negative and signed integers elsewhere", "[resources]\ncpus = -1\ndisk = +7\n", nil},
-		{"update table", "[update]\nchannel = \"hold\"\ncooloff = \"14h\"\n", nil},
+		{"negative and signed integers elsewhere", "[resources]\ncpus = -1\ndisk = +7\n", nil}, {"update table", "[update]\nchannel = \"hold\"\ncooloff = \"14h\"\n", nil},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -230,10 +227,8 @@ func TestRead(t *testing.T) {
 		want  []Entry
 		err   string
 	}{
-		{"no file grants nothing", "", nil, ""},
-		{"a file", "[network]\nallow = [\"a.example\"]\n", []Entry{{"a.example", 2}}, ""},
-		{"an error names the path", "[network]\nallow = [1]\n", nil, ": an array may hold strings alone"},
-		{"too large", strings.Repeat("#", maxBytes+1), nil, "larger than"},
+		{"no file grants nothing", "", nil, ""}, {"a file", "[network]\nallow = [\"a.example\"]\n", []Entry{{"a.example", 2}}, ""},
+		{"an error names the path", "[network]\nallow = [1]\n", nil, ": an array may hold strings alone"}, {"too large", strings.Repeat("#", maxBytes+1), nil, "larger than"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

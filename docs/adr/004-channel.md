@@ -48,7 +48,8 @@ half). The B-820 spike built each scheme below as a throwaway module with the pr
   maintainer withdraws a bad digest in `pins/`, and the next manifest makes every client select `previous`, still under I14.
   B9 self-rollback and B10 `--rollback` swap to the artifact kept on disk, installed under an earlier valid manifest; they
   never read the stored manifest, so its expiry cannot block them. A digest that failed to run is marked locally and not
-  retried until its pin changes. `--to <version>` installs only a version in the current manifest's `pins` or `previous`.
+  retried until its pin changes, or until the kept manifest withdraws the image the self-rollback returned to, which the
+  next start says in one line. `--to <version>` installs only a version in the current manifest's `pins` or `previous`.
   One that does not verify is ignored, one whose artifact fails its digest installs nothing, and none is undone, only superseded.
 - Freeze: expiry gates installs, not sessions. With an expired manifest and no successor the client keeps running what it
   has and `--rollback` still works, but a fresh install gets no provider CLI until the channel is live again. So a freeze

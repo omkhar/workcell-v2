@@ -488,14 +488,11 @@ func TestVerify(t *testing.T) {
 			s.routes[key(s.cand.Artifacts["amd64"].URL)] = route{drip: true}
 			s.timeout = 500 * time.Millisecond
 		}},
-		{name: "9E empty-sha256-no-signature github", src: gh, mut: sha("")},
-		{name: "9E empty-sha256-no-signature npm", src: npm, mut: integrity("")},
-		{name: "9E empty-sha256-no-signature vendor", src: vendor, mut: sha("")},
-		{name: "10E version-template-injection path", src: gh, signed: true, mut: version("1.0/../x")},
+		{name: "9E empty-sha256-no-signature github", src: gh, mut: sha("")}, {name: "9E empty-sha256-no-signature npm", src: npm, mut: integrity("")},
+		{name: "9E empty-sha256-no-signature vendor", src: vendor, mut: sha("")}, {name: "10E version-template-injection path", src: gh, signed: true, mut: version("1.0/../x")},
 		{name: "10E version-template-injection at", src: gh, signed: true, mut: version("1.0@evil")},
 		{name: "10E version-template-injection ref", src: gh, signed: true, mut: version("v1.0/refs/tags/x")},
-		{name: "10E version-template-injection npm", src: npm, signed: true, mut: version("1.0@evil")},
-		{name: "10V version-empty", src: gh, signed: true, mut: version("")},
+		{name: "10E version-template-injection npm", src: npm, signed: true, mut: version("1.0@evil")}, {name: "10V version-empty", src: gh, signed: true, mut: version("")},
 		{name: "11V wrong-arch-fixture", src: gh, mut: func(s *setup) {
 			s.routes[key(s.cand.Artifacts["amd64"].URL)] = s.routes[key(s.cand.Artifacts["arm64"].URL)]
 		}},

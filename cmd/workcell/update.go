@@ -249,8 +249,8 @@ func (in installer) daily(now time.Time) bool {
 }
 
 // apply is what a session start makes of the manifest the last daily check kept (B9): <data>/channel.next, removed first whatever follows, is verified again
-// and its pin installed for each provider with a row, as the verb does, except that a pin whose image is the one marked failed is skipped (B10); each result or
-// error is one line on stderr, and the session goes on. It pairs each image it installed, as against found current or rolled back to, with the one it replaced: fail's (fresh).
+// and its pin installed for each provider with a row, as the verb does, except that a pin whose image is the one marked failed is skipped (B10) unless the image
+// fail returned to is one this manifest withdraws (C96), which one line names; each result or error is one line on stderr, and the session goes on. It pairs each image it installed, as against found current or rolled back to, with the one it replaced: fail's (fresh).
 func (in installer) apply(provs []provider.Provider, stderr io.Writer) (fresh []string) {
 	raw := marker(in.dir, "channel.next")
 	if os.Remove(filepath.Join(in.dir, "channel.next")); raw == "" || in.channel == "" {
@@ -265,12 +265,14 @@ func (in installer) apply(provs []provider.Provider, stderr io.Writer) (fresh []
 	defer cancel()
 	for _, p := range provs {
 		dir := filepath.Join(in.dir, "layers", p.Name)
+		cur, prev := marker(dir, "current"), marker(dir, "previous")
 		row, rerr := in.row(p)
 		pin, err := choose(channel.Select(m, row.Name, runtime.GOARCH), "", in.cooloff, time.Now())
-		if rerr != nil || err == nil && pin.Version+"-"+pin.SHA256+".ext4" == marker(dir, "failed") { // no row, or the pin is the layer set aside
+		if v, d := parse(cur); rerr != nil || err == nil && pin.Version+"-"+pin.SHA256+".ext4" == marker(dir, "failed") && !slices.Contains(m.Withdrawn, d) { // no row, or the pin is the layer set aside, unless the image fail returned to is withdrawn by this manifest (C96)
 			continue
+		} else if err == nil && pin.Version+"-"+pin.SHA256+".ext4" == marker(dir, "failed") {
+			fmt.Fprintf(stderr, "workcell: update: %s %s %s is withdrawn, so the layer set aside is installed again\n", p.Name, v, d[:16])
 		}
-		cur, prev := marker(dir, "current"), marker(dir, "previous")
 		line, err := in.update(ctx, p, func() (*channel.Manifest, error) { return m, nil }, "", false)
 		if err != nil {
 			line = err.Error()

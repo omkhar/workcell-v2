@@ -29,10 +29,8 @@ func parses[T any](t *testing.T, read func(string) T, tests []parse[T]) {
 
 func TestRootDevice(t *testing.T) {
 	parses(t, rootDevice, []parse[string]{
-		{"none", "console=ttyS0 reboot=k panic=-1 pci=off quiet", ""}, {"empty", "", ""},
-		{"set", "console=ttyS0 root=/dev/vda ro", "/dev/vda"},
-		{"newline", "quiet root=/dev/vda ro\n", "/dev/vda"},
-		{"the last wins", "root=/dev/vdb root=/dev/vda ro", "/dev/vda"},
+		{"none", "console=ttyS0 reboot=k panic=-1 pci=off quiet", ""}, {"empty", "", ""}, {"set", "console=ttyS0 root=/dev/vda ro", "/dev/vda"},
+		{"newline", "quiet root=/dev/vda ro\n", "/dev/vda"}, {"the last wins", "root=/dev/vdb root=/dev/vda ro", "/dev/vda"},
 		{"not a device", "root=UUID=1234 ro", ""}, {"a name that only ends in root=", "chroot=/dev/vda ro", ""},
 	})
 }
@@ -43,22 +41,18 @@ func TestWorkspaceDevice(t *testing.T) {
 
 func TestLayers(t *testing.T) {
 	parses(t, layers, []parse[[]layer]{
-		{"none", "root=/dev/vda ro workcell.workspace=/dev/vdb", nil},
-		{"one", "root=/dev/vda workcell.layer=claude:/dev/vdc\n", []layer{{"claude", "/dev/vdc"}}},
+		{"none", "root=/dev/vda ro workcell.workspace=/dev/vdb", nil}, {"one", "root=/dev/vda workcell.layer=claude:/dev/vdc\n", []layer{{"claude", "/dev/vdc"}}},
 		{"two, in order", "workcell.layer=codex:/dev/vdc workcell.layer=claude:/dev/vdd", []layer{{"codex", "/dev/vdc"}, {"claude", "/dev/vdd"}}},
 		{"not a device", "workcell.layer=claude:vdc workcell.layer=codex:/dev/vdd", []layer{{"codex", "/dev/vdd"}}},
 		{"no device", "workcell.layer=claude", nil}, {"no name", "workcell.layer=:/dev/vdc", nil},
-		{"a name with a slash or a dot", "workcell.layer=../etc:/dev/vdc workcell.layer=a/b:/dev/vdd", nil},
-		{"another name", "other.workcell.layer=claude:/dev/vdc", nil},
+		{"a name with a slash or a dot", "workcell.layer=../etc:/dev/vdc workcell.layer=a/b:/dev/vdd", nil}, {"another name", "other.workcell.layer=claude:/dev/vdc", nil},
 	})
 }
 
 func TestMounted(t *testing.T) {
 	parses(t, mounted, []parse[bool]{
-		{"none", "root=/dev/vda ro", false}, {"set", "root=/dev/vda ro workcell.mount=1", true},
-		{"newline", "ro workcell.mount=1\n", true}, {"zero", "workcell.mount=0", false},
-		{"empty", "workcell.mount=", false}, {"the last wins", "workcell.mount=1 workcell.mount=0", false},
-		{"the last wins when on", "workcell.mount=0 workcell.mount=1", true},
+		{"none", "root=/dev/vda ro", false}, {"set", "root=/dev/vda ro workcell.mount=1", true}, {"newline", "ro workcell.mount=1\n", true}, {"zero", "workcell.mount=0", false},
+		{"empty", "workcell.mount=", false}, {"the last wins", "workcell.mount=1 workcell.mount=0", false}, {"the last wins when on", "workcell.mount=0 workcell.mount=1", true},
 		{"another name", "other.workcell.mount=1", false}, {"no value", "workcell.mount", false},
 	})
 }
@@ -78,15 +72,11 @@ func TestPorts(t *testing.T) {
 		want          []uint16
 		ok            bool
 	}{
-		{"none", "root=/dev/vda ro", nil, true}, {"empty", "root=/dev/vda ro workcell.ports= quiet", nil, true},
-		{"one", "workcell.ports=443", []uint16{443}, true},
-		{"many", "ro workcell.ports=443,80,8443\n", []uint16{443, 80, 8443}, true},
-		{"the last wins", "workcell.ports=443 workcell.ports=80", []uint16{80}, true},
-		{"the last wins when empty", "workcell.ports=443 workcell.ports=", nil, true},
-		{"another name", "other.workcell.ports=443", nil, true},
+		{"none", "root=/dev/vda ro", nil, true}, {"empty", "root=/dev/vda ro workcell.ports= quiet", nil, true}, {"one", "workcell.ports=443", []uint16{443}, true},
+		{"many", "ro workcell.ports=443,80,8443\n", []uint16{443, 80, 8443}, true}, {"the last wins", "workcell.ports=443 workcell.ports=80", []uint16{80}, true},
+		{"the last wins when empty", "workcell.ports=443 workcell.ports=", nil, true}, {"another name", "other.workcell.ports=443", nil, true},
 		{"not a number", "workcell.ports=https", nil, false}, {"zero", "workcell.ports=0", nil, false},
-		{"too large", "workcell.ports=65536", nil, false}, {"negative", "workcell.ports=-1", nil, false},
-		{"a blank entry", "workcell.ports=443,", nil, false},
+		{"too large", "workcell.ports=65536", nil, false}, {"negative", "workcell.ports=-1", nil, false}, {"a blank entry", "workcell.ports=443,", nil, false},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -108,10 +98,8 @@ func TestCaches(t *testing.T) {
 	parses(t, caches, []parse[[]cache]{
 		{"none", "root=/dev/vda ro workcell.layer=claude:/dev/vdc", nil},
 		{"two, in order", "workcell.cache=go:/dev/vdd:ro workcell.cache=npm:/dev/vde:rw\n", []cache{{"go", "/dev/vdd", false}, {"npm", "/dev/vde", true}}},
-		{"not a device", "workcell.cache=go:vdd:ro", nil},
-		{"another mode", "workcell.cache=go:/dev/vdd:rx workcell.cache=go:/dev/vdd", nil},
-		{"no name", "workcell.cache=:/dev/vdd:ro", nil},
-		{"a name with a slash or a dot", "workcell.cache=../etc:/dev/vdd:ro workcell.cache=a/b:/dev/vdd:rw", nil},
+		{"not a device", "workcell.cache=go:vdd:ro", nil}, {"another mode", "workcell.cache=go:/dev/vdd:rx workcell.cache=go:/dev/vdd", nil},
+		{"no name", "workcell.cache=:/dev/vdd:ro", nil}, {"a name with a slash or a dot", "workcell.cache=../etc:/dev/vdd:ro workcell.cache=a/b:/dev/vdd:rw", nil},
 		{"another name", "other.workcell.cache=go:/dev/vdd:ro", nil},
 	})
 }
