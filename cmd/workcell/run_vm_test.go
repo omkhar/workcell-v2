@@ -28,10 +28,8 @@ func TestLastLines(t *testing.T) {
 		n        int
 		want     string
 	}{
-		{"empty", "", 3, ""},
-		{"fewer lines than asked", "a\nb\n", 3, "a\nb"},
-		{"the last two", "a\nb\nc\nd\n", 2, "c\nd"},
-		{"no final newline", "a\nb", 1, "b"},
+		{"empty", "", 3, ""}, {"fewer lines than asked", "a\nb\n", 3, "a\nb"},
+		{"the last two", "a\nb\nc\nd\n", 2, "c\nd"}, {"no final newline", "a\nb", 1, "b"},
 		{"carriage returns go", "a\r\nb\r\n", 2, "a\nb"},
 		{"escape sequences are defused", "\x1b]0;x\x07ok\x00", 1, "?]0;x?ok?"},
 		{"non-ASCII is defused", "caf\xc3\xa9", 1, "caf?"},
@@ -101,8 +99,7 @@ func TestOutput(t *testing.T) {
 		exit   guest.Exit
 		want   result
 	}{
-		{"success", nil, guest.Exit{}, result{}},
-		{"status 7", nil, guest.Exit{Code: 7}, result{code: 7}},
+		{"success", nil, guest.Exit{}, result{}}, {"status 7", nil, guest.Exit{Code: 7}, result{code: 7}},
 		{"killed by SIGTERM", nil, guest.Exit{Signal: 15}, result{code: 143}},
 		{"could not run, the first frame", nil, noexec, result{code: 126, err: errNoExec, first: true}},
 		{"could not run after output", []wire.Frame{{Type: guest.TypeStdout, Payload: []byte("hi")}}, noexec, result{code: 126, err: errNoExec}},

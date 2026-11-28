@@ -24,8 +24,7 @@ func TestHeader(t *testing.T) {
 		{"tcp to an IPv4 address", v4, Header{Proto: TCP, Dst: netip.MustParseAddrPort("198.51.100.7:443")}, true},
 		{"tcp to an IPv6 address", v6, Header{Proto: TCP, Dst: netip.MustParseAddrPort("[2001:db8::7]:443")}, true},
 		{"udp to the resolver", dns, Header{Proto: UDP, Dst: netip.MustParseAddrPort("127.0.0.1:53")}, true},
-		{"empty", nil, Header{}, false},
-		{"short", v4[:19], Header{}, false},
+		{"empty", nil, Header{}, false}, {"short", v4[:19], Header{}, false},
 		{"long", append(bytes.Clone(v4), 0), Header{}, false},
 		{"version 0", append([]byte{0}, v4[1:]...), Header{}, false},
 		{"version 2", append([]byte{2}, v4[1:]...), Header{}, false},
@@ -53,11 +52,8 @@ func TestFrame(t *testing.T) {
 		want []byte // nil for an error
 	}{
 		{"a datagram", append(Frame([]byte("abc")), "tail"...), []byte("abc")},
-		{"empty datagram", []byte{0, 0}, []byte{}},
-		{"the largest", Frame(big), big},
-		{"no length", nil, nil},
-		{"one length byte", []byte{0}, nil},
-		{"shorter than its length", []byte{0, 3, 'a', 'b'}, nil},
+		{"empty datagram", []byte{0, 0}, []byte{}}, {"the largest", Frame(big), big}, {"no length", nil, nil},
+		{"one length byte", []byte{0}, nil}, {"shorter than its length", []byte{0, 3, 'a', 'b'}, nil},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

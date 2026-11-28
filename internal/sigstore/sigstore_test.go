@@ -276,8 +276,7 @@ func TestVerify(t *testing.T) {
 		return func(x *bundle) { x.VerificationMaterial.TlogEntries = b.VerificationMaterial.TlogEntries }
 	}
 	rows := []row{
-		{name: "good_message", ok: true},
-		{name: "good_dsse", dsse: true, ok: true},
+		{name: "good_message", ok: true}, {name: "good_dsse", dsse: true, ok: true},
 		{name: "good_v01_chain", in: func(in *input) { in.media, in.chain, in.extra = v01, true, []*x509.Certificate{f.inter} }, ok: true},
 		{name: "good_v02", in: func(in *input) { in.media = v02 }, ok: true},
 		{name: "good_chain_leaf_only", in: func(in *input) { in.chain = true }, ok: true},
@@ -304,8 +303,7 @@ func TestVerify(t *testing.T) {
 		{name: "sig_bit_flip", post: func(b *bundle) { b.MessageSignature.Signature[4] ^= 1 }},
 		{name: "sig_trailing_der", post: func(b *bundle) { b.MessageSignature.Signature = append(b.MessageSignature.Signature, 0) }},
 		{name: "sig_over_other_digest", in: func(in *input) { in.signer = p256(t) }},
-		{name: "digest_swap", digest: other[:]},
-		{name: "digest_31", digest: artifact[:31]},
+		{name: "digest_swap", digest: other[:]}, {name: "digest_31", digest: artifact[:31]},
 		{name: "digest_33", digest: append(artifact[:], 0)},
 		{name: "algo_sha2_384", post: func(b *bundle) { b.MessageSignature.MessageDigest.Algorithm = "SHA2_384" }},
 		{name: "algo_lowercase", post: func(b *bundle) { b.MessageSignature.MessageDigest.Algorithm = "sha256" }},
@@ -344,8 +342,7 @@ func TestVerify(t *testing.T) {
 		{name: "leaf_is_ca", in: func(in *input) { in.tmpl.IsCA, in.tmpl.BasicConstraintsValid = true, true }},
 		{name: "leaf_no_codesigning_eku", in: func(in *input) { in.tmpl.ExtKeyUsage = nil }},
 		{name: "leaf_no_digital_signature", in: func(in *input) { in.tmpl.KeyUsage = x509.KeyUsageKeyEncipherment }},
-		{name: "leaf_before_ca_window", root: f.tooEarly},
-		{name: "leaf_after_ca_window", root: f.tooLate},
+		{name: "leaf_before_ca_window", root: f.tooEarly}, {name: "leaf_after_ca_window", root: f.tooLate},
 		{name: "bundle_chain_as_anchor", in: func(in *input) {
 			k := p256(t)
 			in.parent, in.parentKey = issue(t, caTmpl(9), nil, k, nil), k
@@ -370,8 +367,7 @@ func TestVerify(t *testing.T) {
 		{name: "null_material", post: func(b *bundle) { b.VerificationMaterial = nil }},
 		// identity and issuer
 		{name: "san_second_uri", in: withSAN(name(6, identity), name(6, identity+".evil"))},
-		{name: "san_dns", in: withSAN(name(2, identity))},
-		{name: "san_email", in: withSAN(name(1, identity))},
+		{name: "san_dns", in: withSAN(name(2, identity))}, {name: "san_email", in: withSAN(name(1, identity))},
 		{name: "san_uri_plus_dns", in: withSAN(name(6, identity), name(2, "x"))},
 		{name: "san_none", in: withSAN()},
 		{name: "san_prefix", in: withSAN(name(6, identity[:len(identity)-3]))},
@@ -399,13 +395,11 @@ func TestVerify(t *testing.T) {
 		{name: "set_body_changed", post: func(b *bundle) { entry(b).CanonicalizedBody[2] ^= 1 }},
 		{name: "keyid_unknown", in: func(in *input) { in.logID = other[:] }},
 		{name: "keyid_wrong_length", in: func(in *input) { in.logID = f.rekorID[:31] }},
-		{name: "keyid_empty", in: func(in *input) { in.logID = nil }},
-		{name: "keyid_of_ctlog", root: f.ctOnly},
+		{name: "keyid_empty", in: func(in *input) { in.logID = nil }}, {name: "keyid_of_ctlog", root: f.ctOnly},
 		{name: "log_key_window_ended", root: f.logEnded},
 		{name: "integrated_time_before_not_before", in: at(signed.Unix() - 1)},
 		{name: "integrated_time_after_not_after", in: at(signed.Add(10*time.Minute).Unix() + 1)},
-		{name: "integrated_time_zero", in: at(0)},
-		{name: "integrated_time_negative", in: at(-1)},
+		{name: "integrated_time_zero", in: at(0)}, {name: "integrated_time_negative", in: at(-1)},
 		{name: "integrated_time_overflow", text: func(b []byte) []byte {
 			return bytes.Replace(b, fmt.Appendf(nil, `"integratedTime":%d`, signed.Add(time.Minute).Unix()), []byte(`"integratedTime":9223372036854775808`), 1)
 		}},
@@ -507,13 +501,9 @@ func TestParseRoot(t *testing.T) {
 		ok   bool
 		logs int
 	}{
-		{"empty_root", good, true, 0},
-		{"ed25519_key_skipped", edKey, true, 0},
-		{"bad_cert", badCert, false, 0},
-		{"empty_chain", emptyChain, false, 0},
-		{"bad_key", badKey, false, 0},
-		{"not_json", []byte("{"), false, 0},
-		{"null", []byte("null"), true, 0},
+		{"empty_root", good, true, 0}, {"ed25519_key_skipped", edKey, true, 0}, {"bad_cert", badCert, false, 0},
+		{"empty_chain", emptyChain, false, 0}, {"bad_key", badKey, false, 0},
+		{"not_json", []byte("{"), false, 0}, {"null", []byte("null"), true, 0},
 		{"too_large", append(good, bytes.Repeat([]byte(" "), maxRoot)...), false, 0},
 	} {
 		r, err := ParseRoot(tc.raw)

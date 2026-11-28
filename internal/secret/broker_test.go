@@ -66,15 +66,11 @@ func TestLookupReleasesOnlyGrantedPairs(t *testing.T) {
 	log := &fakeLedger{}
 	b := newTestBroker(t, log)
 	for _, tc := range []struct{ host, header, want string }{
-		{"api.anthropic.com", "x-api-key", "sk-a"},
-		{"api.anthropic.com", "authorization", "sk-a"},
+		{"api.anthropic.com", "x-api-key", "sk-a"}, {"api.anthropic.com", "authorization", "sk-a"},
 		{"generativelanguage.googleapis.com", "x-goog-api-key", "g-key"},
-		{"api.anthropic.com", "x-goog-api-key", ""},
-		{"generativelanguage.googleapis.com", "x-api-key", ""},
-		{"api.anthropic.com", "Authorization", ""},
-		{"API.anthropic.com", "x-api-key", ""},
-		{"evil.example", "x-api-key", ""},
-		{"api.openai.com", "authorization", ""},
+		{"api.anthropic.com", "x-goog-api-key", ""}, {"generativelanguage.googleapis.com", "x-api-key", ""},
+		{"api.anthropic.com", "Authorization", ""}, {"API.anthropic.com", "x-api-key", ""},
+		{"evil.example", "x-api-key", ""}, {"api.openai.com", "authorization", ""},
 	} {
 		got, err := b.Lookup(context.Background(), tc.host, tc.header)
 		if string(got) != tc.want || (err == nil) != (tc.want != "") {
@@ -205,8 +201,7 @@ func TestDenialsSpendTheirOwnBudget(t *testing.T) {
 		host      string
 		wantGrant bool
 	}{
-		{strings.Repeat("h", maxLineBytes+1), true},
-		{"evil.example", false},
+		{strings.Repeat("h", maxLineBytes+1), true}, {"evil.example", false},
 	} {
 		log := &fakeLedger{}
 		b := newTestBroker(t, log)

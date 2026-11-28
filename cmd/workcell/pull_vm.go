@@ -81,23 +81,16 @@ func fetch(dest string, use func(int, *manifest, source) error) (int, error) {
 	defer unix.Close(root)
 	if err := holds(dest); err != nil {
 		return 0, err
-	}
-	if within(dest, os.TempDir()) { // the VMM's sockets, of a session running now or of one begun during the pull, would lie under it, for the guest's tree to swap for a link to any host socket of the operator's (I1, I4, I7)
+	} else if within(dest, os.TempDir()) { // the VMM's sockets, of a session running now or of one begun during the pull, would lie under it, for the guest's tree to swap for a link to any host socket of the operator's (I1, I4, I7)
 		return 0, fmt.Errorf("%q holds the temp directory %s, where the VMM's sockets lie, which no pull may write over: set TMPDIR elsewhere", dest, os.TempDir())
 	}
-	if err := named(root, dest); err != nil {
-		return 0, err
-	}
 	a, err := loadArtifacts()
-	if err != nil {
+	if err = cmp.Or(named(root, dest), err); err != nil {
 		return 0, err
 	}
 	cwd, err := os.Getwd()
-	if err != nil {
-		return 0, err
-	}
-	session, err := newest(filepath.Join(a.dir, "sessions"), cwd)
-	if err != nil {
+	session, serr := newest(filepath.Join(a.dir, "sessions"), cwd)
+	if err = cmp.Or(err, serr); err != nil {
 		return 0, err
 	}
 	lock, err := lockSession(session, unix.LOCK_EX|unix.LOCK_NB) // held for the pull's whole life, as a run holds its own: ls reads the session as running, rm refuses it and stop ends this process; a run that still holds it is refused here, before any boot (C63)

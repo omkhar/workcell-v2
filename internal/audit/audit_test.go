@@ -29,8 +29,7 @@ func session(t *testing.T) (string, ed25519.PrivateKey) {
 		t.Fatal(err)
 	}
 	for _, r := range []Record{
-		{Event: SessionStart},
-		{Event: Connect, Host: "a.example", Port: 443, Result: Allowed},
+		{Event: SessionStart}, {Event: Connect, Host: "a.example", Port: 443, Result: Allowed},
 		{Event: Connect, Host: "b.example", Port: 443, Result: "sni_not_allowed"},
 		{Event: Secret, Name: "anthropic", Host: "a.example", Header: "x-api-key", Result: "granted"},
 		{Event: SessionEnd, Result: "exit 0"},

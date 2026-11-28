@@ -77,8 +77,8 @@ func loadPolicy(extra []string, stderr io.Writer) (allow *proxy.Allowlist, secre
 		secrets, err = bindings(narrowed, allow, file)
 	}
 	for _, s := range p.Secret { // the user's rows, whatever workcell.toml kept (I13, C58): the one path the host opens or runs, a file: path or the program of a cmd: source, is judged as the kernel walks it, since a prefix in cwd (the guest's under --mount) or in the data directory lets the guest serve the key or swap the program, and a key in cwd goes into the export (I5, C54). What a program reads through its arguments is its own (ADR-006, SPEC section 2).
-		scheme, rest, _ := strings.Cut(s.Source, ":")
-		at, path := fmt.Sprintf("%s:%d: secret %q: source %s", file, s.Line, s.Name, s.Source), map[bool]string{false: rest, true: append(strings.Fields(rest), "")[0]}[scheme == "cmd"] // the file: path, or the program as Resolve splits argv
+		scheme, _, _ := strings.Cut(s.Source, ":")
+		at, path := fmt.Sprintf("%s:%d: secret %q: source %s", file, s.Line, s.Name, s.Source), sourcePath(s.Source)
 		switch {
 		case err != nil:
 		case !slices.Contains([]string{"file", "cmd", "secret-service", "keychain", "signin"}, scheme):
@@ -97,6 +97,12 @@ func loadPolicy(extra []string, stderr io.Writer) (allow *proxy.Allowlist, secre
 		}
 	}
 	return allow, secrets, note, file, err
+}
+
+// sourcePath is the one path the host opens or runs for a [[secret]] source: a file: path, or the program of a cmd: source as Resolve splits argv; "" for a scheme that names none. loadPolicy judges it against the working directory and holds against a pull's destination, so the two never diverge (C54, C93).
+func sourcePath(source string) string {
+	scheme, rest, _ := strings.Cut(source, ":")
+	return map[string]string{"file": rest, "cmd": append(strings.Fields(rest), "")[0]}[scheme]
 }
 
 // binding is one [[secret]] row ready for a session: the grant the broker releases, the rule the proxy swaps by, holding the placeholder minted here, and the guest variable that carries the placeholder, "" for none. The value itself is read by the broker, per use, on the host (I5).

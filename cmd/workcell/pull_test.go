@@ -80,13 +80,10 @@ func TestFold(t *testing.T) {
 		a, b string
 		same bool
 	}{
-		{"Readme", "readme", true},
-		{"k", "K", true}, // the Kelvin sign folds to k
-		{"σ", "ς", true}, // final sigma
-		{"a/b", "A/B", true},
-		{"straße", "strasse", false}, // ß has no simple fold
-		{"a", "b", false},
-		{"", "", true},
+		{"Readme", "readme", true}, {"k", "K", true}, // the Kelvin sign folds to k
+		{"σ", "ς", true},                                   // final sigma
+		{"a/b", "A/B", true}, {"straße", "strasse", false}, // ß has no simple fold
+		{"a", "b", false}, {"", "", true},
 	}
 	for _, tc := range tests {
 		if got := fold(tc.a) == fold(tc.b); got != tc.same || got != strings.EqualFold(tc.a, tc.b) {

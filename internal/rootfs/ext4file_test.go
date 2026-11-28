@@ -67,10 +67,8 @@ func TestWriteExt4File(t *testing.T) {
 		name  string
 		sizes []int64
 	}{
-		{"one block", []int64{4096}},
-		{"unaligned", []int64{1, 5000, 100<<10 + 7}},
-		{"several", []int64{4096, 4097, 8191, 8192, 1 << 20}},
-		{"spans two groups", []int64{3, 130 << 20, 99}},
+		{"one block", []int64{4096}}, {"unaligned", []int64{1, 5000, 100<<10 + 7}},
+		{"several", []int64{4096, 4097, 8191, 8192, 1 << 20}}, {"spans two groups", []int64{3, 130 << 20, 99}},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

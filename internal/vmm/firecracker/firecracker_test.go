@@ -94,10 +94,8 @@ func TestPin(t *testing.T) {
 		n    int
 		want uint64 // bit c is CPU c
 	}{
-		{"the first two", all, 2, 0b11},
-		{"only CPUs it may run on", odd, 3, 0b101010},
-		{"all it has when asked for more", odd, 9, 0xaaaa},
-		{"none", all, 0, 0},
+		{"the first two", all, 2, 0b11}, {"only CPUs it may run on", odd, 3, 0b101010},
+		{"all it has when asked for more", odd, 9, 0xaaaa}, {"none", all, 0, 0},
 	}
 	for _, tc := range tests {
 		if pin(&tc.cur, tc.n); uint64(tc.cur[0]) != tc.want {

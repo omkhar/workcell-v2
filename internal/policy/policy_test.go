@@ -43,11 +43,9 @@ func TestParse(t *testing.T) {
 		want []Entry // nil for nothing allowed
 	}{
 		{"the SPEC example", specExample, []Entry{{"api.anthropic.com", 3}, {"github.com", 3}, {"proxy.golang.org", 3}}},
-		{"empty file", "", nil},
-		{"comments and blank lines alone", "# nothing\n\n   # here\n", nil},
+		{"empty file", "", nil}, {"comments and blank lines alone", "# nothing\n\n   # here\n", nil},
 		{"no network table", "[workspace]\nmode = \"clone\"\n", nil},
-		{"network without allow", "[network]\n", nil},
-		{"empty allow", "[network]\nallow = []\n", nil},
+		{"network without allow", "[network]\n", nil}, {"empty allow", "[network]\nallow = []\n", nil},
 		{"empty allow with room", "[network]\nallow = [ ]", nil},
 		{"the escape adapter's forward entry", "[network]\nallow = [\"allowed.escape.test:8443\"]\n", []Entry{{"allowed.escape.test:8443", 2}}},
 		{"bare name and name:port", "[network]\nallow = [\"a.example\", \"b.example:80\"]\n", []Entry{{"a.example", 2}, {"b.example:80", 2}}},
