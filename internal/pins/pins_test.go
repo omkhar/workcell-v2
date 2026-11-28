@@ -141,17 +141,10 @@ func TestParseVersion(t *testing.T) {
 		want Version
 		ok   bool
 	}{
-		{"1.2.3", Version{1, 2, 3}, true},
-		{"v0.0.0", Version{0, 0, 0}, true},
-		{"1.10.0", Version{1, 10, 0}, true},
-		{"18446744073709551615.0.0", Version{1<<64 - 1, 0, 0}, true},
-		{"18446744073709551616.0.0", Version{}, false},
-		{"01.2.3", Version{}, false},
-		{"1.2.3.4", Version{}, false},
-		{"1.2.-3", Version{}, false},
-		{" 1.2.3", Version{}, false},
-		{"vv1.2.3", Version{}, false},
-		{"", Version{}, false},
+		{"1.2.3", Version{1, 2, 3}, true}, {"v0.0.0", Version{0, 0, 0}, true}, {"1.10.0", Version{1, 10, 0}, true},
+		{"18446744073709551615.0.0", Version{1<<64 - 1, 0, 0}, true}, {"18446744073709551616.0.0", Version{}, false},
+		{"01.2.3", Version{}, false}, {"1.2.3.4", Version{}, false}, {"1.2.-3", Version{}, false}, {" 1.2.3", Version{}, false},
+		{"vv1.2.3", Version{}, false}, {"", Version{}, false},
 	}
 	for _, tt := range tests {
 		if got, ok := ParseVersion(tt.in); got != tt.want || ok != tt.ok {

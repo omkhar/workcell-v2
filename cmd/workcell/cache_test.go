@@ -20,15 +20,9 @@ func TestParseCaches(t *testing.T) {
 		{"none", nil, nil},
 		{"read-only and writable, in order", []string{"go", "npm:rw"}, []vmm.Cache{{Name: "go"}, {Name: "npm", Writable: true}}},
 		{"the longest name", []string{strings.Repeat("a", 32)}, []vmm.Cache{{Name: strings.Repeat("a", 32)}}},
-		{"too long", []string{strings.Repeat("a", 33)}, nil},
-		{"digits, _ and -", []string{"0_-"}, []vmm.Cache{{Name: "0_-"}}},
-		{"empty", []string{""}, nil},
-		{"capital", []string{"Go"}, nil},
-		{"a dot or a slash", []string{"../x"}, nil},
-		{"leading dash", []string{"-go"}, nil},
-		{"another mode", []string{"go:ro"}, nil},
-		{"a colon and no mode", []string{"go:"}, nil},
-		{"twice", []string{"go", "go:rw"}, nil},
+		{"too long", []string{strings.Repeat("a", 33)}, nil}, {"digits, _ and -", []string{"0_-"}, []vmm.Cache{{Name: "0_-"}}},
+		{"empty", []string{""}, nil}, {"capital", []string{"Go"}, nil}, {"a dot or a slash", []string{"../x"}, nil}, {"leading dash", []string{"-go"}, nil},
+		{"another mode", []string{"go:ro"}, nil}, {"a colon and no mode", []string{"go:"}, nil}, {"twice", []string{"go", "go:rw"}, nil},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

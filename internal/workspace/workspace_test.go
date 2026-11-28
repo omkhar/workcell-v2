@@ -69,17 +69,9 @@ func TestExport(t *testing.T) {
 		request string
 		want    string // in the output, or "" for "File not found"
 	}{
-		{"cat /a/b/c.txt", "hello"},
-		{"cat /.git/config", "[core]"},
-		{"stat /empty", "Size: 0"},
-		{"stat /passwd", "Type: symlink Mode: 0777"},
-		{"stat /passwd", `Fast link dest: "/etc/passwd"`},
-		{"stat /up", `Fast link dest: "../../.."`},
-		{"stat /dangling", `Fast link dest: "nowhere"`},
-		{"stat /a/dir", `Fast link dest: "/"`},
-		{"stat /hard1", "Links: 2"},
-		{"stat /hard2", "Links: 2"},
-		{"stat /fifo", ""},
+		{"cat /a/b/c.txt", "hello"}, {"cat /.git/config", "[core]"}, {"stat /empty", "Size: 0"}, {"stat /passwd", "Type: symlink Mode: 0777"},
+		{"stat /passwd", `Fast link dest: "/etc/passwd"`}, {"stat /up", `Fast link dest: "../../.."`}, {"stat /dangling", `Fast link dest: "nowhere"`},
+		{"stat /a/dir", `Fast link dest: "/"`}, {"stat /hard1", "Links: 2"}, {"stat /hard2", "Links: 2"}, {"stat /fifo", ""},
 		{"stat /a/b/c.txt", "Mode: 0640 Flags: 0x80000 Generation: 0 Version: 0x00000000:00000000 User: 0 Group: 0"},
 	}
 	for _, tc := range tests {

@@ -290,17 +290,33 @@ func write(root int, m *manifest, data source) error {
 	return nil
 }
 
-// isGit reports whether name, in the directory open as dir, is what ".git" names there, however name is spelled: the same device and inode, both read now, never remembered (C44: HFS+ ignores some code points).
-func isGit(dir int, name string) bool {
-	var git, st unix.Stat_t
-	return unix.Fstatat(dir, ".git", &git, unix.AT_SYMLINK_NOFOLLOW) == nil && unix.Fstatat(dir, name, &st, unix.AT_SYMLINK_NOFOLLOW) == nil && st.Dev == git.Dev && st.Ino == git.Ino
+// isGit reports whether name, in the directory open as dir, is the .git of dir or of a directory above it, however name is spelled (C44: HFS+ ignores some code points), or the directory that one of them names (C91): by device and inode, read in this put and never remembered. It adds dir's own to known first: .git itself and what it names, a link followed by the kernel or a gitfile's "gitdir: " path resolved from dir as git reads it. Only a regular file is opened, through no link, for as many bytes as a path can hold; a .git that is absent, or names nothing that exists, adds itself or nothing.
+func isGit(dir int, name string, known *[]unix.Stat_t) bool {
+	var git, named, st unix.Stat_t
+	path, there := ".git", unix.Fstatat(dir, ".git", &git, unix.AT_SYMLINK_NOFOLLOW) == nil
+	if there && uint32(git.Mode)&unix.S_IFMT == unix.S_IFREG {
+		if fd, err := fileBeneath(dir, ".git"); err == nil {
+			f := os.NewFile(uintptr(fd), ".git")
+			b, _ := io.ReadAll(io.LimitReader(f, unix.PathMax+16))
+			f.Close()
+			path, _ = strings.CutPrefix(strings.TrimRight(string(b), "\r\n"), "gitdir: ") // without the prefix the whole text is taken: looser than git, so it refuses more
+		}
+	}
+	if there {
+		*known = append(*known, git)
+	}
+	if unix.Fstatat(dir, path, &named, 0) == nil {
+		*known = append(*known, named)
+	}
+	return unix.Fstatat(dir, name, &st, unix.AT_SYMLINK_NOFOLLOW) == nil && slices.ContainsFunc(*known, func(k unix.Stat_t) bool { return st.Dev == k.Dev && st.Ino == k.Ino })
 }
 
 func put(root int, e guest.Entry, data source) error {
-	refused := errors.New("a component is the .git of its directory")
+	refused := errors.New("a component is the .git of its directory, or the directory that a .git names")
 	pfd, err := dirBeneath(root, ".")
+	var known []unix.Stat_t // the .git of each directory on the way down, and what it names
 	name, rest, deeper := strings.Cut(e.Path, "/")
-	for ; err == nil && deeper && !isGit(pfd, name); name, rest, deeper = strings.Cut(rest, "/") {
+	for ; err == nil && deeper && !isGit(pfd, name, &known); name, rest, deeper = strings.Cut(rest, "/") {
 		up := pfd
 		pfd, err = dirBeneath(up, name)
 		unix.Close(up)
@@ -309,7 +325,7 @@ func put(root int, e guest.Entry, data source) error {
 		return fmt.Errorf("open its directory: %w", err)
 	}
 	defer unix.Close(pfd)
-	if isGit(pfd, name) { // the last name, or the directory at which the walk stopped
+	if isGit(pfd, name, &known) { // the last name, or the directory at which the walk stopped
 		return refused
 	}
 	var st unix.Stat_t
@@ -335,7 +351,7 @@ func put(root int, e guest.Entry, data source) error {
 	default:
 		fd, err = createBeneath(pfd, name, mode)
 	}
-	if err == nil && isGit(pfd, name) { // no .git was here, and this name has just made one: take it away again
+	if err == nil && isGit(pfd, name, &known) { // no .git was here, and this name has just made one, or what a .git names: take it away again
 		unix.Close(fd) // -1 unless a file was made
 		unix.Unlinkat(pfd, name, rm)
 		return refused
