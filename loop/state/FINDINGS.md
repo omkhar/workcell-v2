@@ -10731,3 +10731,50 @@ The next candidate number is C91 and the next fix unit S-F77. No model declined,
 request of the auditor, the redteam or either verifier, and no tool permission was refused to any of them. The
 auditor and one verifier installed apache2 and nginx from the distribution's archive for their probes, every
 listener on loopback and stopped afterwards (S12). Nothing falls under S14.
+
+C90 FIXED by S-F75, commits 288a62b (the test moved, with one more arm and a `repos` row) and d83242b (the fix)
+(PR #368). The fix is one clause in internal/proxy/terminate.go: canonical's return line now also holds
+`!strings.ContainsFunc(p, func(r rune) bool { return r < 0x20 || r == 0x7f })`, so a decoded path that holds a byte
+below 0x20 or the byte 0x7F, which Go sends as its upper-case escape, has no single reading and is refused as `;`,
+the backslash and `%` are; the comment on that line and the doc comment of canonical say so. No product line was
+added (the file stays at 483, product at 14976 of 15000). docs/policy.md's `path` bullet now also lists "no byte
+below a space or DEL (`%0D%0A`, which a front end decoding once would read as a second request line)", one Markdown
+line more. also in v1 main: egressproxy/terminate.go.
+
+The space, as the unit asked: a bare space (0x20, sent as `%20`) stays admitted, and the arm `/v1/a%20b` of
+sf72_test.go is unchanged. Reason: a space alone starts no second request line; the verifier's spelling needs CR and
+LF beside it and is refused for those; a front end that splits on a space rejects the request or cuts the path
+there, which leaves a prefix of the judged path, still under the rule's prefix or inside its repository; and real
+API paths carry `%20` in names. The reviewer tried and could build no parser that leaves `/v1/` by a space without
+CR or LF.
+
+Test (S4). TestC90ControlBytesInACanonicalPath moved from escape/_pending/S-F75/ to internal/proxy/c90_test.go
+with its two controls byte for byte as parked, one head line reworded and the verifier's spelling
+`/v1/x%20HTTP/1.1%0D%0AHost:%20b%0D%0AContent-Length:%200%0D%0A%0D%0AGET%20/admin` as a seventh arm on the existing
+line; escape/_pending/S-F75/ is gone and escape/_pending/S-F76/ is untouched. The `repos` twin is one row at the
+end of TestTerminateNarrowedRule in terminate_test.go, by the redteam, before any fix: under repos `octo/allowed`,
+`POST /octo/allowed.git/git-receive-pack%0D%0A%0D%0AGET%20/admin` with the placeholder, want 403 and no secret. On
+288a62b, plain and with -race, run by the redteam, again by the orchestrator and again by the reviewer: seven lines
+of `c90_test.go:25: canonical(...) = true`, seven of `c90_test.go:56: I5: the upstream received ... with the real
+secret`, two of them at `/admin`, and for the row `got (200, "r.example.com  auth=Basic ...")`, whose value decodes
+to the real secret, with the broker and deny counts off by that one swap; both controls pass there. On d83242b all
+pass, and the whole package passes plain and under -race, c10_test.go, c33_test.go, c68_test.go, c88_test.go and
+sf72_test.go included, the arm `/v1/%E2%9C%93` still admitted. The reviewer also sent, through the real proxy on
+loopback: under the `path` rule a NUL, 0x1F, 0x7F, a tab in the prefix, a control byte in a middle and in the last
+segment, one before a query and the mixed-case `%0d%0A`, each 403 with no secret; under the `repos` rule a control
+byte before `.git`, in the owner, in the last segment and the second-request spelling, each 403; on a sign-in host
+four spellings, each 400; a raw control byte in the request target is answered 400 by Go's server before any
+handler runs.
+
+Cost, measured by the builder with a throwaway test that is not kept: under a narrowed rule a path with a control
+byte and the placeholder is 403 binding_mismatch; on a sign-in host it is 400 target_refused, placeholder or not;
+under a rule that is not narrowed the swap is unchanged (200 with the real secret), since such a rule binds the
+host alone. No path that the repository, a provider row or git smart HTTP sends holds a control byte.
+
+Where code and ADR differ, for the maintainer: the Path row of the accepted ADR-006
+(docs/adr/accepted/006-judge-structure.md, line 42) says that a path is admitted when it is Go's own escaping of the
+decoded path, is path.Clean of itself but for one trailing slash, and holds no `;` or backslash. The code refuses
+two things more, both toward refusal and both for the row's "one reading": a literal `%` since S-F74 (C88), and a
+byte below 0x20 or the byte 0x7F since this unit (C90). The loop did not edit the ADR. Review: one round, no finding
+that meets R2; its three notes are one line in PARKED.md. Sweep 4 now holds four confirmed mediums, C87, C88 and C90
+fixed and C89 open with the design question S-F76, which S-1017 counts (S8).
