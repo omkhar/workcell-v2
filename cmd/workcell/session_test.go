@@ -23,18 +23,9 @@ func TestValidID(t *testing.T) {
 		id   string
 		want bool
 	}{
-		{idOld, true},
-		{"", false},
-		{"..", false},
-		{"../x", false},
-		{idOld + "/", false},
-		{idOld + "/..", false},
-		{"/etc", false},
-		{"a/b", false},
-		{idOld[:len(idOld)-1], false},
-		{strings.ToUpper(idOld), false},
-		{" " + idOld, false},
-		{idOld + "\n", false},
+		{idOld, true}, {"", false}, {"..", false}, {"../x", false}, {idOld + "/", false}, {idOld + "/..", false},
+		{"/etc", false}, {"a/b", false}, {idOld[:len(idOld)-1], false}, {strings.ToUpper(idOld), false},
+		{" " + idOld, false}, {idOld + "\n", false},
 	}
 	for _, tc := range tests {
 		t.Run(tc.id, func(t *testing.T) {

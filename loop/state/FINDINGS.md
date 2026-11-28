@@ -11013,6 +11013,21 @@ no new finding; an operator's config whose core.hooksPath names an in-tree direc
 plain directory one that git obeys, by the operator's own config; the target of the link spelled in another letter
 case on a host that folds case.
 
+Shape chosen by the orchestrator of S-F77, before the redteam ran: one, at the writer, and carried down the walk.
+put takes the device and inode of the directory that each `.git` on the way names, the link followed and a gitfile's
+`gitdir: ` path resolved by the kernel from the directory that holds it, and refuses any component of a guest path
+that is that directory, at any depth below. Reasons. One: it is the lesson of this record, the identity git obeys
+and not the name, at the one place that writes, so a later caller of the writer is covered with no second check.
+Two: the line's own form of shape one compares in the same directory alone, and `git init --separate-git-dir
+./meta/gitdir` is as legal as `./gitdir`, so the identity must go down the walk; that also closes the nested
+`sub/.git` gitfile that shape two leaves open, and the target spelled in another letter case, since the kernel
+resolves it. Three: shape two refuses the session and the pull of an operator whose git directory lies in the tree,
+for good, where the gitfile that git's own tool writes holds an absolute host path, is inert in the guest and pulls
+honest work cleanly under shape one; and it judges by path text at two call sites away from the writer. Its one
+gain, an early denial for the hand-made link where an honest `git status` in the guest rewrites gitdir/index and the
+pull then refuses, is given up: the refusal names the path. The gitfile is read as git reads it, the prefix and the
+trailing line ends, and a looser reading can only refuse more.
+
 Unit: S-F77, directly below S-1008 in PLAN.md (boundary, fable, env:any). The test is not parked under
 escape/_pending/: with it the test count is over its limit, and escape/ has no layout left to fold (the redteam's
 scan found no wrapped comment and no wrapped statement to join), so, as the records of C85 and C86 did, this record

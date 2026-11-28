@@ -140,6 +140,28 @@ func TestWrite(t *testing.T) {
 				t.Errorf("d is %v, want a file", m)
 			}
 		}},
+		{"the directory a .git link names, two levels down, is refused (C91)", func(t *testing.T, dest string) { // nothing lands below it: no hooks directory
+			must(0, os.MkdirAll(filepath.Join(dest, "meta", "gitdir"), 0o755))
+			must(0, os.Symlink("meta/gitdir", filepath.Join(dest, ".git")))
+		}, []guest.Entry{dirEntry("meta"), dirEntry("meta/gitdir"), dirEntry("meta/gitdir/hooks"), fileEntry("meta/gitdir/hooks/pre-commit", 1, true)}, "x", "names", func(t *testing.T, parent, dest string) {
+			if _, err := os.Lstat(filepath.Join(dest, "meta", "gitdir", "hooks")); err == nil {
+				t.Error("meta/gitdir/hooks was made")
+			}
+		}},
+		{"the directory a nested gitfile names by a relative path is refused (C91)", func(t *testing.T, dest string) {
+			must(0, os.MkdirAll(filepath.Join(dest, "sub", "x"), 0o755))
+			must(0, os.WriteFile(filepath.Join(dest, "sub", ".git"), []byte("gitdir: x\n"), 0o644))
+		}, []guest.Entry{dirEntry("sub"), dirEntry("sub/x"), fileEntry("sub/x/config", 1, false)}, "n", "names", func(t *testing.T, parent, dest string) {
+			if _, err := os.Lstat(filepath.Join(dest, "sub", "x", "config")); err == nil {
+				t.Error("sub/x/config was made")
+			}
+		}},
+		{"beside a plain .git directory a directory named gitdir still lands", func(t *testing.T, dest string) { must(0, os.Mkdir(filepath.Join(dest, ".git"), 0o755)) },
+			[]guest.Entry{dirEntry("gitdir"), fileEntry("gitdir/config", 1, false)}, "n", "", func(t *testing.T, parent, dest string) {
+				if got := content(t, filepath.Join(dest, "gitdir", "config")); got != "n" {
+					t.Errorf("gitdir/config holds %q", got)
+				}
+			}},
 		{"a stream shorter than the manifest", nil, []guest.Entry{fileEntry("f", 5, false)}, "abc", "unexpected EOF", nil},
 		{"a directory entry whose parent is missing", nil, []guest.Entry{fileEntry("a/b", 1, false)}, "x", "open its directory", nil},
 	}
