@@ -49,8 +49,7 @@ func TestParse(t *testing.T) {
 		{"empty allow with room", "[network]\nallow = [ ]", nil},
 		{"the escape adapter's forward entry", "[network]\nallow = [\"allowed.escape.test:8443\"]\n", []Entry{{"allowed.escape.test:8443", 2}}},
 		{"bare name and name:port", "[network]\nallow = [\"a.example\", \"b.example:80\"]\n", []Entry{{"a.example", 2}, {"b.example:80", 2}}},
-		{"an array over lines, with comments and a trailing comma", "[network]\nallow = [ # names\n  \"a.example\",\n\n  \"b.example:80\", # forward\n]\n",
-			[]Entry{{"a.example", 3}, {"b.example:80", 5}}},
+		{"an array over lines, with comments and a trailing comma", "[network]\nallow = [ # names\n  \"a.example\",\n\n  \"b.example:80\", # forward\n]\n", []Entry{{"a.example", 3}, {"b.example:80", 5}}},
 		{"escapes in a string", "[network]\nallow = [\"a\\u002Eexample\\t\\\"\\\\\\n\"]\n", []Entry{{"a.example\t\"\\\n", 2}}},
 		{"a UTF-8 string", "[network]\nallow = [\"caf\u00e9\"]\n", []Entry{{"caf\u00e9", 2}}},
 		{"CRLF line ends", "[network]\r\nallow = [\"a.example\"]\r\n", []Entry{{"a.example", 2}}},
@@ -83,11 +82,9 @@ func TestParseSecret(t *testing.T) {
 	}{
 		{"the SPEC example", specExample, []Secret{{Name: "anthropic", Source: "keychain:workcell/anthropic", Host: "api.anthropic.com", Header: "x-api-key", Line: 5}}},
 		{"every key", full, []Secret{{"a", "file:/s", "a.example", "X-Api-Key", "A_KEY", "/v1/", nil, 1}}},
-		{"two rows, the second after another table", full + "[network]\n[[secret]]\nname = \"b\"\nsource = \"cmd:/bin/b\"\nhost = \"b.example\"\nheader = \"authorization\"\n",
-			[]Secret{{"a", "file:/s", "a.example", "X-Api-Key", "A_KEY", "/v1/", nil, 1}, {Name: "b", Source: "cmd:/bin/b", Host: "b.example", Header: "authorization", Line: 9}}},
+		{"two rows, the second after another table", full + "[network]\n[[secret]]\nname = \"b\"\nsource = \"cmd:/bin/b\"\nhost = \"b.example\"\nheader = \"authorization\"\n", []Secret{{"a", "file:/s", "a.example", "X-Api-Key", "A_KEY", "/v1/", nil, 1}, {Name: "b", Source: "cmd:/bin/b", Host: "b.example", Header: "authorization", Line: 9}}},
 		{"name and source alone", "[[secret]]\nname = \"anthropic\"\nsource = \"file:/s\"\n", []Secret{{Name: "anthropic", Source: "file:/s", Line: 1}}},
-		{"repos, over two lines", "[[secret]]\nname = \"git\"\nsource = \"file:/s\"\nhost = \"github.com\"\nheader = \"authorization\"\nrepos = [\"octo/allowed\",\n \"octo/docs\"]\n",
-			[]Secret{{Name: "git", Source: "file:/s", Host: "github.com", Header: "authorization", Repos: []string{"octo/allowed", "octo/docs"}, Line: 1}}},
+		{"repos, over two lines", "[[secret]]\nname = \"git\"\nsource = \"file:/s\"\nhost = \"github.com\"\nheader = \"authorization\"\nrepos = [\"octo/allowed\",\n \"octo/docs\"]\n", []Secret{{Name: "git", Source: "file:/s", Host: "github.com", Header: "authorization", Repos: []string{"octo/allowed", "octo/docs"}, Line: 1}}},
 		{"an empty repos array is no key", "[[secret]]\nname = \"git\"\nsource = \"file:/s\"\nrepos = []\n", []Secret{{Name: "git", Source: "file:/s", Line: 1}}},
 		{"no secret", "[network]\nallow = []\n", nil},
 	}
@@ -114,8 +111,7 @@ func TestParseUpdate(t *testing.T) {
 		{"hold", "\n[update]\nchannel = \"hold\"\n", Update{Channel: "hold", Line: 2}},
 		{"an https URL", "[update]\nchannel = \"https://c.test/channel.json\"\n", Update{Channel: "https://c.test/channel.json", Line: 1}},
 		{"an IP literal host", "[update]\nchannel = \"https://127.0.0.1:8443/channel.json\"\n", Update{Channel: "https://127.0.0.1:8443/channel.json", Line: 1}},
-		{"every key", "[update]\nchannel = \"hold\"\ncooloff = \"72h\"\nca = \"/etc/ca.pem\"\nkey = \"" + hexKey + "\"\n",
-			Update{Channel: "hold", Cooloff: 72 * time.Hour, CA: "/etc/ca.pem", Key: bytes.Repeat([]byte{0xab}, 32), Line: 1}},
+		{"every key", "[update]\nchannel = \"hold\"\ncooloff = \"72h\"\nca = \"/etc/ca.pem\"\nkey = \"" + hexKey + "\"\n", Update{Channel: "hold", Cooloff: 72 * time.Hour, CA: "/etc/ca.pem", Key: bytes.Repeat([]byte{0xab}, 32), Line: 1}},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

@@ -45,8 +45,7 @@ func TestClientsValidateSessionLeaf(t *testing.T) {
 		"var c = (java.net.HttpURLConnection) java.net.URI.create(a[0]).toURL().openConnection(); System.out.println(c.getResponseCode()); } }\n"), 0o644)
 	node := "require('https').get(process.argv[1], r => { console.log(r.statusCode); process.exit(0) }).on('error', e => { console.error(e.message); process.exit(1) })"
 	clients := map[string][]string{
-		"curl":   {"curl", "-sS", "-o", "/dev/null", "-w", "%{http_code}", url},
-		"node":   {"node", "-e", node, url},
+		"curl": {"curl", "-sS", "-o", "/dev/null", "-w", "%{http_code}", url}, "node": {"node", "-e", node, url},
 		"python": {"python3", "-I", "-c", "import sys, urllib.request; print(urllib.request.urlopen(sys.argv[1]).status)", url},
 		"java":   {"java", java, url},
 	}

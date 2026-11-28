@@ -33,21 +33,13 @@ func newFixture(t *testing.T) *fixture {
 	fx := &fixture{dir: dir, export: filepath.Join(dir, "export"), secret: filepath.Join(dir, "secret")}
 	e := fx.export
 	steps := []error{
-		os.Mkdir(e, 0o755),
-		os.WriteFile(fx.secret, []byte("secret"), 0o600),
-		os.WriteFile(filepath.Join(dir, "other"), []byte("other"), 0o644),
-		os.WriteFile(filepath.Join(e, "a.txt"), []byte("abc"), 0o644),
-		os.WriteFile(filepath.Join(e, longName), []byte("long"), 0o644),
-		os.WriteFile(filepath.Join(e, "victim"), []byte("v"), 0o644),
-		os.WriteFile(filepath.Join(e, "fg"), nil, 0o644),
-		os.WriteFile(filepath.Join(e, "big"), make([]byte, 70000), 0o644),
-		os.Symlink("../secret", filepath.Join(e, "ln")),
-		os.Symlink("..", filepath.Join(e, "up")),
-		os.Symlink("loop2", filepath.Join(e, "loop1")),
-		os.Symlink("loop1", filepath.Join(e, "loop2")),
-		unix.Mkfifo(filepath.Join(e, "fifo"), 0o644),
-		os.Link(filepath.Join(dir, "other"), filepath.Join(e, "hl")),
-		os.Link(filepath.Join(e, "big"), filepath.Join(dir, "hl2")),
+		os.Mkdir(e, 0o755), os.WriteFile(fx.secret, []byte("secret"), 0o600),
+		os.WriteFile(filepath.Join(dir, "other"), []byte("other"), 0o644), os.WriteFile(filepath.Join(e, "a.txt"), []byte("abc"), 0o644),
+		os.WriteFile(filepath.Join(e, longName), []byte("long"), 0o644), os.WriteFile(filepath.Join(e, "victim"), []byte("v"), 0o644),
+		os.WriteFile(filepath.Join(e, "fg"), nil, 0o644), os.WriteFile(filepath.Join(e, "big"), make([]byte, 70000), 0o644),
+		os.Symlink("../secret", filepath.Join(e, "ln")), os.Symlink("..", filepath.Join(e, "up")),
+		os.Symlink("loop2", filepath.Join(e, "loop1")), os.Symlink("loop1", filepath.Join(e, "loop2")),
+		unix.Mkfifo(filepath.Join(e, "fifo"), 0o644), os.Link(filepath.Join(dir, "other"), filepath.Join(e, "hl")), os.Link(filepath.Join(e, "big"), filepath.Join(dir, "hl2")),
 	}
 	for _, d := range []string{"d", "swap", "a/b", "sub", "p/q", "r1/r2", "e1", "e2", "c1", "fgd"} {
 		steps = append(steps, os.MkdirAll(filepath.Join(e, d), 0o755))

@@ -58,11 +58,8 @@ func TestReach(t *testing.T) {
 		want          string
 	}{
 		{"no file, no flag", false, false, list(), "network: no config file at /c/config.toml\n  The guest has no network.\n"},
-		{"names from the file", true, false, list("b.example", "a.example", "z.example:8443", "m.example:22"),
-			"network: from /c/config.toml\n  https://a.example  (443, terminated by the session proxy)\n  https://b.example  (443, terminated by the session proxy)\n" +
-				"  m.example:22  (tcp, forwarded as is)\n  z.example:8443  (tcp, forwarded as is)\n  Everything else is refused, and DNS answers only these names.\n"},
-		{"a flag and no file", false, true, list("npm.example"),
-			"network: no config file at /c/config.toml and --allow\n  https://npm.example  (443, terminated by the session proxy)\n  Everything else is refused, and DNS answers only these names.\n"},
+		{"names from the file", true, false, list("b.example", "a.example", "z.example:8443", "m.example:22"), "network: from /c/config.toml\n  https://a.example  (443, terminated by the session proxy)\n  https://b.example  (443, terminated by the session proxy)\n" + "  m.example:22  (tcp, forwarded as is)\n  z.example:8443  (tcp, forwarded as is)\n  Everything else is refused, and DNS answers only these names.\n"},
+		{"a flag and no file", false, true, list("npm.example"), "network: no config file at /c/config.toml and --allow\n  https://npm.example  (443, terminated by the session proxy)\n  Everything else is refused, and DNS answers only these names.\n"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

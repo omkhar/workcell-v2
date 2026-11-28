@@ -50,12 +50,10 @@ func TestChannelFile(t *testing.T) {
 		args []string
 		code int
 	}{
-		{"one key", ok, []string{"k1.pem"}, 0},
-		{"two keys, the second alone trusted", ok, []string{"k1.pem", "k2.pem"}, 0},
+		{"one key", ok, []string{"k1.pem"}, 0}, {"two keys, the second alone trusted", ok, []string{"k1.pem", "k2.pem"}, 0},
 		{"http url, signed but not verifiable", row("http://example.test/tool", ok.Artifacts["amd64"].SHA256, early), []string{"k1.pem"}, 2},
 		{"digest not lowercase hex", row(ok.Artifacts["amd64"].URL, strings.Repeat("A", 64), early), []string{"k1.pem"}, 2},
-		{"key file that is not PEM", ok, []string{"junk.pem"}, 2},
-		{"key file that is not ed25519", ok, []string{"k1.pem", "ec.pem"}, 2},
+		{"key file that is not PEM", ok, []string{"junk.pem"}, 2}, {"key file that is not ed25519", ok, []string{"k1.pem", "ec.pem"}, 2},
 		{"row without a release time", row(ok.Artifacts["amd64"].URL, ok.Artifacts["amd64"].SHA256, time.Time{}), []string{"k1.pem"}, 2},
 		{"no key file", ok, nil, 2},
 	} {

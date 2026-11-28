@@ -157,12 +157,9 @@ func dump(t *testing.T, tr *Tree) []string {
 
 func TestPullLayers(t *testing.T) {
 	base := tarOf(
-		dir("./"), dir("etc/"), reg("etc/hello", "v1"), reg("etc/gone", "x"),
-		dir("opt/"), reg("opt/a", "a"), reg("opt/b", "b"),
-		reg("bin/sh", "shell"), hard("bin/ls", "bin/sh"), sym("lnk", "../../x"),
-		mem{name: "dev/null", typ: tar.TypeChar, major: 1, minor: 3},
-		mem{name: "dev/sda", typ: tar.TypeBlock, major: 8, minor: 0},
-		mem{name: "dev/fifo", typ: tar.TypeFifo},
+		dir("./"), dir("etc/"), reg("etc/hello", "v1"), reg("etc/gone", "x"), dir("opt/"), reg("opt/a", "a"), reg("opt/b", "b"),
+		reg("bin/sh", "shell"), hard("bin/ls", "bin/sh"), sym("lnk", "../../x"), mem{name: "dev/null", typ: tar.TypeChar, major: 1, minor: 3},
+		mem{name: "dev/sda", typ: tar.TypeBlock, major: 8, minor: 0}, mem{name: "dev/fifo", typ: tar.TypeFifo},
 	)
 	top := tarOf(reg("etc/hello", "v2"), reg("etc/.wh.gone", ""), reg("opt/.wh..wh..opq", ""), reg("opt/c", "c"), reg("new/deep/file", "d"), reg("a/.wh.absent", ""))
 	f := newFixture(t, base, top)
