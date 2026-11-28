@@ -11019,14 +11019,43 @@ put takes the device and inode of the directory that each `.git` on the way name
 that is that directory, at any depth below. Reasons. One: it is the lesson of this record, the identity git obeys
 and not the name, at the one place that writes, so a later caller of the writer is covered with no second check.
 Two: the line's own form of shape one compares in the same directory alone, and `git init --separate-git-dir
-./meta/gitdir` is as legal as `./gitdir`, so the identity must go down the walk; that also closes the nested
-`sub/.git` gitfile that shape two leaves open, and the target spelled in another letter case, since the kernel
-resolves it. Three: shape two refuses the session and the pull of an operator whose git directory lies in the tree,
+./meta/gitdir` is as legal as `./gitdir`, so the identity must go down the walk; that also closes a nested
+`sub/.git` gitfile whose target lies below `sub/` (not every nested one: corrected after the review, see FIXED
+below), and the target spelled in another letter case, since the kernel resolves it. Three: shape two refuses the session and the pull of an operator whose git directory lies in the tree,
 for good, where the gitfile that git's own tool writes holds an absolute host path, is inert in the guest and pulls
 honest work cleanly under shape one; and it judges by path text at two call sites away from the writer. Its one
 gain, an early denial for the hand-made link where an honest `git status` in the guest rewrites gitdir/index and the
 pull then refuses, is given up: the refusal names the path. The gitfile is read as git reads it, the prefix and the
 trailing line ends, and a looser reading can only refuse more.
+
+C91 FIXED by S-F77, commit ca01f01 (PR #372), shape one as chosen above. isGit in cmd/workcell/pull_vm.go takes a
+list that put carries down the walk: for each directory on the way of a guest path, the root included, it adds the
+device and inode of that directory's `.git`, taken without following as before (C44), and of what the `.git` names,
+a link followed by Fstatat or, for a regular file alone, opened by fileBeneath and read for at most PATH_MAX and 16
+bytes, the path after `gitdir: ` with its line ends cut, resolved by Fstatat from that directory; a component whose
+identity is in the list is refused, in the walk, at the last name and after a create, which is taken away again.
+Product 14976 to 14992 of 15000, 16 lines; no check in fetch, holds or session, no new refusal of a session, no
+program run, docs unchanged (the I8 rows of docs/threat-model.md and docs/policy.md stay true). Test (S4):
+cmd/workcell/c91_test.go is this record's source with its fifth line reworded and no other byte changed (sha256 of
+the 61 lines checked before the edit, diff of one line after). It failed on main in its two arms, at :51 and :56 as
+recorded, and passes on the fix, plain and with -race, its control arm and manifest control unchanged; so do
+TestWrite, TestCompare, TestManifestAdd, TestC20PullWriteErrorQuotesGuestPath and TestPullGrowthCapEntries (C57),
+C44's TestPullWritesDotGitHFS is built on darwin alone; gate-macos is green. Three rows joined TestWrite: `.git -> meta/gitdir`
+refuses `meta/gitdir/hooks/pre-commit` and makes no hooks directory, a nested `sub/.git` gitfile `gitdir: x`
+refuses `sub/x/config`, and beside a plain `.git` directory a directory named `gitdir` still lands. The 83 new test
+lines are paid by folds of table rows in five test files outside escape/, no case and no assertion lost (counted by
+the reviewer): test 28477 of 28488. Closed, by run of both: the link and the gitfile at the top, absolute or relative, one
+level or deeper; a nested gitfile or link whose target lies at or below the directory that holds it; a dangling
+`.git -> gitdir` that the guest fills (made and removed again); a gitfile with CRLF; a FIFO named `.git` does not
+block. Review, one round, one finding that meets R2 and it is against this record, not the code: the sentence above
+first said that every nested gitfile is closed. NOT closed, reproduced by the reviewer through the real write: a
+nested gitfile whose target is beside it and not below, `git init --separate-git-dir ../b/gitdir a` in the tree, so
+that `a/.git` holds `gitdir: ../b/gitdir`; a guest path `b/gitdir/hooks/pre-commit` never passes `a`, its `.git` is
+never read, and the hook lands (write returned nil). Same attacker and the same kind of precondition as C91, rarer,
+and no tool of git makes it unasked; closing it needs every gitfile of the destination read, at pull or at start.
+It is no candidate of an audit and no verifier saw it: S-1013 and the verdict S-1017 weigh it, and PARKED.md holds
+the line. Also not closed, as the unit says: a `.git` above the destination that names a directory inside it (a
+pull into a subdirectory of a repository), an operator's core.hooksPath, and --mount (C40). No builder fix round.
 
 Unit: S-F77, directly below S-1008 in PLAN.md (boundary, fable, env:any). The test is not parked under
 escape/_pending/: with it the test count is over its limit, and escape/ has no layout left to fold (the redteam's
