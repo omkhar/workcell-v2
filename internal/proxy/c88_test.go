@@ -2,7 +2,7 @@
 // Copyright 2026 Omkhar Arasaratnam
 
 // Finding C88 of S-1005 sweep 4 (I5): a `path`-narrowed credential must not be released outside its rule's path. `/v1/%252e%252e/admin` is canonical to the proxy (`%25` is Go's own escaping of `%`) and goes upstream byte for byte with the real secret; a front end that decodes the path once and forwards it (Apache httpd, `RewriteRule ^/v1/(.*)$ http://backend/api/$1 [P,NE]`) hands a backend `%2e%2e`, which it decodes and cleans, and serves /admin with the secret.
-// The fix unit S-F74 moves this file to internal/proxy/c88_test.go and removes the folder escape/_pending/S-F74.
+// Reproduced under escape/_pending/S-F74 until the fix unit S-F74 moved it here. Its `repos` twin is the row "a doubled escape out of the repository" in TestTerminateNarrowedRule.
 package proxy
 
 import (

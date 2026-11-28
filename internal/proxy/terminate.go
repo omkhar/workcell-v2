@@ -123,10 +123,10 @@ func (r TerminateRule) admits(req *http.Request) bool {
 	return slices.ContainsFunc(r.Repos, func(repo string) bool { return within(sent, repo) })
 }
 
-// canonical reports whether the path of u has one reading, the bytes Request.Write sends: as sent it is Go's own escaping of the decoded path (so %2F, %5C, %2e and an escaped unreserved byte are not), it is path.Clean of itself but for one trailing slash (so no dot segment and no empty segment), and it holds no ";" and no backslash, which a router may cut or take for a slash (C10, C33).
+// canonical reports whether the path of u has one reading, the bytes Request.Write sends: as sent it is Go's own escaping of the decoded path (so %2F, %5C, %2e and an escaped unreserved byte are not), it is path.Clean of itself but for one trailing slash (so no dot segment and no empty segment), and it holds no ";", no backslash and no "%", which a router may cut or take for a slash (C10, C33), or decode once more into a second path (%252e%252e, C88).
 func canonical(u *url.URL) bool {
 	p := u.Path
-	return u.EscapedPath() == (&url.URL{Path: p}).EscapedPath() && (path.Clean(p) == p || path.Clean(p)+"/" == p) && !strings.ContainsAny(p, `;\`)
+	return u.EscapedPath() == (&url.URL{Path: p}).EscapedPath() && (path.Clean(p) == p || path.Clean(p)+"/" == p) && !strings.ContainsAny(p, `;\%`) // the decoded path: a "%" here was sent as %25
 }
 
 // within reports whether p is /repo or /repo.git, or lies under either.
