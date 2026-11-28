@@ -12370,3 +12370,19 @@ Source of cmd/workcell/c96_test.go (66 lines):
     		}
     	})
     }
+
+C96, shape chosen by S-F82 before its redteam ran: the first. apply in cmd/workcell/update.go does not honour
+the skip of a pin marked failed when the kept manifest's Withdrawn holds the digest of the image that
+`current` names, and says so in one line on stderr that names the withdrawn image; update then finds the
+failed image on disk and fetches nothing. fail still reads no manifest, and point is unchanged. Reasons. S1
+and the grade: the finding is low and the freeze asks for the fix of the finding alone; the second shape also
+changes what an honest failure of B leaves (no CLI where B9 keeps one) and what `workcell update` removes,
+neither of which C96 confirmed. S4: the first shape keeps the confirmed test with no byte changed, where the
+second writes its setup again, so the test that stays would not be the one the verifier ruled on. Budget:
+product has no line of room and the scout found about three lines of folds it trusts, which pays the first
+shape and not the second. Costs taken with it, as the unit line names them: between the forged frame and the
+next start that holds a kept manifest the withdrawn image is `current`; it stays on disk as `previous`, so
+`workcell update --rollback`, the operator's own act, still reaches it (the parked row stands); and a guest
+that forges the frame at every start sends the host through the same return and re-install each time, with
+the line each time. An honest B that cannot run, with A withdrawn, is then tried at every start and fails at
+every start until the pin moves, which is B9 with nothing fit to return to.

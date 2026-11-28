@@ -164,15 +164,11 @@ func TestE2fsck(t *testing.T) {
 		path string
 		want []string
 	}{
-		{"/bin/busybox", []string{"Type: regular", "Mode: 0755", "Size: 102400", "Links: 2"}},
-		{"/bin/ls", []string{"Type: regular", "Size: 102400", "Links: 2"}},
+		{"/bin/busybox", []string{"Type: regular", "Mode: 0755", "Size: 102400", "Links: 2"}}, {"/bin/ls", []string{"Type: regular", "Size: 102400", "Links: 2"}},
 		{"/etc/shadow", []string{"Mode: 0640", "User: 70000 Group: 80000", "Size: 7"}},
-		{"/etc/odd", []string{"Size: 5000", "EXTENTS: (0-1):"}}, {"/usr/bin/su", []string{"Mode: 04755"}},
-		{"/usr/lib", []string{"Type: directory", "Mode: 01777", "Links: 3"}},
-		{"/bin/ash", []string{"Type: symlink", `Fast link dest: "busybox"`}},
-		{"/etc/long", []string{"Type: symlink", "Size: 90", "EXTENTS:"}},
-		{"/dev/null", []string{"Type: character special", "Device major/minor number: 01:03"}},
-		{"/dev/big", []string{"Type: block special", "Device major/minor number: 259:300"}},
+		{"/etc/odd", []string{"Size: 5000", "EXTENTS: (0-1):"}}, {"/usr/bin/su", []string{"Mode: 04755"}}, {"/usr/lib", []string{"Type: directory", "Mode: 01777", "Links: 3"}},
+		{"/bin/ash", []string{"Type: symlink", `Fast link dest: "busybox"`}}, {"/etc/long", []string{"Type: symlink", "Size: 90", "EXTENTS:"}},
+		{"/dev/null", []string{"Type: character special", "Device major/minor number: 01:03"}}, {"/dev/big", []string{"Type: block special", "Device major/minor number: 259:300"}},
 		{"/dev/fifo", []string{"Type: FIFO"}}, {"/many", []string{"Size: 8192", "Links: 2"}},
 	}
 	for _, tc := range tests {

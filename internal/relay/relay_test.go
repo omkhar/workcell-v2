@@ -23,12 +23,9 @@ func TestHeader(t *testing.T) {
 	}{
 		{"tcp to an IPv4 address", v4, Header{Proto: TCP, Dst: netip.MustParseAddrPort("198.51.100.7:443")}, true},
 		{"tcp to an IPv6 address", v6, Header{Proto: TCP, Dst: netip.MustParseAddrPort("[2001:db8::7]:443")}, true},
-		{"udp to the resolver", dns, Header{Proto: UDP, Dst: netip.MustParseAddrPort("127.0.0.1:53")}, true},
-		{"empty", nil, Header{}, false}, {"short", v4[:19], Header{}, false},
-		{"long", append(bytes.Clone(v4), 0), Header{}, false},
-		{"version 0", append([]byte{0}, v4[1:]...), Header{}, false},
-		{"version 2", append([]byte{2}, v4[1:]...), Header{}, false},
-		{"proto 0", append([]byte{1, 0}, v4[2:]...), Header{}, false},
+		{"udp to the resolver", dns, Header{Proto: UDP, Dst: netip.MustParseAddrPort("127.0.0.1:53")}, true}, {"empty", nil, Header{}, false}, {"short", v4[:19], Header{}, false},
+		{"long", append(bytes.Clone(v4), 0), Header{}, false}, {"version 0", append([]byte{0}, v4[1:]...), Header{}, false},
+		{"version 2", append([]byte{2}, v4[1:]...), Header{}, false}, {"proto 0", append([]byte{1, 0}, v4[2:]...), Header{}, false},
 		{"proto 1", append([]byte{1, 1}, v4[2:]...), Header{}, false},
 	}
 	for _, tc := range tests {

@@ -108,6 +108,4 @@ func copyFUSE(dev int, host *os.File) {
 // there, as in clone mode, it does nothing that matters: an idle ext4 workspace is unmounted,
 // a busy one stays. Guest root may hide the mount from this (A1); the host ends the VM
 // from outside regardless.
-func abortFUSE() {
-	_ = unix.Unmount("/workspace", unix.MNT_FORCE)
-}
+func abortFUSE() { _ = unix.Unmount("/workspace", unix.MNT_FORCE) }
