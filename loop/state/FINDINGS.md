@@ -11957,3 +11957,382 @@ writes no end, a start that fails at the export or the boot writes session_end f
 bench boots hold a nil log. No Event is taken from guest bytes, so a guest cannot have the end record written
 early. Not shown: no real session ran on a VM in the cloud session; the hosted gate ran its I9 rows on d3c9caa.
 also in v1 main: egressproxy/proxy.go, the trigger alone (the `no_sni` refusal); the defect was v2's own.
+
+## S-1011, sweep 4: pins, selector, verification, bump tool, channel manifest, update client (I14, section 10), as built at main 34357e7
+
+Sweep 4 (S8), the one further sweep that the maintainer allowed on 2026-11-26 after ADR-006, fresh context
+(S3), the whole surface read in full as built after S-F71 to S-F80, not a diff, at the claim commit 0f5127f.
+One auditor run on the top tier, finished without a stop. One of its responses, a step of building its test
+overlay, was stopped by a safety classifier and withheld; it did not send that step again and went on with a
+leaner overlay (S11). No hypervisor in the cloud session, and nothing on this surface was run on a VM: every
+probe ran by `go test -overlay` from a scratch directory outside the repository, on go1.27.4, against files
+and loopback listeners that the probe itself made (S12, T8). One thing left the host, by the auditor's own
+account: its first `go version` fetched the go1.27.4 toolchain through the Go module proxy, as the go command
+does by default, before it set GOPROXY=off; no probe reached a third party. The auditor wrote its own trust
+boundary and worked every lens before it opened the records of this surface, then traced and ran every
+recorded fix and tried the parked leads again. Result: no candidate at medium or above and two at low, C95
+(I14) and C96 (I14 with B9 and B10), each given to a redteam as a claim only, run by the orchestrator and
+ruled on by its own verifier, who saw none of the auditor's reasoning: both CONFIRMED at low; the records are
+under the next heading. Nothing was fixed (S1). No file of this surface carries `// Ported from v1`, and
+nothing is someone else's project (S14).
+
+Trust boundary, as the auditor wrote it before the records were opened. A network attacker holds the path of a
+host fetch and not the channel key: `channel.json` comes through installer.manifest and artifact.Fetch (64 KiB
+cap, no redirect followed) to channel.Verify, and artifact bodies through installer.fetch and artifact.Fetch
+(512 MiB, https only, at most three redirects) to a SHA-256 compared with the signed pin before unpack; no
+byte is used without the manifest's signature or the pin's digest, so this attacker holds availability and the
+sight of requests. Guest root and a malicious repository: one Exit frame with an error as the guest's first
+frame reaches installer.fail behind the pair gate of `fresh` (S-F1, S-F31, S-F43); the repository also chooses
+the working directory and `workcell.toml`, where policy.ReadRepo refuses an `[update]` table (I13) and the
+installer reads the working directory only to refuse a `ca` that leads into it (S-F42, S-F63, S-F68); the
+guest writes host files by design (the mount export, writable cache images, workspace.ext4) and the update
+path reads none of them unless the operator's `ca` names one, which S-F68 refuses for the data directory.
+Upstream bytes (npm packuments, release listings, vendor manifests, OCI tag lists and manifests, Sigstore
+bundles, npm attestations, OSV and REST answers) enter cmd/bump on the runner, dry-run only until H-905; a
+hostile provider service is out of scope, as the S-1012 ruling has it, so there the questions are robustness:
+nothing injected into rows, branch names, pull-request bodies or issues, no silent skip of a verification
+(B5), no auto-merge of a trusted security bump. Out of scope except where they meet attacker bytes: the holder
+of the channel key, for every signed field, and the operator's own `[update]` table. Authority: `workcell
+update`, startup (apply and daily) and fail run as the operator and write layers/<agent>/ (the images and the
+markers current, previous and failed), channel.serial, channel.day, channel.next and updates.log under the
+data directory; findLayers turns `current` into a drive that both backends attach read-only and that the init
+mounts read-only; the bump tool runs in CI with a read-only token today and would hold the App's contents and
+pull-request write after H-905.
+
+The lenses of S9, each worked in turn. Parsing and resources: channel.Verify is a strict envelope over a
+lenient payload, one signature by a trusted key over the DSSE PAE of the raw payload bytes, the 64 KiB cap
+equal in Fetch and Verify, the serial window from the last one seen to now plus 24 h, the expiry at most
+serial plus 14 days, and the sha256, https and no-slash checks over pins and previous; a probe showed that
+versions such as `..`, one with a NUL, one with a newline and an escape, and one of 300 bytes all verify, each
+placeable by the key holder alone and each harmless or refused later (a NUL fails at the rename, 300 bytes at
+NAME_MAX, as sweep 3 showed). internal/sigstore caps a bundle at 64 KiB, 1 to 10 certificates and 1 to 10 log
+entries; internal/pins/sources.go caps a body at 64 MiB, follows three https-only redirects, drops
+Authorization across hosts and reads 30 OCI manifests at most; rootfs.Apply behind unpack cleans names, links
+only to existing entries, and its device nodes and setuid bits land in the guest-only image. Seven fuzz
+targets ran three minutes each with no crasher. Held. Logic and state: every marker transition was traced and
+run (install, already current, `--to` for the current, the previous, a failed image on disk and an unknown
+version, `--rollback`, apply's skip of the failed digest, fail's pair check); choose applies the user's
+cool-off to the signed `released` alone and never shortens (B10); Select drops a withdrawn digest from pins
+and previous, and `--to` cannot name a withdrawn version; in the bump tool, plan never turns a failed
+verification into a skip, Select never moves backwards and the trusted security lane never merges. Held, but
+for the gap of C96. Concurrency and check-to-use: the daily goroutine is never awaited and shares no state
+with the session; writeMarker is a temporary file and a rename with one fixed temporary name per marker, and a
+probe of two writers over 400 rounds found, at the end of each round, no value that neither wrote whole (the
+verifier of C95 later saw the store empty in passing, which that record holds); fetch hashes and unpacks the
+same descriptor in the operator-only layer directory; apply installs at the start within channelBound, 10
+minutes, and a probe against a loopback listener that accepts and never answers held it past 3 s, which sweeps
+1 and 3 ruled R3. Held at the time, and C95's record now holds the passing state. Cryptography and identity:
+ed25519 behind the 32-byte guard, the key id the SHA-256 of the raw key, NotAfter judged at now, and the
+signed bytes are the parsed bytes, so base64 spellings and duplicate JSON keys cannot split them; in Sigstore
+the leaf is chained at the Rekor integrated time to the embedded root, the SET verified over Rekor's canonical
+JSON, the body binds leaf, signature and hash, the identity is compared byte for byte, and Rekor v2 is refused
+closed. The TLS root of the host's fetches does not carry I14, which is why C59, C79 and C84 were low. Held.
+Failure modes: every refusal leaves markers and serial untouched; a failed newInstaller gives the zero
+installer whose fail reads nothing (S-F43); fetch leaves nothing behind on a digest mismatch or an unpack
+refusal. One check fails open, the reading of the serial store: C95. Downgrade, rollback and replay: the
+replay window is 14 days plus 24 h of skew for each data directory, by design; an equal serial passes; a fresh
+data directory accepts any unexpired manifest; `--rollback` and fail read no manifest (ADR-004, a proposal),
+which is the ground of C96. Interaction between surfaces: run orders loadPolicy, startup, findLayers,
+openCaches and then session's judge; startup writes only under the data directory and reads the working
+directory only for the `ca` rule; ReadRepo refuses `[update]`; layers are read-only in both backends and in
+the init; pull judges the `[update] ca` as a trusted path (S-F79); updates.log stays outside the signed audit
+chain, as its parked line says. Held.
+
+Recorded fixes of the surface, each traced in the code as built and its test run under the auditor's overlay,
+plain and with -race where it says so. S-F1 and S-F31 (C1, C43): apply pairs each installed image with the one
+it replaced and fail acts on that exact pair alone; TestFail and TestFailSparesALayerThisStartDidNotInstall
+pass, both ways. S-F18 (C26): findLayers refuses a marker that is not its own base name and Verify a version
+with a slash or a backslash; the C26 rows of TestFindLayers and TestVerify pass. S-F42 (C59), S-F63 (C79) and
+S-F68 (C84): the one line of newInstaller that refuses a relative `ca` and one that leads into the working
+directory or the data directory; TestC59UpdateCAIsNotReadFromTheWorkingDirectory,
+TestC79UpdateCAUnderTheWorkingDirectory in its five arms and TestC84UpdateCAUnderTheDataDirectory in its two
+pass. S-F43 (C60): fail returns before any read when `fresh` is empty;
+TestC60ZeroInstallerFailReadsTheRepository passes. S-F12 (C19), S-F69, S-F70 (C85, C86) and S-F79 (C93):
+within and judge in data.go read and traced; their tests need the helpers that the auditor's overlay dropped
+and did not run in the audit, and the orchestrator ran them on the whole tree, where they pass. The other
+tests of the surface pass: TestUnpack, TestUpdate, TestUpdateUsage, TestChannel, TestLayerArgsAndPath,
+TestCacheArgsAndEnv, TestDataDir, TestFindArtifacts and the policy tests, and `go test` and `go vet` of the
+eleven packages of the surface that need only the standard library.
+
+Parked leads of the surface, each tried again, none changed. Rekor v2 is refused closed. Green in
+internal/bump/github.go still filters no app, and installation rights are out of scope by its ruling. The
+lines on issues before a merge and on bump's class by branch, base and repository stand. The B6 smoke ideas
+are rows of TestChannel and TestVerify that pass. An OCI source whose tags all answer 404 still prints
+`backwards`. Two starts that read channel.next, and the hook before the first output, stand, and the hook is
+C96's precondition. apply's delay on a stalled server was measured again; point globs `*.ext4` alone. The
+markers `.`, `..` and `/` still pass the bare-name check and no in-scope attacker writes one. fail by the
+command's base name stands, and so do the residuals of S-F31. `--rollback` still asks no Withdrawn list, and
+C96 is its sibling on the automatic path. The floor race left no torn value at the end of 400 rounds, and
+C95's record holds what a reader sees in between; npm candidates carry no digest, so bump's Select cannot
+match a withdrawn one where the client's Select drops by digest; choose wraps only on a signed `released`. Of
+the sweep-3 notes, the unreadable serial store is the one that C95 takes further; the gzip decoding before the
+hash and FilesOK's rule for added rows stand. startup fetches with the system pool before judge, and I14's
+gates hold. A `ca` that is a link to a file not yet made is judged by its target. A channel URL without a key
+is dropped without a word, and a `released` left out is never held.
+
+Coverage. Read in full: the four rows of pins/ with pins.go and its test; internal/pins (pins.go, sources.go,
+their tests and the seven fixtures); internal/channel; internal/artifact; internal/sigstore (verify.go,
+root.go and the test; trusted-root.json by its head); internal/bump; cmd/bump; internal/advisory;
+internal/version; internal/policy/policy.go; internal/provider with its four TOML files; internal/rootfs
+(tree.go, layer.go, ext4file.go, ext4.go, build.go; oci.go for its digest checks); internal/vmm/vmm.go and
+vz/args.go, and the layer attach of both backends; in cmd/workcell update.go, layer.go, data.go, policy.go,
+main.go, run_vm.go, cache.go, bench_vm.go, run_other.go and the update, layer, C43, C59, C60, C79 and C84
+tests; cmd/workcell-init/root.go and the mount part of its main.go; in escape/ the update, rollback, layer and
+channel files of the suite with their rows, the adapter's layer and channel part, and
+escape/_pending/S-F76/c89_test.go; the workflows bump.yml, nightly.yml and release.yml;
+docs/adr/004-channel.md; loop/SPEC.md. Then the three earlier S-1011 records, the records of C1, C2, C19, C43,
+C59 and C79 and the fix lines named above, and PARKED.md whole. Fuzz, three minutes a target, no crasher:
+channel FuzzVerify 7,066,383 executions, sigstore FuzzParse 6,087,665, artifact FuzzTarMember 5,414,991,
+artifact FuzzProvenance 6,456,204, advisory FuzzAnswer 5,644,457, policy FuzzParse 8,566,942, rootfs FuzzLayer
+4,845,272. The auditor's overlay, said plainly: it compiled cmd/workcell without golang.org/x/sys, with
+ext4file.go and session.go copied and `unix.` turned to `syscall.`, internal/guest/walk.go stubbed, the
+VM-only sources dropped and two stubs in their place; update.go, layer.go, data.go, policy.go, cache.go and
+every package of the surface were the tree's own bytes, and TestRunUnavailable fails under it as an artefact
+of that harness. Not examined: the backends beyond the layer attach, the pull, log and explain verbs beyond a
+search, the adapter's platform files, escape/suite/smoke.go (B6), docs/policy.md and docs/providers.md,
+spikes/ and _legacy/. Not run: anything on a VM or on macOS, cmd/bump against a live upstream (S12, T8), the
+built binary end to end, the guest's own writes; the four-hour fuzz of S10 and govulncheck did not run here.
+
+### S-1011 candidates, sweep 4
+
+C95. ID I14, its clause `a serial no lower than the last one seen`: the one stateful check of the channel
+fails open on a store that is present and holds no number. Attacker: a network attacker on the path of the
+channel fetch who serves the host an older manifest that is validly signed and not expired; that takes a break
+of TLS or the channel's host, and no key. Precondition, which the attacker does not control:
+`<data>/channel.serial` is present and holds no number. Where: cmd/workcell/update.go, installer.verify
+(:218-225), whose line 219 reads the floor by strconv.ParseInt of the marker and drops the error, so that
+absent, empty and not a number are all floor 0; writeMarker (:462-468), which writes every marker through one
+fixed temporary name, opened with truncation and never synced. Input: the damaged store, then a signed,
+unexpired manifest whose serial is below the floor last verified. Effect: verify returns nil, line 224
+rewrites the floor to the older serial, and the caller installs that manifest's pins: the rollback protection
+is reset by no one who holds the key. The replay stays inside what the expiry leaves, 14 days at most, and
+every pin in it is one the key holder signed.
+
+Evidence of the auditor, by a probe that is not kept: TestProbeSerialStoreFailsOpen refused the older manifest
+while the store held the floor and returned nil with the store holding "", "x" and "\n". It named three honest
+causes of such a store, a crash, a full disk and two concurrent verifies; its own probe of two writers over
+400 rounds looked at the value left at the end and found none torn.
+
+The earlier record, weighed by the auditor and by the verifier. Sweep 3 of this surface took an unreadable
+serial store that counts as floor 0 as a note, parked on the ground that no in-scope attacker writes under the
+data directory, and no verifier ruled on it. The ground does not stand for this sibling: the writer is the
+product itself.
+
+The test. The redteam wrote it from the claim alone, as a Go test of package main in cmd/workcell with no VM
+and no listener: TestC95DamagedSerialStoreRefusesOlderManifest, 53 lines. Its controls: with no store the
+newer manifest verifies, against the intact store the older one is refused, and with the store removed at the
+end the newer one verifies again, so an absent store may keep floor 0. Its finding arm asks, for each of the
+three contents, an error and the store left as it was. Run by the orchestrator on 0f5127f with go1.27.4 by `go
+test -overlay`, plain and with -race: the controls passed and the finding arm failed in its three rows both
+times, `verify(older) = <nil>` and the store rewritten to the older serial; no data race was reported. The
+redteam's own two runs gave the same.
+
+Ruling of the verifier, who saw the claim, the test and the log and none of the auditor's reasoning: CONFIRMED
+at low, the grade claimed. It ran the test again, plain and with -race, with the same three failing rows and
+the controls passing. It then asked whether the product alone can leave such a store, by a probe that is not
+kept: two goroutines that call writeMarker on channel.serial and a reader. Of 954,334 reads, 9,464 saw the
+store present and empty, and 7,763 writes failed at the rename of a temporary file that was gone: both writers
+share `channel.serial.tmp`, opened with truncation, so one writer's rename publishes the other's file before
+its bytes are written. Writers that can meet exist: apply at a start, the day's check in its goroutine, and
+`workcell update` run by hand. The empty state passes in a moment unless a writer is killed in that window, or
+power is lost before the unsynced rename reaches the disk. Two of the three causes the claim named fall away:
+a full disk and a plain crash fail before the rename and leave the store untouched. On the grade: SPEC section
+2 names no attacker who alone can serve a validly signed older manifest at the channel's address, and the gain
+is bounded to a signed, unexpired pin at most 14 days old, so this is hardening and low, not refuted and not
+medium.
+
+Not shown: nothing ran on a real VM or on macOS and the built binary did not run. The verifier's probe is two
+goroutines in one process, not two processes of the product; no run left the store empty for good, which takes
+a kill or a power loss in the window, and how wide that window is on a real disk was not measured. No older
+manifest was served to a real fetch: the test calls verify. Variants that the redteam named and did not
+express, none run: a number with bytes after it or one beyond int64 reads as floor 0 the same way, a negative
+number is a floor below every serial, and the same dropped error is reached through apply and the day's check.
+The test is not parked under escape/_pending/, since the test budget has two lines of room: this record holds
+it, byte for byte behind four spaces (sha256
+9bbd98f3ff55339d7b26a6537e1517a6efe2bd38ccab50fd11974bd010ce9bd3), and the fix unit S-F81 re-creates it, paid
+by folds outside escape/.
+
+Source of cmd/workcell/c95_test.go (53 lines):
+
+    // SPDX-License-Identifier: Apache-2.0
+    // Copyright 2026 Omkhar Arasaratnam
+    
+    // C95 (I14): a channel.serial store that is present but holds no number must not count as floor 0. This file belongs at cmd/workcell/c95_test.go.
+    
+    package main
+    
+    import (
+    	"crypto/ed25519"
+    	"crypto/rand"
+    	"encoding/json"
+    	"os"
+    	"path/filepath"
+    	"testing"
+    	"time"
+    
+    	"github.com/omkhar/workcell/v2/internal/channel"
+    )
+    
+    // TestC95DamagedSerialStoreRefusesOlderManifest: against an intact floor a signed manifest with a lower serial is refused (control); against a store that is present but holds "", "x" or "\n" it must be refused too, the store left as it was (finding); with no store at all the newer manifest verifies (control).
+    func TestC95DamagedSerialStoreRefusesOlderManifest(t *testing.T) {
+    	pub, key, _ := ed25519.GenerateKey(rand.Reader)
+    	now := time.Now()
+    	in := installer{dir: t.TempDir(), keys: []channel.Key{{Public: pub, NotAfter: now.Add(time.Hour)}}}
+    	sign := func(serial int64) []byte {
+    		body, _ := json.Marshal(channel.Manifest{Serial: serial, Expires: serial + 13*24*3600})
+    		raw, err := channel.Sign(body, []ed25519.PrivateKey{key})
+    		if err != nil {
+    			t.Fatal(err)
+    		}
+    		return raw
+    	}
+    	newer, older, store := sign(now.Unix()-60), sign(now.Unix()-3600), filepath.Join(in.dir, "channel.serial")
+    	if _, err := in.verify(newer, now); err != nil {
+    		t.Fatalf("control: the newer manifest with no store yet: %v; want accepted", err)
+    	}
+    	if _, err := in.verify(older, now); err == nil {
+    		t.Fatal("control: the older manifest against the intact store was accepted; want refused as a lower serial")
+    	}
+    	for _, damaged := range []string{"", "x", "\n"} {
+    		if err := os.WriteFile(store, []byte(damaged), 0o600); err != nil {
+    			t.Fatal(err)
+    		}
+    		_, err := in.verify(older, now)
+    		if after, _ := os.ReadFile(store); err == nil || string(after) != damaged {
+    			t.Errorf("finding: store holding %q: verify(older) = %v, store now %q; want an error and the store untouched", damaged, err, after)
+    		}
+    	}
+    	os.Remove(store)
+    	if _, err := in.verify(newer, now); err != nil {
+    		t.Errorf("control: the newer manifest with the store absent: %v; want accepted", err)
+    	}
+    }
+
+C96. ID I14 in its downgrade lens, with B9 and B10: the self-rollback returns to an image whose digest the
+kept manifest withdraws, and the failed marker then keeps the automatic path from leaving it. Attacker: root
+in the guest, reached by a malicious repository's hook that speaks before the agent's first byte.
+Precondition, which the attacker does not control: this very start applied a new layer, which is C2's, and the
+manifest the host keeps withdraws the digest of the image that layer replaced. Where: cmd/workcell/update.go,
+fail (:283-304), which names the new image in `failed`, points `current` back to the previous one and reads no
+manifest, and apply (:264), which skips the pin whose image `failed` names and prints nothing. Input: the kept
+manifest pins B and withdraws A's digest; apply installs B over A, so `fresh` holds that pair; the guest's
+first frame is an Exit with an error; later starts keep the same manifest. Effect: current = A, the withdrawn
+image, failed = B and previous empty; each later apply installs nothing for the provider and says nothing, so
+every session runs the withdrawn CLI until the maintainer moves the pin or the operator runs `workcell update
+<agent>`; updates.log holds a `failed` line for B and no line that names A. No invariant breaks: A was
+installed under a manifest that verified, fail installs nothing, and the layer is guest content on a read-only
+drive.
+
+Evidence of the auditor, by a probe that is not kept: TestProbeFailReturnsToWithdrawn, where after fail
+`current` named the image that stood for the withdrawn digest, `previous` was empty, `failed` named the new
+one, and the one line on stderr was B9's.
+
+The earlier records, weighed by the auditor and by the verifier, none of exactly this shape. C1 with S-F1, and
+C2, accept the self-rollback to the image before, which lasts until the pin changes or the user runs update,
+and never weigh that image being withdrawn. The parked lines on `workcell update --rollback`, which asks no
+Withdrawn list, accept that because the next apply applies the pin again and because B10 names the verb as the
+user's own act; neither holds here, where the failed marker stops the next apply and the guest, not the user,
+is the cause. The parked line on a set-aside image that stays on disk is another residual. ADR-004, a
+proposal, says that fail reads no manifest by design.
+
+The test. The redteam wrote it from the claim alone, as a Go test of package main in cmd/workcell with no VM
+and no listener: TestC96WithdrawnImageIsNotCurrentAfterSelfRollback, 66 lines, two arms over one sequence: the
+state that an apply of B over A leaves, then fail, then the next start's apply. The control arm, A not
+withdrawn, asks that current be A, which is the designed self-rollback; the finding arm, A withdrawn, asks
+that current not be A, so that it passes with B current again and also with the return to A refused. The pin's
+URL is an address that nothing contacts. Run by the orchestrator on 0f5127f with go1.27.4 by `go test
+-overlay`, plain and with -race: the control arm passed and the finding arm failed both times, `current is A
+..., the withdrawn image, after fail current=A failed=B`, with fail's one line and none from apply; no data
+race was reported. The redteam's own two runs gave the same.
+
+Ruling of the verifier, who saw the claim, the test and the log and none of the auditor's reasoning: CONFIRMED
+at low, the grade claimed. It ran the test again, plain and with -race, with the same result. It traced the
+state that the test writes by hand, and found it to be what honest calls leave: for a manifest that pins B and
+withdraws A's digest, channel.Select returns B alone; update fetches B and point leaves current = B and
+previous = A; apply appends the pair to `fresh`; verify writes the manifest's serial. startup runs the day's
+check after apply, so on a new UTC day the unchanged channel.json is fetched into channel.next again, and
+Verify refuses only a lower serial, so the same manifest verifies at the next start. fail then writes failed =
+B, current = A and previous empty and reads no manifest, and apply's line 264 skips without a word. The test
+takes no power that the guest lacks: its call of fail is what run_vm.go makes of the first-frame Exit, the
+path of C1 and C2. On the grade: I14's sentence governs what is installed, A was installed under a valid
+manifest and fail installs nothing, and `withdrawn` is a word of ADR-004 and not of an invariant, so nothing
+breaks and the grade is low, not medium.
+
+Not shown: nothing ran on a real VM or on macOS, no real session forged the frame here, and the built binary
+did not run: the forged frame is the call of fail, as in the records of C1 and C2, and the install of B over A
+is the verifier's trace of the code and not a run. Variants that the redteam named and did not express, none
+run: `workcell update --rollback` reaches a withdrawn `previous` the same way, which its parked line holds; a
+withdrawal that arrives in a later manifest for an image that is only `previous`, followed by a fail that
+returns to it; and that updates.log shows no line for the return to A. The test is not parked under
+escape/_pending/, since the test budget has two lines of room: this record holds it, byte for byte behind four
+spaces (sha256 84ba62e7efb1561b50fdd7a3701446e14ba4bd2a20519c69d0917b9ed8f2a777), and the fix unit S-F82
+re-creates it, paid by folds outside escape/.
+
+Source of cmd/workcell/c96_test.go (66 lines):
+
+    // SPDX-License-Identifier: Apache-2.0
+    // Copyright 2026 Omkhar Arasaratnam
+    
+    // C96 (I14 with B9): the self-rollback must not leave a withdrawn image current. This file belongs at cmd/workcell/c96_test.go.
+    
+    package main
+    
+    import (
+    	"bytes"
+    	"crypto/ed25519"
+    	"crypto/rand"
+    	"crypto/sha256"
+    	"encoding/hex"
+    	"encoding/json"
+    	"errors"
+    	"net/http"
+    	"os"
+    	"path/filepath"
+    	"runtime"
+    	"strconv"
+    	"testing"
+    	"time"
+    
+    	"github.com/omkhar/workcell/v2/internal/channel"
+    	"github.com/omkhar/workcell/v2/internal/pins"
+    	"github.com/omkhar/workcell/v2/internal/provider"
+    )
+    
+    // TestC96WithdrawnImageIsNotCurrentAfterSelfRollback: this start's apply installed B over A, and the guest's first frame is an Exit with an error, so fail sets B
+    // aside and points current back at A, reading no manifest; the next start's apply skips B's pin, because B is marked failed. Finding arm: the kept manifest
+    // withdraws A, and after apply A must not be current (B installed again, or the return to A refused). Control arm: A not withdrawn, current = A is B10's self-rollback.
+    func TestC96WithdrawnImageIsNotCurrentAfterSelfRollback(t *testing.T) {
+    	p := must(provider.All())[0] // fail finds the provider by its binary among the built-in ones
+    	pub, key, _ := ed25519.GenerateKey(rand.Reader)
+    	sum := func(s string) string { d := sha256.Sum256([]byte(s)); return hex.EncodeToString(d[:]) }
+    	a, b := "1.0.0-"+sum("a")+".ext4", "1.0.1-"+sum("b")+".ext4"
+    	run := func(t *testing.T, withdrawn []string) (cur, said string) {
+    		dir := t.TempDir()
+    		layers := filepath.Join(dir, "layers", p.Name)
+    		now := time.Now().Unix()
+    		m := channel.Manifest{Serial: now - 60, Expires: now - 60 + 13*24*3600, Withdrawn: withdrawn, Pins: map[string]map[string]channel.Pin{p.Install.Pin: {runtime.GOARCH: {Version: "1.0.1", URL: "https://127.0.0.1:1/b", SHA256: sum("b")}}}}
+    		body, _ := json.Marshal(m)
+    		raw, err := channel.Sign(body, []ed25519.PrivateKey{key})
+    		// what an apply that installed B over A leaves: both images, current B, previous A, the serial of the manifest it verified; and the day's check kept that manifest again
+    		err = errors.Join(err, os.MkdirAll(layers, 0o700), os.WriteFile(filepath.Join(layers, a), nil, 0o600), os.WriteFile(filepath.Join(layers, b), nil, 0o600), writeMarker(layers, "current", b), writeMarker(layers, "previous", a))
+    		if err = errors.Join(err, writeMarker(dir, "channel.serial", strconv.FormatInt(m.Serial, 10)), writeMarker(dir, "channel.next", string(raw))); err != nil {
+    			t.Fatal(err)
+    		}
+    		in := installer{dir: dir, rows: []pins.Pin{{Name: p.Install.Pin, Release: pins.Release{Version: "0"}}}, client: &http.Client{}, channel: "https://127.0.0.1:1/channel.json", keys: []channel.Key{{Public: pub, NotAfter: time.Unix(1<<40, 0)}}, fresh: []string{b + "\n" + a}}
+    		var out bytes.Buffer
+    		in.fail(p.Binary, &out) // the attacker's one act: the forged Exit frame, as run reports it
+    		said = "after fail current=" + marker(layers, "current") + " failed=" + marker(layers, "failed") + "; "
+    		in.apply([]provider.Provider{p}, &out)
+    		return marker(layers, "current"), said + out.String()
+    	}
+    	t.Run("control: A not withdrawn, the self-rollback leaves A current", func(t *testing.T) {
+    		if cur, said := run(t, nil); cur != a {
+    			t.Errorf("current %q, %s; want A %q", cur, said, a)
+    		}
+    	})
+    	t.Run("finding: A withdrawn, A must not be current", func(t *testing.T) {
+    		if cur, said := run(t, []string{sum("a")}); cur == a {
+    			t.Errorf("current is A %q, the withdrawn image, %s; want B %q current again, or the return to A refused with a line that says so", cur, said, b)
+    		}
+    	})
+    }
