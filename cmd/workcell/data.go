@@ -32,8 +32,8 @@ func xdgDir(env string, home ...string) (string, error) {
 }
 
 // judge is the error for a directory that holds, or lies inside, workcell's data or config directory, or holds the file config.toml resolves to (a link into a dotfiles repository, made yet or not, C85), named: a session there would carry the audit key, other sessions, their records, the images or the policy into the guest, and pull would write the guest's versions back (I7, I9, I13). A config.toml with more than one name (a hard link) is refused outright: its other names cannot be found without walking every directory.
-// So is one that holds a mount point: a bind mount is neither a symlink nor an ancestor, so within relates it to nothing, and it can show those directories under another name, which no mount is told apart from (C65). So is one that holds the VMM directory of a running session (vmm, under its TMPDIR): the sockets there would lie in the guest's view, or under a pull, for the guest to swap for a link to any host socket of the operator's (I1, I4, I7). A stale record refuses nothing. And so is one that holds, or that a prefix leads into, a path the host later runs, opens or trusts from the user's config.toml or environment: the program of a cmd: source or the file of a file: source, the [update] ca, SSL_CERT_FILE, or an SSL_CERT_DIR entry or a member of one; a pull there would land the guest's version of it, for the broker, the installer or the proxy to run or trust next (C93; I8, I5, I6, I14). A missing config.toml names nothing; one that cannot be read or parsed cannot be judged and is refused. The [update] ca counts only with ca, as the pull asks (holds): a run leaves it to the installer, which refuses it against the working directory, while startup only warns and the session goes on, as before C93 (S1).
-func judge(dir string, ca bool) error {
+// So is one that holds a mount point: a bind mount is neither a symlink nor an ancestor, so within relates it to nothing, and it can show those directories under another name, which no mount is told apart from (C65). So is one that holds the VMM directory of a running session (vmm, under its TMPDIR): the sockets there would lie in the guest's view, or under a pull, for the guest to swap for a link to any host socket of the operator's (I1, I4, I7). A stale record refuses nothing. And so is one that holds, or that a prefix leads into, a path the host later runs, opens or trusts from the user's config.toml or environment: the program of a cmd: source or the file of a file: source, the [update] ca, SSL_CERT_FILE, or an SSL_CERT_DIR entry or a member of one; a pull there would land the guest's version of it, for the broker, the installer or the proxy to run or trust next (C93; I8, I5, I6, I14). A missing config.toml names nothing; one that cannot be read or parsed cannot be judged and is refused. As the pull asks (holds, pull), each path is judged against the destination alone, which neither holds nor lies in the data directory by the first loop, and the [update] ca is one of them when absolute (a relative one is never a root: newInstaller refuses it). As session asks, each is judged against the working directory and the data directory, whose caches the guest writes (C84, C86), and the ca is left to the installer, which refuses it against the working directory while startup only warns and the session goes on, as before C93 (S1).
+func judge(dir string, pull bool) error {
 	data, err := dataDir()
 	file, _ := configFile() // fails only as dataDir does; the file is judged resolved, as within resolves, so a link's target counts
 	p, perr := policy.Read(file)
@@ -65,7 +65,7 @@ func judge(dir string, ca bool) error {
 			}
 		}
 	}
-	trusted := [][2]string{{"the [update] ca", map[bool]string{true: p.Update.CA}[ca]}, {"SSL_CERT_FILE", os.Getenv("SSL_CERT_FILE")}} // each path the host runs, opens or trusts, with what names it: none may lie in or lead into dir, or the data directory, whose caches the guest writes by design (C84, C86, C93). An empty value names nothing; a relative one is read against the working directory, as leadsInto reads it
+	trusted, in := [][2]string{{"the [update] ca", map[bool]string{true: p.Update.CA}[pull && filepath.IsAbs(p.Update.CA)]}, {"SSL_CERT_FILE", os.Getenv("SSL_CERT_FILE")}}, map[bool]string{true: dir, false: data}[pull] // each path the host runs, opens or trusts, with what names it: none may lie in or lead into dir, nor into in: the data directory for a run (C84, C86), dir again for a pull, whose destination the first loop keeps out of it (C93). An empty value names nothing; a relative one is read against the working directory, as leadsInto reads it
 	for _, s := range p.Secret {
 		trusted = append(trusted, [2]string{fmt.Sprintf("secret %q", s.Name), sourcePath(s.Source)})
 	}
@@ -76,8 +76,8 @@ func judge(dir string, ca bool) error {
 			trusted = append(trusted, [2]string{"SSL_CERT_DIR", filepath.Join(d, e.Name())})
 		}
 	}
-	if i := slices.IndexFunc(trusted, func(t [2]string) bool { return t[1] != "" && leadsInto(t[1], dir, data) }); i >= 0 {
-		return fmt.Errorf("%s names %s, which lies in or leads into %q, where the guest writes under --mount and a pull lands its tree, or the data directory %s, whose caches the guest writes: the host runs, reads or trusts that path, so no session may see it and no pull may write over it; move the file and set that path, or use another directory", trusted[i][0], trusted[i][1], dir, data)
+	if i := slices.IndexFunc(trusted, func(t [2]string) bool { return t[1] != "" && leadsInto(t[1], dir, in) }); i >= 0 {
+		return fmt.Errorf("%s names %s, which lies in or leads into %q, where the guest writes under --mount and a pull lands its tree%s: the host runs, reads or trusts that path, so no session may see it and no pull may write over it; move the file and set that path, or use another directory", trusted[i][0], trusted[i][1], dir, map[bool]string{false: ", or the data directory " + data + ", whose caches the guest writes"}[pull])
 	}
 	return err
 }
