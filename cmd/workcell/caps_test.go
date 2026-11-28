@@ -36,8 +36,7 @@ func TestParseRun(t *testing.T) {
 		mount bool
 		argv  []string // nil: refused
 	}{
-		{"defaults", []string{"--", "ls"}, limits{2, 1024, 0}, false, []string{"ls"}},
-		{"no separator", []string{"ls", "-l"}, limits{2, 1024, 0}, false, []string{"ls", "-l"}},
+		{"defaults", []string{"--", "ls"}, limits{2, 1024, 0}, false, []string{"ls"}}, {"no separator", []string{"ls", "-l"}, limits{2, 1024, 0}, false, []string{"ls", "-l"}},
 		{"all three", []string{"--cpus", "1", "--memory", "256MiB", "--disk", "64MiB", "--", "sh"}, limits{1, 256, 64}, false, []string{"sh"}},
 		{"equals form", []string{"--cpus=4", "--memory=2GiB", "--disk=1GiB", "x"}, limits{4, 2048, 1024}, false, []string{"x"}},
 		{"flags after the command belong to it", []string{"--", "ls", "--cpus", "9"}, limits{2, 1024, 0}, false, []string{"ls", "--cpus", "9"}},
@@ -45,14 +44,10 @@ func TestParseRun(t *testing.T) {
 		{"mount", []string{"--mount", "--", "sh"}, limits{2, 1024, 0}, true, []string{"sh"}},
 		{"mount with caps", []string{"--mount", "--cpus", "1", "--disk", "64MiB", "x"}, limits{1, 1024, 64}, true, []string{"x"}},
 		{"mount after the command belongs to it", []string{"--", "x", "--mount"}, limits{2, 1024, 0}, false, []string{"x", "--mount"}},
-		{"no command", []string{"--cpus", "1"}, limits{}, false, nil},
-		{"mount and no command", []string{"--mount"}, limits{}, false, nil},
-		{"nothing", nil, limits{}, false, nil}, {"no cpus", []string{"--cpus", "0", "x"}, limits{}, false, nil},
-		{"too many cpus", []string{"--cpus", "33", "x"}, limits{}, false, nil},
-		{"not a number of cpus", []string{"--cpus", "two", "x"}, limits{}, false, nil},
-		{"memory below the floor", []string{"--memory", "127MiB", "x"}, limits{}, false, nil},
-		{"memory nonsense", []string{"--memory", "lots", "x"}, limits{}, false, nil},
-		{"disk nonsense", []string{"--disk", "1TB", "x"}, limits{}, false, nil},
+		{"no command", []string{"--cpus", "1"}, limits{}, false, nil}, {"mount and no command", []string{"--mount"}, limits{}, false, nil}, {"nothing", nil, limits{}, false, nil},
+		{"no cpus", []string{"--cpus", "0", "x"}, limits{}, false, nil}, {"too many cpus", []string{"--cpus", "33", "x"}, limits{}, false, nil},
+		{"not a number of cpus", []string{"--cpus", "two", "x"}, limits{}, false, nil}, {"memory below the floor", []string{"--memory", "127MiB", "x"}, limits{}, false, nil},
+		{"memory nonsense", []string{"--memory", "lots", "x"}, limits{}, false, nil}, {"disk nonsense", []string{"--disk", "1TB", "x"}, limits{}, false, nil},
 		{"unknown flag", []string{"--net", "x"}, limits{}, false, nil},
 	}
 	for _, tc := range tests {

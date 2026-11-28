@@ -12208,6 +12208,40 @@ Source of cmd/workcell/c95_test.go (53 lines):
     	}
     }
 
+C95 FIXED by S-F81, commit 81fde0b (PR #379), in the shape its unit line chose. installer.verify in
+cmd/workcell/update.go reads `<data>/channel.serial` itself, by os.ReadFile, and no longer through marker():
+absent is floor 0 as before; a store that is present must be a decimal number of zero or more with at most the
+one newline that writeMarker leaves, and one that is anything else, or that cannot be read, is refused before
+channel.Verify with `<path> holds no serial number of zero or more; removing it starts the floor anew`, the
+store left as it was. marker() and writeMarker are unchanged. Against main: update.go 7 lines added and 1
+removed, one of them the io/fs import, paid by three one-statement funcs written on one line (Zero in
+internal/secret/source.go, New in internal/vmm/firecracker/firecracker.go and in internal/vmm/vz/vz.go);
+product 15000 of 15000, test 28500 of 28500, the test's 53 lines paid by 51 lines of row joins in six test
+files, line breaks alone (checked by the orchestrator, with all white space and a comma before a closing
+bracket taken out of both sides, and by the reviewer on the token stream of all nine files). The test is
+cmd/workcell/c95_test.go, the source above with no byte changed (sha256 checked by the redteam, the builder,
+the orchestrator and the reviewer): on the claim e01641b its three finding rows fail, verify nil and the store
+rewritten, plain and under -race, by the redteam and the reviewer; on 81fde0b it passes plain and under -race,
+by the builder, the orchestrator and the reviewer, its controls unchanged. Hosted on 81fde0b: gate (284 s, VM
+suite included, so its I14 rows), gate-macos (144 s), gate-arm64 (91 s) and guard green.
+Rulings, each run by the reviewer on both trees: refused with the store untouched are `5x`, a number beyond
+int64, `-1`, two newlines, a leading or a trailing space, CR LF, `0x5`, `1_0`, a store that is a directory and
+one of mode 0 read as another uid; taken as a floor are the number with or without its newline, `+5`, `0` and
+`-0`. Through the verbs, called in the test process against a loopback channel: `workcell update claude` with
+a store of "", "x" or a lone newline returns 1 with the one line on stderr, installs nothing and leaves the
+store; apply prints the line after `workcell: channel:` and installs nothing; the day's check keeps no
+channel.next and prints nothing, as it never prints. With the store absent the first manifest verifies and the
+floor is written. The builder ran the built binary once, with a store of "x": the same line, exit 1.
+Cost, as the unit line foresaw: a start that reads in the empty moment of another start's write now refuses a
+good manifest once (the reviewer's probe of four concurrent verifies was refused more often than accepted,
+where main accepted at floor 0), and in apply the kept channel.next is gone by then, so that manifest waits
+for the next day's check; the store always ended holding a serial. NOT closed: a store left empty for good, by
+a writer killed in that window or by lost power, now stops every channel check until the operator removes the
+file, and only `workcell update` by hand says so, since a start's daily check drops the error; writeMarker's
+one temporary name is the cause and the product budget has no line for it. S-1013 and S-1017 weigh it.
+Correction to the record above: a number beyond int64 read on main as the largest int64, not as floor 0, and
+was refused there as a lower serial.
+
 C96. ID I14 in its downgrade lens, with B9 and B10: the self-rollback returns to an image whose digest the
 kept manifest withdraws, and the failed marker then keeps the automatic path from leaving it. Attacker: root
 in the guest, reached by a malicious repository's hook that speaks before the agent's first byte.

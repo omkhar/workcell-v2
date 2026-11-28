@@ -18,13 +18,9 @@ func TestExec(t *testing.T) {
 		want Exec
 		ok   bool
 	}{
-		{"round trip", EncodeExec(full), full, true},
-		{"argv only", []byte(`{"argv":["ls"]}`), Exec{Argv: []string{"ls"}}, true},
-		{"empty argv", []byte(`{"argv":[]}`), Exec{}, false},
-		{"no argv", []byte(`{"pty":true}`), Exec{}, false},
-		{"not json", []byte(`argv`), Exec{}, false},
-		{"empty", nil, Exec{}, false},
-		{"rows too big", []byte(`{"argv":["ls"],"rows":65536}`), Exec{}, false},
+		{"round trip", EncodeExec(full), full, true}, {"argv only", []byte(`{"argv":["ls"]}`), Exec{Argv: []string{"ls"}}, true},
+		{"empty argv", []byte(`{"argv":[]}`), Exec{}, false}, {"no argv", []byte(`{"pty":true}`), Exec{}, false}, {"not json", []byte(`argv`), Exec{}, false},
+		{"empty", nil, Exec{}, false}, {"rows too big", []byte(`{"argv":["ls"],"rows":65536}`), Exec{}, false},
 		{"ca too big", EncodeExec(Exec{Argv: []string{"ls"}, CA: bytes.Repeat([]byte{'x'}, MaxCA+1)}), Exec{}, false},
 	}
 	for _, tc := range tests {
@@ -76,19 +72,14 @@ func TestSignal(t *testing.T) {
 func TestExit(t *testing.T) {
 	long := strings.Repeat("e", MaxErr+1)
 	decodes(t, DecodeExit, []decoded[Exit]{
-		{"code 7", EncodeExit(Exit{Code: 7}), Exit{Code: 7}, true},
-		{"code 0", EncodeExit(Exit{}), Exit{}, true}, {"code 255", []byte{0, 255}, Exit{Code: 255}, true},
-		{"signal 15", EncodeExit(Exit{Signal: 15}), Exit{Signal: 15}, true},
-		{"signal wins over code", EncodeExit(Exit{Code: 1, Signal: 9}), Exit{Signal: 9}, true},
-		{"error", EncodeExit(Exit{Err: "no such file"}), Exit{Err: "no such file"}, true},
-		{"error wins", EncodeExit(Exit{Code: 1, Signal: 9, Err: "x"}), Exit{Err: "x"}, true},
+		{"code 7", EncodeExit(Exit{Code: 7}), Exit{Code: 7}, true}, {"code 0", EncodeExit(Exit{}), Exit{}, true}, {"code 255", []byte{0, 255}, Exit{Code: 255}, true},
+		{"signal 15", EncodeExit(Exit{Signal: 15}), Exit{Signal: 15}, true}, {"signal wins over code", EncodeExit(Exit{Code: 1, Signal: 9}), Exit{Signal: 9}, true},
+		{"error", EncodeExit(Exit{Err: "no such file"}), Exit{Err: "no such file"}, true}, {"error wins", EncodeExit(Exit{Code: 1, Signal: 9, Err: "x"}), Exit{Err: "x"}, true},
 		{"error truncated to MaxErr", EncodeExit(Exit{Err: long}), Exit{Err: long[:MaxErr]}, true},
-		{"error with control bytes kept", []byte{2, 0x1b, '[', 'm', 0}, Exit{Err: "\x1b[m\x00"}, true},
-		{"empty", nil, Exit{}, false}, {"one byte", []byte{0}, Exit{}, false},
-		{"code with a tail", []byte{0, 7, 0}, Exit{}, false}, {"signal 0", []byte{1, 0}, Exit{}, false},
-		{"signal 65", []byte{1, 65}, Exit{}, false}, {"signal with a tail", []byte{1, 15, 0}, Exit{}, false},
-		{"error too long", append([]byte{2}, long...), Exit{}, false},
-		{"unknown kind", []byte{3, 0}, Exit{}, false}, {"kind 255", []byte{255, 0}, Exit{}, false},
+		{"error with control bytes kept", []byte{2, 0x1b, '[', 'm', 0}, Exit{Err: "\x1b[m\x00"}, true}, {"empty", nil, Exit{}, false}, {"one byte", []byte{0}, Exit{}, false},
+		{"code with a tail", []byte{0, 7, 0}, Exit{}, false}, {"signal 0", []byte{1, 0}, Exit{}, false}, {"signal 65", []byte{1, 65}, Exit{}, false},
+		{"signal with a tail", []byte{1, 15, 0}, Exit{}, false}, {"error too long", append([]byte{2}, long...), Exit{}, false}, {"unknown kind", []byte{3, 0}, Exit{}, false},
+		{"kind 255", []byte{255, 0}, Exit{}, false},
 	})
 }
 
@@ -106,26 +97,21 @@ func TestEntry(t *testing.T) {
 	link := Entry{Kind: KindLink, Path: "l", Target: "../x"}
 	long := strings.Repeat("p", MaxPath)
 	decodes(t, DecodeEntry, []decoded[Entry]{
-		{"file", EncodeEntry(file), file, true},
-		{"dir", EncodeEntry(Entry{Kind: KindDir, Path: "a/b"}), Entry{Kind: KindDir, Path: "a/b"}, true},
-		{"link", EncodeEntry(link), link, true},
-		{"longest path", EncodeEntry(Entry{Kind: KindDir, Path: long}), Entry{Kind: KindDir, Path: long}, true},
+		{"file", EncodeEntry(file), file, true}, {"dir", EncodeEntry(Entry{Kind: KindDir, Path: "a/b"}), Entry{Kind: KindDir, Path: "a/b"}, true},
+		{"link", EncodeEntry(link), link, true}, {"longest path", EncodeEntry(Entry{Kind: KindDir, Path: long}), Entry{Kind: KindDir, Path: long}, true},
 		{"longest target", EncodeEntry(Entry{Kind: KindLink, Path: "l", Target: long}), Entry{Kind: KindLink, Path: "l", Target: long}, true},
 		{"empty link target", EncodeEntry(Entry{Kind: KindLink, Path: "l"}), Entry{Kind: KindLink, Path: "l"}, true},
 		{"path over the bound", EncodeEntry(Entry{Kind: KindDir, Path: long + "p"}), Entry{}, false},
 		{"target over the bound", EncodeEntry(Entry{Kind: KindLink, Path: "l", Target: long + "p"}), Entry{}, false},
-		{"empty path", EncodeEntry(Entry{Kind: KindDir}), Entry{}, false},
-		{"unknown kind", EncodeEntry(Entry{Kind: 4, Path: "a"}), Entry{}, false},
-		{"zero kind", EncodeEntry(Entry{Path: "a"}), Entry{}, false},
-		{"executable dir", EncodeEntry(Entry{Kind: KindDir, Exec: true, Path: "a"}), Entry{}, false},
+		{"empty path", EncodeEntry(Entry{Kind: KindDir}), Entry{}, false}, {"unknown kind", EncodeEntry(Entry{Kind: 4, Path: "a"}), Entry{}, false},
+		{"zero kind", EncodeEntry(Entry{Path: "a"}), Entry{}, false}, {"executable dir", EncodeEntry(Entry{Kind: KindDir, Exec: true, Path: "a"}), Entry{}, false},
 		{"dir with a size", EncodeEntry(Entry{Kind: KindDir, Size: 1, Path: "a"}), Entry{}, false},
 		{"dir with a target", EncodeEntry(Entry{Kind: KindDir, Path: "a", Target: "b"}), Entry{}, false},
 		{"file with a target", EncodeEntry(Entry{Kind: KindFile, Path: "a", Target: "b"}), Entry{}, false},
 		{"link with a size", EncodeEntry(Entry{Kind: KindLink, Size: 1, Path: "a"}), Entry{}, false},
 		{"negative size", EncodeEntry(Entry{Kind: KindFile, Size: -1, Path: "a"}), Entry{}, false},
 		{"exec byte of 2", append([]byte{KindFile, 2}, EncodeEntry(Entry{Kind: KindFile, Path: "a"})[2:]...), Entry{}, false},
-		{"truncated", EncodeEntry(file)[:14], Entry{}, false},
-		{"trailing byte", append(EncodeEntry(file), 0), Entry{}, false}, {"empty", nil, Entry{}, false},
+		{"truncated", EncodeEntry(file)[:14], Entry{}, false}, {"trailing byte", append(EncodeEntry(file), 0), Entry{}, false}, {"empty", nil, Entry{}, false},
 	})
 }
 

@@ -33,21 +33,14 @@ func fullTree(t *testing.T) *Tree {
 		path string
 		n    Node
 	}{
-		{"/bin", Node{Kind: Dir, Mode: 0o755}},
-		{"/bin/sh", Node{Kind: File, Mode: 0o755, Data: []byte("#!/bin/true\n")}},
-		{"/bin/busybox", Node{Kind: File, Mode: 0o755, Data: pattern(100 << 10)}},
-		{"/bin/ash", Node{Kind: Symlink, Mode: 0o777, Target: "busybox"}},
-		{"/etc", Node{Kind: Dir, Mode: 0o750, UID: 1, GID: 2}}, {"/etc/empty", Node{Kind: File, Mode: 0o644}},
-		{"/etc/odd", Node{Kind: File, Mode: 0o644, Data: pattern(5000)}},
-		{"/etc/shadow", Node{Kind: File, Mode: 0o640, UID: 70000, GID: 80000, Data: []byte("root:*\n")}},
-		{"/etc/long", Node{Kind: Symlink, Mode: 0o777, Target: long}}, {"/usr", Node{Kind: Dir, Mode: 0o755}},
-		{"/usr/bin", Node{Kind: Dir, Mode: 0o755}},
-		{"/usr/bin/su", Node{Kind: File, Mode: 0o4755, Data: pattern(64)}},
-		{"/usr/lib", Node{Kind: Dir, Mode: 0o1777}}, {"/usr/lib/empty", Node{Kind: Dir, Mode: 0o755}},
-		{"/many", Node{Kind: Dir, Mode: 0o755}}, {"/dev", Node{Kind: Dir, Mode: 0o755}},
-		{"/dev/null", Node{Kind: CharDev, Mode: 0o666, Major: 1, Minor: 3}},
-		{"/dev/sda", Node{Kind: BlockDev, Mode: 0o660, Major: 8, Minor: 0}},
-		{"/dev/big", Node{Kind: BlockDev, Mode: 0o660, Major: 259, Minor: 300}},
+		{"/bin", Node{Kind: Dir, Mode: 0o755}}, {"/bin/sh", Node{Kind: File, Mode: 0o755, Data: []byte("#!/bin/true\n")}},
+		{"/bin/busybox", Node{Kind: File, Mode: 0o755, Data: pattern(100 << 10)}}, {"/bin/ash", Node{Kind: Symlink, Mode: 0o777, Target: "busybox"}},
+		{"/etc", Node{Kind: Dir, Mode: 0o750, UID: 1, GID: 2}}, {"/etc/empty", Node{Kind: File, Mode: 0o644}}, {"/etc/odd", Node{Kind: File, Mode: 0o644, Data: pattern(5000)}},
+		{"/etc/shadow", Node{Kind: File, Mode: 0o640, UID: 70000, GID: 80000, Data: []byte("root:*\n")}}, {"/etc/long", Node{Kind: Symlink, Mode: 0o777, Target: long}},
+		{"/usr", Node{Kind: Dir, Mode: 0o755}}, {"/usr/bin", Node{Kind: Dir, Mode: 0o755}}, {"/usr/bin/su", Node{Kind: File, Mode: 0o4755, Data: pattern(64)}},
+		{"/usr/lib", Node{Kind: Dir, Mode: 0o1777}}, {"/usr/lib/empty", Node{Kind: Dir, Mode: 0o755}}, {"/many", Node{Kind: Dir, Mode: 0o755}},
+		{"/dev", Node{Kind: Dir, Mode: 0o755}}, {"/dev/null", Node{Kind: CharDev, Mode: 0o666, Major: 1, Minor: 3}},
+		{"/dev/sda", Node{Kind: BlockDev, Mode: 0o660, Major: 8, Minor: 0}}, {"/dev/big", Node{Kind: BlockDev, Mode: 0o660, Major: 259, Minor: 300}},
 		{"/dev/fifo", Node{Kind: FIFO, Mode: 0o600}},
 	}
 	for _, p := range puts {
