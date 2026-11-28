@@ -10778,3 +10778,41 @@ two things more, both toward refusal and both for the row's "one reading": a lit
 byte below 0x20 or the byte 0x7F since this unit (C90). The loop did not edit the ADR. Review: one round, no finding
 that meets R2; its three notes are one line in PARKED.md. Sweep 4 now holds four confirmed mediums, C87, C88 and C90
 fixed and C89 open with the design question S-F76, which S-1017 counts (S8).
+
+C89, the design question (S-F76): OPEN, with a proposal, and not fixed. docs/adr/007-issued-credentials.md
+(ADR-007, 75 lines, `status: proposed`) is the architect's answer to the question that the record above left: it
+compares four options and recommends the first. A proposal decides nothing: it counts only once the maintainer
+has moved the file to docs/adr/accepted/, and no product line, test or user document changed in this unit.
+
+The recommendation: no check. The product stays as it is (0 product lines, no operator row newly refused); the
+duty is stated in docs/policy.md (the guest never holds the value that was bound; what the host sends back is not
+read, so bind a credential of the least scope and narrow `path` away from endpoints that issue one);
+docs/providers.md says per shipped row what its key can reach; and SPEC section 2 gains a row, which only the
+maintainer can add, for what an allowlisted provider sends back to the holder of a bound credential, an echo or a
+credential it issues or rotates. The ADR words that row and has it replace the four echo rulings (W15). Not
+recommended, each with its cost in the ADR's table: a `path` in the compiled-in provider rows (1 to 3 product
+lines; it narrows only the two rows whose issued tokens are short-lived, bets on CLI routes that the suite measures
+with one request per provider, and leaves an operator's own row as it is); a swap only under a narrowed row (it
+refuses every row without `path` or `repos`, the example of SPEC section 5 among them, and a row narrowed to
+`/api/v4/` still holds the rotate endpoint); a judge of the answer (8 to 15 lines and open-ended, a read of
+answers that are streamed, and the check of text that ADR-006 took out).
+
+The four shipped rows, from the providers' public documents alone, read on 2026-11-28 (T8: no provider was asked):
+claude (api.anthropic.com, x-api-key): no such endpoint for the bound key. codex (api.openai.com, authorization):
+yes, short-lived, a realtime client secret of 10 to 7200 seconds; a durable key only where the operator binds an
+Admin key, which serves the CLI nothing. gemini (generativelanguage.googleapis.com, x-goog-api-key): yes,
+short-lived, an ephemeral Live API token under the root the CLI uses. copilot (api.githubcopilot.com,
+authorization): none documented. So the S-1007 record's line, that none of the four shipped rows reaches such an
+endpoint, was the auditor's knowledge and is corrected here for codex and gemini: both reach one that issues a
+token of minutes to two hours, good only at the bound host. Evidence gap: only Anthropic's page was read in full;
+the hosts of the other three and of GitLab did not resolve from the session, so their rows rest on search excerpts
+of the official pages, and Gemini's longest lifetime was not reached.
+
+The parked test: escape/_pending/S-F76/c89_test.go is untouched and still fails as recorded. Under the
+recommendation no change makes TestC89MintedCredentialReachesTheGuest pass while the bound API stays usable, so
+S4 has no "after": it waits until the maintainer accepts the ADR and adds the row, and the unit that then builds
+the design, which the maintainer adds, deletes the folder, edits the three documents and records C89 as accepted,
+not as fixed. For the maintainer: S7 wants every medium fixed before cutover and the recommendation moves C89 out
+of scope instead, which no proposal can do; until the ADR is accepted and the row is in SPEC section 2, or the
+unit line is rewritten, C89 is an open medium of sweep 4, which S-1017 counts (S8). also in v1 main:
+egressproxy/terminate.go.
