@@ -10,6 +10,7 @@ import (
 	"io"
 	"math"
 	"syscall"
+	"time"
 
 	"golang.org/x/sys/unix"
 )
@@ -363,7 +364,7 @@ func (s *Server) setattr(r request) ([]byte, syscall.Errno) {
 }
 
 // readdir lists from the handle's own descriptor, positioned at the offset the kernel gives back, which is the cookie of the entry after the last one it took. Nothing
-// is cached, so a directory of any size costs one 8 KiB buffer per call; the bytes read and the nodes made are charged to the pace (I10). READDIRPLUS makes a node per
+// is cached, so a directory of any size costs one 8 KiB buffer per call; the frame's time, the bytes read and the nodes made are charged to the pace (I10). READDIRPLUS makes a node per
 // entry, as a LOOKUP would; an entry that cannot get one (cap reached) goes out with node 0, so the listing stays complete and the kernel's own LOOKUP reports the error.
 func (s *Server) readdir(r request) ([]byte, syscall.Errno) {
 	h, e := s.fh(r.NodeID, r.Fh)
@@ -384,6 +385,8 @@ func (s *Server) readdir(r request) ([]byte, syscall.Errno) {
 	size := int(min(r.Size, MaxWrite))
 	h.mu.Lock()
 	defer h.mu.Unlock()
+	t0 := time.Now()
+	defer func() { s.work.Add(int64(time.Since(t0) / (750 * time.Nanosecond))) }() // the seek and the reads are host work (I10), as grow()'s SEEK_HOLE: overlayfs walks its list of entries to the offset, so a far one costs the directory's length
 	if _, err := unix.Seek(h.fd, int64(r.Offset), io.SeekStart); err != nil {
 		return nil, errno(err)
 	}

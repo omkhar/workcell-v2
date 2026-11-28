@@ -32,7 +32,7 @@ const (
 	// paceFrames and paceEvery: Serve reads at most paceFrames units of work a paceEvery, 16 thousand a second (I10). A frame is a unit, as are perForget entries of a
 	// BATCH_FORGET, and the work a frame asks for is charged on top in points, unit to the unit, a point being about 0.75 us of host CPU: two for a link of a node's chain
 	// checked (at), one for 24 bytes of a directory listed (readdir), plusEntry for a READDIRPLUS entry made, what one costs beside fifteen other workers on a slow host,
-	// and the time a WRITE's search for a hole takes (grow). A frame alone costs the host about 10 us, so cheap frames take a sixth of a core and the costliest about half, within
+	// and the time a WRITE's search for a hole (grow) or a READDIR's seek and reads (readdir) take. A frame alone costs the host about 10 us, so cheap frames take a sixth of a core and the costliest about half, within
 	// the one vCPU plus a second the gate allows a guest. Honest traffic stays far below: ADR-005 measured 2 to 6 thousand requests a second, and at 60 KiB a READ or WRITE the transport caps a stream lower.
 	paceFrames, paceEvery, unit, plusEntry = 1 << 10, 64 * time.Millisecond, 40, 40
 	// perForget: an entry the host does not know costs it about a 250th of a request; at 64 an honest guest shedding the whole table of maxNodes waits an eighth of a second.

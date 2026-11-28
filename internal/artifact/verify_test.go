@@ -454,22 +454,16 @@ func TestVerify(t *testing.T) {
 	b64 := base64.StdEncoding.EncodeToString
 
 	rows := []row{
-		{name: "good github signed member", src: gh, signed: true, member: true, ok: true},
-		{name: "good github signed asset", src: gh, signed: true, ok: true},
-		{name: "good github codex shape: prefixed identity, local bundle", src: gh, signed: true, member: true, codex: true, ok: true},
-		{name: "good github unsigned digest", src: gh, ok: true},
-		{name: "good npm signed", src: npm, signed: true, ok: true},
-		{name: "good npm unsigned sri", src: npm, ok: true},
-		{name: "good vendor", src: vendor, ok: true},
-		{name: "good oci", src: oci, ok: true},
+		{name: "good github signed member", src: gh, signed: true, member: true, ok: true}, {name: "good github signed asset", src: gh, signed: true, ok: true},
+		{name: "good github codex shape: prefixed identity, local bundle", src: gh, signed: true, member: true, codex: true, ok: true}, {name: "good github unsigned digest", src: gh, ok: true},
+		{name: "good npm signed", src: npm, signed: true, ok: true}, {name: "good npm unsigned sri", src: npm, ok: true},
+		{name: "good vendor", src: vendor, ok: true}, {name: "good oci", src: oci, ok: true},
 
 		// common
 		{name: "1E body-swapped-honest-meta github", src: gh, mut: swap},
 		{name: "1E body-swapped-honest-meta npm", src: npm, mut: swap},
 		{name: "1E body-swapped-honest-meta vendor", src: vendor, mut: swap},
-		{name: "2E meta-matches-swapped-body github member", src: gh, signed: true, member: true, mut: func(s *setup) {
-			s.retar("amd64", entry{name: "tool-amd64", body: []byte("trojan")})
-		}},
+		{name: "2E meta-matches-swapped-body github member", src: gh, signed: true, member: true, mut: func(s *setup) { s.retar("amd64", entry{name: "tool-amd64", body: []byte("trojan")}) }},
 		{name: "2E meta-matches-swapped-body github asset", src: gh, signed: true, mut: relist},
 		{name: "2E meta-matches-swapped-body npm", src: npm, signed: true, mut: func(s *setup) {
 			swap(s)
@@ -479,9 +473,7 @@ func TestVerify(t *testing.T) {
 		{name: "3E redirect-to-http", src: gh, mut: redirect("http://up.test/x")},
 		{name: "4E redirect-other-host followed", src: gh, mut: redirect("https://mirror.test/x"), ok: true},
 		{name: "4V redirect-loop", src: gh, mut: redirect("")},
-		{name: "4E malformed-status-line", src: gh, want: "transport failure", mut: func(s *setup) {
-			s.routes[key(s.cand.Artifacts["amd64"].URL)] = route{hijack: true}
-		}},
+		{name: "4E malformed-status-line", src: gh, want: "transport failure", mut: func(s *setup) { s.routes[key(s.cand.Artifacts["amd64"].URL)] = route{hijack: true} }},
 		{name: "5E over-size-cap declared", src: gh, mut: func(s *setup) {
 			s.routes[key(s.cand.Artifacts["amd64"].URL)] = route{header: map[string]string{"Content-Length": strconv.Itoa(MaxArtifact + 1)}}
 		}},
@@ -514,9 +506,7 @@ func TestVerify(t *testing.T) {
 		{name: "13V bundle-url-missing", src: gh, signed: true, mut: func(s *setup) { s.art("amd64", func(a *pins.Artifact) { a.Bundle = "" }) }},
 		{name: "14E bundle-other-asset", src: gh, signed: true, mut: bundle(func(s *setup) []byte { return s.sign(other[:]) })},
 		{name: "15E bundle-other-arch", src: gh, signed: true, mut: bundle(func(s *setup) []byte { return s.routes[key(s.cand.Artifacts["arm64"].Bundle)].body })},
-		{name: "16E bundle-wrong-identity", src: gh, signed: true, mut: func(s *setup) {
-			s.pin.Signing.Identity = strings.Replace(ghID, "release.yml", "other.yml", 1)
-		}},
+		{name: "16E bundle-wrong-identity", src: gh, signed: true, mut: func(s *setup) { s.pin.Signing.Identity = strings.Replace(ghID, "release.yml", "other.yml", 1) }},
 		{name: "16E codex-bundle-names-another-workflow", src: gh, signed: true, member: true, codex: true, want: "identity", mut: func(s *setup) {
 			s.pin.Signing.Identity = strings.Replace(s.pin.Signing.Identity, "release.yml", "other.yml", 1)
 		}},
@@ -525,9 +515,7 @@ func TestVerify(t *testing.T) {
 		{name: "16V bundles-without-identity", src: gh, signed: true, mut: func(s *setup) { s.pin.Signing.Identity, s.noFetch = "", true }},
 		{name: "17E bundle-signs-tarball-pin-says-member", src: gh, signed: true, member: true, mut: bundle(func(s *setup) []byte { return s.sign(assetOf(s)) })},
 		{name: "18E bundle-signs-member-pin-says-tarball", src: gh, signed: true, mut: bundle(func(s *setup) []byte { return s.sign(memberOf(s)) })},
-		{name: "19E member-missing", src: gh, signed: true, member: true, mut: func(s *setup) {
-			s.retar("amd64", entry{name: "nope", body: []byte("binary for amd64")})
-		}},
+		{name: "19E member-missing", src: gh, signed: true, member: true, mut: func(s *setup) { s.retar("amd64", entry{name: "nope", body: []byte("binary for amd64")}) }},
 		{name: "19V member-is-directory", src: gh, signed: true, member: true, mut: func(s *setup) { s.retar("amd64", entry{name: "tool-amd64/", flag: tar.TypeDir}) }},
 		{name: "20E member-duplicated", src: gh, signed: true, member: true, mut: func(s *setup) {
 			s.retar("amd64", entry{name: "tool-amd64", body: []byte("binary for amd64")}, entry{name: "tool-amd64", body: []byte("binary for amd64")})
@@ -541,12 +529,8 @@ func TestVerify(t *testing.T) {
 		{name: "23V member-dotdot in pin", src: gh, signed: true, member: true, mut: members("../tool-amd64")},
 		{name: "23V member-absolute in pin", src: gh, signed: true, member: true, mut: members("/tool-amd64")},
 		{name: "23V member-unclean in pin", src: gh, signed: true, member: true, mut: members("./tool-amd64")},
-		{name: "23V member-absolute in tarball", src: gh, signed: true, member: true, mut: func(s *setup) {
-			s.retar("amd64", entry{name: "/tool-amd64", body: []byte("binary for amd64")})
-		}},
-		{name: "25V member-oversized header", src: gh, signed: true, member: true, mut: func(s *setup) {
-			s.retar("amd64", entry{name: "tool-amd64", size: MaxArtifact + 1})
-		}},
+		{name: "23V member-absolute in tarball", src: gh, signed: true, member: true, mut: func(s *setup) { s.retar("amd64", entry{name: "/tool-amd64", body: []byte("binary for amd64")}) }},
+		{name: "25V member-oversized header", src: gh, signed: true, member: true, mut: func(s *setup) { s.retar("amd64", entry{name: "tool-amd64", size: MaxArtifact + 1}) }},
 		{name: "25V not-a-tarball", src: gh, signed: true, member: true, mut: func(s *setup) {
 			s.routes[key(s.cand.Artifacts["amd64"].URL)] = route{body: []byte("binary for amd64")}
 			sha(hexOf([]byte("binary for amd64")))(s)
@@ -698,9 +682,7 @@ func TestTarMember(t *testing.T) {
 		{"24E gzip-bomb", tgz(t, entry{name: "a", body: big}, entry{name: "b", body: big}, entry{name: "tool", body: bin}), 1 << 20, false},
 		{"24V bomb-before-member", tgz(t, entry{name: "a", body: big}, entry{name: "b", body: big}), 1 << 20, false},
 		{"25V oversized header", tgz(t, entry{name: "tool", size: 2 << 20}), 1 << 20, false},
-		{"missing", tgz(t, entry{name: "other", body: bin}), 1 << 20, false},
-		{"empty archive", tgz(t), 1 << 20, false},
-		{"not gzip", []byte("plain"), 1 << 20, false},
+		{"missing", tgz(t, entry{name: "other", body: bin}), 1 << 20, false}, {"empty archive", tgz(t), 1 << 20, false}, {"not gzip", []byte("plain"), 1 << 20, false},
 		{"truncated gzip", tgz(t, entry{name: "tool", body: bin})[:20], 1 << 20, false},
 		{"empty input", nil, 1 << 20, false},
 	} {

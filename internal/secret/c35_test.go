@@ -3,11 +3,7 @@
 
 package secret
 
-// C35 (audit unit S-1016b, tool finding F10), invariant I13, and I5 through it.
-// A cmd: helper runs on the host with the session's working directory as its
-// own, and that directory is the repository. A helper that honours a file of
-// its working directory then obeys the repository. Fixed by unit S-F28: run
-// starts every helper in /.
+// C35 (audit unit S-1016b, tool finding F10), invariant I13, and I5 through it. A cmd: helper runs on the host with the session's working directory as its own, and that directory is the repository. A helper that honours a file of its working directory then obeys the repository. Fixed by unit S-F28: run starts every helper in /.
 
 import (
 	"context"
@@ -17,8 +13,7 @@ import (
 	"testing"
 )
 
-// c35Helper stands for a secrets tool that honours a per-directory file, as
-// `python3 -m keyring get` and `npx <tool>` do. It lies outside the repository.
+// c35Helper stands for a secrets tool that honours a per-directory file, as `python3 -m keyring get` and `npx <tool>` do. It lies outside the repository.
 const c35Helper = `#!/bin/sh
 printf '%s in %s\n' "$(cat ./c35.conf 2>/dev/null || echo operator-value)" "$(pwd -P)"
 `

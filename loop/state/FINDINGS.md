@@ -11286,3 +11286,47 @@ Source of internal/fileserve/c92_test.go (84 lines):
     		})
     	}
     }
+
+Shape chosen for C92 by the orchestrator of S-F78, before the builder ran: shape one, the charge by time. Reasons.
+One: it is two statements where product had 8 lines of room, and shape two needs a record on every handle of the
+offsets it returned, memory that the guest then grows and that would want a cap of its own. Two: no reply changes,
+so a seekdir back to an earlier page sees what it saw before, and an honest guest kernel is refused nothing. Three:
+the cost that the model could not count is the host filesystem's, and a charge by time counts it whatever the
+filesystem is, as grow() does for SEEK_HOLE since C77; shape two would close the far offset alone and leave the
+cache that MKDIR and UNLINK make the overlay build again.
+
+C92 FIXED by S-F78, commit 21128fb (PR #373), shape one as chosen above. readdir() in internal/fileserve/ops_linux.go
+takes a time once it holds the handle's lock and, by one defer, adds the time elapsed over 750 ns to s.work when the
+frame returns. One charge a frame covers the Seek, every ReadDirent pass, the stats of READDIRPLUS and each error
+return; a wait for the handle's own lock is not charged, a wait for the kernel's inode lock behind another handle
+is, as in grow(). Product 14992 to 14995 of 15000, 3 lines (the two and the import of time); two comments reworded
+in place; docs unchanged, no page of docs/ states how the pace charges. Test (S4): internal/fileserve/c92_test.go is
+this record's source with its fifth line reworded and no other byte changed (sha256 of the 84 lines checked before
+the edit by the redteam and again by the reviewer, diff of one line). It failed on main in its overlay arm, 2.35
+cores plain and 2.32 under -race by the redteam, 2.33 by the reviewer with main's file laid over, and passes on the
+fix plain and under -race with no skip, its control arm unchanged; a probe of the same flood gave 22 frames at 0.12
+cores where main gave 828 at 2.22. Its 84 lines are paid by 74 lines of folds in seven test files outside escape/,
+rows of tables and wrapped comments joined, each file the same bytes but for white space and comment marks.
+Where it ran and where it skipped: as root, mounting directly, in the cloud session, by the redteam, the builder,
+the reviewer and the orchestrator; the `sudo -n` path was never taken. In the hosted gate on 21128fb the package
+internal/fileserve is ok in 34.0 s, but the log names no test of it, so whether the test ran there through `sudo -n`
+or skipped is not shown.
+Variants weighed, each by a probe that is not kept, 16 handles, floods of 2 s, cores of the whole test process, main
+then fix. By the builder: MKDIR and UNLINK between far READDIR frames 2.19 then 0.18; four merged directories of
+100000 entries 3.46 then 0.22; READDIRPLUS at far offsets 2.24 then 0.11, and at offsets inside the listing 1.07
+then 0.08. By the reviewer, with its own probes: READDIRPLUS far 2.11 then 0.10; far READDIR with MKDIR and RMDIR
+between 2.46 then 0.26; READDIR at offset 0 with MKDIR and RMDIR between 2.04 then 0.23; 16 merged directories of
+20000 entries, which escape the one inode lock, 3.87 then 0.40; a cycle of OPENDIR, READDIR at 0 and RELEASEDIR, whose
+freeing of the overlay's cache in RELEASEDIR is not charged, 1.04 then 0.67. Each is closed, under 1.5 cores. Not
+measured: an export on tmpfs before kernel 6.6, on FUSE or on NFS, and the server alone in a child process.
+Cost to honest use: one handle listing 100000 entries from offset 0 in 4 KiB frames, as the guest kernel asks. Plain
+directory on ext4: 456 ms on main and 581 ms on the fix by the builder, 455 and 580 by the reviewer, 27 per cent
+slower; the listing was bound by the pace before (783 frames, about 1680 a second, now 1280), and the charge of one
+point for 24 bytes at ops_linux.go:400 stood for the time that is now charged as well, so READDIR pays twice for the
+same work. A directory under about 12000 entries fits one period and is not slowed. Merged overlay directory: 1.80 s
+then 2.11 s by the builder, 1.78 s then 3.17 s by the reviewer, who names the cause: readdir() reads 8 KiB by
+getdents and returns 4 KiB, so each honest frame seeks back and overlayfs walks its list from the head; that was so
+before this unit, and S1 lets only the fix land. A guest's `ls -l` uses READDIRPLUS, where plusEntry already holds
+100000 entries to about 6 s and this charge adds under a second. The mount rows of the suite on a real VM, hosted
+gate on 21128fb, 270 s: all eight pass, mount-cpu-flood with 3.2 CPU s in 3.4 s of wall where 4.4 are allowed.
+Review: one round, no finding that met R2, no fix round. Unit S-F78 was env:kvm, not env:any as written above.

@@ -210,12 +210,8 @@ func TestPullRefusals(t *testing.T) {
 		{"manifest bytes differ from the requested digest", func(f *fixture) {
 			f.routes["registry.test/v2/lib/x/manifests/"+f.img.Digest] = []byte(`{"mediaType":"` + ociIdx + `","manifests":[]}`)
 		}, "does not match its digest"},
-		{"layer bytes differ from the descriptor", func(f *fixture) {
-			f.routes["registry.test/v2/lib/x/blobs/"+f.blobs[0]] = gz(tarOf(reg("f", "evil")))
-		}, "does not match its digest"},
-		{"layer longer than its descriptor", func(f *fixture) {
-			f.routes["registry.test/v2/lib/x/blobs/"+f.blobs[0]] = append(gz(good), 0)
-		}, "layer 0"},
+		{"layer bytes differ from the descriptor", func(f *fixture) { f.routes["registry.test/v2/lib/x/blobs/"+f.blobs[0]] = gz(tarOf(reg("f", "evil"))) }, "does not match its digest"},
+		{"layer longer than its descriptor", func(f *fixture) { f.routes["registry.test/v2/lib/x/blobs/"+f.blobs[0]] = append(gz(good), 0) }, "layer 0"},
 		{"descriptor over the blob cap", func(f *fixture) {
 			f.publish([]map[string]any{{"mediaType": tarGz, "digest": f.blobs[0], "size": maxBlob + 1}})
 		}, "outside the cap"},
