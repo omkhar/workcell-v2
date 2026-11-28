@@ -127,17 +127,20 @@ func (l *Log) append(r Record, durable bool) error {
 	// The host writes each lifecycle event once per session (I10 holds), and the guest cannot
 	// make a session end without its record (I9).
 	if lifecycle := r.Event == SessionStart || r.Event == SessionEnd; !lifecycle && l.size+int64(len(line)) > limit {
-		if l.full {
-			return ErrFull
-		}
-		l.full = true
-		marker, _ := json.Marshal(Record{Time: r.Time, Event: LogFull})
-		if err := l.write(append(marker, '\n'), true); err != nil {
-			return err
+		if !l.full {
+			l.full = true
+			marker, _ := json.Marshal(Record{Time: r.Time, Event: LogFull})
+			if err := l.write(append(marker, '\n'), true); err != nil {
+				return err
+			}
 		}
 		return ErrFull
 	}
-	return l.write(line, durable)
+	err := l.write(line, durable)
+	if err == nil && r.Event == SessionEnd { // the record is complete: nothing is appended after its end, and Close still closes the files
+		l.failed = ErrClosed
+	}
+	return err
 }
 
 // write adds one whole line to the log and the seal. A failure ends the log: nothing is appended

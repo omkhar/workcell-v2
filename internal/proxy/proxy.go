@@ -93,10 +93,7 @@ func New(allow *Allowlist, rec Recorder) *Proxy {
 		dial: func(ctx context.Context, addr netip.AddrPort) (net.Conn, error) {
 			return new(net.Dialer).DialContext(ctx, "tcp", addr.String())
 		},
-		nets:  hostNets,
-		slots: make(chan struct{}, maxConns),
-		rec:   rec,
-	}
+		nets: hostNets, slots: make(chan struct{}, maxConns), rec: rec}
 }
 
 // hostNets returns the host's own networks (I4): the prefixes of its interfaces and, on Linux, the local and on-link rows of its route tables (hostRoutes), so a neighbour on a link whose interface prefix is host-length (a /32; a /128 beside the router's on-link /64) and an address held by a route alone are known too. A list or table that cannot be read refuses.

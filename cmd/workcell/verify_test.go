@@ -19,8 +19,7 @@ const testID = "20260102T030405.000000000Z-0123abcd"
 
 var testRecords = []audit.Record{
 	{Event: audit.SessionStart}, {Event: audit.Connect, Host: "a.example", Port: 443, Result: audit.Allowed},
-	{Event: audit.Connect, Host: "b.example", Port: 53, Result: "name_not_allowed"},
-	{Event: audit.Secret, Host: "api.example", Header: "authorization", Name: "tok", Result: "granted"},
+	{Event: audit.Connect, Host: "b.example", Port: 53, Result: "name_not_allowed"}, {Event: audit.Secret, Host: "api.example", Header: "authorization", Name: "tok", Result: "granted"},
 	{Event: audit.Secret, Host: "api.example", Header: "authorization", Result: "not_granted"},
 	{Event: audit.SessionEnd},
 }

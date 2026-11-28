@@ -64,21 +64,13 @@ func TestSelect(t *testing.T) {
 		{"cool-off edge: user extra lengthens", guest, []Candidate{cand("1.1.0", 48*hour)}, nil, hour, "", skips("cooling off", "1.1.0"), false, false},
 		{"cool-off edge: negative extra never shortens", guest, []Candidate{cand("1.1.0", 47*hour)}, nil, -47 * hour, "", skips("cooling off", "1.1.0"), false, false},
 		{"cool-off edge: the largest extra never overflows", guest, []Candidate{cand("1.1.0", hour)}, nil, time.Duration(math.MaxInt64), "", skips("cooling off", "1.1.0"), false, false},
-		{"latest-of-timestamps: republished resets cool-off", guest, []Candidate{with(cand("1.1.0", 30*day), func(c *Candidate) {
-			c.Timestamps = append(c.Timestamps, now.Add(-hour))
-		})}, nil, 0, "", skips("cooling off", "1.1.0"), false, false},
-		{"latest-of-timestamps: order does not matter", guest, []Candidate{with(cand("1.1.0", hour), func(c *Candidate) {
-			c.Timestamps = append(c.Timestamps, now.Add(-30*day))
-		})}, nil, 0, "", skips("cooling off", "1.1.0"), false, false},
+		{"latest-of-timestamps: republished resets cool-off", guest, []Candidate{with(cand("1.1.0", 30*day), func(c *Candidate) { c.Timestamps = append(c.Timestamps, now.Add(-hour)) })}, nil, 0, "", skips("cooling off", "1.1.0"), false, false},
+		{"latest-of-timestamps: order does not matter", guest, []Candidate{with(cand("1.1.0", hour), func(c *Candidate) { c.Timestamps = append(c.Timestamps, now.Add(-30*day)) })}, nil, 0, "", skips("cooling off", "1.1.0"), false, false},
 		{"latest-of-timestamps: missing timestamp", guest, []Candidate{{Release: Release{Version: "1.1.0"}}}, nil, 0, "", skips("no timestamp", "1.1.0"), false, false},
-		{"latest-of-timestamps: zero timestamp is missing", guest, []Candidate{with(cand("1.1.0", 0), func(c *Candidate) {
-			c.Timestamps = []time.Time{{}}
-		})}, nil, 0, "", skips("no timestamp", "1.1.0"), false, false},
-		{"pre-release: suffixes, words and short forms", guest, []Candidate{
-			cand("1.2.3-rc.1", 30*day), cand("1.2.3+build", 30*day), cand("2.0.0-0", 30*day), cand("latest", 30*day),
+		{"latest-of-timestamps: zero timestamp is missing", guest, []Candidate{with(cand("1.1.0", 0), func(c *Candidate) { c.Timestamps = []time.Time{{}} })}, nil, 0, "", skips("no timestamp", "1.1.0"), false, false},
+		{"pre-release: suffixes, words and short forms", guest, []Candidate{cand("1.2.3-rc.1", 30*day), cand("1.2.3+build", 30*day), cand("2.0.0-0", 30*day), cand("latest", 30*day),
 			cand("nightly-2026-11-01", 30*day), cand("1.2", 30*day), cand("V1.2.3", 30*day), cand("1.1.0", 30*day),
-			with(cand("1.3.0", 30*day), func(c *Candidate) { c.PreRelease = true }),
-		}, nil, 0, "1.1.0", skips("pre-release", "1.2.3-rc.1", "1.2.3+build", "2.0.0-0", "latest", "nightly-2026-11-01", "1.2", "V1.2.3", "1.3.0"), false, false},
+			with(cand("1.3.0", 30*day), func(c *Candidate) { c.PreRelease = true })}, nil, 0, "1.1.0", skips("pre-release", "1.2.3-rc.1", "1.2.3+build", "2.0.0-0", "latest", "nightly-2026-11-01", "1.2", "V1.2.3", "1.3.0"), false, false},
 		{"pre-release: 1.10.0 above 1.9.0", guest, []Candidate{cand("1.10.0", 30*day), cand("1.9.0", 30*day)}, nil, 0, "1.10.0", nil, false, false},
 		{"pre-release: leading v is stable", guest, []Candidate{cand("v1.1.0", 30*day)}, nil, 0, "v1.1.0", nil, false, false},
 		{"deprecated: skipped", guest, []Candidate{with(cand("1.2.0", 30*day), func(c *Candidate) { c.Deprecated = true })}, nil, 0, "", skips("deprecated", "1.2.0"), false, false},
@@ -88,8 +80,7 @@ func TestSelect(t *testing.T) {
 		{"never backwards: newest eligible older than pin", pin(Guest, "2.0.0"), []Candidate{cand("1.9.0", 30*day), cand("2.1.0", hour)}, nil, 0, "", skips("cooling off", "2.1.0"), false, false},
 		{"never backwards: pin absent from candidates", pin(Guest, "2.0.0"), []Candidate{cand("1.5.0", 30*day), cand("1.9.0", 30*day)}, nil, 0, "", nil, false, false},
 		{"never backwards: same version stays", guest, []Candidate{cand("1.0.0", 30*day)}, nil, 0, "", nil, false, false},
-		{"dated tags order by date; an older dated tag and a point tag never move it back", dated, []Candidate{cand("trixie-20261020-slim", 30*day), cand("12.5.0", 30*day),
-			cand("trixie-20261104-slim", 30*day), cand("trixie-20261105-slim", day)}, nil, 0, "trixie-20261104-slim", skips("cooling off", "trixie-20261105-slim"), false, false},
+		{"dated tags order by date; an older dated tag and a point tag never move it back", dated, []Candidate{cand("trixie-20261020-slim", 30*day), cand("12.5.0", 30*day), cand("trixie-20261104-slim", 30*day), cand("trixie-20261105-slim", day)}, nil, 0, "trixie-20261104-slim", skips("cooling off", "trixie-20261105-slim"), false, false},
 		{"new row takes the newest eligible", fresh, []Candidate{cand("1.0.0", 30*day), cand("1.1.0", 30*day)}, nil, 0, "1.1.0", nil, false, false},
 		{"security lane: guest 12h auto-merges", guest, []Candidate{cand("1.0.1", 12*hour)}, adv, 0, "1.0.1", nil, true, false},
 		{"security lane: guest one nanosecond short", guest, []Candidate{cand("1.0.1", 12*hour-1)}, adv, 0, "", skips("cooling off", "1.0.1"), false, false},

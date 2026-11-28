@@ -34,8 +34,7 @@ func TestOversizedHeaderBlockRefused(t *testing.T) {
 		dial          func() (net.Conn, error)
 		roots         *x509.CertPool
 	}{
-		{"login.example.com", "POST " + tokenEndpointPath + " HTTP/1.1\r\nHost: login.example.com\r\nContent-Type: application/x-www-form-urlencoded\r\nContent-Length: 100\r\nExpect: 100-continue" + pad + "\r\n",
-			func() (net.Conn, error) { return tr.DialContext(context.Background(), "tcp", "") }, tr.TLSClientConfig.RootCAs},
+		{"login.example.com", "POST " + tokenEndpointPath + " HTTP/1.1\r\nHost: login.example.com\r\nContent-Type: application/x-www-form-urlencoded\r\nContent-Length: 100\r\nExpect: 100-continue" + pad + "\r\n", func() (net.Conn, error) { return tr.DialContext(context.Background(), "tcp", "") }, tr.TLSClientConfig.RootCAs},
 		{"example.com", "GET / HTTP/1.1\r\nHost: example.com" + pad + "\r\n", func() (net.Conn, error) { return net.Dial("tcp", addr) }, caPool(t, ca)},
 	}
 	for _, row := range rows {

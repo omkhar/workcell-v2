@@ -132,17 +132,13 @@ func TestRemoveSession(t *testing.T) {
 			os.WriteFile(filepath.Join(tmp, "vsock_1"), nil, 0o600)
 			return tmp
 		}, false},
-		{"recorded directory already gone", idOld, func(t *testing.T, sessions, _ string) string {
-			return filepath.Join(t.TempDir(), "wcgone")
-		}, false},
+		{"recorded directory already gone", idOld, func(t *testing.T, sessions, _ string) string { return filepath.Join(t.TempDir(), "wcgone") }, false},
 		{"recorded path that is a link is refused", idOld, func(t *testing.T, sessions, outside string) string {
 			link := filepath.Join(t.TempDir(), "wclink")
 			must(0, os.Symlink(outside, link))
 			return link
 		}, true},
-		{"recorded path of another name is refused", idOld, func(t *testing.T, sessions, outside string) string {
-			return outside
-		}, true},
+		{"recorded path of another name is refused", idOld, func(t *testing.T, sessions, outside string) string { return outside }, true},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

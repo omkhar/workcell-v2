@@ -25,8 +25,7 @@ func TestBenchLine(t *testing.T) {
 		{"odd count, unsorted", ms(30, 10, 20), "bench start n=3 p50=20ms min=10ms max=30ms"},
 		{"even count takes the mean of the middle two", ms(40, 10, 30, 20), "bench start n=4 p50=25ms min=10ms max=40ms"},
 		{"truncated, not rounded", ms(10.9, 11.9), "bench start n=2 p50=11ms min=10ms max=11ms"},
-		{"twenty", ms(700, 650, 812, 699, 701, 660, 670, 680, 690, 710, 720, 730, 740, 750, 760, 770, 780, 790, 800, 705),
-			"bench start n=20 p50=715ms min=650ms max=812ms"},
+		{"twenty", ms(700, 650, 812, 699, 701, 660, 670, 680, 690, 710, 720, 730, 740, 750, 760, 770, 780, 790, 800, 705), "bench start n=20 p50=715ms min=650ms max=812ms"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

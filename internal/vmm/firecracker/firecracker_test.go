@@ -62,15 +62,9 @@ func TestConfig(t *testing.T) {
 		cfg  vmm.Config
 		want string
 	}{
-		{"initrd only", initrd, `{"boot-source":{"kernel_image_path":"/k","initrd_path":"/i",` +
-			`"boot_args":"console=ttyS0 reboot=k panic=-1 pci=off quiet"},"drives":[],` +
-			`"machine-config":{"vcpu_count":2,"mem_size_mib":512},"vsock":{"guest_cid":3,"uds_path":"/d/vsock"}}`},
-		{"disks and cmdline", disks, `{"boot-source":{"kernel_image_path":"/k",` +
-			`"boot_args":"console=ttyS0 reboot=k panic=-1 pci=off quiet init=/sbin/init"},"drives":[` +
-			`{"drive_id":"root","path_on_host":"/root.img","is_root_device":true,"is_read_only":true},` +
-			`{"drive_id":"workspace","path_on_host":"/work.img","is_root_device":false,"is_read_only":false},` +
-			`{"drive_id":"claude","path_on_host":"/l/claude.ext4","is_root_device":false,"is_read_only":true},` +
-			`{"drive_id":"codex","path_on_host":"/l/codex.ext4","is_root_device":false,"is_read_only":true},` +
+		{"initrd only", initrd, `{"boot-source":{"kernel_image_path":"/k","initrd_path":"/i",` + `"boot_args":"console=ttyS0 reboot=k panic=-1 pci=off quiet"},"drives":[],` + `"machine-config":{"vcpu_count":2,"mem_size_mib":512},"vsock":{"guest_cid":3,"uds_path":"/d/vsock"}}`},
+		{"disks and cmdline", disks, `{"boot-source":{"kernel_image_path":"/k",` + `"boot_args":"console=ttyS0 reboot=k panic=-1 pci=off quiet init=/sbin/init"},"drives":[` + `{"drive_id":"root","path_on_host":"/root.img","is_root_device":true,"is_read_only":true},` +
+			`{"drive_id":"workspace","path_on_host":"/work.img","is_root_device":false,"is_read_only":false},` + `{"drive_id":"claude","path_on_host":"/l/claude.ext4","is_root_device":false,"is_read_only":true},` + `{"drive_id":"codex","path_on_host":"/l/codex.ext4","is_root_device":false,"is_read_only":true},` +
 			`{"drive_id":"cache-go","path_on_host":"/c/go.ext4","is_root_device":false,"is_read_only":true},` +
 			`{"drive_id":"cache-npm","path_on_host":"/c/npm.ext4","is_root_device":false,"is_read_only":false}],` +
 			`"machine-config":{"vcpu_count":2,"mem_size_mib":512},"vsock":{"guest_cid":3,"uds_path":"/d/vsock"}}`},

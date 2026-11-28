@@ -167,8 +167,7 @@ func TestCandidates(t *testing.T) {
 				{Release: Release{Version: "0.0.45-gabc1234", Artifacts: both(Artifact{URL: reg + "0.0.45-gabc1234.tgz", Integrity: "sha512-AAAA"})}, PreRelease: true, Timestamps: ts("2026-09-01T08:00:00Z")},
 				{Release: Release{Version: "1.1.0", Artifacts: both(Artifact{URL: reg + "1.1.0.tgz", Integrity: "sha512-BBBB"})}, Deprecated: true, Timestamps: []time.Time{ts("2026-09-10T10:00:00Z")[0].Add(123 * time.Millisecond)}},
 				{Release: Release{Version: "1.2.0", Artifacts: both(Artifact{URL: reg + "1.2.0.tgz", Integrity: "sha512-CCCC"})}, Timestamps: ts("2026-10-20T09:30:00Z")},
-				{Release: Release{Version: "1.3.0-rc.1", Artifacts: both(Artifact{URL: reg + "1.3.0-rc.1.tgz", Integrity: "sha512-DDDD"})}, PreRelease: true, Timestamps: ts("2026-10-25T09:30:00Z")},
-			}
+				{Release: Release{Version: "1.3.0-rc.1", Artifacts: both(Artifact{URL: reg + "1.3.0-rc.1.tgz", Integrity: "sha512-DDDD"})}, PreRelease: true, Timestamps: ts("2026-10-25T09:30:00Z")}}
 		}},
 		{name: "npm no version", pin: npmPin, routes: withRoute(npmOK, "/@vendor%2ftool", route{body: `{"versions": {}}`}), want: func(string) []Candidate { return []Candidate{} }},
 		{name: "npm error document", pin: npmPin, routes: withRoute(npmOK, "/@vendor%2ftool", route{body: `{"error": "Not found"}`})},
@@ -184,14 +183,12 @@ func TestCandidates(t *testing.T) {
 					"arm64": {URL: gh + "v1.2.0/tool-linux-arm64.tar.gz"}}}, Timestamps: ts("2026-10-20T09:00:00Z", "2026-10-20T09:30:00Z")},
 				{Release: Release{Version: "v1.1.0", Artifacts: map[string]Artifact{
 					"amd64": {URL: gh + "v1.1.0/tool-linux-amd64.tar.gz", SHA256: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"},
-					"arm64": {URL: gh + "v1.1.0/tool-linux-arm64.tar.gz", SHA256: "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"}}}, Timestamps: ts("2026-09-10T09:00:00Z", "2026-09-10T09:15:00Z")},
-			}
+					"arm64": {URL: gh + "v1.1.0/tool-linux-arm64.tar.gz", SHA256: "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"}}}, Timestamps: ts("2026-09-10T09:00:00Z", "2026-09-10T09:15:00Z")}}
 		}},
 		{name: "github no release", pin: ghPin, routes: withRoute(ghOK, "/repos/vendor/tool/releases", route{body: `[]`}), want: func(string) []Candidate { return []Candidate{} }},
 		{name: "github error document", pin: ghPin, routes: withRoute(ghOK, "/repos/vendor/tool/releases", route{body: `{"message": "API rate limit exceeded"}`})},
 		{name: "github stable release lacks an asset", pin: ghPin, routes: withRoute(ghOK, "/repos/vendor/tool/releases", route{body: `[{"tag_name": "v1.2.0", "created_at": "2026-10-20T09:00:00Z", "assets": []}]`})},
-		{name: "github bad digest", pin: ghPin, routes: withRoute(ghOK, "/repos/vendor/tool/releases", route{
-			body: `[{"tag_name": "v1.2.0", "created_at": "2026-10-20T09:00:00Z", "assets": [
+		{name: "github bad digest", pin: ghPin, routes: withRoute(ghOK, "/repos/vendor/tool/releases", route{body: `[{"tag_name": "v1.2.0", "created_at": "2026-10-20T09:00:00Z", "assets": [
 				{"name": "tool-linux-amd64.tar.gz", "browser_download_url": "https://g.example/a", "digest": "sha512:ab"},
 				{"name": "tool-linux-arm64.tar.gz", "browser_download_url": "https://g.example/b"}]}]`})},
 		{name: "github no timestamp", pin: ghPin, routes: withRoute(ghOK, "/repos/vendor/tool/releases", route{body: `[{"tag_name": "v1.4.0", "draft": true, "assets": []}]`})},
@@ -206,24 +203,20 @@ func TestCandidates(t *testing.T) {
 					{Release: Release{Version: "v0.2.0", Artifacts: map[string]Artifact{"amd64": {URL: "https://g.example/2"}}}, Timestamps: ts("2026-10-20T09:00:00Z")},
 					{Release: Release{Version: "v0.1.0", Artifacts: map[string]Artifact{"amd64": {URL: "https://g.example/1"}}}, Timestamps: ts("2026-09-10T09:00:00Z")}}
 			}},
-		{name: "github bundle asset present", pin: signedPin, routes: withRoute(ghOK, "/repos/vendor/tool/releases", route{
-			body: `[{"tag_name": "v1.2.0", "created_at": "2026-10-20T09:00:00Z", "assets": [
+		{name: "github bundle asset present", pin: signedPin, routes: withRoute(ghOK, "/repos/vendor/tool/releases", route{body: `[{"tag_name": "v1.2.0", "created_at": "2026-10-20T09:00:00Z", "assets": [
 				{"name": "tool-linux-amd64.tar.gz", "browser_download_url": "https://g.example/a", "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
 				{"name": "tool-linux-amd64.sigstore", "browser_download_url": "https://g.example/a.sigstore"}]}]`}), want: func(string) []Candidate {
 			return []Candidate{{Release: Release{Version: "v1.2.0", Artifacts: map[string]Artifact{"amd64": {URL: "https://g.example/a", SHA256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", Bundle: "https://g.example/a.sigstore"}}}, Timestamps: ts("2026-10-20T09:00:00Z")}}
 		}},
-		{name: "github bundle adopted by the newest release", pin: signedPin, routes: withRoute(ghOK, "/repos/vendor/tool/releases", route{
-			body: `[{"tag_name": "v1.3.0", "created_at": "2026-10-28T09:00:00Z", "assets": [
+		{name: "github bundle adopted by the newest release", pin: signedPin, routes: withRoute(ghOK, "/repos/vendor/tool/releases", route{body: `[{"tag_name": "v1.3.0", "created_at": "2026-10-28T09:00:00Z", "assets": [
 				{"name": "tool-linux-amd64.tar.gz", "browser_download_url": "https://g.example/b"},
 				{"name": "tool-linux-amd64.sigstore", "browser_download_url": "https://g.example/b.sigstore"}]},
 			{"tag_name": "v1.2.0", "created_at": "2026-10-20T09:00:00Z", "assets": [
 				{"name": "tool-linux-amd64.tar.gz", "browser_download_url": "https://g.example/a"}]}]`}), want: func(string) []Candidate {
 			return []Candidate{
-				{Release: Release{Version: "v1.3.0", Artifacts: map[string]Artifact{"amd64": {URL: "https://g.example/b", Bundle: "https://g.example/b.sigstore"}}}, Timestamps: ts("2026-10-28T09:00:00Z")},
-				{Release: Release{Version: "v1.2.0", Artifacts: map[string]Artifact{"amd64": {URL: "https://g.example/a"}}}, Timestamps: ts("2026-10-20T09:00:00Z")}}
+				{Release: Release{Version: "v1.3.0", Artifacts: map[string]Artifact{"amd64": {URL: "https://g.example/b", Bundle: "https://g.example/b.sigstore"}}}, Timestamps: ts("2026-10-28T09:00:00Z")}, {Release: Release{Version: "v1.2.0", Artifacts: map[string]Artifact{"amd64": {URL: "https://g.example/a"}}}, Timestamps: ts("2026-10-20T09:00:00Z")}}
 		}},
-		{name: "github bundle asset is http", pin: signedPin, routes: withRoute(ghOK, "/repos/vendor/tool/releases", route{
-			body: `[{"tag_name": "v1.2.0", "created_at": "2026-10-20T09:00:00Z", "assets": [
+		{name: "github bundle asset is http", pin: signedPin, routes: withRoute(ghOK, "/repos/vendor/tool/releases", route{body: `[{"tag_name": "v1.2.0", "created_at": "2026-10-20T09:00:00Z", "assets": [
 				{"name": "tool-linux-amd64.tar.gz", "browser_download_url": "https://g.example/a", "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
 				{"name": "tool-linux-amd64.sigstore", "browser_download_url": "http://g.example/a.sigstore"}]}]`})},
 		{name: "vendor", pin: vendorPin, routes: vendorOK, want: func(base string) []Candidate {
@@ -237,8 +230,7 @@ func TestCandidates(t *testing.T) {
 		{name: "vendor manifest reports another version", pin: vendorPin, routes: withRoute(vendorOK, "/root/1.2.0/manifest.json", route{body: `{"version": "1.1.9", "buildDate": "2026-10-20T08:00:00Z", "platforms": {}}`})},
 		{name: "vendor missing platform", pin: vendorPin, routes: withRoute(vendorOK, "/root/1.2.0/manifest.json", route{body: `{"version": "1.2.0", "buildDate": "2026-10-20T08:00:00Z", "platforms": {"linux-x64": {"checksum": "3333333333333333333333333333333333333333333333333333333333333333"}}}`})},
 		{name: "vendor bad checksum", pin: vendorPin, routes: withRoute(vendorOK, "/root/1.2.0/manifest.json", route{body: `{"version": "1.2.0", "buildDate": "2026-10-20T08:00:00Z", "platforms": {"linux-x64": {"checksum": "XYZ"}, "linux-arm64": {"checksum": "XYZ"}}}`})},
-		{name: "vendor missing binary name", pin: vendorPin, routes: withRoute(vendorOK, "/root/1.2.0/manifest.json", route{
-			body: `{"version": "1.2.0", "buildDate": "2026-10-20T08:00:00Z", "platforms": {"linux-x64": {"checksum": "3333333333333333333333333333333333333333333333333333333333333333", "binary": "claude"}, "linux-arm64": {"checksum": "2222222222222222222222222222222222222222222222222222222222222222"}}}`})},
+		{name: "vendor missing binary name", pin: vendorPin, routes: withRoute(vendorOK, "/root/1.2.0/manifest.json", route{body: `{"version": "1.2.0", "buildDate": "2026-10-20T08:00:00Z", "platforms": {"linux-x64": {"checksum": "3333333333333333333333333333333333333333333333333333333333333333", "binary": "claude"}, "linux-arm64": {"checksum": "2222222222222222222222222222222222222222222222222222222222222222"}}}`})},
 		{name: "vendor missing build date", pin: vendorPin, routes: withRoute(vendorOK, "/root/1.2.0/manifest.json", route{body: `{"version": "1.2.0", "platforms": {}}`})},
 		{name: "oci", pin: ociPin, routes: ociOK, want: ociWant},
 		{name: "oci dated tags: the point tags stay unfetched, the tag without a manifest is skipped", pin: datedPin, routes: datedOK, want: func(base string) []Candidate {

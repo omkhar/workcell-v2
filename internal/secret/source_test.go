@@ -89,11 +89,8 @@ printf 'sk-from-cmd\n'
 		t.Fatalf("argv = %q", args)
 	}
 	want := map[string]bool{
-		"PATH=/usr/bin:/bin:/usr/sbin:/sbin": false,
-		"LC_ALL=C":                           false,
-		"HOME=/home/someone":                 false,
-		"DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus": false,
-		"XDG_RUNTIME_DIR=/run/user/1000":                        false,
+		"PATH=/usr/bin:/bin:/usr/sbin:/sbin": false, "LC_ALL=C": false, "HOME=/home/someone": false,
+		"DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus": false, "XDG_RUNTIME_DIR=/run/user/1000": false,
 	}
 	env, _ := os.ReadFile(filepath.Join(dir, "env"))
 	for _, line := range strings.Split(strings.TrimSpace(string(env)), "\n") {

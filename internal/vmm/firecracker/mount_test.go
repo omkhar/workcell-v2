@@ -52,9 +52,7 @@ func TestMount(t *testing.T) {
 			{name: "create and write", script: "printf hello > new.txt", check: func() error { return hostFile(at("new.txt"), "hello") }},
 			{name: "read", script: "cat seed.txt sub/inner.txt", out: "seed\ninner\n"},
 			{name: "truncate", script: "truncate -s 2 new.txt", check: func() error { return hostFile(at("new.txt"), "he") }},
-			{name: "rename", script: "mv new.txt moved.txt", check: func() error {
-				return errors.Join(hostFile(at("moved.txt"), "he"), hostGone(at("new.txt")))
-			}},
+			{name: "rename", script: "mv new.txt moved.txt", check: func() error { return errors.Join(hostFile(at("moved.txt"), "he"), hostGone(at("new.txt"))) }},
 			{name: "symlink", script: "ln -s moved.txt link", check: func() error {
 				target, err := os.Readlink(at("link"))
 				if err != nil || target != "moved.txt" {
@@ -71,8 +69,7 @@ func TestMount(t *testing.T) {
 				return nil
 			}},
 			{name: "unlink", script: "rm moved.txt link", check: func() error { return errors.Join(hostGone(at("moved.txt")), hostGone(at("link"))) }},
-			{name: "a host edit", script: "cat edited.txt", out: "from the host\n",
-				before: func() error { return os.WriteFile(at("edited.txt"), []byte("from the host\n"), 0o644) }},
+			{name: "a host edit", script: "cat edited.txt", out: "from the host\n", before: func() error { return os.WriteFile(at("edited.txt"), []byte("from the host\n"), 0o644) }},
 			{name: "git status", script: "./git status"},
 		}
 		for _, s := range steps {
