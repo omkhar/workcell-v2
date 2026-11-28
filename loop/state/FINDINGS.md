@@ -11330,3 +11330,297 @@ before this unit, and S1 lets only the fix land. A guest's `ls -l` uses READDIRP
 100000 entries to about 6 s and this charge adds under a second. The mount rows of the suite on a real VM, hosted
 gate on 21128fb, 270 s: all eight pass, mount-cpu-flood with 3.2 CPU s in 3.4 s of wall where 4.4 are allowed.
 Review: one round, no finding that met R2, no fix round. Unit S-F78 was env:kvm, not env:any as written above.
+
+## S-1009, sweep 4: policy loading and merge, CLI parsing, `--allow`, adapter data files (I13), as built at main 6da3905
+
+Sweep 4 (S8), the one further sweep that the maintainer allowed on 2026-11-26 after ADR-006, fresh context (S3),
+the whole surface read in full as built after S-F71 to S-F78, not a diff, at the claim commit 6476b44. One auditor
+run on the top tier, finished without a stop: no model declined and no safeguard re-ran a request. No hypervisor
+in the cloud session, and nothing on this surface needed a VM: every probe ran by `go test -overlay` on package
+main of cmd/workcell from a scratch directory outside the repository, against files and processes that the
+probe itself made, with no listener and no mount (S12, T8). The auditor wrote its own trust boundary and worked
+every lens before it opened FINDINGS.md beyond the S-1001 map, PARKED.md or LOG.md, then traced and ran every
+recorded fix of the surface and tried its parked leads again. Result: one candidate, C93, given to the redteam
+as a claim only, run by the orchestrator and ruled on by a verifier that saw none of the auditor's reasoning:
+CONFIRMED at medium; the record is under the next heading. Nothing was fixed (S1). The files of the missing check,
+cmd/workcell/data.go and pull_vm.go, carry no `// Ported from v1`, and nothing is someone else's project (S14).
+
+Trust boundary, as the auditor wrote it before the records were opened. Attacker bytes enter this surface at
+(a) `<cwd>/workcell.toml`, owned by the malicious repository and, between sessions of a --mount directory, by
+guest root: loadPolicy in cmd/workcell/policy.go, then ReadRepo of internal/policy (O_NOFOLLOW, O_NONBLOCK and
+O_NOCTTY on the relative name, fstat of the opened descriptor, a regular file only, 1 MiB, a repository [update]
+table refused by its line), then Parse (the project's own TOML subset: tables, bare keys, basic strings with \u
+escapes, integers whose value is discarded, arrays of strings, every other construct refused with its line),
+then Narrow, of which only an allow entry's exact text and a secret row's name are ever compared, and whose
+strings reach the operator only quoted in the `asked` note; (b) the working directory itself, its spelling, links
+and mounts, exported or served live, judged by holds, within, resolved, leadsInto, named and the TMPDIR rules;
+(c) files the guest writes that the host later trusts: workspace.ext4, read only by the pull's judges, the cache
+images, attached and never read, and through a pull whatever lands in the destination the operator names (C93);
+(d) the network only as channel.json and artifacts, which this surface names in [update] and S-1011 judges. The
+operator's own and not the attacker's: argv (parseRun: --cpus 1 to 32, --memory from 128 MiB, --disk, --mount,
+a repeatable --allow kept verbatim and judged by allowlist() and ParseAllowlist, --cache by a regular expression,
+the command verbatim into guest.Exec; update's --to, --rollback and agent; log's -f and --format; ids by validID;
+thirteen verbs, no `secret`), the environment (XDG_CONFIG_HOME and XDG_DATA_HOME only when absolute, HOME which
+must be absolute, TMPDIR which boot refuses when relative, TERM into the guest, SSL_CERT_FILE and SSL_CERT_DIR
+judged by session against the working directory and the data directory, HTTP_PROXY and HTTPS_PROXY honoured by the
+update client alone), the user's config.toml ([network]; [[secret]] rows whose file: or cmd: path leadsInto judges
+against the working directory and the data directory, a file: being one regular file with one name; [update]
+with channel stable, hold or https, cooloff not negative, a key of 32 bytes and a ca that leadsInto judges;
+[workspace] and [resources] parsed and ignored) and the four embedded provider files, checked by provider.parse
+at load, whose hosts grant nothing. Authority: the supervisor as the operator's uid before any VM exists, and
+the CLI under explain, update, pull and diff. It decides the proxy's sni and forward maps, the resolver's names,
+the session CA's permitted names, the ports word of the kernel command line, which rows become broker grants and
+terminate rules with fresh placeholders (I5), what the guest sees as /workspace (I1, I13), where data and config
+live (I7, I9), what the installer trusts (I14) and, through holds, where a pull may write and a session may run.
+
+Lenses (S9), each worked. One, parsing and resources: the scanner and parser derived again, tokens of constant
+size under the 1 MiB cap with no backtracking, CR only before LF, control bytes and non-ASCII outside strings
+refused, \u escapes checked as scalar values so that \u0000 and \u000a pass Parse and are refused downstream by
+allowlist and dnsName (run); FuzzParse for 45 s, 1085547 executions and no crasher, and since the coordinator
+stalled for 10 s, Parse timed over the 160 corpus entries, worst 23 microseconds; nothing found. Two, logic
+and state: Narrow's three rules derived again, every repository shape tried lands on the user's ceiling or a
+refusal, a provider-shorthand row under a dropped host refuses the run, the C34 check walks the user's rows
+against the final allowlist with --allow included, explain and run share loadPolicy; found, that the judge of
+a pull destination knows none of the trusted paths (C93). Three, concurrency and check-to-use: ReadRepo judges
+the descriptor it opened, the policy is fixed before boot, named() guards the swap of the working directory,
+the order from parseRun to boot traced; nothing new. Four, cryptography and identity: the [update] key replaces
+channel.Keys whole, the ca is the installer's only root, placeholders come from crypto/rand, the session CA's
+names are the canonical terminated hosts, identity by inode at within, named and holds and missing at the
+pull destination for the trusted paths (C93). Five, failure modes: every error path of loadPolicy, parseRun,
+allowlist, bindings, newInstaller and holds fails closed (run: a bad repository line, a repository [update],
+a row without name or source, an absent or hard-linked file:, a relative HOME); open by design, a missing or
+irregular workcell.toml gives the user's own grants; C93 is a fail-open by omission, as C85 and C86 were. Six,
+downgrade, rollback and replay: no policy version, cooloff only lengthens, the serial floor rises only after a
+verify and apply verifies against it again, --rollback consults no Withdrawn (parked by S-1011, stands). Seven,
+interaction: Narrow against the I5 checks holds; S-F71 is built as ADR-006 decides and its test of 30 arms is
+green; S-F72 is built as decided, the policy refuses `method` at load and canonical refuses `%`, control bytes
+and DEL since S-F74 and S-F75, and a rule path that can never be canonical admits nothing; S-F77's isGit meets
+policy only through holds(dest), where C93 lies.
+
+Earlier fixes of this surface, each traced in the code as built and its test run by the auditor, all
+passing with -count=1: C19 and C29 (holds in both directions), C21 (xdgDir), C22 (--allow white space),
+C28, C56 and C63 (the TMPDIR rules), C34 (the sign-in row), C54, C58 and C82 under the rule of S-F71 with
+TestSF71SecretSourceJudgedAsTheHostOpensIt, C59, C79 and C84 (ca), C60, C61 and C62, C85 in both tests, C86, the
+`method` row of S-F72 in internal/policy, C87 and C91; and TestRepoPolicy, TestProviderPolicy, TestBindings,
+TestAllowlist, TestAllowlistFlags, TestDataDir, TestChannel, TestUpdate, TestParseRun and TestParseRunAllow,
+with the packages internal/policy, internal/provider, pins and cmd/workcell ok as a whole. Not run, on purpose:
+TestC52BindMountAliasEvadesWithin and TestC65DataDirectoryBindMountedBeneathCwd, which bind-mount as root; the
+auditor read S12 as leaving the session's mount table alone and traced within's inode walk and holds' mountinfo
+scan by reading.
+
+Coverage. Read in full by the auditor, with lines: of cmd/workcell policy.go 184, data.go 141, main.go 41,
+explain.go 139, run_vm.go 710, caps.go 126, session.go 249, update.go 468, cache.go 63, cache_vm.go 88,
+layer.go 66, pull.go 104, pull_vm.go 442, log.go 196, bench.go 34, bench_vm.go 50, relay.go 167, run_other.go
+32, ocsf.go 87, the backend, mount, term and pull files of each OS, and the tests policy_test.go, data_test.go,
+explain_test.go, caps_test.go, cache_test.go, layer_test.go, sf71_test.go, update_test.go and the 31 candidate
+tests from c19 to c91 that the package holds for this surface; internal/policy policy.go 658 and its test 379;
+internal/provider provider.go 219, its test and the four provider files; pins pins.go 49, its test and the four pin
+files. Trusted code read in full: internal/proxy allowlist.go 99, terminate.go 483, signin.go 281, proxy.go 268 and
+routes_linux.go 74; internal/secret source.go 131 and broker.go 222; internal/pins pins.go 233; internal/channel
+channel.go 191; internal/resolver resolver.go 138; internal/audit key.go and lines.go; internal/vmm vmm.go and
+firecracker/firecracker.go; internal/guest guest.go 246 and trust.go 115; internal/workspace workspace.go 159;
+cmd/workcell-init/root.go 211; docs/policy.md and the accepted ADR-006. In part: internal/pins/sources.go and
+internal/artifact/verify.go. Records, after the lenses: the S-1001 map, S-1009 of sweeps 1 to 3, S-1009b,
+S-F71, S-F72, S-1013 of sweep 3 with C85 and C86, the heads of C83 to C92, PARKED.md whole and LOG.md from
+S-F71 on. Not examined: nothing ran on a real VM or on macOS, and the darwin files were read and not built; the
+escape suite was listed and not run; the tests of cmd/workcell that belong to other surfaces were not opened,
+nor internal/fileserve, wire, rootfs, sigstore, bump, advisory and version, cmd/bump, cmd/mkimage, the rest of
+cmd/workcell-init, escape/ and _legacy/; the keychain: and secret-service: sources ran no arm; the two bind-mount
+tests were not run; the four-hour fuzz of S10 and govulncheck did not run here.
+
+### S-1009 candidates, sweep 4
+
+C93. ID I8 ("Bringing results back to the host never executes or obeys guest-controlled content"), with I5 by
+consequence, since the guest's program then runs on the host as the operator in the place of the credential's
+source; the lesser arms touch I6 with I5 (SSL_CERT_FILE and SSL_CERT_DIR) and I14 (the [update] ca). The auditor
+also named I13, by the reasoning of C85; the verifier read that as a stretch, since no policy text changes,
+and the record follows the verifier, though the test's head and messages say I13. Attacker: root in the guest
+of a clone session, by hostile model output or a hook of a malicious repository, who writes an executable file
+at a name of its choice in the tree that the pull returns; for the SSL_CERT arm the network attacker as well,
+as in C86. Precondition the attacker does not control: the operator runs `workcell pull <dest>` with an explicit
+destination that holds, or lies above, the directory of a path that their own config or environment trusts. The
+plain `workcell pull`, into the working directory, is not affected: a session in a directory that holds such
+a path is refused at load (C58, S-F71; C86). Where: cmd/workcell/data.go, holds() (:33-65), the judge of a
+pull destination, which compares the destination with the data directory, the config directory, the file that
+config.toml resolves to (S-F69), the mount points and the VMM directories of running sessions, and never reads the
+user's policy or the environment; cmd/workcell/pull_vm.go, fetch (:76-121), which judges the destination by open,
+holds, the TMPDIR rule and named() alone and never calls loadPolicy, and put (:314-378), which unlinks what lies
+at a guest's path and creates it anew, 0755 for an Exec entry; cmd/workcell/policy.go (:79-98), where loadPolicy
+judges a file: path and the program of a cmd: source by leadsInto against the working directory of that session
+and the data directory alone; cmd/workcell/update.go:128 for the ca and cmd/workcell/run_vm.go:93-104 for the
+SSL_CERT paths, each judged against the working directory and the data directory at run time alone. Input:
+config.toml with `[network] allow = ["api.anthropic.com"]` and `[[secret]] name = "anthropic"`, `source =
+"cmd:/home/u/tools/bin/getkey"`, an honest script of the operator's; `workcell run -- claude` in /home/u/proj,
+where the guest writes /workspace/getkey, mode 0755, a script of its choice; `workcell pull /home/u/tools/bin`,
+or `workcell pull /home/u/tools` since the guest's tree may name `bin/getkey`; later `workcell run` in any
+directory, and the agent sends its placeholder once. Effect claimed: the pull writes the guest's getkey over
+the operator's program, the next session's loadPolicy admits the row and mints a placeholder, and at the first
+request the broker's Resolve runs the guest's program on the host as the operator, in every later session in
+every directory. Lesser arms of the same missing judgement: a file: key under the destination is replaced with
+the guest's bytes; an [update] ca under it becomes the root of the channel fetches; SSL_CERT_FILE, or a member
+of an SSL_CERT_DIR entry, under it becomes an upstream root of every later session's proxy. Severity claimed:
+medium. No file of the missing check is ported, so there is no v1 line; internal/secret/source.go, which is
+ported, runs the program that the policy names and is not weak here, as C85's record held.
+
+The auditor's evidence, by overlay into package main of cmd/workcell: with a config that holds a cmd: program, a
+file: key and an [update] ca under a scratch home, holds answered nil for the directory of each and for the parent
+of the program's directory, loadPolicy from another directory loaded both rows with no error, and loadPolicy
+in the program's own directory was refused with C54's line; then the chain with the real writer and the real
+broker call: holds nil, write returned nil and the file held the guest's bytes, loadPolicy gave one binding,
+and secret.Resolve returned the guest's value while the guest's script made its marker file. The SSL_CERT arm
+was reasoned from holds' code and not run.
+
+Reproducing test (S4): TestC93PullDestinationHoldsATrustedPath, a Go test of package main for cmd/workcell, 88
+lines, written by the redteam from the claim alone, with no VM and so no T2. A scratch home with config.toml,
+an honest getkey under tools/bin, a file: key under keys and a ca under certs. A table of five rows asks holds()
+for a destination that holds the cmd: program (the parent of its directory), the file: secret, the [update] ca,
+SSL_CERT_FILE and an SSL_CERT_DIR entry, and wants an error for each. Two controls: a destination that holds none
+of the paths is admitted, and the policy loaded in the program's own directory is refused. The main arm then
+judges tools/bin as the pull does; if holds refuses it the arm ends there, and otherwise the pull's own writer
+lands one executable entry getkey through manifest.add and write, the policy is loaded in another directory, the
+row's source is resolved as the broker resolves it, and the arm fails when the marker file of the guest's script
+exists, whatever a fix does to prevent that. The real verb cannot run without a VM: the boot, the init's tree and
+the call of fetch itself are not in the test. Run by the orchestrator on 6476b44 with `go test -overlay`, go1.27.4,
+plain and with -race, FAIL each time in the five rows (`c93_test.go:63: I13: the pull destination <home>/tools is
+admitted, and it holds the cmd: program`, and so for keys, certs and roots) and in the main arm (`c93_test.go:85:
+I13, I5: pull into <home>/tools/bin was admitted, the guest's getkey replaced the operator's, and a session in
+<home>/proj loaded the row (<nil>) and ran it on the host: {Name:anthropic Source:cmd:<home>/tools/bin/getkey
+Host:api.anthropic.com Header:x-api-key} gave "C93-TOKEN", <nil>`); the controls passed. gofmt and go vet with
+the overlay are clean, by the redteam.
+
+Outcome: CONFIRMED by the verifier at medium for the main arm, the cmd: program, and by C86's precedent for the
+SSL_CERT arms; the [update] ca and the file: arm are low. Its evidence. One: the test fails as recorded, plain
+and with -race. Two: nothing that the test skips would refuse: its own probe, by overlay, showed that every
+judge of fetch before the boot answers nil for a destination that holds the program (holds nil, within(dest,
+TempDir) false, named nil), that checkPath admits `getkey`, and that the real put replaced the operator's script
+of mode 0700 with the guest's bytes at mode 0755; broker.Lookup (internal/secret/broker.go:128) calls Resolve
+on the grant's source, the call the test makes. Three: the attacker is in scope and the test gives it no power:
+it writes one executable at the root of its export, and the other steps are the operator's own and are the
+precondition. The clause of SPEC section 2 on what a human later does with code they pulled does not fit, since
+no human acts on the program: workcell's own broker runs it at the next ordinary `workcell run`, and loadPolicy
+says nothing. The clause on what the program of a cmd: source reads through its arguments does not fit either:
+ADR-006 and the comment at policy.go:79 give the swap of the program as the reason for the refusal under the
+working directory, and the record of C54 names this chain, the operator's own pull and the next session's first
+use, as its effect; S-F37 and ADR-006 closed the working directory at load, and an explicit destination is judged
+at neither end. docs/policy.md:10 says that pull refuses the data directory, the config directory and config.toml,
+and no document says that a pull may land the guest's version of a trusted program. Four: no ruling accepts or
+parks it. C85's record reasons that the operator's own pull lands the same bytes, and S-F69 put config.toml's target
+into holds for that door; C19 and C29 hold for the data directory in both directions; C40 is about --mount alone;
+the sentence of S-F32 that the destination is the operator's choice and is not judged speaks of which directory
+and not of what in it is trusted, as C91's verifier read it, and holds judges the destination already; no line of
+PARKED.md names a pull destination that holds a secret source, a ca or an SSL_CERT path. Severity by S6: medium
+for the main arm, a break that was run with one precondition the attacker does not control, the grade of C54, C85,
+C86 and C91; not high, since the plain pull into the working directory is closed. The SSL_CERT arms are medium
+by C86's confirmed probe, but this test shows only that the destination is admitted, and its SSL_CERT_FILE row
+names a file that it never creates: the fix unit's test carries the consequence or cites C86. The ca is low,
+as C79 and C84 were ruled: the signature, the serial, the expiry and the digest still stand. The file: arm is
+low: the real key never reaches the guest, and the loss is the operator's key file replaced at a destination
+that they named; one clause closes all of them. Not S14: data.go, pull_vm.go and policy.go are this project's own.
+
+Fix shapes, from the auditor, and the unit chooses none. One: in holds(dir), after the loop over the held
+directories, read the user's policy (the file that configFile names) and refuse when leadsInto holds for the
+destination and the path that loadPolicy judges of a [[secret]] row (the file: path, or the first word of a cmd:
+source), the [update] ca, SSL_CERT_FILE, or an SSL_CERT_DIR entry or readable member, the list that session()
+builds already; one error in the style of holds' others, which names the destination and the path. Since session()
+and fetch both call holds, run and pull then share one judge, and the checks of loadPolicy, newInstaller and
+session may shrink to pay the lines. Two: the same judgement in fetch alone, beside its call of holds, which
+leaves run as it is and fails the five table rows of the test, which ask holds; a unit that takes it says so and
+rewrites the rows to ask what it built. Cost to honest use, by the auditor: none where a run in such a directory
+is refused already; only a pull from elsewhere into the directory of a trusted path changes its verdict, and
+the error names the path.
+
+Unit: S-F79, below S-1009 in PLAN.md (boundary, fable, env:any). As for C91 and C92, the test is not parked under
+escape/_pending/, since the test budget has five lines of room: this record holds it, byte for byte behind four
+spaces (sha256 0ec331a51b4b84d124f4d4e14cad06766d4118f4326f9ca6ac47cf93ac6973a0), and the fix unit re-creates it,
+paid by folds outside escape/.
+
+Source of cmd/workcell/c93_test.go (88 lines):
+
+    // SPDX-License-Identifier: Apache-2.0
+    // Copyright 2026 Omkhar Arasaratnam
+    
+    // Candidate C93 of S-1009 sweep 4 (I13; I5, I14, I6 by consequence): holds() judges a pull destination against the
+    // data directory, the config directory and the file config.toml resolves to, and knows nothing of the other paths the
+    // host later runs, opens or trusts from the user's config and environment: the program of a cmd: source, the file of
+    // a file: source, the [update] ca, SSL_CERT_FILE and the entries of SSL_CERT_DIR. So `workcell pull <home>/tools/bin`
+    // is admitted, the guest's getkey replaces the operator's, and the broker runs it on the host at the next session in
+    // any other directory, where loadPolicy judges cwd alone. Fails until the fix lands.
+    // Re-created as cmd/workcell/c93_test.go by the fix unit S-F79 from the record of C93 in loop/state/FINDINGS.md; it
+    // lives there, in the suite, from that unit on.
+    
+    //go:build linux || (darwin && arm64 && cgo)
+    
+    package main
+    
+    import (
+    	"cmp"
+    	"io"
+    	"os"
+    	"path/filepath"
+    	"testing"
+    
+    	"github.com/omkhar/workcell/v2/internal/guest"
+    	"github.com/omkhar/workcell/v2/internal/secret"
+    )
+    
+    // TestC93PullDestinationHoldsATrustedPath: a user config.toml whose cmd: program, file: secret and [update] ca lie
+    // under the home directory, and an environment that names roots there. Each destination is judged as pull judges it.
+    // On the main arm the pull's writer then lands one executable entry getkey, the policy is loaded in another directory
+    // and the row's source is resolved as the broker resolves it; the arm fails when the guest's program ran on the host,
+    // whatever a fix does to prevent it. Controls: a destination that holds none of the paths is admitted, and the policy
+    // loaded in the program's own directory is refused, as today.
+    func TestC93PullDestinationHoldsATrustedPath(t *testing.T) {
+    	home := must(filepath.EvalSymlinks(t.TempDir())) // macOS: /var is /private/var
+    	t.Setenv("HOME", home)
+    	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+    	t.Setenv("XDG_DATA_HOME", filepath.Join(home, ".local", "share"))
+    	t.Setenv("TMPDIR", t.TempDir())
+    	tools, keys, certs := filepath.Join(home, "tools", "bin"), filepath.Join(home, "keys"), filepath.Join(home, "certs")
+    	roots, proj := filepath.Join(home, "roots"), filepath.Join(home, "proj")
+    	cfg, marker := filepath.Join(home, ".config", "workcell"), filepath.Join(t.TempDir(), "C93-RAN-ON-THE-HOST")
+    	program, key, ca := filepath.Join(tools, "getkey"), filepath.Join(keys, "anthropic"), filepath.Join(certs, "ca.pem")
+    	for _, d := range []string{tools, keys, certs, roots, proj, cfg} {
+    		must(0, os.MkdirAll(d, 0o700))
+    	}
+    	config := "[network]\nallow = [\"api.anthropic.com\", \"api.openai.com\"]\n\n[[secret]]\nname = \"anthropic\"\n" +
+    		"source = \"cmd:" + program + "\"\n\n[[secret]]\nname = \"openai\"\nsource = \"file:" + key + "\"\n\n" +
+    		"[update]\nca = \"" + ca + "\"\n"
+    	must(0, cmp.Or(os.WriteFile(program, []byte("#!/bin/sh\necho honest-key\n"), 0o700), os.WriteFile(ca, nil, 0o600),
+    		os.WriteFile(key, []byte("honest\n"), 0o600), os.WriteFile(filepath.Join(cfg, "config.toml"), []byte(config), 0o600)))
+    	for _, tc := range []struct{ name, dest, env, val string }{
+    		{"the cmd: program", filepath.Dir(tools), "", ""}, {"the file: secret", keys, "", ""},
+    		{"the [update] ca", certs, "", ""},
+    		{"SSL_CERT_FILE", roots, "SSL_CERT_FILE", filepath.Join(roots, "roots.pem")},
+    		{"an SSL_CERT_DIR entry", roots, "SSL_CERT_DIR", "/etc/ssl/certs:" + roots},
+    	} {
+    		t.Run(tc.name, func(t *testing.T) {
+    			if tc.env != "" {
+    				t.Setenv(tc.env, tc.val)
+    			}
+    			if err := holds(tc.dest); err == nil {
+    				t.Errorf("I13: the pull destination %s is admitted, and it holds %s", tc.dest, tc.name)
+    			}
+    		})
+    	}
+    	if err := holds(proj); err != nil {
+    		t.Errorf("control: the pull destination %s, which holds none of the paths, was refused: %v", proj, err)
+    	}
+    	t.Chdir(tools)
+    	if _, _, _, _, err := loadPolicy(nil, io.Discard); err == nil {
+    		t.Error("control: the policy loaded in the cmd: program's own directory was admitted")
+    	}
+    	if err := holds(tools); err != nil {
+    		return // the pull is refused: the invariant holds
+    	}
+    	script := "#!/bin/sh\necho ran > " + marker + "\necho C93-TOKEN\n" // the guest's getkey, pulled over the operator's
+    	entries := []guest.Entry{fileEntry("getkey", int64(len(script)), true)}
+    	must(0, write(openDir(t, tools), judged(t, entries), from([]byte(script))))
+    	t.Chdir(proj) // the operator's next session, in any other directory
+    	_, secrets, _, _, err := loadPolicy(nil, io.Discard)
+    	row := append(secrets, binding{})[0].grant
+    	v, runErr := secret.Resolve(t.Context(), row.Source) // what the broker runs at the first request on that host
+    	if exists(marker) {
+    		t.Errorf("I13, I5: pull into %s was admitted, the guest's getkey replaced the operator's, and a session in %s "+
+    			"loaded the row (%v) and ran it on the host: %+v gave %q, %v", tools, proj, err, row, v, runErr)
+    	}
+    }
