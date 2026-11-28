@@ -1,10 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Omkhar Arasaratnam
 
-// Finding C30 of S-1013 (I6, through it I5; medium). upstreamRoots in internal/proxy/terminate.go reads the file SSL_CERT_FILE names with no IsAbs check: a relative value in the operator's
-// environment (SSL_CERT_FILE=ca.pem, or ~/ca.pem left literal; a precondition the attacker does not control) is read against the working directory, so the repository ships ca.pem, a leaf
-// that CA signed from the network attacker as DNS for an allowed name verifies, and the real secret is sent to it.
-// Fix unit S-F22 first moves this file to internal/proxy/c30_test.go, package proxy, no build tag, as this comment says.
+// Finding C30 of S-1013 (I6, through it I5; medium). upstreamRoots in internal/proxy/terminate.go reads the file SSL_CERT_FILE names with no IsAbs check: a relative value in the operator's environment (SSL_CERT_FILE=ca.pem, or ~/ca.pem left literal; a precondition the attacker does not control) is read against the working directory, so the repository ships ca.pem, a leaf that CA signed from the network attacker as DNS for an allowed name verifies, and the real secret is sent to it. Fix unit S-F22 first moves this file to internal/proxy/c30_test.go, package proxy, no build tag, as this comment says.
 
 package proxy
 

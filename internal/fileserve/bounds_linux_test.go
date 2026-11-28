@@ -357,10 +357,8 @@ func TestOpen(t *testing.T) {
 		name, path string
 		ok         bool
 	}{
-		{"directory", fx.export, true},
-		{"symlink to a directory", filepath.Join(fx.export, "up"), false},
-		{"file", filepath.Join(fx.export, "a.txt"), false},
-		{"missing", filepath.Join(fx.export, "missing"), false},
+		{"directory", fx.export, true}, {"symlink to a directory", filepath.Join(fx.export, "up"), false},
+		{"file", filepath.Join(fx.export, "a.txt"), false}, {"missing", filepath.Join(fx.export, "missing"), false},
 	} {
 		s, err := Open(tc.path, testLimit)
 		if (err == nil) != tc.ok {
