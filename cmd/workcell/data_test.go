@@ -46,11 +46,8 @@ func TestFindArtifacts(t *testing.T) {
 		present []string
 		missing string // the file the error must name; "" for success
 	}{
-		{"all", names, ""},
-		{"none", nil, names[0]},
-		{"no kernel", without("vmlinux"), "vmlinux"},
-		{"no initrd", without("initrd.cpio"), "initrd.cpio"},
-		{"no image", without("root.ext4"), "root.ext4"},
+		{"all", names, ""}, {"none", nil, names[0]}, {"no kernel", without("vmlinux"), "vmlinux"},
+		{"no initrd", without("initrd.cpio"), "initrd.cpio"}, {"no image", without("root.ext4"), "root.ext4"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

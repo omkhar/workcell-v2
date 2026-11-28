@@ -21,10 +21,8 @@ func TestLockCache(t *testing.T) {
 		take vmm.Cache
 		err  string
 	}{
-		{"a reader on its own", nil, r, ""},
-		{"a writer on its own", nil, w, ""},
-		{"readers share", []vmm.Cache{r}, r, ""},
-		{"a writer excludes a writer", []vmm.Cache{w}, w, wait},
+		{"a reader on its own", nil, r, ""}, {"a writer on its own", nil, w, ""},
+		{"readers share", []vmm.Cache{r}, r, ""}, {"a writer excludes a writer", []vmm.Cache{w}, w, wait},
 		{"a writer excludes a reader", []vmm.Cache{w}, r, readWrite},
 		{"a reader excludes a writer", []vmm.Cache{r}, w, wait},
 	}

@@ -60,22 +60,16 @@ func TestResize(t *testing.T) {
 	decodes(t, DecodeResize, []decoded[Resize]{
 		{"round trip", EncodeResize(Resize{Rows: 30, Cols: 100}), Resize{Rows: 30, Cols: 100}, true},
 		{"max", []byte{0xff, 0xff, 0xff, 0xff}, Resize{Rows: 65535, Cols: 65535}, true},
-		{"zero", []byte{0, 0, 0, 0}, Resize{}, true},
-		{"short", []byte{0, 24, 0}, Resize{}, false},
-		{"long", []byte{0, 24, 0, 80, 0}, Resize{}, false},
-		{"empty", nil, Resize{}, false},
+		{"zero", []byte{0, 0, 0, 0}, Resize{}, true}, {"short", []byte{0, 24, 0}, Resize{}, false},
+		{"long", []byte{0, 24, 0, 80, 0}, Resize{}, false}, {"empty", nil, Resize{}, false},
 	})
 }
 
 func TestSignal(t *testing.T) {
 	decodes(t, DecodeSignal, []decoded[int]{
-		{"term", EncodeSignal(15), 15, true},
-		{"one", []byte{1}, 1, true},
-		{"sixty-four", []byte{64}, 64, true},
-		{"zero", []byte{0}, 0, false},
-		{"sixty-five", []byte{65}, 0, false},
-		{"two bytes", []byte{15, 0}, 0, false},
-		{"empty", nil, 0, false},
+		{"term", EncodeSignal(15), 15, true}, {"one", []byte{1}, 1, true}, {"sixty-four", []byte{64}, 64, true},
+		{"zero", []byte{0}, 0, false}, {"sixty-five", []byte{65}, 0, false},
+		{"two bytes", []byte{15, 0}, 0, false}, {"empty", nil, 0, false},
 	})
 }
 
@@ -83,36 +77,27 @@ func TestExit(t *testing.T) {
 	long := strings.Repeat("e", MaxErr+1)
 	decodes(t, DecodeExit, []decoded[Exit]{
 		{"code 7", EncodeExit(Exit{Code: 7}), Exit{Code: 7}, true},
-		{"code 0", EncodeExit(Exit{}), Exit{}, true},
-		{"code 255", []byte{0, 255}, Exit{Code: 255}, true},
+		{"code 0", EncodeExit(Exit{}), Exit{}, true}, {"code 255", []byte{0, 255}, Exit{Code: 255}, true},
 		{"signal 15", EncodeExit(Exit{Signal: 15}), Exit{Signal: 15}, true},
 		{"signal wins over code", EncodeExit(Exit{Code: 1, Signal: 9}), Exit{Signal: 9}, true},
 		{"error", EncodeExit(Exit{Err: "no such file"}), Exit{Err: "no such file"}, true},
 		{"error wins", EncodeExit(Exit{Code: 1, Signal: 9, Err: "x"}), Exit{Err: "x"}, true},
 		{"error truncated to MaxErr", EncodeExit(Exit{Err: long}), Exit{Err: long[:MaxErr]}, true},
 		{"error with control bytes kept", []byte{2, 0x1b, '[', 'm', 0}, Exit{Err: "\x1b[m\x00"}, true},
-		{"empty", nil, Exit{}, false},
-		{"one byte", []byte{0}, Exit{}, false},
-		{"code with a tail", []byte{0, 7, 0}, Exit{}, false},
-		{"signal 0", []byte{1, 0}, Exit{}, false},
-		{"signal 65", []byte{1, 65}, Exit{}, false},
-		{"signal with a tail", []byte{1, 15, 0}, Exit{}, false},
+		{"empty", nil, Exit{}, false}, {"one byte", []byte{0}, Exit{}, false},
+		{"code with a tail", []byte{0, 7, 0}, Exit{}, false}, {"signal 0", []byte{1, 0}, Exit{}, false},
+		{"signal 65", []byte{1, 65}, Exit{}, false}, {"signal with a tail", []byte{1, 15, 0}, Exit{}, false},
 		{"error too long", append([]byte{2}, long...), Exit{}, false},
-		{"unknown kind", []byte{3, 0}, Exit{}, false},
-		{"kind 255", []byte{255, 0}, Exit{}, false},
+		{"unknown kind", []byte{3, 0}, Exit{}, false}, {"kind 255", []byte{255, 0}, Exit{}, false},
 	})
 }
 
 func TestAck(t *testing.T) {
 	decodes(t, DecodeAck, []decoded[int]{
-		{"zero, the end of a pipe", EncodeAck(0), 0, true},
-		{"one byte", EncodeAck(1), 1, true},
-		{"a full frame", EncodeAck(MaxStdin), MaxStdin, true},
-		{"one over", EncodeAck(MaxStdin + 1), 0, false},
-		{"huge", []byte{0xff, 0xff, 0xff, 0xff}, 0, false},
-		{"empty", nil, 0, false},
-		{"three bytes", []byte{0, 0, 1}, 0, false},
-		{"five bytes", []byte{0, 0, 0, 1, 0}, 0, false},
+		{"zero, the end of a pipe", EncodeAck(0), 0, true}, {"one byte", EncodeAck(1), 1, true},
+		{"a full frame", EncodeAck(MaxStdin), MaxStdin, true}, {"one over", EncodeAck(MaxStdin + 1), 0, false},
+		{"huge", []byte{0xff, 0xff, 0xff, 0xff}, 0, false}, {"empty", nil, 0, false},
+		{"three bytes", []byte{0, 0, 1}, 0, false}, {"five bytes", []byte{0, 0, 0, 1, 0}, 0, false},
 	})
 }
 
@@ -140,8 +125,7 @@ func TestEntry(t *testing.T) {
 		{"negative size", EncodeEntry(Entry{Kind: KindFile, Size: -1, Path: "a"}), Entry{}, false},
 		{"exec byte of 2", append([]byte{KindFile, 2}, EncodeEntry(Entry{Kind: KindFile, Path: "a"})[2:]...), Entry{}, false},
 		{"truncated", EncodeEntry(file)[:14], Entry{}, false},
-		{"trailing byte", append(EncodeEntry(file), 0), Entry{}, false},
-		{"empty", nil, Entry{}, false},
+		{"trailing byte", append(EncodeEntry(file), 0), Entry{}, false}, {"empty", nil, Entry{}, false},
 	})
 }
 

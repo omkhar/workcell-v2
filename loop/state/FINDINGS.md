@@ -11624,3 +11624,59 @@ Source of cmd/workcell/c93_test.go (88 lines):
     			"loaded the row (%v) and ran it on the host: %+v gave %q, %v", tools, proj, err, row, v, runErr)
     	}
     }
+
+Shape chosen for C93 by the orchestrator of S-F79, before the redteam ran: shape one, the judgement in holds().
+Reasons. One: holds() is the one judge that run (session, with the working directory) and pull (fetch, with the
+destination) both ask, and the record of S-1009 holds that it grew by one path at each finding and never read the
+policy; a second judge in fetch alone would be the next list to fall behind. Two: the test's five rows ask
+holds, so shape one passes the test as recorded and shape two would rewrite the rows of a confirmed test. Three:
+the SSL_CERT judgement of session() can move into holds whole, which pays most of its own lines; the checks of
+loadPolicy and newInstaller stay, since explain, bench and update reach them without holds. The contract given
+to the builder. holds(dir) reads the user's config.toml, the file configFile names, and refuses when the path
+that loadPolicy judges of a [[secret]] row (a file: path, or the first word of a cmd: source), the [update] ca,
+SSL_CERT_FILE, or an SSL_CERT_DIR entry or readable member lies in dir or has a prefix that leads into it, by
+leadsInto, in one error that names dir and the path, before the pull VM boots and with nothing written. A missing
+config.toml grants nothing and refuses nothing. A config.toml that cannot be read or parsed refuses the pull with
+that error, since its rows cannot be judged; run refuses such a file at load already. Cost to honest use, as
+chosen: a run is judged as today, since loadPolicy, newInstaller and session refuse the same paths against the
+working directory before or where holds is asked; a pull into a directory that holds none of these paths goes
+on as before; a pull whose destination holds or lies above one of them is refused until the operator names
+another destination or moves the path, and a pull with a broken config.toml is refused until it is mended. The
+SSL_CERT rows of the test show an admitted destination alone, and its SSL_CERT_FILE row names a file it never
+creates: the consequence, a planted root that verifies the network attacker's leaf, is carried by the test of
+C86, cmd/workcell/c86_test.go with its record above, and is not built again here. The fix note below says what
+was built and measured.
+
+C93 FIXED by S-F79, commits 04a5065 and f893891 (PR #375), shape one as chosen above. judge(dir, pull) in
+cmd/workcell/data.go is the old holds with the new judgement at its end: it reads the user's config.toml by
+policy.Read and refuses, in one error that names what trusts the path, the path and dir, when leadsInto holds for
+the path of a [[secret]] row, SSL_CERT_FILE, or an SSL_CERT_DIR entry or readable member, and in a pull for the
+[update] ca as well. holds(dir) is judge(dir, true), the pull's judge, so the recorded test and c19_test.go ask it
+unchanged; session() asks judge(cwd, false). sourcePath in cmd/workcell/policy.go is the one reading of a source,
+the file: path or the first word of a cmd: source, that loadPolicy and judge share. The SSL_CERT block of session()
+moved into judge whole; the checks of loadPolicy and newInstaller stay, since explain, bench and update reach them
+without holds. Against main: data.go 26 lines added and 6 removed, policy.go 8 and 2, pull_vm.go 4 and 11,
+run_vm.go 5 and 19, docs/policy.md one sentence in its line 10; product 15000 of 15000, test 28494 of 28500,
+the test's 88 lines paid by 81 lines of folds in twenty test files, white space alone (checked by the orchestrator
+and the reviewer). Where the build differs from the contract above, and why. One: the [update] ca is judged in a
+pull alone. A run in a directory that holds the ca starts today, since startup() only prints the installer's
+refusal, and the builder's first tree refused that run; it was sent back before any commit, because every run that
+starts today must go on (S1). Two: a pull is judged against its destination alone, a run against the working
+directory and the data directory as before; 04a5065 judged both against the data directory, so a ca there refused
+every pull.
+Three: a relative ca is not judged in a pull, since the installer refuses it and it is never a root. Proved, the
+test first: cmd/workcell/c93_test.go re-created from the record by the redteam (sha256 matched, then two head
+lines reworded; diff checked by the orchestrator); on main it fails in its five rows and its main arm, run by the
+redteam, the orchestrator and the reviewer, and on the fix it passes plain and under -race, the controls unchanged,
+with the C19, C29, C54, C58, C79, C84, C85, C86 and C91 tests. The reviewer's 28 cases, run on main and on 04a5065:
+every run verdict the same; the pull verdicts that changed were the destinations that hold or are led into by
+a path, a link on either side included, a path not made yet, an SSL_CERT_DIR member, a broken config.toml and,
+on 04a5065 alone, a path under the data directory and a relative ca, which f893891 gave back to main's verdict. Its
+real pull([]string{"."}) with the ca under the working directory returned 1 with the one line before any boot, where
+main went on to start the VMM. Cost to honest use, as built: a run is judged as before, though a run with two
+faults under --mount now names the SSL_CERT path before the temp directory; a pull or a diff whose destination
+holds or leads into one of the paths is refused until another destination is named or the path moved; a pull or a
+diff with a config.toml that cannot be read or parsed is refused; a relative secret word or SSL_CERT value is read
+against the directory pull is started in, so only a pull into that directory is refused for it, and no run starts
+with such a value. Not shown: the real verb on a VM beyond the hosted suite's own pull rows; the three corrections
+after the review were measured by the builder's probes, which are not kept, and no second review ran (R1).

@@ -111,8 +111,7 @@ func TestRemoveSession(t *testing.T) {
 		setup   func(t *testing.T, sessions, outside string) (vmm string) // returns the temp dir to record, or ""
 		wantErr bool
 	}{
-		{"bad id", "../x", nil, true},
-		{"unknown", idNew, nil, true},
+		{"bad id", "../x", nil, true}, {"unknown", idNew, nil, true},
 		{"plain", idOld, func(t *testing.T, sessions, _ string) string {
 			os.WriteFile(filepath.Join(sessions, idOld, "workspace.ext4"), []byte("x"), 0o600)
 			return ""

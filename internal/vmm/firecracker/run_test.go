@@ -97,8 +97,7 @@ func TestRun(t *testing.T) {
 			code int
 			err  string // a word in stderr, or ""
 		}{
-			{"exit 7", []string{"sh", "-c", "exit 7"}, 7, ""},
-			{"success", []string{"true"}, 0, ""},
+			{"exit 7", []string{"sh", "-c", "exit 7"}, 7, ""}, {"success", []string{"true"}, 0, ""},
 			{"killed by SIGTERM", []string{"sh", "-c", "kill -TERM $$"}, 143, ""},
 			{"no such command", []string{"/nope"}, 126, "could not run"},
 		}

@@ -50,8 +50,7 @@ func TestResolveFile(t *testing.T) {
 		{"carriage return", writeFile(t, "cr", []byte("sk-file\r\n"), 0o600), nil},
 		{"largest", writeFile(t, "max", bytes.Repeat([]byte("k"), maxFileBytes), 0o600), bytes.Repeat([]byte("k"), maxFileBytes)},
 		{"oversized", writeFile(t, "big", bytes.Repeat([]byte("k"), maxFileBytes+1), 0o600), nil},
-		{"missing", filepath.Join(dir, "absent"), nil},
-		{"directory", dir, nil},
+		{"missing", filepath.Join(dir, "absent"), nil}, {"directory", dir, nil},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -119,9 +118,7 @@ func TestResolveCmdFailsClosed(t *testing.T) {
 		name string
 		body string
 	}{
-		{"two lines", "printf 'a\\nb\\n'"},
-		{"nothing", "true"},
-		{"newline only", "printf '\\n'"},
+		{"two lines", "printf 'a\\nb\\n'"}, {"nothing", "true"}, {"newline only", "printf '\\n'"},
 		{"carriage return", "printf 'canary\\r\\n'"},
 		{"non-zero exit", "printf 'canary-stdout\\n'; echo 'canary-stderr' >&2; exit 44"},
 	}
