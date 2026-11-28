@@ -63,9 +63,7 @@ func Resolve(ctx context.Context, source string) ([]byte, error) {
 }
 
 // Zero overwrites every byte of b with 0.
-func Zero(b []byte) {
-	clear(b)
-}
+func Zero(b []byte) { clear(b) }
 
 func readFile(path string) ([]byte, error) {
 	if !filepath.IsAbs(path) {

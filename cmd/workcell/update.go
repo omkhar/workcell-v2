@@ -16,6 +16,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"io/fs"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -216,7 +217,12 @@ func (in installer) manifest(ctx context.Context) (raw []byte, m *channel.Manife
 
 // verify is channel.Verify of raw at now against the keys and the last serial seen, kept in <data>/channel.serial, which advances only once a manifest verified (I14) and on any failure is untouched.
 func (in installer) verify(raw []byte, now time.Time) (*channel.Manifest, error) {
-	last, _ := strconv.ParseInt(marker(in.dir, "channel.serial"), 10, 64) // absent, or not a number, is 0
+	store := filepath.Join(in.dir, "channel.serial")
+	b, err := os.ReadFile(store)
+	last, perr := strconv.ParseInt(strings.TrimSuffix(string(b), "\n"), 10, 64)
+	if !errors.Is(err, fs.ErrNotExist) && (err != nil || perr != nil || last < 0) { // absent is floor 0; present, the store holds the serial and a newline, as writeMarker leaves it, and anything else is no floor at all (C95): an empty store would let an older manifest reset the floor
+		return nil, fmt.Errorf("%s holds no serial number of zero or more; removing it starts the floor anew", store)
+	}
 	m, err := channel.Verify(raw, in.keys, now, last)
 	if err != nil {
 		return nil, err

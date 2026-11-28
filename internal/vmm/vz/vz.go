@@ -39,9 +39,7 @@ type Machine struct {
 var _ vmm.Machine = (*Machine)(nil)
 
 // New prepares a machine and boots nothing.
-func New(cfg vmm.Config) *Machine {
-	return &Machine{cfg: cfg, exited: make(chan struct{})}
-}
+func New(cfg vmm.Config) *Machine { return &Machine{cfg: cfg, exited: make(chan struct{})} }
 
 // Check proves the hypervisor is there (kern.hv_support) and that this process may use it: the framework refuses a configuration from a process without the
 // entitlement, which is the error a user meets first. It boots nothing.

@@ -43,9 +43,7 @@ type Machine struct {
 }
 
 // New prepares a machine and boots nothing.
-func New(cfg vmm.Config) *Machine {
-	return &Machine{cfg: cfg, exited: make(chan struct{})}
-}
+func New(cfg vmm.Config) *Machine { return &Machine{cfg: cfg, exited: make(chan struct{})} }
 
 // Check opens /dev/kvm for writing and looks at the pinned binary, if the Config names one.
 func (m *Machine) Check(context.Context) error {
