@@ -10816,3 +10816,429 @@ not as fixed. For the maintainer: S7 wants every medium fixed before cutover and
 of scope instead, which no proposal can do; until the ADR is accepted and the row is in SPEC section 2, or the
 unit line is rewritten, C89 is an open medium of sweep 4, which S-1017 counts (S8). also in v1 main:
 egressproxy/terminate.go.
+
+## S-1008, sweep 4: workspace export in both modes, and the return path (I1, I8), as built at main b3fbe2c
+
+Sweep 4 (S8), the one further sweep that the maintainer allowed on 2026-11-26 after ADR-006, fresh context (S3), the
+whole surface read in full as built after S-F71 to S-F76, not a diff, at the claim commit ac18402. The unit line
+still carries its sweep-1 text (copy four parked tests for C17 to C20 and run no auditor); those tests are long in
+place and S-F10 to S-F13 are done, so this run took the other branch of the line's accept and did the audit again as
+S-1002 says, as sweeps 2 and 3 did and as S-1017's line asks of sweep 4. One auditor run on the top tier, finished
+without a stop. No hypervisor in the cloud session, which is Linux, as root: every probe ran by `go test -overlay`
+or a scratch program outside the repository, against processes, pipes, files and one overlay mount that the probe
+itself made and removed; nothing ran on a real VM or on macOS. The auditor wrote its own trust boundary and worked
+every lens before it opened FINDINGS.md, PARKED.md or LOG.md, then traced and ran every recorded fix of the surface
+and tried its parked leads again. Two candidates, C91 and C92; the records are under the next heading.
+
+Trust boundary. Clone export: the attacker's bytes are the shape of the operator's working directory as a malicious
+repository, an earlier `--mount` guest or an earlier pull left it: names, link targets, link topology, types, sizes,
+depth and count. They enter at workspace.Export (internal/workspace/workspace.go: `.` opened once, a descriptor
+walk, Fstatat with AT_SYMLINK_NOFOLLOW, Openat with O_NOFOLLOW and O_DIRECTORY, Readlinkat, hard links by device and
+inode, sockets, FIFOs and devices dropped) and at rootfs.Tree and WriteExt4File, where openSource
+(internal/rootfs/ext4file.go) opens each file again beneath the one export descriptor and checks device, inode, size
+and S_IFREG again. Authority: the operator's uid reads every file beneath cwd and writes one 0600 sparse image and
+the `inodes` record under sessions/<id>/; it trusts holds() (data and config directories, mountinfo, the VMM
+directories of running sessions) and named() (C61), and attaches the image read-write to the guest. Mount: the
+attacker's bytes are every byte of every frame on the one vsock 5002 stream, since guest root writes raw frames and
+the guest kernel's grammar is no bound. They enter at wire.Conn (frames of 64 KiB, 5 s a frame), at fileserve.parse
+(lengths per opcode, names of one component) and at op. Authority: the operator's uid runs openat, mkdirat,
+symlinkat, unlinkat, renameat, pwrite, ftruncate, fchmod and utimensat relative to directory descriptors beneath the
+export, under life and mu, with the chain check of at(), single() for files of several names, the caps maxFDs 4096
+and maxNodes 2^17, grown against limit, and the pace in points. It holds no notion of `.git`: under --mount the
+guest writes the real tree whole (C40, by ruling). Return path: the attacker's bytes are every Entry, Data and Exit
+frame from the pull VM, which mounts the image the attacker wrote, with no network, the caps of defaults() and a nil
+audit log. They enter at fetch and pulled.frame (cmd/workcell/pull_vm.go), guest.DecodeEntry, manifest.add,
+checkPath and fold (pull.go), then write and put, or compare and sameBytes. Authority: the operator's uid, with the
+destination open as a directory, openat2 with RESOLVE_BENEATH, NO_SYMLINKS and NO_XDEV one component at a time
+(pull_linux.go); it unlinks what is not a directory and empty directories, makes directories 0755, symbolic links of
+any target and files 0644 or 0755 of the guest's bytes, and refuses a component that is its directory's `.git`, by
+the device and inode of `.git` taken without following a link, before and after the create. What no code judges,
+found before the records were read: what the name `.git` resolves to when it is a symbolic link or a `gitdir:` file
+that names a directory inside the tree (C91), and the kernel's cost of a directory seek, which the pace charges as
+one unit (C92). Concurrent actors: only the operator's other sessions; a mount guest owns its export wholly, so a
+race with a pull or an export in that tree gains it nothing. No file of this surface is ported.
+
+Lenses (S9). Parsing and resources: parse() walked again for each opcode against the sizes of FUSE 7.37 (fixed(n),
+the length equations of WRITE and BATCH_FORGET, the NUL rule of split, a link target under 4096, names of at most
+255 bytes with no slash or NUL); the dirent decode of readdir; the bounds of DecodeEntry; the manifest limits (a
+million entries, 64 MiB of names, the image's bytes plus 4096 an inode); the 64 KiB and the deadline of wire; on the
+export side the 4097-byte Readlinkat buffer against the 4095 of validate, and ErrTooLarge above 32 GiB, 8.4 million
+entries or 65000 links. FuzzRequest, FuzzReadFrame, FuzzDecode and FuzzPath ran 45 s each (359 thousand, 1.6
+million, 2.9 million and 482 thousand executions) with no crasher. Memory is bounded (16 workers of 64 KiB, the node
+table, a pull manifest of about 250 MiB at most). CPU: the pace charges frames, chain links, dirent bytes,
+READDIRPLUS entries and the time of SEEK_HOLE, and not the directory seek of READDIR: C92, measured. Disk: grown
+against limit and the block per entry hold. Logic and state: put() traced for every order (a link and then a path
+through it, ELOOP; a file and then a path under it, ENOTDIR; a directory that is not empty where a file is wanted,
+ENOTEMPTY; a host link where a directory is wanted is unlinked and never followed; one path twice, the fold map;
+`.git` by name and by the inode of `.git` itself); the gap is that isGit takes the identity of the link or the
+gitfile itself, so the directory that `.git` names is reached under its real name: C91, measured, and git ran the
+hook. The manifest is judged before any byte is written, and end() refuses Data left over or missing and any Exit
+that is not zero. The FUSE state machine stands (EIO before INIT and after DESTROY, EPROTO for another major, ENOSYS
+for LINK, MKNOD, RENAME2, xattr and fallocate, modes masked to 0777, ids never reused). Concurrency and
+check-to-use: 1500 rounds with 16 workers of an OPEN for writing on a file node raced on the wire by UNLINK and a
+SYMLINK of the same name to `../secret`, in both orders, with a WRITE through every handle obtained: the secret
+beside the export was unchanged, 1048 writes landed in the real file opened before the swap and one open answered
+ELOOP, so I1 holds (O_NOFOLLOW and the S_IFREG check after the open); life and mu, the chain of at(), RENAME under
+life.Lock and the order of Close and Serve were read again, and the fileserve tests pass under -race; an export
+against a mount guest on an ancestor admits only the file that was walked (openSource); a pull against a mount guest
+of the destination equals the guest's own writes (C40). Cryptography and identity: none by design; identity is
+device and inode at use everywhere but in the choice of which inode stands for `.git` (C91); sessions are keyed by
+the spelling of cwd (parked by S-1013, unchanged). Failure modes: nothing fails open; a failed Export removes the
+image and keeps the record (C83); fetch refuses a session without its image or its `inodes`; an error of put leaves
+the documented partial tree; fileserve maps an unknown error to EIO and Close releases every descriptor; Note on the
+nil log of the pull VM returns ErrClosed, so a denial there cannot panic (read, not run); serveRelay exits on
+EMFILE, so the network is lost and not gained. Downgrade, rollback and replay: wire version 1 only; the FUSE minor
+is negotiated down over fixed layouts and a second INIT is EIO; a pull is one shot, a frame out of place is an
+error, and a second pull gives the same tree; the `inodes` record is written by the host before the guest runs and
+bounds an image that the guest made again. Interaction between surfaces: the clone export carries `.git` (its hooks
+and config run in the guest only), workcell.toml (which only narrows, I13) and every symbolic link as a link; what a
+mount guest writes to workcell.toml or `.git` for the next session is C40, parked; the file service shares the
+supervisor with the proxy and the log (A9), so the CPU of C92 is taken from them.
+
+Recorded fixes of this surface, each traced as built and run by the auditor, all holding: `go test -count=1` is ok
+on internal/fileserve, internal/workspace, internal/guest, internal/wire, internal/rootfs, cmd/workcell and
+cmd/workcell-init, and internal/fileserve is ok under -race. By name: C17 by TestGrowthCapAppend, C18 by
+TestGrowthCapEntries, with TestGrowthCap; C41 by TestC41MountDoesNotWriteThroughHardLink; C64 (S-F47) by TestPace;
+C76 by TestC76WorkOfOneFrame; C77 by TestC77WritesIntoHoles; TestAdversarial, TestNodeCap and TestDescriptorCap; in
+cmd/workcell C19 (both tests), C85 (both tests), C20, C56, C57 by TestPullGrowthCapEntries, C61, C63, C65 by
+TestC65DataDirectoryBindMountedBeneathCwd (run in full, the session being root, with its bind mount made), C83, C86,
+C87 by TestC87CompareFIFOReturns, and TestWrite, TestCompare and TestManifestAdd; in internal/workspace C38,
+TestExport and TestExportStopped. Not run: C31's test skips under root, as it says; C44's test is built for darwin
+with cgo only, and its code path, isGit by inode, was read and driven by the probes of C91.
+
+Parked leads of this surface, tried again. The dotdot rows of the mount that resolve in the guest kernel: unchanged,
+reasoned. fallocate, LINK and MKNOD answering ENOSYS: the rows of TestAdversarial pass. The NFC and NFD collision of
+a pull manifest on APFS: unmeasured without a Mac; fold does not normalise. A pull's total time is still bounded for
+each frame only; maxFDs against RLIMIT_NOFILE is unchanged. `.git` under --mount, run again through the real file
+service: the guest's `.git/hooks/pre-commit` (0755) and `.git/config` land in the host's live tree, C40's ruling
+stands, and no page of docs/ yet carries the sentence that the parked line keeps for S-1018. The 5002 listener left
+open after a failed dial of the init, the relay's exit on EMFILE and the notes of S-F32: unchanged by reading.
+
+Coverage. Read in full: internal/workspace (workspace.go and its four test files); internal/fileserve
+(serve_linux.go, ops_linux.go, codec.go, the harness and the adversarial, bounds, c17, c18, c41, c76 and c77 tests);
+internal/wire/wire.go; internal/guest/guest.go and walk.go; internal/rootfs (ext4.go, ext4file.go, tree.go,
+layer.go, build.go); internal/vmm/vmm.go and firecracker/firecracker.go; in cmd/workcell pull.go, pull_vm.go,
+pull_linux.go, pull_darwin.go, data.go, run_vm.go, session.go, caps.go, main.go, mount_linux.go, mount_darwin.go,
+cache.go, cache_vm.go, layer.go, policy.go, backend_linux.go, explain.go, the pull tests and the tests of c19, c20,
+c56, c57, c61, c63, c65, c83, c86 and c87; in cmd/workcell-init mount.go, pull.go, main.go, root.go and exec.go; in
+escape/suite files.go, files_linux.go, gitdir.go, repo.go, tests.go, helpers.go, floods.go, floods_linux.go and
+suite.go; escape/sandbox/workcell_vm.go and workcell_linux.go; docs/adr/accepted/002 and docs/adr/005; SPEC and
+PARKED.md whole. Read in part or by grep: FINDINGS.md (the S-1008 records of sweeps 1 to 3, C40, C41, C44, C83,
+S-F73, S-1003 of sweep 4), the tail of LOG.md, docs/policy.md, README.md and docs/threat-model.md,
+internal/proxy/proxy.go (New, Serve, Deny), internal/audit/audit.go (Note, append), internal/policy/policy.go (Read,
+ReadRepo, Narrow), serveRelay in cmd/workcell/relay.go, the layout of internal/vmm, the fuzz targets. Not opened:
+internal/rootfs/oci.go and its tests, internal/guest/trust.go, the body of internal/fileserve/codec_test.go, in
+cmd/workcell log.go, ocsf.go, update.go, the body of relay.go, the bench and term files, verify_test.go,
+run_vm_test.go and c44_test.go, cmd/workcell-init/net.go and root_test.go, internal/vmm/vz, the other suite and
+sandbox files, `_legacy/`. Run: the package tests plain, fileserve under -race, the fix tests by name, four fuzz
+targets of 45 s each and seven scratch probes by overlay (`.git` writes under mount; the open and symlink race; the
+cost of a seek on tmpfs, on ext4 and on a merged overlayfs mount; the edges of the pull writer, a 256-byte name, a
+4096-byte target, a file and then a path under it, a link and then a path through it, a bare repository, a gitfile
+`.git` by name and host links as components; the git directory behind a link or a gitfile, with git 2.43.0). Not
+run: anything on a real VM or on macOS, the escape suite, the four-hour fuzz of S10, govulncheck; C92 with the 16
+requests in flight of a real guest, or on a kernel before 6.6.
+
+### S-1008 candidates, sweep 4
+
+C91. ID I8 ("Bringing results back to the host never executes or obeys guest-controlled content: no hooks, filters,
+config, attributes, submodule URLs, symlink or path traversal"); A1 in that the host trusted the name `.git` and not
+the directory that the name stands for; row 19 of docs/threat-model.md says that git metadata the guest writes
+returns only through row 5. Attacker: root in the guest of a clone session, by hostile model output or a hook of a
+malicious repository; no forged frame is needed, since the honest init reports the tree. Precondition the attacker
+does not control: the operator's repository keeps its git directory inside the work tree under another name, so that
+`.git` is a symbolic link to an in-tree directory, or a gitfile `gitdir: <path>` as `git init --separate-git-dir
+./gitdir` writes it; a `.git` that names a directory outside the tree is not affected. Where:
+cmd/workcell/pull_vm.go, isGit (:294-297), which takes the device and inode of `.git` by Fstatat with
+AT_SYMLINK_NOFOLLOW, so the identity is that of the link or of the gitfile itself and never of the directory it
+names, and the loop of put (:303), its check (:312) and the check after the create (:338) compare with the wrong
+inode; cmd/workcell/pull.go, checkPath (:80-81), which refuses the spelling `.git` alone; internal/guest/walk.go:35,
+which skips the name `.git` alone, so the init walks `gitdir/` and reports it; workspace.Export copies `.git` as the
+link or the file it is and `gitdir` as a plain directory. Input: on the host `git init -q --separate-git-dir
+./gitdir` in the repository (or `mv .git gitdir && ln -s gitdir .git`), then `workcell run` there in clone mode; in
+the guest the agent writes /workspace/gitdir/hooks/pre-commit, executable, and /workspace/gitdir/config; then
+`workcell pull`. As frames: Entry dir `gitdir`, Entry dir `gitdir/hooks`, Entry file `gitdir/hooks/pre-commit` with
+Exec, Entry file `gitdir/config`, their Data, Exit. Effect claimed: manifest.add admits every path and put writes
+them into the host's real git directory, so the operator's next `git commit` runs the guest's pre-commit hook on the
+host, and a config value such as core.fsmonitor is obeyed at the next `git status`; with the link shape an honest
+`git commit` by the agent in the guest brings its objects, refs and hooks back into the host's live git directory as
+well. Severity claimed: medium. No file here is ported, so there is no v1 line.
+
+The auditor's evidence, run: an overlay test in package main of cmd/workcell through the real manifest.add and
+write, with git 2.43.0: in both shapes write returned nil, the hook lay in the real git directory, and `git status`
+ran the hook that the guest's config named as fsmonitor (the canary file existed).
+
+Reproducing test (S4): TestC91GitDirectoryUnderAnotherName, a Go test of package main of cmd/workcell, 61 lines,
+written by the redteam from the claim alone, with no VM and so no T2: the real manifest and the real writer of the
+pull, a destination whose `.git` names the in-tree directory `gitdir` in the two forms git reads, the repository
+made by git's own `git init --separate-git-dir` where git is on PATH (only that part is skipped without it), and a
+guest tree of `gitdir/hooks/pre-commit` and `gitdir/config`. It fails when the guest's hook and config lie in the
+directory that git obeys, and again when a `git commit` on the host makes the hook's canary. Controls: the manifest
+still refuses `.git/hooks/pre-commit`, and a `.git` that names a directory outside the destination leaves the plain
+in-tree `gitdir` writable as before. How a fix refuses is not judged. Run by the orchestrator on ac18402 with `go
+test -overlay`, go1.27.4, plain and with -race, the same lines each time, for the arms `a symbolic link .git ->
+gitdir` and `a gitfile .git naming gitdir`: `c91_test.go:51: I8: after the writer (<nil>) the guest's hook lies in
+gitdir: true, its config: true; gitdir is the git directory git obeys: true, and must take both exactly when it is
+not` and `c91_test.go:56: I8: git commit on the host (<nil>, "") ran the guest's pre-commit hook: <temp>/canary
+exists`; the control arm passes. gofmt and go vet with the overlay are clean, by the redteam.
+
+Outcome: CONFIRMED by the verifier at medium, as claimed, from its own run of the test, plain and with -race, and
+its own reading of the code and the records. Its evidence. One: the test gives itself no power: the manifest goes
+through the real manifest.add and checkPath, the destination is opened as fetch opens it (holds, within and named
+never look at the shape of `.git`), and the writer is the real write and put; the honest init reports such a tree,
+since Export copies `.git` as it is and Walk skips only the name. Two: it is not ruled: no line of FINDINGS.md,
+PARKED.md, docs/threat-model.md, docs/policy.md, README.md or docs/adr/accepted/ speaks of a gitfile, of
+`--separate-git-dir` or of a git directory under another name; C40 rules `.git` under --mount only; C44 is the
+precedent, the same effect (a pull lands a hook and the operator's next git command runs it) under a precondition on
+the operator's side, confirmed at medium, and its fix S-F32 judges `.git` by the device and inode of the name alone;
+the sentence of S-F32 that the destination is the operator's choice is about which directory is pulled into, not
+about where its git directory lies. Three: the precondition is the operator's, so medium and not high, by its own
+runs in a temporary repository: a tree that holds `.git` as a link or as a gitfile blob is made by `git mktree`, but
+`git clone` of it answers `error: invalid path '.git'` and leaves `.git` a plain directory; the gitfile of a
+submodule or a worktree names a directory under the top `.git` or outside the tree, which the pull refuses or cannot
+reach; an earlier pull cannot make or replace `.git`; a mount guest could lay the shape but writes `.git/hooks`
+directly already (C40), so that chain gains nothing. Only `git init --separate-git-dir ./gitdir` or a link made by
+hand gives it; both are legal to git. Four: not low, since the break is shown on the real writer and I8 names hooks
+and config in its own text. Not S14: the code is v2's own, and git reads a gitfile and a linked `.git` as its
+documents say.
+
+Fix shapes, from the auditor, and the unit chooses none. One: isGit compares with what `.git` names: Fstatat that
+follows the link covers the link shape, and where `.git` is a regular file the `gitdir: ` line is read and that path
+is taken for the identity, about five product lines; a `.git` that names anything outside the destination then
+matches no in-tree component, as today. Two: fetch, after holds(dest), and session() refuse a directory whose `.git`
+is a link or a gitfile that resolves inside the directory, with one error line in the style of holds(); that covers
+the top-level `.git`, the shape git's own tools make, and leaves a nested `sub/.git` gitfile that names an in-tree
+directory, which would need every gitfile read. Variants that the redteam could not express, for the fix unit to
+weigh and for S-1018: the same `gitdir` under --mount is written live with no pull at all, which is C40's ruling and
+no new finding; an operator's config whose core.hooksPath names an in-tree directory such as `.githooks/` makes a
+plain directory one that git obeys, by the operator's own config; the target of the link spelled in another letter
+case on a host that folds case.
+
+Unit: S-F77, directly below S-1008 in PLAN.md (boundary, fable, env:any). The test is not parked under
+escape/_pending/: with it the test count is over its limit, and escape/ has no layout left to fold (the redteam's
+scan found no wrapped comment and no wrapped statement to join), so, as the records of C85 and C86 did, this record
+holds it and the fix unit re-creates it, paid by folds outside escape/; the source below is the redteam's file byte
+for byte, each line behind four spaces.
+
+Source of cmd/workcell/c91_test.go (61 lines):
+
+    // SPDX-License-Identifier: Apache-2.0
+    // Copyright 2026 Omkhar Arasaratnam
+    
+    // Candidate C91 of S-1008 sweep 4 (I8): the pull refuses the name .git and what shares its inode, so a repository whose .git is a symbolic link to, or a gitfile naming, a git directory kept in the work tree under another name (git init --separate-git-dir ./gitdir) has that directory written by the guest: its hooks and config are obeyed at the operator's next git command. Fails until the fix lands.
+    // Parked under escape/_pending/S-F77 until the fix unit S-F77 moves it to cmd/workcell/c91_test.go and removes the folder.
+    
+    //go:build linux || (darwin && arm64 && cgo)
+    
+    package main
+    
+    import (
+    	"os"
+    	"os/exec"
+    	"path/filepath"
+    	"testing"
+    
+    	"github.com/omkhar/workcell/v2/internal/guest"
+    )
+    
+    // TestC91GitDirectoryUnderAnotherName: the real writer, a destination whose .git names the in-tree directory gitdir in the two forms git reads, and a guest tree of gitdir/hooks/pre-commit and gitdir/config. Where git is on PATH the repository is git's own, and a commit afterwards shows whether the hook ran. Controls: the name .git is still refused by the manifest, and a .git that names a directory outside the destination leaves the plain in-tree gitdir writable as before. How a fix refuses is not judged.
+    func TestC91GitDirectoryUnderAnotherName(t *testing.T) {
+    	git, _ := exec.LookPath("git")
+    	if err := (&manifest{limit: 1 << 20}).add(fileEntry(".git/hooks/pre-commit", 1, true)); err == nil {
+    		t.Error("control: the manifest admitted .git/hooks/pre-commit")
+    	}
+    	for _, tc := range []struct {
+    		name  string
+    		point func(g, in, out string) error // makes .git at g; in is the in-tree gitdir, out a directory outside
+    		real  bool                          // gitdir is the git directory git obeys
+    	}{
+    		{"a symbolic link .git -> gitdir", func(g, _, _ string) error { return os.Symlink("gitdir", g) }, true},
+    		{"a gitfile .git naming gitdir", func(g, in, _ string) error { return os.WriteFile(g, []byte("gitdir: "+in+"\n"), 0o644) }, true},
+    		{"control: .git -> a directory outside", func(g, _, out string) error { return os.Symlink(out, g) }, false},
+    	} {
+    		t.Run(tc.name, func(t *testing.T) {
+    			parent := t.TempDir()
+    			dest, outside, canary := filepath.Join(parent, "dest"), filepath.Join(parent, "outside"), filepath.Join(parent, "canary")
+    			gitdir := filepath.Join(dest, "gitdir")
+    			must(0, os.MkdirAll(gitdir, 0o755))
+    			must(0, os.Mkdir(outside, 0o755))
+    			if git != "" {
+    				must(exec.Command(git, "init", "-q", "--separate-git-dir="+gitdir, dest).CombinedOutput())
+    				must(0, os.Remove(filepath.Join(dest, ".git")))
+    			}
+    			must(0, tc.point(filepath.Join(dest, ".git"), gitdir, outside))
+    			hook, config := "#!/bin/sh\ntouch "+canary+"\n", "[core]\n\tbare = false\n"
+    			err := write(openDir(t, dest), judged(t, []guest.Entry{dirEntry("gitdir"), dirEntry("gitdir/hooks"), fileEntry("gitdir/hooks/pre-commit", int64(len(hook)), true), fileEntry("gitdir/config", int64(len(config)), false)}), from([]byte(hook+config)))
+    			h, _ := os.ReadFile(filepath.Join(gitdir, "hooks", "pre-commit"))
+    			c, _ := os.ReadFile(filepath.Join(gitdir, "config"))
+    			if hk, cf := string(h) == hook, string(c) == config; hk != cf || hk == tc.real {
+    				t.Errorf("I8: after the writer (%v) the guest's hook lies in gitdir: %t, its config: %t; gitdir is the git directory git obeys: %t, and must take both exactly when it is not", err, hk, cf, tc.real)
+    			}
+    			if tc.real && git != "" {
+    				out, err := exec.Command(git, "-C", dest, "-c", "user.name=c91", "-c", "user.email=c91@example.invalid", "commit", "-q", "--allow-empty", "-m", "c91").CombinedOutput()
+    				if _, found := os.Stat(canary); found == nil {
+    					t.Errorf("I8: git commit on the host (%v, %q) ran the guest's pre-commit hook: %s exists", err, out, canary)
+    				}
+    			}
+    		})
+    	}
+    }
+
+C92. ID I10 ("The guest cannot exhaust host CPU, memory, disk, file descriptors, processes or log volume"), host CPU
+in mount mode, the class of C76 with one system call that the pace does not charge. Attacker: root in the guest of a
+--mount session, sending raw FUSE frames on the init's 5002 stream as C17, C64 and C76 did; raw frames are needed,
+since the guest kernel sends only offsets that the server returned. Precondition the attacker does not control: the
+exported directory is a merged overlayfs directory, one that exists in a lower layer as well as in the upper, as the
+workspace that a container image ships is; a directory that the guest makes itself exists in the upper layer alone,
+and overlayfs serves that one with a cheap seek. Where: internal/fileserve/ops_linux.go:387, where readdir() calls
+unix.Seek on the directory handle for whatever offset the frame carries, then ReadDirent (:393); the only charge is
+s.work.Add(int64(n / direntLen)) at :400 for the bytes returned, and one unit a frame in Serve (serve_linux.go:192).
+On a merged overlayfs directory the kernel's ovl_dir_llseek walks its cached list of entries, in time linear in the
+smaller of the offset and the entry count, under the inode lock, at every offset that differs from the file
+position. grow() at serve_linux.go:131-132 already charges SEEK_HOLE by the time it took; readdir charges no time.
+Input: an export on a merged overlayfs directory; INIT; one directory of about 100000 entries, which the tree holds
+or which the guest fills (20000 entries made through the mount cost 80 MiB of the default 1 GiB of --disk and are
+enough, by the verifier's run); OPENDIR 16 times; then READDIR (opcode 28) on those handles in turn with offset
+1<<40 plus a counter and size 8192, as fast as the host takes them. Effect claimed: each frame costs the host about
+3 ms of kernel CPU in the list walk and is charged one unit, so the real Server takes about two host cores with one
+sequential client, where the row mount-cpu-flood allows one vCPU plus a second, and the same flood costs 0.39 cores
+on ext4 and 0.58 on tmpfs; the CPU is taken from the proxy and the audit log of the same supervisor (A9). Severity
+claimed: medium. No file here is ported, so there is no v1 line.
+
+The auditor's evidence, run as root in the session: an overlay mount with 100000 entries in the lower layer, made
+and removed by the probe, and an overlay test in package fileserve on the package's own harness: 642 frames in 2.036
+s at 2.16 cores, 6.8 ms of CPU a frame and 3.16 ms for one far seek with getdents alone; controls on the same host
+and flood: ext4, 3350 frames at 0.39 cores, and tmpfs on this 6.18 kernel, 1805 frames at 0.58 cores.
+
+Reproducing test (S4): TestC92SeekOfOneFrame, a Go test of package fileserve, 84 lines, written by the redteam from
+the claim alone, with no VM and so no T2: a directory of 100,000 entries in the lower layer of an overlay that the
+test mounts in its own temp directory and unmounts in cleanup, one entry in the upper so that the directory is
+merged, the package's own harness, 16 handles, READDIR frames at offsets of 1<<40 and up for two seconds, judged by
+the process's CPU over wall against 1.5 cores, the bound of c76_test.go. It needs root once, for the mount: as root
+it mounts directly, otherwise it runs itself again through `sudo -n` as c65_test.go does, and it skips only when
+neither works. Control: the same flood on the same directory in the lower layer, a plain filesystem. Run by the
+orchestrator on ac18402 with `go test -overlay`, go1.27.4: plain, `c92_test.go:80: I10: 632 READDIR frames under the
+pace took 2.14 host cores (4.356026s CPU in 2.036302229s), want at most 1.5`; with -race, 641 frames at 2.15 cores;
+the control arm passes each time; no mount was left. The redteam measured 2.09 to 2.20 cores over four runs and 0.36
+cores for the control with its bound taken away. gofmt and go vet with the overlay are clean, by the redteam.
+
+Outcome: CONFIRMED by the verifier at medium, as claimed, from its own runs. Its evidence. One: the test fails as
+recorded, 2.17 cores plain and 2.14 with -race, and the control passes. Two: the server pays, not the harness: its
+own probe ran the unchanged Open and Serve in a child process over a socketpair and read the child's CPU from /proc:
+on the merged directory the server alone took 1.91 cores, 0.01 of user time and 1.91 of system time, with 0.02 for
+the harness and 11.6 ms for one far READDIR sent alone; on plain ext4 with 100000 entries the server took 0.37
+cores, 277 us a frame. The bound of 1.5 is a fair and slightly lenient reading of the suite's own judge (cpuJudge in
+escape/suite/floods.go allows one vCPU of wall plus a second, about 1.3 cores over 3.4 s), and the server alone is
+above it, so this is not C64's case of an overrun bounded near one core. Three: the test gives itself no power: raw
+frames, 16 handles and far offsets are what C17, C64 and C76 allowed guest root; the entries need not come from the
+operator, since an arm with one seed entry in the lower layer and 20000 made through the mount gave 1.97 cores for
+the server alone, 2.0 ms a frame. What the guest cannot do is make the directory merged, so the precondition is the
+operator's environment: a container or an image whose workspace lies in a lower layer, with /dev/kvm passed in. This
+session and the hosted runner are on ext4, so no row of the suite shows it. Four: no ruling accepts a host
+filesystem's slow operations; the fix round of C77 graded the cost of SEEK_HOLE on tmpfs as I10 at medium under the
+same kind of precondition and charged the seek's time to the pace, and PARKED.md parks only the blocks that reflink
+and compression leave uncharged, not CPU. Severity by S6: medium, as that finding was; not high as C76, which needed
+nothing beyond --mount; not low as C64. Not S14: the linear seek of overlayfs is public kernel code that works as
+designed, and the missing charge is this project's.
+
+Fix shapes, from the auditor, and the unit chooses none. One: two lines in readdir(), a time taken before the Seek
+at ops_linux.go:387 and `s.work.Add(int64(time.Since(t0) / (750 * time.Nanosecond)))` after the ReadDirent, the form
+that grow() uses for SEEK_HOLE, so that the pace holds the walk to about 30 ms of host work in each period of 64 ms,
+about half a core, with no option and no changed reply. Two, with a change of behaviour: answer EINVAL to an offset
+that is neither 0 nor one that this handle returned, after which a seekdir back to an earlier page fails. Variants
+that the redteam could not express, for the fix unit to weigh: MKDIR and UNLINK in the merged directory between the
+READDIR frames change the overlay's version, so each READDIR builds the whole cache of 100000 entries again, about
+100 ms a frame; 16 handles spread over several merged directories escape the one inode lock and take more cores;
+READDIRPLUS at far offsets on a merged directory; other exports whose seek is linear, tmpfs before kernel 6.6 and
+exports that FUSE or NFS back. A charge by time covers each of them where the time is spent inside the Seek and the
+ReadDirent; the unit says in its record which it measured.
+
+Unit: S-F78, below S-F77 in PLAN.md (boundary, fable, env:any). As for C91, the test is not parked under
+escape/_pending/: this record holds it, byte for byte behind four spaces, and the fix unit re-creates it, paid by
+folds outside escape/.
+
+Source of internal/fileserve/c92_test.go (84 lines):
+
+    // SPDX-License-Identifier: Apache-2.0
+    // Copyright 2026 Omkhar Arasaratnam
+    
+    // Candidate C92 of S-1008 sweep 4 (I10): a READDIR at an offset far from the handle's position costs the host a walk of the whole listing when the directory is a merged overlayfs one, and is charged as one cheap frame, so a flood of them under the pace takes host cores. Fails until the fix lands.
+    // Parked under escape/_pending/S-F78 until the fix unit S-F78 moves it to internal/fileserve/c92_test.go and removes the folder.
+    
+    //go:build linux
+    
+    package fileserve
+    
+    import (
+    	"cmp"
+    	"fmt"
+    	"os"
+    	"os/exec"
+    	"path/filepath"
+    	"testing"
+    	"time"
+    
+    	"golang.org/x/sys/unix"
+    )
+    
+    // TestC92SeekOfOneFrame is I10 on the host's CPU, as c76: a directory of 100,000 entries that lies in a lower layer and the upper one, so the overlay merges it, exported; 16 handles; READDIR frames at offsets of 1<<40 and up, 8 KiB each, as fast as the service takes them for two seconds. Judged by this process's CPU over wall against one core plus slack. Control: the same flood on the same directory in the lower layer, a plain filesystem. Root is used once, for the overlay mount: the test re-runs itself through sudo -n, as c65 does.
+    func TestC92SeekOfOneFrame(t *testing.T) {
+    	if os.Geteuid() != 0 {
+    		if err := exec.Command("sudo", "-n", "true").Run(); err != nil {
+    			t.Skip("not root, and sudo -n fails:", err)
+    		}
+    		exe, _ := os.Executable()
+    		out, err := exec.Command("sudo", "-n", "env", "TMPDIR="+os.TempDir(), exe, "-test.run=^TestC92SeekOfOneFrame$", "-test.v", "-test.count=1").CombinedOutput()
+    		if t.Logf("as root:\n%s", out); err != nil {
+    			t.Fatal(err)
+    		}
+    		return
+    	}
+    	const bound, budget, entries = 1.5, 2 * time.Second, 100000
+    	base := t.TempDir()
+    	lower, upper, work, merged := filepath.Join(base, "lower", "big"), filepath.Join(base, "upper", "big"), filepath.Join(base, "work"), filepath.Join(base, "merged")
+    	if err := cmp.Or(os.MkdirAll(lower, 0o755), os.MkdirAll(upper, 0o755), os.Mkdir(work, 0o755), os.Mkdir(merged, 0o755), os.WriteFile(filepath.Join(upper, "x"), nil, 0o644)); err != nil {
+    		t.Fatal(err)
+    	}
+    	dir, err := unix.Open(lower, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_CLOEXEC, 0)
+    	for i := 0; err == nil && i < entries; i++ { // the lower layer holds the listing; one entry in the upper makes the directory a merged one
+    		err = unix.Mknodat(dir, fmt.Sprint(i), unix.S_IFREG|0o644, 0)
+    	}
+    	if err != nil {
+    		t.Fatal(err)
+    	}
+    	if err := unix.Mount("overlay", merged, "overlay", 0, "lowerdir="+filepath.Dir(lower)+",upperdir="+filepath.Dir(upper)+",workdir="+work); err != nil {
+    		t.Skip("root without the right to mount an overlay here:", err)
+    	}
+    	t.Cleanup(func() { _ = unix.Unmount(merged, unix.MNT_DETACH) })
+    	cpu := func() time.Duration { // this process's CPU time, user and system
+    		var ru unix.Rusage
+    		_ = unix.Getrusage(unix.RUSAGE_SELF, &ru)
+    		return time.Duration(ru.Utime.Nano() + ru.Stime.Nano())
+    	}
+    	for _, tc := range []struct{ name, dir string }{{"control: the plain directory", lower}, {"the merged overlay directory", filepath.Join(merged, "big")}} {
+    		t.Run(tc.name, func(t *testing.T) {
+    			k, stop, _ := started(t, tc.dir)
+    			defer func() { _ = stop() }()
+    			fhs := make([]uint64, workers)
+    			for i := range fhs {
+    				fhs[i] = le.Uint64(k.ok(reqOpendir(rootID)))
+    			}
+    			c0, w0, n0, done := cpu(), time.Now(), k.n, make(chan uint64, 1)
+    			go func() { // frames until the budget is spent, then a STATFS with unique 0 as the marker; done says how many went before it
+    				for i := 0; time.Since(w0) < budget; i++ {
+    					k.send(reqReaddir(rootID, fhs[i%workers], 1<<40+uint64(i), 8192, false))
+    				}
+    				k.raw(reqStatfs())
+    				done <- k.n - n0
+    			}()
+    			for got, want := 0, -1; got != want; got++ {
+    				if k.recv().unique == 0 {
+    					want = int(<-done) + 1
+    				}
+    			}
+    			if c, w := cpu()-c0, time.Since(w0); c.Seconds() > bound*w.Seconds() {
+    				t.Errorf("I10: %d READDIR frames under the pace took %.2f host cores (%v CPU in %v), want at most %.1f", k.n-n0, c.Seconds()/w.Seconds(), c, w, bound)
+    			}
+    		})
+    	}
+    }
