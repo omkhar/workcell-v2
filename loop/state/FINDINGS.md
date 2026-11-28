@@ -10465,3 +10465,269 @@ confirmed mediums, C87 (S-1002) and C88 (S-1005), both fixed, which S-1017 count
 stopped one turn of the auditor and withheld it; the tool calls of that turn did not run, the auditor went on
 without sending that content again, and the orchestrator rephrased nothing. No model declined a request and no
 safeguard re-ran one on another model.
+
+## S-1007, sweep 4: secrets: sources, placeholders, sign-in token swap, git credentials, logs, crash output (I5), as built at main b47bf10
+
+Sweep 4 (S8), the one further sweep that the maintainer allowed on 2026-11-26 after ADR-006, fresh context (S3), the
+whole surface read as built after S-F71, S-F72 and S-F74, not a diff. Auditor on the top tier in the cloud session,
+which has no hypervisor and is Linux, as root; nothing of this audit needed a VM, and nothing ran on one or on
+macOS. The auditor wrote its own trust boundary and worked every lens before it opened any earlier record, then
+traced and ran every recorded fix of the surface. Two candidates, C89 and C90, both confirmed by a verifier; the
+records are under the next heading.
+
+Trust boundary. Attacker bytes enter at two places, and a third attacker owns none here. One: guest root and hostile
+model output own every byte and the timing of each terminated HTTP/1.1 request after S-1005's parser: method,
+target, header names and values (the credential header and its Bearer and Basic forms, Content-Type,
+Accept-Encoding, Connection, Host), the body (read whole only at a claimed token endpoint, under 256 KiB, else
+streamed unread), pipelining and Upgrade; and every byte they can write into the guest's memory, disk and
+environment, where only placeholders arrive (`wcph-` and 32 hex digits, 16 bytes of crypto/rand for each rule and
+each sign-in row, minted per session by bindings in cmd/workcell/policy.go and handed to the guest through
+guest.Exec.Env alone in run_vm.go; pull and bench boot with no secrets). Two: the malicious repository owns the
+working directory and workcell.toml, which only narrows (policy.Narrow), and under --mount rewrites the directory
+live. Three: the network attacker owns no byte of this surface, since an upstream is verified by x509 against the
+explicit pool with the SNI host as ServerName; what an allowed provider answers, how its router reads a path and
+whether it echoes or issues credentials are preconditions, not attacks. Out of scope: the operator's rows, sources,
+helper programs and environment, and what a cmd: program reads through its arguments (SPEC section 2, ADR-006).
+Authority of the code that handles those bytes: the supervisor at the operator's uid reads a value on each use (a
+file opened, or a child at a fixed or operator-named absolute path with a scrubbed environment, directory `/`, no
+shell, two minutes), writes it into one outgoing header or token body, holds sign-in tokens for one generation in
+broker memory under a mutex, holds the session CA key, records every release and denial in the fsynced ledger before
+the value leaves, rewrites a claimed token answer before the guest reads a byte of it, and exports or serves the
+working directory. What the guest can see: the upstream's HTTP answer, which is the one channel that matters; the
+Exec environment (placeholders only); the export or mount of the working directory (ADR-006's duty); the CA
+certificate; the kernel command line; DNS answers for allowed names; the cache images. Ported:
+internal/secret/source.go and broker.go, internal/proxy/terminate.go, proxy.go and allowlist.go,
+internal/audit/lines.go. Not ported: internal/proxy/signin.go and cmd/workcell/policy.go.
+
+Lenses (S9). Parsing and resources: a file: source is absolute, Stat then regular, one buffer of 64 KiB and a byte,
+one line, a CR refused; a cmd: source is strings.Fields of the operator's text, an absolute program, no shell,
+stderr kept where no format prints it, partial output zeroed on every error path; a value with control bytes is
+refused by the Transport's header check, whose error omits the value; Basic values are strict base64 of at most 4
+KiB; a token body and a token answer are bounded at 256 KiB before and after gzip, and br, zstd and identity as an
+encoding are refused; the header block is 64 KiB; the broker gives 300 grants and records 300 denials in each fixed
+minute; hide and learn decode under encoding/json's depth cap. No panic from guest bytes; the fuzz bursts were
+clean. Logic and state: the handler's order is 400 (opaque target, scheme without host, a path that is not canonical
+on a sign-in host), 405 (TRACE, CONNECT), 421 (sameHost), then for each rule placeholderForm, admits (403) and
+Lookup, then tokenEndpoint and tokenRequest (502), carriesPlaceholder (502), and the ReverseProxy with Rewrite to
+the SNI host and ModifyResponse = tokenResponse. canonical is Go's own escaping of the decoded path, clean, with
+none of `;`, backslash and `%`; it admits control bytes spelled in upper-case hex (C90). admits names no method.
+tokenEndpoint matches by EqualFold on a canonical path; learn hides the broker's pair, the carried refresh token and
+the issued pair in three spellings; tokenAnswer refuses an unclaimed 2xx of a sign-in host that is token-shaped at
+the top level. What no code does: read any answer of a bound host that is not a sign-in host (C89), and refuse a
+control byte in a judged path (C90). Concurrency and check-to-use: the grant and token maps are immutable after
+NewBroker; held and Issue run under the mutex with clones; the value goes into the header in the goroutine that
+fetched it; the record follows Resolve, and a failed record zeroes and withholds; the carried token covers C15's
+race; nothing changes r.URL between admits and the outgoing clone; S-F71's Stat and Nlink at load against the
+kernel's walk at use have no in-scope mover, since every prefix lies outside the working directory and the data
+directory and the guest writes only under the former. Cryptography and identity: 128-bit placeholders; a P-256
+session CA of at most 24 hours with critical name constraints and IP ranges excluded, one leaf for each allowed
+name, the key in host memory; the upstream verified with ServerName the SNI host, TLS 1.2 at least, HTTP/1.1, a
+fresh tls.Config for each guest connection. Failure modes: every error path answers 400, 403, 405, 421 or 502, or
+closes; a Resolve error becomes broker_denied and its text does not reach the guest; a nil, closed or failing ledger
+withholds every value; an error of Terminate ends the start before any VM; a ModifyResponse error is an empty 502;
+the servers' error logs are discarded, and a traceback prints words, not bytes. Nothing fails open but the two
+candidates. Downgrade, rollback and replay: placeholders are fresh per session; one token generation is held and the
+replaced one zeroed; a replayed or attacker-chosen code grant replaces the operator's tokens for the session, a loss
+and no gain; TLS 1.2 at least on both sides and ALPN http/1.1 alone. Interaction: ledger lines carry event, host,
+header, name and result and never a value; `log`, its OCSF form, `explain` and the start-up errors name file, line,
+name, host and path, never a value; the VMM child inherits the operator's environment, which holds no resolved
+value; the Exec environment is PATH, HOME, LANG, the trust and cache variables, the placeholders and TERM; narrowing
+(I13) holds: a row whose host is narrowed away goes, a dropped sign-in row whose token host stays refuses the
+session, and --allow does not restore a dropped row; SSL_CERT_FILE and SSL_CERT_DIR are judged before boot (C86).
+
+Refuted before anything was raised, by the auditor's run unless marked. An id_token beside the pair in a claimed 2xx
+reaches the guest verbatim: U-403's class, parked. Unclaimed 2xx shapes on a sign-in host: a JSON array, a nested
+object, `{"token":..}` and a bare JSON string pass and `{"access_token":..}` is 502, the documented exception,
+parked. The refresh token echoed in a response header at a claimed endpoint passes, since hide reads the body alone:
+parked, no real identity provider named. `Connection: x-api-key`: the ReverseProxy drops the swapped header after
+the ledger recorded the grant, an over-report and self-harm, parked. `/v1/%00x` under `/v1/`: admitted and sent byte
+for byte, and it stays under the prefix; Apache 2.4.58 refuses `%00`; the `repos` twin with a NUL is refused by
+within. A form-framed 2xx at the claimed path is 502 (reasoned from learn, as sweep 2 ran). A placeholder
+URL-encoded in a body crosses and is useless (reasoned). Two values, mixed case, the user position of Basic and a
+lower-case `basic `: refused or crossing unswapped (existing tests). Upgrade and 101 at a token endpoint: parked,
+bounded (reasoned). Hop-by-hop removal, X-Forwarded stripping and the query cleaning of the ReverseProxy: the order
+confirmed by run and by reading. A bound host that echoes the presented value: residual by design in the earlier
+records; C89 is what those records do not cover. S-F71's check attacked afresh: prefixes through links into the
+working directory or the data directory, `..` in a program path, a FIFO, a hard-linked file, relative and
+capitalised schemes (reasoned on the code, and the 30 arms of sf71_test run green). A repository that narrows away a
+token host or the API host of a sign-in row: fails closed (reasoned, and c34's test run).
+
+Recorded fixes of this surface, each traced as built and run by the auditor, all holding: C10 (S-F5, then S-F72) by
+TestFoldedPathEscapesTheEndpointAndTheRule; C12 (S-F7) by TestLearnHidesTheEncodedSpelling and FuzzHide; C15 (S-F9)
+by TestConcurrentRefreshHidesTheReplacedToken; C32 (S-F25) by TestC32OpaqueRequestTarget; C33 (S-F26, then S-F72) by
+TestC33PathBindingReleasesSecretOutsideBinding; C34 (S-F27) by TestC34SignInRowDropped; C35 (S-F28) by
+TestC35CmdHelperDoesNotObeyTheRepository; C53 (S-F36) by TestRelativeSSLCertDirIsRefused; C54, C58 and C82 with the
+rule of S-F71 by their tests and TestSF71SecretSourceJudgedAsTheHostOpensIt; C55 (S-F38) and C67 (S-F50) by
+TestC55TokenEndpointFormatSuffix and TestC67TokenAnswerInAnotherMediaType; C68 (S-F51, then S-F72) by
+TestC68RoutingOverrideHeaders; C85 and C86 (S-F69, S-F70) by their tests; S-F72 as the ADR decides it, `method`
+refused at load; C88 (S-F74) by TestC88DoubledEscapeLeavesTheBinding and the `repos` row of
+TestTerminateNarrowedRule. C16 (low, a source resolved on each Lookup) is as it was.
+
+Ran, by the auditor, in a scratch directory and with nothing added to the repository; every target a loopback
+process that the probe itself started (S12, T8). go build of the module; go test -count=1 green on internal/secret
+(0.263 s), internal/proxy (12.917 s), internal/policy, internal/audit, internal/provider and cmd/workcell (7.401 s);
+under -race internal/secret (1.307 s) and internal/proxy (18.015 s), and by name the tests of the recorded fixes: 20
+in internal/proxy, 11 in cmd/workcell, 13 in internal/secret; go vet clean on the six packages. Overlay probes
+through the real terminating proxy, the real broker with a file: grant and a real ledger: seven of the shapes above
+and the two candidates. Fuzz bursts of 25 s each in a copy of the tree, with no crasher: FuzzHide 241,397
+executions, FuzzSwapRefresh 747,786, FuzzCarriesPlaceholder 124,664. Apache 2.4.58 from the distribution's archive
+as a plain-HTTP front end on loopback with `RewriteRule ^/v1/(.*)$ http://127.0.0.1:18082/api/$1 [P,NE]` before a Go
+recorder: six requests, for which see C90.
+
+Coverage. Read in full: internal/secret (broker, source and their tests); internal/proxy (terminate, signin, proxy,
+allowlist, routes_linux, routes_other, and the tests terminate_test, signin_test, git_test, proxy_test);
+internal/policy/policy.go; internal/provider/provider.go and its four data files; internal/audit (audit, key,
+lines); internal/relay/relay.go; internal/wire/wire.go; internal/guest (guest, trust, walk); internal/vmm/vmm.go and
+firecracker/firecracker.go; internal/workspace/workspace.go; in cmd/workcell the files policy, run_vm, session,
+explain, log, main, data, relay, caps, ocsf, run_other, term_vm and sf71_test; cmd/workcell-init (exec, main); in
+escape/suite the files secrets, signin and terminate; in escape/sandbox the files workcell, workcell_linux and
+sandbox; docs/policy.md; docs/adr/accepted/006-judge-structure.md; loop/SPEC.md; and, after the audit's own pass,
+the S-1001 map, the S-1007 records of sweeps 1, 2 and 3, the records of S-F71 and S-F72, the sweep-4 record of
+S-1005 with C88 and S-F74, and PARKED.md whole. Skimmed or by search: the head comments of the other c-tests of
+cmd/workcell and internal/proxy; the test names of policy_test.go; the head of S-1016b; escape/suite/tests.go for
+the 16 rows of I5 and escape/enforced.txt; the sign-in lines of docs/providers.md. Not examined: internal/fileserve,
+internal/resolver, internal/rootfs and internal/vmm/vz; update, pull, pull_vm, bench, cache and layer of
+cmd/workcell; mount, net, pull and root of cmd/workcell-init; escape/sandbox/workcell_vm.go and the control
+adapters; the rest of escape/suite; `_legacy/`; the sources of net/http, httputil and crypto/tls, whose behaviour
+was taken from the runs. Not run: anything on a real VM, the escape suite by the auditor, any macOS path, the
+keychain: and secret-service: sources beyond their fail-closed arms (this session has neither `security` nor
+`secret-tool`), any real provider (T8), nginx, the four-hour fuzz of S10, govulncheck.
+
+### S-1007 candidates, sweep 4
+
+C89. ID I5 (real credential bytes never exist in guest memory) and A4 (placeholder credentials are the only
+credential path, and no mode stages a real secret in the guest); docs/policy.md says that the guest never holds the
+value. Attacker: guest root or hostile model output, choosing the request it sends to the bound host. Precondition
+the attacker does not control: the operator bound a credential whose provider issues or rotates a credential for its
+holder under the row's host and path, with a scope that allows it. Where: internal/proxy/terminate.go, where the
+ReverseProxy's only answer hook is ModifyResponse = tokenResponse (:353-361) and the swap is made (:399-406), and
+internal/proxy/signin.go:133-138, where tokenResponse returns at once for a host that has no sign-in rule, so no
+answer of a bound API host is ever read. terminate.go is ported and signin.go is not. also in v1 main:
+egressproxy/terminate.go. Input: a `[[secret]]` row with host gitlab.example.com, header private-token and a file:
+source; the guest sends `POST /api/v4/personal_access_tokens/self/rotate` with `Private-Token:` the session's
+placeholder. Effect claimed: the proxy swaps the real value in, the provider issues a new credential of the
+operator's account and answers 200 `{"id":42,"token":"glpat-NEW-REAL"}`, and the answer crosses to the guest unread:
+a real and durable credential in guest memory, which outlives the session and can leave through the same bound host.
+Nothing leaves the bound host on the request side, so I6 holds. Severity claimed: medium. The auditor named other
+providers with such endpoints from their documents and probed none (T8); by its knowledge of their APIs, and by no
+run, none of the four shipped provider rows reaches such an endpoint with its bound key, so the precondition is a
+row that the operator wrote.
+
+The auditor's evidence, run: an overlay probe through the real terminating proxy, the real broker with a file: grant
+and a real ledger, before a loopback TLS upstream that answers the rotate path only when it sees the real value; the
+guest's client read the 200 with the new token.
+
+Reproducing test (S4): TestC89MintedCredentialReachesTheGuest, a Go test of package proxy, 49 lines, written by the
+redteam from the claim alone, with no VM and so no T2: the package's own terminating proxy with a rule that is not
+narrowed, and a loopback TLS upstream that models a provider acting as designed. It fails when the guest reads the
+issued token. Controls: `GET /api/v4/user` with the placeholder is served, so the upstream saw the real value, and
+the rotate request with a wrong token is 401 with nothing issued. It waits in escape/_pending/S-F76/c89_test.go,
+which Go does not compile. Run by the orchestrator on 2eb8bb1 with `go test -overlay`, go1.27.4, plain and with
+-race, one error line each: `c89_test.go:47: I5/A4: the guest read "{\"id\":42,\"token\":\"glpat-NEW-REAL\"}": the
+proxy signed a request that mints a credential and passed the answer unread`; both controls pass. gofmt and go vet
+with the overlay are clean.
+
+Outcome: CONFIRMED by the verifier at medium, from its own run of the test and its own reading of the rulings. Its
+evidence. One: the test fails as recorded and both controls pass; it uses only the package's shared fixtures and the
+real Terminate, and a placeholder in the bound header to the bound host is the designed use, so the test gives
+itself no power. Its upstream is an honest model of the documented endpoint; the one thing it leaves out, that the
+real provider also revokes the token presented, does not favour the claim. Two: the attacker is in scope, and no row
+of SPEC section 2's out-of-scope list covers it: the provider is not compromised, it acts as designed. Three: it is
+not ruled intended. Every ruling in the records is about an echo of the value presented: the sweep-1 record of this
+surface ("a bound host that echoes the credential header returns the real bytes to the guest ... residual risk"),
+the sweep-2 record ("an allowed host that echoes the bound header: residual by design"), the S-1013 record and the
+PARKED line of S-1007; U-403's line covers an id_token at a claimed token endpoint; nothing in docs/adr/accepted/,
+docs/policy.md or docs/threat-model.md accepts a credential that the bound provider newly issues. Four, severity by
+S6's letter: medium, "the same, but only with an extra precondition the attacker does not control"; not high, since
+a provider with no such endpoint, or a row narrowed away from it, is out of reach; not low, since the break is shown
+on the real package. Five: not S14: an endpoint that rotates a token for its holder is a documented feature of that
+project, not a weakness in it.
+
+No patch is known, for the maintainer. The auditor, the redteam and the verifier each looked for a product change
+and found none that closes C89 in general: the product cannot tell which answer of a bound host is a credential;
+`path` cannot part GitLab's rotate endpoint from the rest of its API by prefix unless the operator narrows below
+`/api/v4/`; a check of answer text is the kind that ADR-006 took out of both checks, and it would have to buffer
+answers that are streamed. What can be said today is a duty: bind a credential of the least scope, and narrow `path`
+away from endpoints that issue credentials. Under that reading no change makes the parked test pass while the bound
+API stays usable, so S4's "passes after the fix" has no fix to follow, and S7 wants every medium fixed before
+cutover. That is a design question of the kind S8 names, like the secret-source check before ADR-006.
+
+Unit: S-F76, directly below S-1007 in PLAN.md, and written as a spike (fable, env:any), not as the boundary unit
+that the phase note gives a finding: it writes ADR-007 as a proposal that compares the duty in docs/policy.md with a
+row in SPEC section 2, the same with a `path` in the compiled-in provider rows, a swap only under a narrowed row,
+and any design that judges a structure the host itself sends, each with its cost; it builds nothing, and the parked
+test stays in escape/_pending/S-F76/ until a unit builds the accepted design. A boundary unit would have had to
+judge answer text or fail three times. The orchestrator chose this and the maintainer may rewrite the line. C89
+stays open until then. Variants not written (redteam): other endpoints that issue a credential at the same host; an
+answer in another media type; a new token in a response header or a cookie; a rotate under a `path` rule whose
+prefix covers the endpoint, which the narrowing does not help.
+
+C90. ID I5 (a placeholder is useless at any destination other than the one it is bound to: docs/policy.md binds a
+row narrowed by `path` or `repos` to that path, "judged on the path as the upstream receives it, which must have one
+reading"), the sibling of C88 with control bytes in place of `%25`. Attacker: guest root or hostile model output,
+choosing the path of its own request. Preconditions the attacker does not control: the operator narrowed the row by
+`path` or `repos`; the bound host's front end puts the decoded path back into the request line that it sends on; and
+the backend behind it reads HTTP/1.x. Where: internal/proxy/terminate.go:127-130, canonical, whose refused set is
+`;`, backslash and `%` and which has no clause for a control byte; used by admits (:116) and by the target check of
+a sign-in host (:369). The file is ported. also in v1 main: egressproxy/terminate.go. Input: under the rule {Host:
+api.example.com, Header: x-api-key, Path: "/v1/"}: `POST /v1/x%0D%0A%0D%0AGET%20/admin` with `X-Api-Key:` the
+session's placeholder; also canonical today: `/v1/x%0A`, `/v1/x%0D`, `/v1/x%7F`, `/v1/x%01y` and `/v1/x%09y`. The
+lower-case `/v1/x%0d%0a` is not Go's escaping and is refused. Effect claimed: admits is true, the broker releases
+the secret with a granted record, and the upstream receives the line byte for byte with the real secret; a front end
+that decodes once and writes the raw bytes into its own request line hands the backend a second request line, at a
+path outside the binding, with the original headers. The secret never reaches the guest and never leaves the bound
+host (I6 holds). Severity claimed by the auditor: low, since the one such front end it could name was Apache httpd
+2.4.0 to 2.4.55 (CVE-2023-25690, public and fixed in 2.4.56), and Apache 2.4.58 refused each control byte in its run
+(403, AH10415) while passing the C88 control.
+
+Reproducing test (S4): TestC90ControlBytesInACanonicalPath, a Go test of package proxy, 59 lines, written by the
+redteam from the claim alone, with no VM and so no T2. One half asks canonical about each spelling; the other sends
+each through the package's own terminating proxy under a rule of path `/v1/` to a loopback TLS upstream that models
+a front end which decodes once and reads the bytes again, and fails when the upstream receives the real secret at a
+path that holds a control byte or lies outside `/v1/`, so the model does not carry the failure alone. Controls:
+`POST /v1/x` is served at `/v1/x` with the real secret, and the lower-case `/v1/x%0d%0a` is refused before the
+upstream sees a request. It waits in escape/_pending/S-F75/c90_test.go. Run by the orchestrator on 2eb8bb1 with `go
+test -overlay`, go1.27.4, plain and with -race, twelve error lines each: six of `c90_test.go:25:
+canonical("/v1/x%0D%0A%0D%0AGET%20/admin") = true` and its fellows, and six of `c90_test.go:56: I5: the upstream
+received "/admin" with the real secret` and its fellows; both controls pass. The redteam saw it pass with a scratch
+overlay of canonical that also refuses bytes below 0x20 and 0x7F, so a pass means the effect is gone.
+
+Outcome: CONFIRMED by the verifier, and read by it as medium where the auditor claimed low; the record follows the
+verifier, as with C87. Its evidence. One: the test fails as recorded and both controls pass; admission, the broker's
+release and the forward run through the real proxy, and only the upstream is a model. Two: the model is honest about
+one shipping server in a documented configuration, and not about Apache: nginx 1.24.0 from the distribution, on
+loopback, with `location /n3/ { proxy_pass http://127.0.0.1:18082$uri; }` wrote to a backend that logs raw bytes
+`POST /n3/x`, CR LF CR LF, `GET /admin HTTP/1.0` and the header `X-Api-Key: real-secret`; a strict backend answers
+the claim's own spelling 400, since its first line is then malformed, but for the spelling
+`/v1/x%20HTTP/1.1%0D%0AHost:%20b%0D%0AContent-Length:%200%0D%0A%0D%0AGET%20/admin`, which canonical admits, a Go
+net/http backend behind that nginx served `GET /admin` with the real secret. Apache 2.4.58 re-encodes in ProxyPass,
+nocanon, ProxyPassMatch and RewriteRule with [P] and with [P,NE,B] and refuses with [P,NE]; nginx with a plain
+proxy_pass, with a URI part, with `rewrite ... break` and with `$request_uri` forwards the bytes encoded. The five
+rows of a single control byte show no break by themselves and are hardening. Three: the attacker is in scope and the
+test gives itself nothing the guest lacks. Four: it is not intended behaviour: docs/policy.md promises one reading;
+the Path row of ADR-006 does not rule on control bytes; the parked residuals name a NUL, double decoding, a trailing
+space and overlong UTF-8 only. It has the standing of C88, a documented and not default configuration of a shipping
+front end. Five, severity by S6's letter: medium; I5 is broken only with the three preconditions above; a break is
+shown against a current front end, so it is not low; the secret never leaves the bound host, so it is not high. Six:
+not S14: the file is ported and no v1 release holds it, nginx's substitution of a variable as it stands is
+documented behaviour, and Apache's case is a public CVE that is fixed.
+
+Fix unit: S-F75 (boundary, fable, env:any), directly below S-1007 in PLAN.md and above S-F76: in canonical refuse a
+decoded path that holds a byte below 0x20 or 0x7F, one more clause on the existing return line and no added product
+line, with the comment on that line and the sentence of docs/policy.md saying so. The auditor tried that clause in a
+copy of the tree: the file stays at 483 lines, gofmt is clean, the package passes, both of its probe rows become 403
+and the admitted arm `/v1/%E2%9C%93` of sf72_test.go stays admitted. The verifier's spelling also needs `%20`; a
+space alone splits no line, and the unit weighs it. Cost: under a narrowed rule a path with a control byte is 403,
+and on a sign-in host 400; no client sends one. As with C88 the change narrows the Path row of the accepted ADR-006
+toward refusal, the loop does not edit the ADR, and the fix's record says where code and ADR then differ. Variants
+not written (redteam): other C0 bytes and `%7F` under a `repos` rule, which shares canonical; a control byte in the
+query, which no rule judges by design and which a front end that reads the request line again would still see; a
+sign-in host's token path with `%0D%0A`.
+
+Sweep 4 verdict for this surface: two candidates, both confirmed at medium by a verifier, both open: C90 with fix
+unit S-F75, and C89 with the design question S-F76 and no patch. Sweep 4 now holds four confirmed mediums, C87
+(S-1002) and C88 (S-1005), both fixed, and C89 and C90 here, which S-1017 counts (S8). Product is at 14976 of 15000.
+The next candidate number is C91 and the next fix unit S-F77. No model declined, no safeguard stopped or re-ran a
+request of the auditor, the redteam or either verifier, and no tool permission was refused to any of them. The
+auditor and one verifier installed apache2 and nginx from the distribution's archive for their probes, every
+listener on loopback and stopped afterwards (S12). Nothing falls under S14.
